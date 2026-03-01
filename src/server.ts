@@ -264,7 +264,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FlashProfits Quote Finder</title>
+  <title>CowSwap Trader</title>
   <style>
     * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
@@ -318,7 +318,7 @@ const INDEX_HTML = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>FlashProfits Quote Finder</h1>
+  <h1>CowSwap Trader</h1>
 
   <details class="tokenlist-section">
     <summary>Token List (autocomplete)</summary>

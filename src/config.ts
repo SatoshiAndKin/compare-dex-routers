@@ -11,7 +11,7 @@ import {
   type Config,
 } from "@spandex/core";
 import { createPublicClient, http, type Address, type PublicClient } from "viem";
-const APP_ID = process.env.APP_ID || "flashprofits";
+const APP_ID = process.env.APP_ID || "cowswap-trader";
 
 export const SUPPORTED_CHAINS: Record<number, { name: string; alchemySubdomain: string }> = {
   1: { name: "Ethereum", alchemySubdomain: "eth-mainnet" },
