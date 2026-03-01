@@ -376,6 +376,12 @@ const INDEX_HTML = `<!DOCTYPE html>
     .tx-status.pending { color: #f6c85f; }
     .tx-status.success { color: #34d399; }
     .tx-status.error { color: #f87171; }
+    .refresh-indicator { margin-bottom: 10px; padding: 10px 12px; border-radius: 6px; border: 1px solid #2f4f6f; background: #142233; color: #d7e8ff; }
+    .refresh-indicator-meta { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 12px; }
+    .refresh-indicator-status { color: #9ca3af; min-height: 16px; }
+    .refresh-indicator-status.error { color: #f87171; }
+    .refresh-indicator-progress { margin-top: 8px; height: 4px; border-radius: 999px; background: #0f1726; overflow: hidden; }
+    .refresh-indicator-progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, #4ec9b0, #34d399); transition: width 0.2s linear; }
   </style>
 </head>
 <body>
@@ -435,6 +441,15 @@ const INDEX_HTML = `<!DOCTYPE html>
   </form>
 
   <div id="result">
+    <div id="refreshIndicator" class="refresh-indicator" hidden>
+      <div class="refresh-indicator-meta">
+        <span id="refreshCountdown">Refreshing in 15s</span>
+        <span id="refreshStatus" class="refresh-indicator-status" aria-live="polite"></span>
+      </div>
+      <div class="refresh-indicator-progress" aria-hidden="true">
+        <div id="refreshProgress" class="refresh-indicator-progress-fill"></div>
+      </div>
+    </div>
     <div class="tabs">
       <button class="tab active" data-tab="recommended" id="tabRecommended">Recommended</button>
       <button class="tab" data-tab="alternative" id="tabAlternative">Alternative</button>
@@ -454,6 +469,16 @@ const INDEX_HTML = `<!DOCTYPE html>
     let connectedWalletAddressValue = '';
     let connectedWalletInfo = null;
     let currentQuoteChainId = null;
+    const AUTO_REFRESH_SECONDS = 15;
+    const autoRefreshState = {
+      timerId: null,
+      secondsRemaining: AUTO_REFRESH_SECONDS,
+      lastParams: null,
+      paused: false,
+      inFlight: false,
+      errorMessage: '',
+    };
+    let compareRequestSequence = 0;
 
     const CHAIN_ID_HEX_MAP = Object.freeze({
       '1': '0x1',
@@ -475,6 +500,15 @@ const INDEX_HTML = `<!DOCTYPE html>
     const disconnectWalletBtn = document.getElementById('disconnectWalletBtn');
     const walletProviderMenu = document.getElementById('walletProviderMenu');
     const walletMessage = document.getElementById('walletMessage');
+    const chainIdInput = document.getElementById('chainId');
+    const fromInput = document.getElementById('from');
+    const toInput = document.getElementById('to');
+    const amountInput = document.getElementById('amount');
+    const slippageInput = document.getElementById('slippageBps');
+    const refreshIndicator = document.getElementById('refreshIndicator');
+    const refreshCountdown = document.getElementById('refreshCountdown');
+    const refreshStatus = document.getElementById('refreshStatus');
+    const refreshProgress = document.getElementById('refreshProgress');
 
     function hasConnectedWallet() {
       return Boolean(connectedWalletProvider && connectedWalletAddressValue);
@@ -930,15 +964,244 @@ const INDEX_HTML = `<!DOCTYPE html>
     const fromAutocomplete = setupAutocomplete('from', 'fromAutocomplete');
     const toAutocomplete = setupAutocomplete('to', 'toAutocomplete');
 
-    function applyDefaults(chainId) {
-      const defaults = DEFAULT_TOKENS[chainId];
-      if (defaults) {
-        document.getElementById('from').value = defaults.from;
-        document.getElementById('to').value = defaults.to;
+    const form = document.getElementById('form');
+    const result = document.getElementById('result');
+    const submit = document.getElementById('submit');
+    const recommendedContent = document.getElementById('recommendedContent');
+    const alternativeContent = document.getElementById('alternativeContent');
+    const tabRecommended = document.getElementById('tabRecommended');
+    const tabAlternative = document.getElementById('tabAlternative');
+
+    function cloneCompareParams(params) {
+      return {
+        chainId: String(params.chainId || '').trim(),
+        from: String(params.from || '').trim(),
+        to: String(params.to || '').trim(),
+        amount: String(params.amount || '').trim(),
+        slippageBps: String(params.slippageBps || '').trim(),
+        sender: String(params.sender || '').trim(),
+      };
+    }
+
+    function readCompareParamsFromForm() {
+      return cloneCompareParams({
+        chainId: chainIdInput.value,
+        from: fromInput.value,
+        to: toInput.value,
+        amount: amountInput.value,
+        slippageBps: slippageInput.value,
+        sender: senderInput.value,
+      });
+    }
+
+    function compareParamsToSearchParams(params) {
+      const normalized = cloneCompareParams(params);
+      const query = new URLSearchParams({
+        chainId: normalized.chainId,
+        from: normalized.from,
+        to: normalized.to,
+        amount: normalized.amount,
+        slippageBps: normalized.slippageBps,
+      });
+
+      if (normalized.sender) {
+        query.set('sender', normalized.sender);
+      }
+
+      return query;
+    }
+
+    function updateUrlFromCompareParams(params) {
+      const normalized = cloneCompareParams(params);
+      const url = new URL(window.location.href);
+      url.searchParams.set('chainId', normalized.chainId);
+      url.searchParams.set('from', normalized.from);
+      url.searchParams.set('to', normalized.to);
+      url.searchParams.set('amount', normalized.amount);
+      url.searchParams.set('slippageBps', normalized.slippageBps);
+      if (normalized.sender) {
+        url.searchParams.set('sender', normalized.sender);
+      } else {
+        url.searchParams.delete('sender');
+      }
+      window.history.replaceState({}, '', url.toString());
+    }
+
+    function clearAutoRefreshTimer() {
+      if (autoRefreshState.timerId !== null) {
+        clearInterval(autoRefreshState.timerId);
+        autoRefreshState.timerId = null;
       }
     }
 
-    document.getElementById('chainId').addEventListener('change', function() {
+    function getRefreshProgressPercent() {
+      const elapsed = AUTO_REFRESH_SECONDS - autoRefreshState.secondsRemaining;
+      if (elapsed <= 0) return 0;
+      return Math.min(100, Math.max(0, (elapsed / AUTO_REFRESH_SECONDS) * 100));
+    }
+
+    function updateRefreshIndicator() {
+      const shouldShow = result.classList.contains('show') && Boolean(autoRefreshState.lastParams);
+      refreshIndicator.hidden = !shouldShow;
+      if (!shouldShow) {
+        refreshProgress.style.width = '0%';
+        return;
+      }
+
+      if (autoRefreshState.paused) {
+        refreshCountdown.textContent = 'Auto-refresh paused';
+      } else if (autoRefreshState.inFlight) {
+        refreshCountdown.textContent = 'Refreshing quotes...';
+      } else {
+        refreshCountdown.textContent = 'Refreshing in ' + autoRefreshState.secondsRemaining + 's';
+      }
+
+      refreshStatus.classList.remove('error');
+      if (autoRefreshState.errorMessage) {
+        refreshStatus.textContent = autoRefreshState.errorMessage;
+        refreshStatus.classList.add('error');
+      } else if (autoRefreshState.paused) {
+        refreshStatus.textContent = 'Waiting for transaction to settle.';
+      } else {
+        refreshStatus.textContent = '';
+      }
+
+      const width = autoRefreshState.inFlight ? 100 : getRefreshProgressPercent();
+      refreshProgress.style.width = width + '%';
+    }
+
+    function stopAutoRefresh(options = {}) {
+      const shouldClearLastParams = options.clearLastParams !== false;
+      clearAutoRefreshTimer();
+      autoRefreshState.paused = false;
+      autoRefreshState.inFlight = false;
+      autoRefreshState.secondsRemaining = AUTO_REFRESH_SECONDS;
+      autoRefreshState.errorMessage = '';
+      if (shouldClearLastParams) {
+        autoRefreshState.lastParams = null;
+      }
+      updateRefreshIndicator();
+    }
+
+    function startAutoRefreshCountdown(options = {}) {
+      const clearErrorMessage = options.clearErrorMessage !== false;
+      if (!autoRefreshState.lastParams || autoRefreshState.paused) {
+        updateRefreshIndicator();
+        return;
+      }
+
+      clearAutoRefreshTimer();
+      autoRefreshState.secondsRemaining = AUTO_REFRESH_SECONDS;
+      if (clearErrorMessage) {
+        autoRefreshState.errorMessage = '';
+      }
+
+      autoRefreshState.timerId = setInterval(() => {
+        if (autoRefreshState.paused || autoRefreshState.inFlight || !autoRefreshState.lastParams) {
+          updateRefreshIndicator();
+          return;
+        }
+
+        autoRefreshState.secondsRemaining -= 1;
+        if (autoRefreshState.secondsRemaining <= 0) {
+          clearAutoRefreshTimer();
+          void runAutoRefreshCycle();
+          return;
+        }
+
+        updateRefreshIndicator();
+      }, 1000);
+
+      updateRefreshIndicator();
+    }
+
+    function beginAutoRefresh(params) {
+      autoRefreshState.lastParams = cloneCompareParams(params);
+      autoRefreshState.paused = false;
+      autoRefreshState.inFlight = false;
+      startAutoRefreshCountdown();
+    }
+
+    function pauseAutoRefreshForTransaction() {
+      if (!autoRefreshState.lastParams) {
+        return;
+      }
+
+      autoRefreshState.paused = true;
+      clearAutoRefreshTimer();
+      updateRefreshIndicator();
+    }
+
+    function resumeAutoRefreshAfterTransaction() {
+      if (!autoRefreshState.lastParams) {
+        return;
+      }
+
+      autoRefreshState.paused = false;
+      autoRefreshState.inFlight = false;
+      startAutoRefreshCountdown();
+    }
+
+    function getRefreshParams() {
+      if (!autoRefreshState.lastParams) {
+        return null;
+      }
+
+      const params = cloneCompareParams(autoRefreshState.lastParams);
+      if (hasConnectedWallet()) {
+        params.sender = connectedWalletAddressValue;
+      }
+
+      return params;
+    }
+
+    function getActiveTab() {
+      const active = document.querySelector('.tab.active');
+      if (!(active instanceof HTMLElement)) {
+        return 'recommended';
+      }
+
+      return active.dataset.tab === 'alternative' ? 'alternative' : 'recommended';
+    }
+
+    function setActiveTab(tabName) {
+      const target = tabName === 'alternative' && tabAlternative.style.display !== 'none' ? 'alternative' : 'recommended';
+      tabRecommended.classList.toggle('active', target === 'recommended');
+      tabAlternative.classList.toggle('active', target === 'alternative');
+      recommendedContent.classList.toggle('active', target === 'recommended');
+      alternativeContent.classList.toggle('active', target === 'alternative');
+    }
+
+    function captureResultUiState() {
+      return {
+        activeTab: getActiveTab(),
+        scrollY: window.scrollY,
+      };
+    }
+
+    function clearResultDisplay() {
+      result.classList.remove('show');
+      tabRecommended.textContent = 'Recommended';
+      tabAlternative.textContent = 'Alternative';
+      tabAlternative.style.display = '';
+      recommendedContent.innerHTML = '';
+      alternativeContent.innerHTML = '';
+      setActiveTab('recommended');
+      updateRefreshIndicator();
+    }
+
+    function applyDefaults(chainId) {
+      const defaults = DEFAULT_TOKENS[chainId];
+      if (defaults) {
+        fromInput.value = defaults.from;
+        toInput.value = defaults.to;
+      }
+    }
+
+    chainIdInput.addEventListener('change', function() {
+      stopAutoRefresh();
+      clearResultDisplay();
+      currentQuoteChainId = null;
       applyDefaults(Number(this.value));
       fromAutocomplete.hide();
       toAutocomplete.hide();
@@ -947,16 +1210,9 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Tab switching
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.tab + 'Content').classList.add('active');
+        setActiveTab(tab.dataset.tab);
       });
     });
-
-    const form = document.getElementById('form');
-    const result = document.getElementById('result');
-    const submit = document.getElementById('submit');
 
     function renderQuoteActions(options) {
       const quoteChainId = String(options.quoteChainId || '');
@@ -1124,18 +1380,14 @@ const INDEX_HTML = `<!DOCTYPE html>
       \`;
     }
 
-    function showCompareResult(data) {
+    function showCompareResult(data, options = {}) {
+      const preserveUiState = options.preserveUiState === true;
+      const priorUiState = preserveUiState ? captureResultUiState() : null;
       result.className = 'show';
-      const rec = document.getElementById('recommendedContent');
-      const alt = document.getElementById('alternativeContent');
-      const tabRec = document.getElementById('tabRecommended');
-      const tabAlt = document.getElementById('tabAlternative');
 
-      // Reset to recommended tab
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      tabRec.classList.add('active');
-      rec.classList.add('active');
+      if (!preserveUiState) {
+        setActiveTab('recommended');
+      }
 
       let reasonHtml = '<div class="field" style="margin-bottom: 16px;">' +
         '<div class="field-label">Comparison</div>' +
@@ -1145,60 +1397,175 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
       reasonHtml += '</div>';
 
-      const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || Number(document.getElementById('chainId').value);
+      const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || Number(chainIdInput.value);
 
       if (data.recommendation === 'spandex' && data.spandex) {
-        tabRec.textContent = 'Spandex (Recommended)';
-        rec.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true, quoteChainId);
+        tabRecommended.textContent = 'Spandex (Recommended)';
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true, quoteChainId);
         if (data.curve) {
-          tabAlt.textContent = 'Curve';
-          tabAlt.style.display = '';
-          alt.innerHTML = renderCurveQuote(data.curve, false, quoteChainId);
+          tabAlternative.textContent = 'Curve';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = renderCurveQuote(data.curve, false, quoteChainId);
         } else {
-          tabAlt.textContent = 'Curve';
-          tabAlt.style.display = '';
-          alt.innerHTML = '<div class="recommendation-banner error">' + (data.curve_error || 'No quote available') + '</div>';
+          tabAlternative.textContent = 'Curve';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = '<div class="recommendation-banner error">' + (data.curve_error || 'No quote available') + '</div>';
         }
       } else if (data.recommendation === 'curve' && data.curve) {
-        tabRec.textContent = 'Curve (Recommended)';
-        rec.innerHTML = reasonHtml + renderCurveQuote(data.curve, true, quoteChainId);
+        tabRecommended.textContent = 'Curve (Recommended)';
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, true, quoteChainId);
         if (data.spandex) {
-          tabAlt.textContent = 'Spandex';
-          tabAlt.style.display = '';
-          alt.innerHTML = renderSpandexQuote(data.spandex, false, quoteChainId);
+          tabAlternative.textContent = 'Spandex';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = renderSpandexQuote(data.spandex, false, quoteChainId);
         } else {
-          tabAlt.textContent = 'Spandex';
-          tabAlt.style.display = '';
-          alt.innerHTML = '<div class="recommendation-banner error">' + (data.spandex_error || 'No quote available') + '</div>';
+          tabAlternative.textContent = 'Spandex';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = '<div class="recommendation-banner error">' + (data.spandex_error || 'No quote available') + '</div>';
         }
       } else if (data.spandex) {
-        tabRec.textContent = 'Spandex';
-        rec.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false, quoteChainId);
-        tabAlt.style.display = 'none';
-        alt.innerHTML = '';
+        tabRecommended.textContent = 'Spandex';
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false, quoteChainId);
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
       } else if (data.curve) {
-        tabRec.textContent = 'Curve';
-        rec.innerHTML = reasonHtml + renderCurveQuote(data.curve, false, quoteChainId);
-        tabAlt.style.display = 'none';
-        alt.innerHTML = '';
+        tabRecommended.textContent = 'Curve';
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, false, quoteChainId);
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
       } else {
-        tabRec.textContent = 'Results';
-        rec.innerHTML = '<div class="error">No quotes available. ' +
+        tabRecommended.textContent = 'Results';
+        recommendedContent.innerHTML = '<div class="error">No quotes available. ' +
           (data.spandex_error ? 'Spandex: ' + data.spandex_error + '. ' : '') +
           (data.curve_error ? 'Curve: ' + data.curve_error : '') + '</div>';
-        tabAlt.style.display = 'none';
-        alt.innerHTML = '';
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
+      }
+
+      if (preserveUiState && priorUiState) {
+        setActiveTab(priorUiState.activeTab);
+        window.scrollTo(0, priorUiState.scrollY);
+      } else {
+        setActiveTab('recommended');
       }
 
       updateTransactionActionStates();
+      updateRefreshIndicator();
     }
 
     function showError(msg) {
       result.className = 'show';
-      const rec = document.getElementById('recommendedContent');
-      rec.innerHTML = '<div class="error">' + msg + '</div>';
-      document.getElementById('tabRecommended').textContent = 'Results';
-      document.getElementById('tabAlternative').style.display = 'none';
+      recommendedContent.innerHTML = '<div class="error">' + msg + '</div>';
+      tabRecommended.textContent = 'Results';
+      tabAlternative.style.display = 'none';
+      alternativeContent.innerHTML = '';
+      setActiveTab('recommended');
+      updateRefreshIndicator();
+    }
+
+    function hasQuoteResults(data) {
+      return Boolean(data && (data.spandex || data.curve));
+    }
+
+    async function fetchComparePayload(compareParams) {
+      const query = compareParamsToSearchParams(compareParams);
+      const response = await fetch('/compare?' + query.toString());
+      const payload = await response.json();
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error || ('Request failed with status ' + response.status));
+      }
+      return payload;
+    }
+
+    async function requestAndRenderCompare(compareParams, options = {}) {
+      const normalizedParams = cloneCompareParams(compareParams);
+      const showLoading = options.showLoading === true;
+      const preserveUiState = options.preserveUiState === true;
+      const keepExistingResultsOnError = options.keepExistingResultsOnError === true;
+      const updateUrl = options.updateUrl !== false;
+      const requestId = Number.isFinite(options.requestId) ? Number(options.requestId) : ++compareRequestSequence;
+
+      if (requestId > compareRequestSequence) {
+        compareRequestSequence = requestId;
+      }
+
+      currentQuoteChainId = Number(normalizedParams.chainId);
+
+      if (showLoading) {
+        submit.disabled = true;
+        submit.textContent = 'Comparing...';
+        result.className = 'show';
+        recommendedContent.innerHTML = '<div class="result-header">Querying Spandex + Curve for best price...</div>';
+        tabRecommended.textContent = 'Loading...';
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
+        setActiveTab('recommended');
+      }
+
+      try {
+        const payload = await fetchComparePayload(normalizedParams);
+        if (requestId !== compareRequestSequence) {
+          return { ok: false, stale: true, params: normalizedParams };
+        }
+
+        showCompareResult(payload, { preserveUiState });
+        if (updateUrl) {
+          updateUrlFromCompareParams(normalizedParams);
+        }
+        return { ok: true, payload, params: normalizedParams };
+      } catch (err) {
+        if (requestId !== compareRequestSequence) {
+          return { ok: false, stale: true, params: normalizedParams };
+        }
+
+        const message = err instanceof Error ? err.message : String(err);
+        if (!keepExistingResultsOnError) {
+          showError(message);
+        }
+        return { ok: false, error: message, params: normalizedParams };
+      } finally {
+        if (showLoading) {
+          submit.disabled = false;
+          submit.textContent = 'Compare Quotes';
+        }
+      }
+    }
+
+    async function runAutoRefreshCycle() {
+      const refreshParams = getRefreshParams();
+      if (!refreshParams || autoRefreshState.paused || autoRefreshState.inFlight) {
+        return;
+      }
+
+      const requestId = ++compareRequestSequence;
+
+      autoRefreshState.inFlight = true;
+      updateRefreshIndicator();
+
+      const comparison = await requestAndRenderCompare(refreshParams, {
+        preserveUiState: true,
+        keepExistingResultsOnError: true,
+        requestId,
+      });
+
+      autoRefreshState.inFlight = false;
+      if (comparison.stale) {
+        updateRefreshIndicator();
+        return;
+      }
+
+      if (!autoRefreshState.lastParams || autoRefreshState.paused) {
+        updateRefreshIndicator();
+        return;
+      }
+
+      if (comparison.ok) {
+        autoRefreshState.lastParams = comparison.params;
+        startAutoRefreshCountdown();
+      } else {
+        autoRefreshState.errorMessage = 'Refresh failed. Keeping previous quotes.';
+        startAutoRefreshCountdown({ clearErrorMessage: false });
+      }
     }
 
     function isRejectionCode(code) {
@@ -1311,9 +1678,10 @@ const INDEX_HTML = `<!DOCTYPE html>
         return;
       }
 
-      const chainId = card.dataset.quoteChainId || currentQuoteChainId || document.getElementById('chainId').value;
+      const chainId = card.dataset.quoteChainId || currentQuoteChainId || chainIdInput.value;
       setTxCardPending(card, true);
       setTxStatus(card, 'Confirming...', 'pending');
+      pauseAutoRefreshForTransaction();
 
       try {
         await ensureWalletOnChain(provider, chainId);
@@ -1345,6 +1713,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         setTxStatus(card, 'Failed', 'error');
       } finally {
         setTxCardPending(card, false);
+        resumeAutoRefreshAfterTransaction();
       }
     }
 
@@ -1448,73 +1817,64 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
     });
 
+    async function runCompareAndMaybeStartAutoRefresh(compareParams, options = {}) {
+      const requestId = ++compareRequestSequence;
+      const comparison = await requestAndRenderCompare(compareParams, {
+        showLoading: options.showLoading === true,
+        preserveUiState: options.preserveUiState === true,
+        keepExistingResultsOnError: options.keepExistingResultsOnError === true,
+        updateUrl: options.updateUrl !== false,
+        requestId,
+      });
+
+      if (comparison.stale) {
+        return comparison;
+      }
+
+      if (comparison.ok && hasQuoteResults(comparison.payload)) {
+        beginAutoRefresh(comparison.params);
+      } else {
+        stopAutoRefresh();
+      }
+
+      return comparison;
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-
-      const chainId = document.getElementById('chainId').value.trim();
-      const from = document.getElementById('from').value.trim();
-      const to = document.getElementById('to').value.trim();
-      const amount = document.getElementById('amount').value.trim();
-      const slippageBps = document.getElementById('slippageBps').value.trim();
-      const sender = document.getElementById('sender').value.trim();
-      currentQuoteChainId = Number(chainId);
-
-      submit.disabled = true;
-      submit.textContent = 'Comparing...';
-      result.className = 'show';
-      const rec = document.getElementById('recommendedContent');
-      rec.innerHTML = '<div class="result-header">Querying Spandex + Curve for best price...</div>';
-      document.getElementById('tabRecommended').textContent = 'Loading...';
-      document.getElementById('tabAlternative').style.display = 'none';
-
-      try {
-        const params = new URLSearchParams({ chainId, from, to, amount, slippageBps });
-        if (sender) params.set('sender', sender);
-
-        const res = await fetch('/compare?' + params.toString());
-        const data = await res.json();
-
-        if (data.error) {
-          showError(data.error);
-        } else {
-          currentQuoteChainId = Number(chainId);
-          showCompareResult(data);
-          const url = new URL(window.location.href);
-          url.searchParams.set('chainId', chainId);
-          url.searchParams.set('from', from);
-          url.searchParams.set('to', to);
-          url.searchParams.set('amount', amount);
-          url.searchParams.set('slippageBps', slippageBps);
-          if (sender) url.searchParams.set('sender', sender);
-          else url.searchParams.delete('sender');
-          window.history.replaceState({}, '', url.toString());
-        }
-      } catch (err) {
-        showError('Request failed: ' + err.message);
-      } finally {
-        submit.disabled = false;
-        submit.textContent = 'Compare Quotes';
-      }
+      const compareParams = readCompareParamsFromForm();
+      await runCompareAndMaybeStartAutoRefresh(compareParams, { showLoading: true });
     });
 
     // Restore from URL params or apply chain defaults
     const params = new URLSearchParams(window.location.search);
-    if (params.get('chainId')) document.getElementById('chainId').value = params.get('chainId');
-    if (params.get('from')) document.getElementById('from').value = params.get('from');
-    else applyDefaults(Number(document.getElementById('chainId').value));
-    if (params.get('to')) document.getElementById('to').value = params.get('to');
-    if (params.get('amount')) document.getElementById('amount').value = params.get('amount');
-    if (params.get('slippageBps')) document.getElementById('slippageBps').value = params.get('slippageBps');
-    if (params.get('sender')) document.getElementById('sender').value = params.get('sender');
-    if (!params.get('from') && !params.get('to')) applyDefaults(Number(document.getElementById('chainId').value));
+    if (params.get('chainId')) chainIdInput.value = params.get('chainId');
+    if (params.get('from')) fromInput.value = params.get('from');
+    else applyDefaults(Number(chainIdInput.value));
+    if (params.get('to')) toInput.value = params.get('to');
+    if (params.get('amount')) amountInput.value = params.get('amount');
+    if (params.get('slippageBps')) slippageInput.value = params.get('slippageBps');
+    if (params.get('sender')) senderInput.value = params.get('sender');
+    if (!params.get('from') && !params.get('to')) applyDefaults(Number(chainIdInput.value));
+
+    const shouldLoadFromUrlParams = Boolean(
+      params.get('chainId') && params.get('from') && params.get('to') && params.get('amount')
+    );
 
     loadTokenlist().then(() => {
       const activeElement = document.activeElement;
-      if (activeElement === document.getElementById('from')) {
+      if (activeElement === fromInput) {
         fromAutocomplete.refresh();
       }
-      if (activeElement === document.getElementById('to')) {
+      if (activeElement === toInput) {
         toAutocomplete.refresh();
+      }
+
+      if (shouldLoadFromUrlParams) {
+        void runCompareAndMaybeStartAutoRefresh(readCompareParamsFromForm(), {
+          showLoading: true,
+          updateUrl: false,
+        });
       }
     });
   </script>

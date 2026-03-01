@@ -112,6 +112,31 @@ describe("server integration", () => {
     expect(res.body).toContain("fetch('/tokenlist')");
   });
 
+  it("GET / includes 15-second auto-refresh countdown UI", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain('id="refreshIndicator"');
+    expect(res.body).toContain("AUTO_REFRESH_SECONDS = 15");
+    expect(res.body).toContain("Refreshing in ");
+  });
+
+  it("GET / preserves result tab and scroll position during refresh re-render", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("captureResultUiState()");
+    expect(res.body).toContain("setActiveTab(priorUiState.activeTab)");
+    expect(res.body).toContain("window.scrollTo(0, priorUiState.scrollY)");
+  });
+
+  it("GET / stops auto-refresh on chain change and pauses around transactions", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("stopAutoRefresh();");
+    expect(res.body).toContain("clearResultDisplay();");
+    expect(res.body).toContain("pauseAutoRefreshForTransaction();");
+    expect(res.body).toContain("resumeAutoRefreshAfterTransaction();");
+  });
+
   it("GET / does not inline built-in token data in HTML", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
