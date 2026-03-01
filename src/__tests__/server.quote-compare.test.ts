@@ -118,8 +118,13 @@ function makeQuote(overrides?: {
   };
 }
 
-function makeCurveQuote(overrides?: { output?: string; gas?: string }) {
-  return {
+function makeCurveQuote(overrides?: {
+  output?: string;
+  gas?: string;
+  approvalTarget?: string;
+  approvalCalldata?: string;
+}) {
+  const quote = {
     source: "curve",
     from: ADDR_FROM,
     from_symbol: "USDC",
@@ -133,6 +138,16 @@ function makeCurveQuote(overrides?: { output?: string; gas?: string }) {
     router_calldata: "0xbeef",
     gas_used: overrides?.gas ?? "30000",
   };
+
+  if (overrides?.approvalTarget) {
+    return {
+      ...quote,
+      approval_target: overrides.approvalTarget,
+      approval_calldata: overrides.approvalCalldata ?? "0xcafe",
+    };
+  }
+
+  return quote;
 }
 
 function request(
@@ -276,6 +291,28 @@ describe("server /quote and /compare", () => {
     expect(body.recommendation).toBe("curve");
     expect(body.recommendation_reason).toContain("Curve outputs");
     expect(body.gas_price_gwei).toBe("1.0000");
+  });
+
+  it("GET /compare includes Curve approval fields when provided", async () => {
+    getQuoteMock.mockResolvedValue(makeQuote({ outputAmount: 1_000_000_000_000_000_000n }));
+    findCurveQuoteMock.mockResolvedValue(
+      makeCurveQuote({
+        output: "2.5",
+        approvalTarget: ADDR_APPROVAL_SPENDER,
+        approvalCalldata: "0xfeed",
+      })
+    );
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.curve).toMatchObject({
+      approval_target: ADDR_APPROVAL_SPENDER,
+      approval_calldata: "0xfeed",
+    });
   });
 
   it("GET /compare handles single-source and no-source outcomes", async () => {

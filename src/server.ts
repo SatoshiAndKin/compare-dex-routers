@@ -1376,6 +1376,8 @@ const INDEX_HTML = `<!DOCTYPE html>
           routerAddress: data.router_address,
           routerCalldata: data.router_calldata,
           routerValue: '0x0',
+          approvalToken: data.from || '',
+          approvalSpender: data.approval_target || '',
         })}
       \`;
     }

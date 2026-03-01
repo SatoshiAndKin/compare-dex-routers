@@ -98,6 +98,13 @@ describe("server integration", () => {
     expect(res.body).toContain("wallet_switchEthereumChain");
   });
 
+  it("GET / wires Curve approval fields into quote actions", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("approvalToken: data.from || ''");
+    expect(res.body).toContain("approvalSpender: data.approval_target || ''");
+  });
+
   it("GET / encodes ERC20 approve calldata and shows connect-wallet-first messaging", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
