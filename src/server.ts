@@ -1,6 +1,9 @@
 import "./env.js";
 import "./sentry.js";
 import http from "node:http";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { getQuote, serializeWithBigInt } from "@spandex/core";
 import type { Address } from "viem";
 import { parseUnits, formatUnits } from "viem";
@@ -59,7 +62,39 @@ interface QuoteResult {
   approval_spender?: string;
 }
 
+interface TokenListPayload {
+  tokens: Array<{
+    chainId: number;
+    address: string;
+    name: string;
+    symbol: string;
+    decimals: number;
+    logoURI?: string;
+  }>;
+  [key: string]: unknown;
+}
+
 const FALLBACK_ACCOUNT = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055" as Address;
+let cachedTokenList: TokenListPayload | null = null;
+let cachedTokenListPath: string | null = null;
+
+function getTokenListPath() {
+  return process.env.TOKENLIST_PATH || resolve(process.cwd(), "data", "tokenlist.json");
+}
+
+async function loadTokenList(): Promise<TokenListPayload> {
+  const tokenListPath = getTokenListPath();
+  if (cachedTokenList && cachedTokenListPath === tokenListPath) {
+    return cachedTokenList;
+  }
+
+  const fileContents = await readFile(tokenListPath, "utf8");
+  const parsed = JSON.parse(fileContents) as TokenListPayload;
+
+  cachedTokenList = parsed;
+  cachedTokenListPath = tokenListPath;
+  return parsed;
+}
 
 async function findQuote(
   chainId: number,
@@ -802,7 +837,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+export async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
   const requestStart = Date.now();
   const requestId = getRequestId(req);
   setTraceHeaders(res, requestId);
@@ -848,6 +883,18 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
   if (url.pathname === "/chains" && req.method === "GET") {
     sendJson(res, 200, SUPPORTED_CHAINS);
+    return;
+  }
+
+  if (url.pathname === "/tokenlist" && req.method === "GET") {
+    try {
+      const tokenList = await loadTokenList();
+      sendJson(res, 200, tokenList);
+    } catch (err) {
+      logError("Failed to load tokenlist", err);
+      const details = err instanceof Error ? err.message : String(err);
+      sendError(res, 500, `Failed to load tokenlist: ${details}`);
+    }
     return;
   }
 
@@ -964,7 +1011,14 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  logError("Failed to start server", err);
-  process.exit(1);
-});
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  return import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+if (isMainModule()) {
+  main().catch((err) => {
+    logError("Failed to start server", err);
+    process.exit(1);
+  });
+}
