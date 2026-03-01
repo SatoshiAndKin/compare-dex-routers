@@ -1201,12 +1201,31 @@ const INDEX_HTML = `<!DOCTYPE html>
       document.getElementById('tabAlternative').style.display = 'none';
     }
 
+    function isRejectionCode(code) {
+      return Number(code) === 4001;
+    }
+
     function isUserRejectedError(err) {
       if (!err || typeof err !== 'object') return false;
-      if (err.code === 4001) return true;
-      if (err.data && typeof err.data === 'object' && err.data.originalError && err.data.originalError.code === 4001) {
+
+      if (isRejectionCode(err.code)) {
         return true;
       }
+
+      if (err.data && typeof err.data === 'object') {
+        if (isRejectionCode(err.data.code)) {
+          return true;
+        }
+
+        if (err.data.originalError && typeof err.data.originalError === 'object' && isRejectionCode(err.data.originalError.code)) {
+          return true;
+        }
+      }
+
+      if (err.error && typeof err.error === 'object' && isRejectionCode(err.error.code)) {
+        return true;
+      }
+
       return false;
     }
 
@@ -1294,6 +1313,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       const chainId = card.dataset.quoteChainId || currentQuoteChainId || document.getElementById('chainId').value;
       setTxCardPending(card, true);
+      setTxStatus(card, 'Confirming...', 'pending');
 
       try {
         await ensureWalletOnChain(provider, chainId);
@@ -1301,8 +1321,6 @@ const INDEX_HTML = `<!DOCTYPE html>
           method: 'eth_sendTransaction',
           params: [txParams],
         });
-
-        setTxStatus(card, 'Confirming...', 'pending');
         const receipt = await waitForTransactionReceipt(provider, txHash);
         const statusValue = String(receipt && receipt.status ? receipt.status : '').toLowerCase();
 
@@ -1319,7 +1337,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       } catch (err) {
         if (isUserRejectedError(err)) {
           setWalletMessage('Transaction canceled in wallet.', true);
-          setTxStatus(card, 'Transaction canceled by user', 'error');
+          setTxStatus(card, 'Failed', 'error');
           return;
         }
 
