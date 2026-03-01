@@ -303,6 +303,23 @@ const INDEX_HTML = `<!DOCTYPE html>
     * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
     h1 { margin: 0 0 16px; color: #333; }
+    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .wallet-controls { position: relative; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    .wallet-button { padding: 10px 16px; font-size: 14px; }
+    .wallet-provider-menu { position: absolute; top: calc(100% + 4px); right: 0; min-width: 220px; background: #fff; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14); z-index: 30; padding: 6px; }
+    .wallet-provider-option { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; background: transparent; color: #222; border: none; border-radius: 4px; padding: 8px; font-size: 14px; }
+    .wallet-provider-option:hover { background: #f3f7ff; }
+    .wallet-provider-icon, .wallet-connected-icon { width: 20px; height: 20px; object-fit: cover; border-radius: 50%; background: #f0f0f0; flex-shrink: 0; }
+    .wallet-connected { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #333; }
+    .wallet-address { font-family: monospace; color: #222; }
+    .wallet-disconnect-btn { padding: 6px 10px; font-size: 12px; background: #666; }
+    .wallet-disconnect-btn:hover { background: #555; }
+    .wallet-message { font-size: 12px; color: #666; max-width: 280px; text-align: right; }
+    @media (max-width: 720px) {
+      .page-header { flex-direction: column; }
+      .wallet-controls { align-items: flex-start; }
+      .wallet-message { text-align: left; }
+    }
     form { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
     .form-group { margin-bottom: 16px; position: relative; }
     label { display: block; font-weight: 600; margin-bottom: 6px; color: #555; }
@@ -347,7 +364,20 @@ const INDEX_HTML = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>CowSwap Trader</h1>
+  <div class="page-header">
+    <h1>CowSwap Trader</h1>
+    <div class="wallet-controls">
+      <button type="button" id="connectWalletBtn" class="wallet-button">Connect Wallet</button>
+      <div id="walletConnected" class="wallet-connected" hidden>
+        <img id="walletConnectedIcon" class="wallet-connected-icon" alt="Wallet icon" hidden>
+        <span id="walletConnectedName"></span>
+        <span id="walletConnectedAddress" class="wallet-address"></span>
+        <button type="button" id="disconnectWalletBtn" class="wallet-disconnect-btn">Disconnect</button>
+      </div>
+      <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
+      <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
+    </div>
+  </div>
 
   <form id="form">
     <div class="form-row">
@@ -403,6 +433,220 @@ const INDEX_HTML = `<!DOCTYPE html>
   <script>
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
     let tokenlistTokens = [];
+    const walletProvidersByUuid = new Map();
+    let fallbackWalletProvider = null;
+    let connectedWalletProvider = null;
+    let connectedWalletAddressValue = '';
+    let connectedWalletInfo = null;
+
+    const senderInput = document.getElementById('sender');
+    const connectWalletBtn = document.getElementById('connectWalletBtn');
+    const walletConnected = document.getElementById('walletConnected');
+    const walletConnectedIcon = document.getElementById('walletConnectedIcon');
+    const walletConnectedName = document.getElementById('walletConnectedName');
+    const walletConnectedAddress = document.getElementById('walletConnectedAddress');
+    const disconnectWalletBtn = document.getElementById('disconnectWalletBtn');
+    const walletProviderMenu = document.getElementById('walletProviderMenu');
+    const walletMessage = document.getElementById('walletMessage');
+
+    function setWalletGlobals() {
+      window.__selectedWalletProvider = connectedWalletProvider;
+      window.__selectedWalletAddress = connectedWalletAddressValue;
+      window.__selectedWalletInfo = connectedWalletInfo;
+    }
+
+    function truncateAddress(address) {
+      if (typeof address !== 'string' || address.length < 10) return address || '';
+      return address.slice(0, 6) + '...' + address.slice(-4);
+    }
+
+    function walletName(info) {
+      if (!info || typeof info.name !== 'string' || !info.name.trim()) {
+        return 'Wallet';
+      }
+      return info.name.trim();
+    }
+
+    function setWalletMessage(message, isError = false) {
+      walletMessage.textContent = message;
+      walletMessage.classList.toggle('error', isError);
+    }
+
+    function updateWalletStateUi() {
+      if (connectedWalletProvider && connectedWalletAddressValue) {
+        connectWalletBtn.hidden = true;
+        walletConnected.hidden = false;
+        walletConnectedName.textContent = walletName(connectedWalletInfo);
+        walletConnectedAddress.textContent = truncateAddress(connectedWalletAddressValue);
+
+        const icon = connectedWalletInfo && typeof connectedWalletInfo.icon === 'string' ? connectedWalletInfo.icon : '';
+        if (icon) {
+          walletConnectedIcon.hidden = false;
+          walletConnectedIcon.src = icon;
+        } else {
+          walletConnectedIcon.hidden = true;
+          walletConnectedIcon.removeAttribute('src');
+        }
+      } else {
+        connectWalletBtn.hidden = false;
+        walletConnected.hidden = true;
+        walletConnectedName.textContent = '';
+        walletConnectedAddress.textContent = '';
+        walletConnectedIcon.hidden = true;
+        walletConnectedIcon.removeAttribute('src');
+      }
+    }
+
+    function closeWalletProviderMenu() {
+      walletProviderMenu.hidden = true;
+      walletProviderMenu.innerHTML = '';
+    }
+
+    function createWalletIcon(iconUri, altText, className) {
+      const icon = document.createElement('img');
+      icon.className = className;
+      icon.alt = altText;
+      if (typeof iconUri === 'string' && iconUri) {
+        icon.src = iconUri;
+      } else {
+        icon.style.display = 'none';
+      }
+      icon.onerror = () => {
+        icon.style.display = 'none';
+      };
+      return icon;
+    }
+
+    async function connectToWalletProvider(provider, info) {
+      if (!provider || typeof provider.request !== 'function') {
+        setWalletMessage('Wallet provider is not available.', true);
+        return;
+      }
+
+      try {
+        const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        const account = Array.isArray(accounts) ? accounts[0] : null;
+        if (typeof account !== 'string' || !account) {
+          throw new Error('No account returned by wallet');
+        }
+
+        connectedWalletProvider = provider;
+        connectedWalletAddressValue = account;
+        connectedWalletInfo = info || { name: 'Wallet', icon: '' };
+        senderInput.value = account;
+
+        setWalletGlobals();
+        closeWalletProviderMenu();
+        updateWalletStateUi();
+        setWalletMessage('');
+      } catch (err) {
+        const code = err && typeof err === 'object' ? err.code : undefined;
+        if (code === 4001) {
+          setWalletMessage('Wallet connection was canceled.', true);
+          return;
+        }
+        const detail = err instanceof Error ? err.message : String(err);
+        setWalletMessage('Wallet connection failed: ' + detail, true);
+      }
+    }
+
+    function disconnectWallet() {
+      connectedWalletProvider = null;
+      connectedWalletAddressValue = '';
+      connectedWalletInfo = null;
+      senderInput.value = '';
+      setWalletGlobals();
+      closeWalletProviderMenu();
+      updateWalletStateUi();
+      setWalletMessage('Wallet disconnected.');
+    }
+
+    function openWalletProviderMenu(providers) {
+      walletProviderMenu.innerHTML = '';
+
+      providers.forEach((detail) => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'wallet-provider-option';
+
+        const providerInfo = detail.info || {};
+        const providerName = walletName(providerInfo);
+        const icon = createWalletIcon(providerInfo.icon, providerName + ' icon', 'wallet-provider-icon');
+        const name = document.createElement('span');
+        name.className = 'wallet-provider-name';
+        name.textContent = providerName;
+
+        option.appendChild(icon);
+        option.appendChild(name);
+
+        option.addEventListener('click', () => {
+          void connectToWalletProvider(detail.provider, providerInfo);
+        });
+
+        walletProviderMenu.appendChild(option);
+      });
+
+      walletProviderMenu.hidden = providers.length === 0;
+    }
+
+    function getAnnouncedWalletProviders() {
+      return Array.from(walletProvidersByUuid.values());
+    }
+
+    function onAnnounceProvider(event) {
+      const detail = event.detail;
+      if (!detail || !detail.provider || !detail.info || typeof detail.info.uuid !== 'string') {
+        return;
+      }
+
+      if (walletProvidersByUuid.has(detail.info.uuid)) {
+        return;
+      }
+
+      walletProvidersByUuid.set(detail.info.uuid, detail);
+    }
+
+    window.addEventListener('eip6963:announceProvider', onAnnounceProvider);
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+    if (typeof window.ethereum !== 'undefined') {
+      fallbackWalletProvider = window.ethereum;
+    }
+
+    connectWalletBtn.addEventListener('click', () => {
+      setWalletMessage('');
+      window.dispatchEvent(new Event('eip6963:requestProvider'));
+      const announcedProviders = getAnnouncedWalletProviders();
+      if (announcedProviders.length > 0) {
+        openWalletProviderMenu(announcedProviders);
+        return;
+      }
+
+      if (fallbackWalletProvider) {
+        void connectToWalletProvider(fallbackWalletProvider, {
+          uuid: 'window.ethereum',
+          name: 'Injected Wallet',
+          icon: '',
+          rdns: 'window.ethereum',
+        });
+        return;
+      }
+
+      closeWalletProviderMenu();
+      setWalletMessage('No wallet detected. Install a wallet extension and try again.', true);
+    });
+
+    disconnectWalletBtn.addEventListener('click', disconnectWallet);
+
+    document.addEventListener('mousedown', (event) => {
+      if (event.target === connectWalletBtn || walletProviderMenu.contains(event.target)) {
+        return;
+      }
+      closeWalletProviderMenu();
+    });
+
+    updateWalletStateUi();
+    setWalletGlobals();
 
     function normalizeAddress(value) {
       const lower = value.toLowerCase();

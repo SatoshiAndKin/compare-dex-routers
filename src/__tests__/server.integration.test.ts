@@ -67,6 +67,27 @@ describe("server integration", () => {
     expect(res.headers["content-type"]).toContain("text/html");
   });
 
+  it("GET / shows a Connect Wallet button", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain('id="connectWalletBtn"');
+    expect(res.body).toContain("Connect Wallet");
+  });
+
+  it("GET / includes ERC-6963 discovery with provider deduplication by uuid", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("eip6963:announceProvider");
+    expect(res.body).toContain("eip6963:requestProvider");
+    expect(res.body).toContain("walletProvidersByUuid.has(detail.info.uuid)");
+  });
+
+  it("GET / includes no-wallet fallback messaging", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("No wallet detected");
+  });
+
   it("GET / loads autocomplete data from /tokenlist on page load", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
