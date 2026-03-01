@@ -67,6 +67,19 @@ describe("server integration", () => {
     expect(res.headers["content-type"]).toContain("text/html");
   });
 
+  it("GET / loads autocomplete data from /tokenlist on page load", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("fetch('/tokenlist')");
+  });
+
+  it("GET / does not inline built-in token data in HTML", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).not.toContain("BUILTIN_TOKENS");
+    expect(res.body).not.toContain("spandex_tokenlist");
+  });
+
   it("GET /chains returns 200", async () => {
     const res = await request(`${baseUrl}/chains`);
     expect(res.status).toBe(200);

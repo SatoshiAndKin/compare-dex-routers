@@ -16,7 +16,6 @@ import {
   SUPPORTED_CHAINS,
   DEFAULT_TOKENS,
 } from "./config.js";
-import { defaultTokens } from "./default-tokenlist.js";
 import { initCurve, findCurveQuote, isCurveSupported, type CurveQuoteResult } from "./curve.js";
 import { logger } from "./logger.js";
 import { captureException, captureMessage } from "./sentry.js";
@@ -335,38 +334,20 @@ const INDEX_HTML = `<!DOCTYPE html>
     .tab-content.active { display: block; }
     .route-step { background: #2d2d2d; padding: 10px; border-radius: 4px; margin: 8px 0; }
     .route-step-header { color: #dcdcaa; margin-bottom: 6px; }
-    .autocomplete-list { position: absolute; z-index: 10; background: white; border: 1px solid #ddd; border-top: none; border-radius: 0 0 4px 4px; max-height: 200px; overflow-y: auto; width: 100%; display: none; }
+    .autocomplete-list { position: absolute; z-index: 10; background: white; border: 1px solid #ddd; border-top: none; border-radius: 0 0 4px 4px; max-height: 280px; overflow-y: auto; width: 100%; display: none; }
     .autocomplete-list.show { display: block; }
-    .autocomplete-item { padding: 8px 10px; cursor: pointer; font-size: 13px; font-family: monospace; }
+    .autocomplete-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; }
     .autocomplete-item:hover, .autocomplete-item.active { background: #e8f0fe; }
-    .autocomplete-item .symbol { font-weight: 600; color: #333; font-family: system-ui, sans-serif; }
-    .autocomplete-item .addr { color: #888; font-size: 11px; margin-left: 6px; }
-    .tokenlist-section { background: white; padding: 16px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    .tokenlist-section summary { cursor: pointer; font-weight: 600; color: #555; }
-    .tokenlist-section textarea { width: 100%; height: 120px; margin-top: 10px; font-family: monospace; font-size: 12px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-    .tokenlist-actions { margin-top: 8px; display: flex; gap: 8px; }
-    .tokenlist-actions button { padding: 6px 14px; font-size: 13px; }
-    .btn-secondary { background: #666; }
-    .btn-secondary:hover { background: #555; }
-    .btn-danger { background: #c0392b; }
-    .btn-danger:hover { background: #a93226; }
+    .autocomplete-logo { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: #f0f0f0; flex-shrink: 0; }
+    .autocomplete-meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .autocomplete-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+    .autocomplete-symbol { font-weight: 600; color: #333; font-family: system-ui, sans-serif; }
+    .autocomplete-name { color: #666; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .autocomplete-addr { color: #888; font-size: 11px; font-family: monospace; }
   </style>
 </head>
 <body>
   <h1>CowSwap Trader</h1>
-
-  <details class="tokenlist-section">
-    <summary>Token List (autocomplete)</summary>
-    <p style="color: #888; font-size: 13px; margin: 8px 0 4px;">
-      Paste a <a href="https://tokenlists.org" target="_blank">tokenlist.json</a> URL or raw JSON. Tokens for the selected chain will appear as autocomplete suggestions.
-    </p>
-    <textarea id="tokenlistInput" placeholder='https://tokens.uniswap.org or paste raw JSON...'></textarea>
-    <div class="tokenlist-actions">
-      <button type="button" id="loadTokenlist">Load</button>
-      <button type="button" id="clearTokenlist" class="btn-danger">Clear</button>
-    </div>
-    <div id="tokenlistStatus" style="font-size: 12px; color: #888; margin-top: 6px;"></div>
-  </details>
 
   <form id="form">
     <div class="form-row">
@@ -389,12 +370,12 @@ const INDEX_HTML = `<!DOCTYPE html>
     </div>
     <div class="form-group">
       <label for="from">From (token address)</label>
-      <input type="text" id="from" placeholder="0x... or search by symbol" autocomplete="off">
+      <input type="text" id="from" placeholder="0x... or search by symbol/name/address" autocomplete="off">
       <div class="autocomplete-list" id="fromAutocomplete"></div>
     </div>
     <div class="form-group">
       <label for="to">To (token address)</label>
-      <input type="text" id="to" placeholder="0x... or search by symbol" autocomplete="off">
+      <input type="text" id="to" placeholder="0x... or search by symbol/name/address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
     </div>
     <div class="form-group">
@@ -421,33 +402,31 @@ const INDEX_HTML = `<!DOCTYPE html>
 
   <script>
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
-    const BUILTIN_TOKENS = ${JSON.stringify(defaultTokens)};
+    let tokenlistTokens = [];
 
-    const TOKENLIST_STORAGE_KEY = 'spandex_tokenlist';
-    let userTokens = [];
-
-    function loadStoredTokenlist() {
-      try {
-        const stored = localStorage.getItem(TOKENLIST_STORAGE_KEY);
-        if (stored) {
-          userTokens = JSON.parse(stored);
-          document.getElementById('tokenlistStatus').textContent =
-            userTokens.length + ' custom tokens loaded from storage';
-        }
-      } catch {}
+    function normalizeAddress(value) {
+      const lower = value.toLowerCase();
+      return lower.startsWith('0x') ? lower.slice(2) : lower;
     }
 
-    function saveTokenlist(tokens) {
-      userTokens = tokens;
-      localStorage.setItem(TOKENLIST_STORAGE_KEY, JSON.stringify(tokens));
+    async function loadTokenlist() {
+      try {
+        const res = await fetch('/tokenlist');
+        if (!res.ok) {
+          throw new Error('HTTP ' + res.status);
+        }
+        const data = await res.json();
+        tokenlistTokens = Array.isArray(data.tokens) ? data.tokens : [];
+      } catch {
+        tokenlistTokens = [];
+      }
     }
 
     function getTokensForChain(chainId) {
       const cid = Number(chainId);
-      const all = [...BUILTIN_TOKENS, ...userTokens];
       const seen = new Set();
-      return all.filter(t => {
-        if (t.chainId !== cid) return false;
+      return tokenlistTokens.filter((t) => {
+        if (Number(t.chainId) !== cid || typeof t.address !== 'string') return false;
         const addr = t.address.toLowerCase();
         if (seen.has(addr)) return false;
         seen.add(addr);
@@ -455,99 +434,170 @@ const INDEX_HTML = `<!DOCTYPE html>
       });
     }
 
-    async function handleLoadTokenlist() {
-      const input = document.getElementById('tokenlistInput').value.trim();
-      const status = document.getElementById('tokenlistStatus');
-      if (!input) { status.textContent = 'Please enter a URL or JSON.'; return; }
+    function findTokenMatches(value, chainId) {
+      const query = value.trim().toLowerCase();
+      if (!query) return [];
 
-      status.textContent = 'Loading...';
-      try {
-        let data;
-        if (input.startsWith('http://') || input.startsWith('https://')) {
-          const res = await fetch(input);
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          data = await res.json();
-        } else {
-          data = JSON.parse(input);
-        }
-        const tokens = data.tokens || data;
-        if (!Array.isArray(tokens)) throw new Error('Expected tokens array');
-        saveTokenlist(tokens);
-        status.textContent = tokens.length + ' custom tokens loaded and saved.';
-      } catch (err) {
-        status.textContent = 'Error: ' + err.message;
-      }
+      const normalizedQuery = normalizeAddress(query);
+      return getTokensForChain(chainId)
+        .filter((token) => {
+          const symbol = String(token.symbol || '').toLowerCase();
+          const name = String(token.name || '').toLowerCase();
+          const address = String(token.address || '').toLowerCase();
+          const normalizedAddress = normalizeAddress(address);
+
+          return (
+            symbol.includes(query) ||
+            name.includes(query) ||
+            address.includes(query) ||
+            normalizedAddress.includes(normalizedQuery)
+          );
+        })
+        .slice(0, 20);
     }
-
-    function handleClearTokenlist() {
-      userTokens = [];
-      localStorage.removeItem(TOKENLIST_STORAGE_KEY);
-      document.getElementById('tokenlistStatus').textContent = 'Custom token list cleared. Built-in tokens still available.';
-      document.getElementById('tokenlistInput').value = '';
-    }
-
-    document.getElementById('loadTokenlist').addEventListener('click', handleLoadTokenlist);
-    document.getElementById('clearTokenlist').addEventListener('click', handleClearTokenlist);
 
     function setupAutocomplete(inputId, listId) {
       const input = document.getElementById(inputId);
       const list = document.getElementById(listId);
+      let matches = [];
       let activeIdx = -1;
 
-      function render(matches) {
+      function hide() {
+        list.classList.remove('show');
         list.innerHTML = '';
+        matches = [];
         activeIdx = -1;
-        if (!matches.length) { list.classList.remove('show'); return; }
-        list.classList.add('show');
-        matches.slice(0, 20).forEach((token, i) => {
-          const div = document.createElement('div');
-          div.className = 'autocomplete-item';
-          div.innerHTML = '<span class="symbol">' + token.symbol + '</span>' +
-            '<span class="addr">' + token.address + '</span>';
-          div.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            input.value = token.address;
-            list.classList.remove('show');
-          });
-          list.appendChild(div);
-        });
       }
 
-      input.addEventListener('input', () => {
-        const val = input.value.trim().toLowerCase();
-        if (!val || val.startsWith('0x')) { list.classList.remove('show'); return; }
-        const chainId = document.getElementById('chainId').value;
-        const chainTokens = getTokensForChain(chainId);
-        const matches = chainTokens.filter(t =>
-          t.symbol.toLowerCase().includes(val) || t.name?.toLowerCase().includes(val)
-        );
-        render(matches);
-      });
+      function selectToken(token) {
+        input.value = token.address;
+        hide();
+      }
 
-      input.addEventListener('keydown', (e) => {
+      function setActive(index) {
         const items = list.querySelectorAll('.autocomplete-item');
-        if (!items.length) return;
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          activeIdx = Math.min(activeIdx + 1, items.length - 1);
-          items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          activeIdx = Math.max(activeIdx - 1, 0);
-          items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
-        } else if (e.key === 'Enter' && activeIdx >= 0) {
-          e.preventDefault();
-          items[activeIdx].dispatchEvent(new Event('mousedown'));
-        } else if (e.key === 'Escape') {
+        items.forEach((el, i) => el.classList.toggle('active', i === index));
+      }
+
+      function render() {
+        list.innerHTML = '';
+        activeIdx = -1;
+        if (!matches.length) {
           list.classList.remove('show');
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        matches.forEach((token) => {
+          const item = document.createElement('div');
+          item.className = 'autocomplete-item';
+
+          const logo = document.createElement('img');
+          logo.className = 'autocomplete-logo';
+          logo.alt = token.symbol ? token.symbol + ' logo' : 'token logo';
+          logo.loading = 'lazy';
+          if (typeof token.logoURI === 'string' && token.logoURI) {
+            logo.src = token.logoURI;
+          }
+          logo.onerror = () => {
+            logo.style.display = 'none';
+          };
+
+          const meta = document.createElement('div');
+          meta.className = 'autocomplete-meta';
+
+          const title = document.createElement('div');
+          title.className = 'autocomplete-title';
+
+          const symbol = document.createElement('span');
+          symbol.className = 'autocomplete-symbol';
+          symbol.textContent = token.symbol || '';
+
+          const name = document.createElement('span');
+          name.className = 'autocomplete-name';
+          name.textContent = token.name || '';
+
+          const address = document.createElement('div');
+          address.className = 'autocomplete-addr';
+          address.textContent = token.address || '';
+
+          title.appendChild(symbol);
+          title.appendChild(name);
+          meta.appendChild(title);
+          meta.appendChild(address);
+
+          item.appendChild(logo);
+          item.appendChild(meta);
+
+          item.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            selectToken(token);
+          });
+
+          fragment.appendChild(item);
+        });
+
+        list.appendChild(fragment);
+        list.classList.add('show');
+      }
+
+      function refresh() {
+        const chainId = document.getElementById('chainId').value;
+        matches = findTokenMatches(input.value, chainId);
+        render();
+      }
+
+      input.addEventListener('input', refresh);
+      input.addEventListener('focus', () => {
+        if (input.value.trim()) {
+          refresh();
         }
       });
 
-      input.addEventListener('blur', () => { setTimeout(() => list.classList.remove('show'), 150); });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          if (!matches.length) return;
+          e.preventDefault();
+          activeIdx = Math.min(activeIdx + 1, matches.length - 1);
+          setActive(activeIdx);
+        } else if (e.key === 'ArrowUp') {
+          if (!matches.length) return;
+          e.preventDefault();
+          activeIdx = Math.max(activeIdx - 1, 0);
+          setActive(activeIdx);
+        } else if (e.key === 'Enter' && list.classList.contains('show')) {
+          if (!matches.length) return;
+          e.preventDefault();
+          const selectedIndex = activeIdx >= 0 ? activeIdx : 0;
+          selectToken(matches[selectedIndex]);
+        } else if (e.key === 'Escape') {
+          hide();
+        }
+      });
+
+      document.addEventListener('mousedown', (event) => {
+        if (event.target === input || list.contains(event.target)) {
+          return;
+        }
+        hide();
+      });
+
+      document.getElementById('chainId').addEventListener('change', () => {
+        if (input.value.trim()) {
+          refresh();
+        } else {
+          hide();
+        }
+      });
+
+      return {
+        refresh,
+        hide,
+      };
     }
 
-    setupAutocomplete('from', 'fromAutocomplete');
-    setupAutocomplete('to', 'toAutocomplete');
+    const fromAutocomplete = setupAutocomplete('from', 'fromAutocomplete');
+    const toAutocomplete = setupAutocomplete('to', 'toAutocomplete');
 
     function applyDefaults(chainId) {
       const defaults = DEFAULT_TOKENS[chainId];
@@ -559,6 +609,8 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     document.getElementById('chainId').addEventListener('change', function() {
       applyDefaults(Number(this.value));
+      fromAutocomplete.hide();
+      toAutocomplete.hide();
     });
 
     // Tab switching
@@ -832,7 +884,15 @@ const INDEX_HTML = `<!DOCTYPE html>
     if (params.get('sender')) document.getElementById('sender').value = params.get('sender');
     if (!params.get('from') && !params.get('to')) applyDefaults(Number(document.getElementById('chainId').value));
 
-    loadStoredTokenlist();
+    loadTokenlist().then(() => {
+      const activeElement = document.activeElement;
+      if (activeElement === document.getElementById('from')) {
+        fromAutocomplete.refresh();
+      }
+      if (activeElement === document.getElementById('to')) {
+        toAutocomplete.refresh();
+      }
+    });
   </script>
 </body>
 </html>`;
