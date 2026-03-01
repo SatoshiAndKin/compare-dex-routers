@@ -88,6 +88,24 @@ describe("server integration", () => {
     expect(res.body).toContain("No wallet detected");
   });
 
+  it("GET / includes approve/swap transaction handlers using EIP-1193 RPC methods", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain('data-action="swap"');
+    expect(res.body).toContain('data-action="approve"');
+    expect(res.body).toContain("eth_sendTransaction");
+    expect(res.body).toContain("eth_getTransactionReceipt");
+    expect(res.body).toContain("wallet_switchEthereumChain");
+  });
+
+  it("GET / encodes ERC20 approve calldata and shows connect-wallet-first messaging", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("0x095ea7b3");
+    expect(res.body).toContain("MAX_UINT256_HEX");
+    expect(res.body).toContain("Connect wallet first");
+  });
+
   it("GET / loads autocomplete data from /tokenlist on page load", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);

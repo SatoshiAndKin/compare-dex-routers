@@ -1,8 +1,8 @@
 openapi: "3.0.3"
 info:
-  title: CowSwap Trader Spandex Router
+  title: Compare DEX Routers Spandex Router
   version: "1.0.0"
-  description: CowSwap Trader DEX aggregator quote server querying Spandex and Curve for best-priced swap quotes.
+  description: Compare DEX Routers quote server querying Spandex and Curve for best-priced swap quotes.
 
 servers:
   - url: http://localhost:3000

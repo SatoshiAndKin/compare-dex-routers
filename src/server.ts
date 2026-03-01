@@ -298,7 +298,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CowSwap Trader</title>
+  <title>Compare DEX Routers</title>
   <style>
     * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
@@ -361,11 +361,26 @@ const INDEX_HTML = `<!DOCTYPE html>
     .autocomplete-symbol { font-weight: 600; color: #333; font-family: system-ui, sans-serif; }
     .autocomplete-name { color: #666; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .autocomplete-addr { color: #888; font-size: 11px; font-family: monospace; }
+    .tx-actions { margin-top: 16px; padding-top: 14px; border-top: 1px solid #333; }
+    .tx-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+    .tx-btn { padding: 9px 14px; font-size: 14px; border-radius: 4px; border: none; cursor: pointer; }
+    .tx-btn.swap-primary { background: #22a55a; color: #fff; }
+    .tx-btn.swap-primary:hover { background: #1f934f; }
+    .tx-btn.swap-secondary { background: #2f4f6f; color: #d7e8ff; }
+    .tx-btn.swap-secondary:hover { background: #3c638c; }
+    .tx-btn.approve-btn { background: #6b7280; color: #fff; }
+    .tx-btn.approve-btn:hover { background: #5b6270; }
+    .tx-btn.approved { background: #1f934f; color: #fff; }
+    .tx-btn.wallet-required { opacity: 0.6; cursor: not-allowed; }
+    .tx-status { margin-top: 10px; font-size: 13px; color: #9ca3af; min-height: 18px; }
+    .tx-status.pending { color: #f6c85f; }
+    .tx-status.success { color: #34d399; }
+    .tx-status.error { color: #f87171; }
   </style>
 </head>
 <body>
   <div class="page-header">
-    <h1>CowSwap Trader</h1>
+    <h1>Compare DEX Routers</h1>
     <div class="wallet-controls">
       <button type="button" id="connectWalletBtn" class="wallet-button">Connect Wallet</button>
       <div id="walletConnected" class="wallet-connected" hidden>
@@ -438,6 +453,18 @@ const INDEX_HTML = `<!DOCTYPE html>
     let connectedWalletProvider = null;
     let connectedWalletAddressValue = '';
     let connectedWalletInfo = null;
+    let currentQuoteChainId = null;
+
+    const CHAIN_ID_HEX_MAP = Object.freeze({
+      '1': '0x1',
+      '10': '0xa',
+      '56': '0x38',
+      '137': '0x89',
+      '8453': '0x2105',
+      '42161': '0xa4b1',
+      '43114': '0xa86a',
+    });
+    const MAX_UINT256_HEX = 'f'.repeat(64);
 
     const senderInput = document.getElementById('sender');
     const connectWalletBtn = document.getElementById('connectWalletBtn');
@@ -448,6 +475,63 @@ const INDEX_HTML = `<!DOCTYPE html>
     const disconnectWalletBtn = document.getElementById('disconnectWalletBtn');
     const walletProviderMenu = document.getElementById('walletProviderMenu');
     const walletMessage = document.getElementById('walletMessage');
+
+    function hasConnectedWallet() {
+      return Boolean(connectedWalletProvider && connectedWalletAddressValue);
+    }
+
+    function getChainIdHex(chainId) {
+      const id = String(chainId || '').trim();
+      if (!id) return '0x0';
+      if (CHAIN_ID_HEX_MAP[id]) return CHAIN_ID_HEX_MAP[id];
+      const parsed = Number(id);
+      if (!Number.isFinite(parsed) || parsed < 0) return '0x0';
+      return '0x' + parsed.toString(16);
+    }
+
+    function toHexQuantity(value) {
+      if (typeof value !== 'string') return '0x0';
+      const trimmed = value.trim().toLowerCase();
+      if (!trimmed) return '0x0';
+      if (trimmed.startsWith('0x')) return trimmed;
+      try {
+        return '0x' + BigInt(trimmed).toString(16);
+      } catch {
+        return '0x0';
+      }
+    }
+
+    function isAddressLike(address) {
+      return /^0x[a-fA-F0-9]{40}$/.test(String(address || '').trim());
+    }
+
+    function encodeApproveCalldata(spender) {
+      const normalizedSpender = String(spender || '').trim();
+      if (!isAddressLike(normalizedSpender)) {
+        throw new Error('Invalid approval spender address');
+      }
+      const spenderWord = normalizedSpender.toLowerCase().replace(/^0x/, '').padStart(64, '0');
+      return '0x095ea7b3' + spenderWord + MAX_UINT256_HEX;
+    }
+
+    function updateTransactionActionStates() {
+      const walletConnectedValue = hasConnectedWallet();
+      document.querySelectorAll('.tx-btn').forEach((button) => {
+        if (button.dataset.locked === 'true' || button.dataset.pending === 'true') {
+          return;
+        }
+
+        if (!walletConnectedValue) {
+          button.classList.add('wallet-required');
+          button.setAttribute('aria-disabled', 'true');
+          button.disabled = false;
+        } else {
+          button.classList.remove('wallet-required');
+          button.removeAttribute('aria-disabled');
+          button.disabled = false;
+        }
+      });
+    }
 
     function setWalletGlobals() {
       window.__selectedWalletProvider = connectedWalletProvider;
@@ -538,6 +622,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         setWalletGlobals();
         closeWalletProviderMenu();
         updateWalletStateUi();
+        updateTransactionActionStates();
         setWalletMessage('');
       } catch (err) {
         const code = err && typeof err === 'object' ? err.code : undefined;
@@ -558,6 +643,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       setWalletGlobals();
       closeWalletProviderMenu();
       updateWalletStateUi();
+      updateTransactionActionStates();
       setWalletMessage('Wallet disconnected.');
     }
 
@@ -647,6 +733,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     updateWalletStateUi();
     setWalletGlobals();
+    updateTransactionActionStates();
 
     function normalizeAddress(value) {
       const lower = value.toLowerCase();
@@ -871,7 +958,33 @@ const INDEX_HTML = `<!DOCTYPE html>
     const result = document.getElementById('result');
     const submit = document.getElementById('submit');
 
-    function renderSpandexQuote(data, isWinner) {
+    function renderQuoteActions(options) {
+      const quoteChainId = String(options.quoteChainId || '');
+      const routerAddress = String(options.routerAddress || '');
+      const routerCalldata = String(options.routerCalldata || '');
+      const routerValue = String(options.routerValue || '0x0');
+      const approvalToken = String(options.approvalToken || '');
+      const approvalSpender = String(options.approvalSpender || '');
+      const approvalRequired = Boolean(approvalToken && approvalSpender);
+      const walletRequiredClass = hasConnectedWallet() ? '' : ' wallet-required';
+      const swapStyleClass = approvalRequired ? 'swap-secondary' : 'swap-primary';
+
+      return (
+        '<div class="tx-actions" data-quote-chain-id="' + quoteChainId + '" data-router-address="' + routerAddress +
+        '" data-router-calldata="' + routerCalldata + '" data-router-value="' + routerValue +
+        '" data-approval-token="' + approvalToken + '" data-approval-spender="' + approvalSpender + '">' +
+          '<div class="tx-buttons">' +
+            (approvalRequired
+              ? '<button type="button" class="tx-btn approve-btn' + walletRequiredClass + '" data-action="approve">Approve</button>'
+              : '') +
+            '<button type="button" class="tx-btn swap-btn ' + swapStyleClass + walletRequiredClass + '" data-action="swap">Swap</button>' +
+          '</div>' +
+          '<div class="tx-status" aria-live="polite"></div>' +
+        '</div>'
+      );
+    }
+
+    function renderSpandexQuote(data, isWinner, quoteChainId) {
       const banner = isWinner
         ? '<div class="recommendation-banner winner">RECOMMENDED</div>'
         : '<div class="recommendation-banner loser">Alternative quote</div>';
@@ -925,6 +1038,14 @@ const INDEX_HTML = `<!DOCTYPE html>
           <div class="field-value number">\${data.router_value}</div>
         </div>
         \` : ''}
+        \${renderQuoteActions({
+          quoteChainId,
+          routerAddress: data.router_address,
+          routerCalldata: data.router_calldata,
+          routerValue: data.router_value || '0x0',
+          approvalToken: data.approval_token || '',
+          approvalSpender: data.approval_spender || '',
+        })}
       \`;
     }
 
@@ -948,7 +1069,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       \`}).join('');
     }
 
-    function renderCurveQuote(data, isWinner) {
+    function renderCurveQuote(data, isWinner, quoteChainId) {
       const symbols = {};
       symbols[data.from.toLowerCase()] = data.from_symbol;
       symbols[data.to.toLowerCase()] = data.to_symbol;
@@ -994,6 +1115,12 @@ const INDEX_HTML = `<!DOCTYPE html>
           <div class="field-label">Router Calldata</div>
           <div class="field-value" style="font-size: 11px;">\${data.router_calldata}</div>
         </div>
+        \${renderQuoteActions({
+          quoteChainId,
+          routerAddress: data.router_address,
+          routerCalldata: data.router_calldata,
+          routerValue: '0x0',
+        })}
       \`;
     }
 
@@ -1018,13 +1145,15 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
       reasonHtml += '</div>';
 
+      const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || Number(document.getElementById('chainId').value);
+
       if (data.recommendation === 'spandex' && data.spandex) {
         tabRec.textContent = 'Spandex (Recommended)';
-        rec.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true);
+        rec.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true, quoteChainId);
         if (data.curve) {
           tabAlt.textContent = 'Curve';
           tabAlt.style.display = '';
-          alt.innerHTML = renderCurveQuote(data.curve, false);
+          alt.innerHTML = renderCurveQuote(data.curve, false, quoteChainId);
         } else {
           tabAlt.textContent = 'Curve';
           tabAlt.style.display = '';
@@ -1032,11 +1161,11 @@ const INDEX_HTML = `<!DOCTYPE html>
         }
       } else if (data.recommendation === 'curve' && data.curve) {
         tabRec.textContent = 'Curve (Recommended)';
-        rec.innerHTML = reasonHtml + renderCurveQuote(data.curve, true);
+        rec.innerHTML = reasonHtml + renderCurveQuote(data.curve, true, quoteChainId);
         if (data.spandex) {
           tabAlt.textContent = 'Spandex';
           tabAlt.style.display = '';
-          alt.innerHTML = renderSpandexQuote(data.spandex, false);
+          alt.innerHTML = renderSpandexQuote(data.spandex, false, quoteChainId);
         } else {
           tabAlt.textContent = 'Spandex';
           tabAlt.style.display = '';
@@ -1044,12 +1173,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         }
       } else if (data.spandex) {
         tabRec.textContent = 'Spandex';
-        rec.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false);
+        rec.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false, quoteChainId);
         tabAlt.style.display = 'none';
         alt.innerHTML = '';
       } else if (data.curve) {
         tabRec.textContent = 'Curve';
-        rec.innerHTML = reasonHtml + renderCurveQuote(data.curve, false);
+        rec.innerHTML = reasonHtml + renderCurveQuote(data.curve, false, quoteChainId);
         tabAlt.style.display = 'none';
         alt.innerHTML = '';
       } else {
@@ -1060,6 +1189,8 @@ const INDEX_HTML = `<!DOCTYPE html>
         tabAlt.style.display = 'none';
         alt.innerHTML = '';
       }
+
+      updateTransactionActionStates();
     }
 
     function showError(msg) {
@@ -1070,6 +1201,235 @@ const INDEX_HTML = `<!DOCTYPE html>
       document.getElementById('tabAlternative').style.display = 'none';
     }
 
+    function isUserRejectedError(err) {
+      if (!err || typeof err !== 'object') return false;
+      if (err.code === 4001) return true;
+      if (err.data && typeof err.data === 'object' && err.data.originalError && err.data.originalError.code === 4001) {
+        return true;
+      }
+      return false;
+    }
+
+    function setTxStatus(card, text, kind) {
+      const status = card.querySelector('.tx-status');
+      if (!status) return;
+      status.textContent = text || '';
+      status.classList.remove('pending', 'success', 'error');
+      if (kind) {
+        status.classList.add(kind);
+      }
+    }
+
+    function setTxCardPending(card, pending) {
+      card.querySelectorAll('.tx-btn').forEach((button) => {
+        button.dataset.pending = pending ? 'true' : 'false';
+        if (pending) {
+          button.classList.remove('wallet-required');
+          button.disabled = true;
+        } else if (button.dataset.locked === 'true') {
+          button.disabled = true;
+        } else {
+          button.disabled = false;
+        }
+      });
+
+      if (!pending) {
+        updateTransactionActionStates();
+      }
+    }
+
+    async function ensureWalletOnChain(provider, chainId) {
+      const targetChainIdHex = getChainIdHex(chainId).toLowerCase();
+      if (targetChainIdHex === '0x0') {
+        throw new Error('Invalid chain ID');
+      }
+
+      const activeChainId = await provider.request({ method: 'eth_chainId' });
+      if (String(activeChainId || '').toLowerCase() === targetChainIdHex) {
+        return;
+      }
+
+      await provider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: targetChainIdHex }],
+      });
+    }
+
+    async function waitForTransactionReceipt(provider, txHash) {
+      const timeoutMs = 120000;
+      const pollIntervalMs = 1500;
+      const startedAt = Date.now();
+
+      while (Date.now() - startedAt < timeoutMs) {
+        const receipt = await provider.request({
+          method: 'eth_getTransactionReceipt',
+          params: [txHash],
+        });
+
+        if (receipt) {
+          return receipt;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+
+      throw new Error('Timed out waiting for transaction confirmation');
+    }
+
+    async function executeCardTransaction(card, txParams, onSuccess) {
+      if (!hasConnectedWallet()) {
+        setWalletMessage('Connect wallet first', true);
+        setTxStatus(card, 'Connect wallet first', 'error');
+        updateTransactionActionStates();
+        return;
+      }
+
+      const provider = connectedWalletProvider;
+      if (!provider || typeof provider.request !== 'function') {
+        setWalletMessage('Wallet provider is not available.', true);
+        setTxStatus(card, 'Failed', 'error');
+        updateTransactionActionStates();
+        return;
+      }
+
+      const chainId = card.dataset.quoteChainId || currentQuoteChainId || document.getElementById('chainId').value;
+      setTxCardPending(card, true);
+
+      try {
+        await ensureWalletOnChain(provider, chainId);
+        const txHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [txParams],
+        });
+
+        setTxStatus(card, 'Confirming...', 'pending');
+        const receipt = await waitForTransactionReceipt(provider, txHash);
+        const statusValue = String(receipt && receipt.status ? receipt.status : '').toLowerCase();
+
+        if (statusValue === '0x1' || statusValue === '1') {
+          if (typeof onSuccess === 'function') {
+            onSuccess();
+          }
+          setWalletMessage('');
+          setTxStatus(card, 'Success', 'success');
+          return;
+        }
+
+        throw new Error('Transaction failed');
+      } catch (err) {
+        if (isUserRejectedError(err)) {
+          setWalletMessage('Transaction canceled in wallet.', true);
+          setTxStatus(card, 'Transaction canceled by user', 'error');
+          return;
+        }
+
+        setWalletMessage('Transaction failed. Please try again.', true);
+        setTxStatus(card, 'Failed', 'error');
+      } finally {
+        setTxCardPending(card, false);
+      }
+    }
+
+    async function onApproveClick(card, button) {
+      if (!hasConnectedWallet()) {
+        setWalletMessage('Connect wallet first', true);
+        setTxStatus(card, 'Connect wallet first', 'error');
+        updateTransactionActionStates();
+        return;
+      }
+
+      const approvalToken = String(card.dataset.approvalToken || '').trim();
+      const approvalSpender = String(card.dataset.approvalSpender || '').trim();
+      if (!isAddressLike(approvalToken) || !isAddressLike(approvalSpender)) {
+        setTxStatus(card, 'Failed', 'error');
+        return;
+      }
+
+      let calldata;
+      try {
+        calldata = encodeApproveCalldata(approvalSpender);
+      } catch {
+        setTxStatus(card, 'Failed', 'error');
+        return;
+      }
+
+      await executeCardTransaction(
+        card,
+        {
+          to: approvalToken,
+          data: calldata,
+          value: '0x0',
+          from: connectedWalletAddressValue,
+        },
+        () => {
+          button.textContent = 'Approved';
+          button.dataset.locked = 'true';
+          button.classList.add('approved');
+          button.disabled = true;
+
+          const swapButton = card.querySelector('.swap-btn');
+          if (swapButton) {
+            swapButton.classList.remove('swap-secondary');
+            swapButton.classList.add('swap-primary');
+          }
+        }
+      );
+    }
+
+    async function onSwapClick(card) {
+      if (!hasConnectedWallet()) {
+        setWalletMessage('Connect wallet first', true);
+        setTxStatus(card, 'Connect wallet first', 'error');
+        updateTransactionActionStates();
+        return;
+      }
+
+      const routerAddress = String(card.dataset.routerAddress || '').trim();
+      const routerCalldata = String(card.dataset.routerCalldata || '').trim();
+      const routerValue = String(card.dataset.routerValue || '0x0');
+      if (!isAddressLike(routerAddress) || !routerCalldata) {
+        setTxStatus(card, 'Failed', 'error');
+        return;
+      }
+
+      await executeCardTransaction(card, {
+        to: routerAddress,
+        data: routerCalldata,
+        value: toHexQuantity(routerValue || '0x0'),
+        from: connectedWalletAddressValue,
+      });
+    }
+
+    result.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const button = target.closest('.tx-btn');
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+
+      const card = button.closest('.tx-actions');
+      if (!(card instanceof HTMLElement)) {
+        return;
+      }
+
+      if (button.dataset.pending === 'true' || button.dataset.locked === 'true') {
+        return;
+      }
+
+      if (button.dataset.action === 'approve') {
+        void onApproveClick(card, button);
+        return;
+      }
+
+      if (button.dataset.action === 'swap') {
+        void onSwapClick(card);
+      }
+    });
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -1079,6 +1439,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       const amount = document.getElementById('amount').value.trim();
       const slippageBps = document.getElementById('slippageBps').value.trim();
       const sender = document.getElementById('sender').value.trim();
+      currentQuoteChainId = Number(chainId);
 
       submit.disabled = true;
       submit.textContent = 'Comparing...';
@@ -1098,6 +1459,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (data.error) {
           showError(data.error);
         } else {
+          currentQuoteChainId = Number(chainId);
           showCompareResult(data);
           const url = new URL(window.location.href);
           url.searchParams.set('chainId', chainId);
