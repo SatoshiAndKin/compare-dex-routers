@@ -1,0 +1,45 @@
+{
+  "featureId": "wallet-connection",
+  "reviewedAt": "2026-03-01T23:50:00.000Z",
+  "commitId": "a050b8d359f790f1d93719c4339766cbed1a70ce",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of wallet connection UI with ERC-6963 discovery, window.ethereum fallback, connect/disconnect flows, sender auto-fill, and provider deduplication by UUID. The code is well-structured with proper error handling (including EIP-4001 user rejection), accessible UI (aria-live on message area), responsive CSS, and graceful image error fallbacks. All 5 targeted validation items (VAL-WALLET-001 through 004, 010) are covered. Downstream features successfully consume the wallet state variables (connectedWalletProvider, connectedWalletAddressValue) for swap transactions and auto-refresh sender inclusion.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 468,
+        "severity": "non_blocking",
+        "description": "No accountsChanged event listener on the connected provider. If a user switches accounts in their wallet extension, the UI will still show the old address and the sender field won't update. Consider adding: provider.on('accountsChanged', (accounts) => { ... }) after successful connection."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 571,
+        "severity": "non_blocking",
+        "description": "window.__selectedWallet* globals are set but never consumed — downstream features (swap-transaction-buttons, auto-refresh-quotes) directly reference the local connectedWalletProvider/connectedWalletAddressValue variables since they share the same script scope. The globals are dead code unless intended for external consumers (e.g., browser console debugging). Not harmful but unnecessary."
+      },
+      {
+        "file": "src/__tests__/server.integration.test.ts",
+        "line": 69,
+        "severity": "non_blocking",
+        "description": "Wallet integration tests only check that the HTML source contains expected string literals (element IDs, event names). They don't test any behavioral flow. Acceptable given the inline-template architecture, but the test names ('shows a Connect Wallet button', 'includes ERC-6963 discovery') could be more precise about what they actually verify (HTML content presence)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The wallet-connection feature introduces a pattern of sharing client-side state between features via module-scoped variables (connectedWalletProvider, connectedWalletAddressValue, connectedWalletInfo) plus window.__selectedWallet* globals. This cross-feature state-sharing convention isn't documented in AGENTS.md or .factory/library/architecture.md, but downstream features (swap-transaction-buttons, auto-refresh-quotes) depend on these exact variable names.",
+      "evidence": "src/server.ts:468-470 defines the variables, lines 1152,1673,1749,1786 (added by later features) consume them directly. window.__selectedWallet* globals at lines 571-573 are set but never read by other features."
+    },
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md says 'Browser-side wallet interaction uses viem's createWalletClient + custom transport' but the worker correctly chose raw EIP-1193 provider.request() calls instead, which the fullstack-worker skill explicitly permits as the simpler option. The AGENTS.md guidance is stale/misleading for the connect flow — viem walletClient is only used later for sendTransaction/writeContract in the swap feature.",
+      "evidence": "AGENTS.md Key Technical Context section shows viem walletClient pattern; .factory/skills/fullstack-worker/SKILL.md step 3 says 'Use raw EIP-1193 provider.request() calls (simpler, no external deps)'; worker used provider.request({ method: 'eth_requestAccounts' }) at src/server.ts:644"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The wallet-connection feature cleanly implements ERC-6963 provider discovery with window.ethereum fallback, connect/disconnect UI flows, sender auto-fill, and UUID-based provider deduplication. All 5 targeted validation items are satisfied. Three non-blocking issues noted: missing accountsChanged listener (users switching accounts in-wallet won't update UI), unused window.__selectedWallet* globals, and integration tests that only verify HTML content rather than behavior. Two shared-state observations: undocumented cross-feature variable naming convention and stale AGENTS.md guidance about viem browser usage."
+}

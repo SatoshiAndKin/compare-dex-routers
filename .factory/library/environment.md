@@ -10,5 +10,6 @@ Environment variables, external dependencies, and setup notes.
 - `ALCHEMY_API_KEY` required for RPC access
 - `ZEROX_API_KEY`, `FABRIC_API_KEY` optional for specific providers
 - `CURVE_ENABLED`, `COMPARE_ENABLED`, `METRICS_ENABLED` feature flags (default: true)
+- `TOKENLIST_PATH` optional override for the tokenlist file path (defaults to `data/tokenlist.json`)
 - Dev server runs with tsx (TypeScript execution, no build step)
-- viem ^2.46.3 already installed - use for both server-side and browser-side wallet interactions
+- viem ^2.46.3 already installed - use for server-side code; browser-side wallet interaction uses raw EIP-1193 provider.request() calls (no CDN import needed)

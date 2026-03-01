@@ -15,8 +15,8 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 
 ## Testing Notes
 
-- Wallet connection features require a real browser wallet extension (MetaMask, Frame, etc.) for full testing
-- ERC-6963 detection and wallet signing cannot be automated without a wallet extension
+- Wallet connection features require a real browser wallet extension (MetaMask, Frame, etc.) for full signing
+- ERC-6963 detection CAN be automated: inject a mock provider via `page.evaluate()` that dispatches `eip6963:announceProvider` with a fake provider object — this allows testing connect/disconnect flows without a real wallet extension
 - Token autocomplete, auto-refresh, and UI state are fully testable via playwright
 - The dev server auto-reloads on file changes
 - Frame wallet is running on localhost:8421 and 1248 (detected in port scan)

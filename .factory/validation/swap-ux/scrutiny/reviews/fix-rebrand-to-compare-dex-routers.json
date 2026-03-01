@@ -1,0 +1,44 @@
+{
+  "featureId": "fix-rebrand-to-compare-dex-routers",
+  "reviewedAt": "2026-03-01T23:55:00.000Z",
+  "commitId": "1f3e3d621aef4e8bfe241ae917fb94f7e8157d20",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "All five branding revert targets are correctly changed: src/server.ts <title> and <h1> say 'Compare DEX Routers', package.json name is 'compare-dex-routers', openapi.yaml title/description reference 'Compare DEX Routers', and src/config.ts APP_ID default is 'compare-dex-routers'. Zero remaining cowswap/flashprofits/cowswap-trader references in src/, openapi.yaml, or package.json. All tests pass (58/58), typecheck and lint are clean. The branding revert itself is correct and complete. However, the commit bundles ~380 lines of unrelated swap transaction UI code (approve/swap buttons, chain switching, tx receipt polling, ERC20 calldata encoding, event delegation) alongside the ~12-line branding change. This scope creep is non-blocking since the extra code works and doesn't break anything, but the commit message 'Revert branding to Compare DEX Routers' is misleading about the actual scope of changes. The test file update also adds tests for swap/approve handlers rather than branding-specific assertions.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 364,
+        "severity": "non_blocking",
+        "description": "Scope creep: ~380 lines of new swap transaction UI code (CSS styles for .tx-actions/.tx-btn/.tx-status, JS functions for approve/swap handlers, chain switching, tx receipt polling, ERC20 calldata encoding, event delegation) were added in this branding-revert commit. This code belongs to the 'swap-transaction-buttons' feature, not the branding revert. The commit message is misleading about the actual changes."
+      },
+      {
+        "file": "src/__tests__/server.integration.test.ts",
+        "line": 91,
+        "severity": "non_blocking",
+        "description": "New test cases (lines 91-109) verify approve/swap transaction handler markup (data-action='swap', eth_sendTransaction, etc.) and ERC20 approve calldata (0x095ea7b3). These tests are for swap transaction features, not branding. They should have been part of a separate feature commit."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill description still says 'Implements server-side endpoints and inline HTML/JS UI features for the CowSwap Trader app' (line 3 of SKILL.md frontmatter). This was not updated as part of the branding revert, leaving a stale CowSwap reference in shared state.",
+      "evidence": ".factory/skills/fullstack-worker/SKILL.md line 3: 'description: Implements server-side endpoints and inline HTML/JS UI features for the CowSwap Trader app'"
+    },
+    {
+      "area": "skills",
+      "observation": "Worker skipped Playwright verification (skill step 4) and used curl/grep instead. The deviation is justified for pure branding text changes, but the commit also includes substantial swap transaction UI code that was NOT browser-tested. The skill feedback suggests allowing branding-only features to skip Playwright, but this commit was not branding-only.",
+      "evidence": "Handoff skillFeedback.followedProcedure=false; deviation: 'Skill step 4 manual Playwright verification' replaced with curl/grep. However, the commit includes ~380 lines of new swap UI code that would benefit from interactive browser verification."
+    },
+    {
+      "area": "conventions",
+      "observation": "No convention exists about keeping commits atomic/focused. The worker bundled a major UI feature (~380 lines of swap transaction handlers) into a branding revert commit. A convention about commit scope or one-feature-per-commit would prevent this.",
+      "evidence": "git show 1f3e3d6 --stat shows 394 insertions, 12 deletions across 5 files. Only ~12 lines relate to branding; the rest is new swap transaction functionality."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The branding revert is correctly and completely implemented — all five specified targets are changed, zero cowswap/flashprofits references remain, tests pass, and the running server renders the correct title and heading. Pass with two non-blocking observations: (1) the commit contains ~380 lines of unrelated swap transaction UI code bundled with the branding fix, and (2) the fullstack-worker skill description still references 'CowSwap Trader'."
+}
