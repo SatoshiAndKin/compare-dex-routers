@@ -1,0 +1,45 @@
+{
+  "featureId": "reorder-form-layout",
+  "reviewedAt": "2026-03-02T04:05:00.000Z",
+  "commitId": "06b913d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation correctly restructures the HTML form layout in src/server.ts to follow the natural swap flow. All 8 requirements from the feature description are addressed: (1) wallet section moved inside <form> with .wallet-group styling instead of bordered .wallet-section, (2) From Token + Amount use .form-row-fixed class that stays horizontal at 375px, (3) To Token on its own row, (4) Slippage moved below To Token, (5) MEV button moved to results area inside #result div, (6) all wallet buttons have type='button' (both static HTML and dynamic createElement), (7) DOM order matches natural tab order with no tabindex hacks, (8) brutalist design maintained. The diff is focused (59 insertions, 52 deletions, single file) and clean. Tests pass (91 tests). A subsequent commit (72675ad) added integration tests verifying the layout assertions.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 555,
+        "severity": "non_blocking",
+        "description": ".form-row-fixed does not explicitly set flex-wrap: nowrap. While nowrap is the CSS default for flexbox and no global override exists, adding it explicitly would make the intent self-documenting and guard against future CSS additions. Low risk since no override exists today."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 928,
+        "severity": "non_blocking",
+        "description": "The MEV Protection button is now inside #result which has 'display: none' by default (line 682). This means the MEV button is hidden until the user submits a comparison query. This is per the feature spec ('move to results area, near approve/swap buttons') and makes UX sense (MEV info is most relevant when viewing swap results), but reduces discoverability for users who want to learn about MEV before comparing."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 878,
+        "severity": "non_blocking",
+        "description": "Pre-existing: nested .wallet-row divs (outer contains Connect button + inner #walletConnected). The inner div with class='wallet-row' inherits the same flex layout. Not introduced by this change but worth noting as a minor clarity concern."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Mission AGENTS.md suggested using '.form-row-inline' as the CSS class name for the non-collapsible row (line: 'e.g., .form-row-inline'), but the worker used '.form-row-fixed'. Both are fine, but the guidance and implementation diverge. If future features reference the AGENTS.md suggestion, they'd look for the wrong class name.",
+      "evidence": "AGENTS.md: 'The From+Amount row needs a distinct CSS class (e.g., .form-row-inline)'. Actual implementation in src/server.ts:555: '.form-row-fixed'."
+    },
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill says 'Write Tests First (Red Phase)' but the worker didn't write any new tests. The skill's own guidance qualifies this: 'For client-side-only changes (inline JS): Testing is done via manual verification.' Since this is a layout restructuring (HTML/CSS only, no new endpoints), the worker's approach of manual browser verification plus relying on existing tests is consistent with the skill's exception clause. The integration tests were later added by a separate 'integration-verification' feature (72675ad).",
+      "evidence": "Transcript skeleton shows no test file edits. Handoff says: 'All 91 existing tests pass - no new tests needed for layout-only changes'. Integration tests added in separate commit 72675ad by feature integration-verification."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The form layout restructuring is clean and complete. All 8 feature requirements are correctly implemented in a focused single-file change (59 ins, 52 del). DOM order follows the natural swap flow (chain → wallet → from+amount → to → slippage → compare). The .form-row-fixed CSS class prevents the from+amount row from collapsing at narrow widths. Wallet section is properly integrated into the form without its own bordered section. MEV button is repositioned to the results area. All wallet buttons have type='button'. No bugs, no tabindex hacks, brutalist design maintained. Three non-blocking observations noted: explicit flex-wrap:nowrap would be defensive, MEV button hidden until results shown (by design), and pre-existing nested .wallet-row divs."
+}

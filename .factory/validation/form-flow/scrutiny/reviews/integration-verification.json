@@ -1,0 +1,34 @@
+{
+  "featureId": "integration-verification",
+  "reviewedAt": "2026-03-02T03:54:00.000Z",
+  "commitId": "72675ad",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Added 9 well-structured integration tests to server.integration.test.ts (129 lines) covering form layout order, sender field removal, wallet integration, MEV button positioning, and URL param handling. All 100 tests pass. The tests follow existing patterns in the file (HTTP request → HTML string inspection) and are clearly documented with VAL-* references. The feature description's 6 items are all addressed: items 1-4 via tests and interactive browser verification, items 5-6 confirmed via npm test/typecheck/lint runs.",
+    "issues": [
+      {
+        "file": "src/__tests__/server.integration.test.ts",
+        "line": 318,
+        "severity": "non_blocking",
+        "description": "VAL-FLOW-003 test for from+amount in non-collapsible row is weak: it checks that 'form-row-fixed' class, 'id=\"from\"', and 'id=\"amount\"' all exist in the HTML, but doesn't verify that from and amount are actually *inside* the form-row-fixed div. A refactoring that moves these elements to different containers would still pass this test. Consider using a regex or indexOf range check to verify containment."
+      },
+      {
+        "file": "src/__tests__/server.integration.test.ts",
+        "line": 298,
+        "severity": "non_blocking",
+        "description": "VAL-WALLET-004 test checks for exact attribute order 'type=\"button\" id=\"connectWalletBtn\"'. If HTML attributes are reordered (e.g., id before type), the test breaks even though behavior is correct. This is a minor fragility since the HTML is template-generated and attribute order is stable."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill prescribes a 'Write Tests First (Red Phase)' step, but for a verification-only feature like integration-verification, tests are expected to pass immediately since they verify existing behavior. The skill procedure doesn't account for verification/audit features where the red-green-refactor cycle doesn't apply. The worker correctly skipped the red phase and wrote passing tests directly.",
+      "evidence": "SKILL.md step 2 says 'Run npm test to confirm new tests fail (red)'. Handoff shows all 100 tests passed on first run. skillFeedback.followedProcedure is true despite this deviation, which is reasonable."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The worker added 9 focused integration tests covering all required validation contract items (VAL-SENDER-001, VAL-FLOW-001-006, VAL-WALLET-002/004, VAL-FLOW-003/008, VAL-SENDER-004/006, VAL-CROSS-003). Interactive browser checks supplemented the automated tests for full swap flow (VAL-CROSS-001), URL param restore (VAL-CROSS-002), and old sender URLs (VAL-CROSS-004). All 100 tests pass, typecheck clean, lint clean (2 pre-existing warnings). Two non-blocking issues noted: a weak containment assertion in the from+amount row test, and minor attribute-order fragility in wallet button test."
+}

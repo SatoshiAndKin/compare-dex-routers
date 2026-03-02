@@ -1,0 +1,21 @@
+{
+  "featureId": "remove-sender-field",
+  "reviewedAt": "2026-03-02T04:02:00.000Z",
+  "commitId": "705741f3ad975cf5125dc234461c5ba89597e219",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, focused removal of the sender form input with all 11 requirements met. The diff is minimal (+4/-14 lines in src/server.ts only), touching exactly the right spots: HTML template removal, senderInput variable removal, readCompareParamsFromForm wallet-state sourcing, updateUrlFromCompareParams always-delete, URL restore silent ignore, and wallet connect/disconnect auto-fill removal. The compareParamsToSearchParams function correctly still sends sender to the API when available (from wallet state), which is intended behavior. cloneCompareParams remains a generic normalizer that handles sender via String coercion. Integration tests in server.integration.test.ts properly verify the removal (VAL-SENDER-001, VAL-SENDER-004, VAL-SENDER-006, VAL-CROSS-003). All verification steps passed: npm test (91 tests), typecheck, lint, grep for residual references, and interactive browser testing with old-URL backward compatibility.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The AGENTS.md 'Key Code Locations' section still references 'Sender input: line 914-916 (must be removed entirely)' and 'senderInput declaration: ~line 988'. These line references are now stale since the sender input was removed and subsequent features shifted line numbers. The 'Sender Removal Checklist' in Critical Implementation Notes is also now historical rather than actionable.",
+      "evidence": "AGENTS.md lines referencing sender input (line 914-916, ~line 988) no longer correspond to reality after commit 705741f removed those lines. Line numbers for subsequent items (readCompareParamsFromForm, compareParamsToSearchParams, etc.) have shifted by ~7 lines."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The sender field removal is complete and correct. All 11 description items are addressed: HTML element removed, senderInput variable removed, form reading uses wallet state, URL never includes sender, old URLs with sender= don't crash, auto-refresh uses wallet state, wallet connect/disconnect no longer touch sender input. Tests verify the removal. No bugs or edge cases found."
+}
