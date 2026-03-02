@@ -264,4 +264,133 @@ describe("server integration", () => {
     expect(res.body).toContain("Gas Used");
     expect(res.body).toContain("N/A");
   });
+
+  // VAL-SENDER-001: No sender input visible
+  it("GET / has no sender input element", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    // No element with id="sender"
+    expect(res.body).not.toContain('id="sender"');
+    // No label for sender
+    expect(res.body).not.toContain('for="sender"');
+    // No sender placeholder
+    expect(res.body).not.toContain("Sender (optional)");
+  });
+
+  // VAL-FLOW-001 through VAL-FLOW-006: Form element order
+  it("GET / has form elements in correct order (chain → wallet → from+amount → to → slippage → compare)", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // Find positions of key elements
+    const chainPos = html.indexOf('id="chainId"');
+    const walletPos = html.indexOf('id="connectWalletBtn"');
+    const fromPos = html.indexOf('id="from"');
+    const amountPos = html.indexOf('id="amount"');
+    const toPos = html.indexOf('id="to"');
+    const slippagePos = html.indexOf('id="slippageBps"');
+    const submitPos = html.indexOf('id="submit"');
+
+    // Verify order: chain < wallet < from < amount < to < slippage < submit
+    expect(chainPos).toBeGreaterThan(-1);
+    expect(walletPos).toBeGreaterThan(chainPos);
+    expect(fromPos).toBeGreaterThan(walletPos);
+    expect(amountPos).toBeGreaterThan(fromPos);
+    expect(toPos).toBeGreaterThan(amountPos);
+    expect(slippagePos).toBeGreaterThan(toPos);
+    expect(submitPos).toBeGreaterThan(slippagePos);
+  });
+
+  // VAL-WALLET-004: Wallet buttons must not submit form
+  it("GET / wallet buttons have type=button to prevent form submission", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // Connect wallet button must be type="button"
+    expect(html).toContain('type="button" id="connectWalletBtn"');
+    // Disconnect button must be type="button"
+    expect(html).toContain('type="button" id="disconnectWalletBtn"');
+  });
+
+  // VAL-FLOW-008: MEV info button in results area
+  it("GET / has MEV info button positioned after form, near results area", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // MEV button should be in the results div, not in the form
+    const formEndPos = html.indexOf("</form>");
+    const resultStartPos = html.indexOf('id="result"');
+    const mevBtnPos = html.indexOf('id="mevInfoBtn"');
+
+    // MEV button should appear after form ends
+    expect(mevBtnPos).toBeGreaterThan(formEndPos);
+    // MEV button should be inside the results area
+    expect(mevBtnPos).toBeGreaterThan(resultStartPos);
+  });
+
+  // VAL-FLOW-003: From+Amount on same row
+  it("GET / has from token and amount in a non-collapsible row", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // Should use form-row-fixed class (non-collapsible)
+    expect(html).toContain('class="form-row-fixed"');
+    // From token should be in the fixed row
+    expect(html).toContain("form-row-fixed");
+    expect(html).toContain('id="from"');
+    expect(html).toContain('id="amount"');
+  });
+
+  // VAL-WALLET-002: Wallet section integrated into form
+  it("GET / wallet section is inside the form element", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    const formStartPos = html.indexOf('<form id="form">');
+    const formEndPos = html.indexOf("</form>");
+    const walletBtnPos = html.indexOf('id="connectWalletBtn"');
+
+    // Wallet button should be inside form
+    expect(walletBtnPos).toBeGreaterThan(formStartPos);
+    expect(walletBtnPos).toBeLessThan(formEndPos);
+  });
+
+  // VAL-SENDER-004: URL never contains sender param after form submission
+  it("GET / includes JS that removes sender from URL", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // The updateUrlFromCompareParams function should delete sender from URL
+    expect(html).toContain("url.searchParams.delete('sender')");
+  });
+
+  // VAL-SENDER-006: No JS errors from removed sender input
+  it("GET / has no references to getElementById('sender')", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // No code should reference getElementById('sender')
+    expect(html).not.toContain("getElementById('sender')");
+    // No senderInput variable
+    expect(html).not.toContain("senderInput");
+  });
+
+  // VAL-CROSS-003: Form works without wallet
+  it("GET / compare works without wallet connection (no sender required)", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // The readCompareParamsFromForm function should handle no wallet case
+    expect(html).toContain("hasConnectedWallet()");
+    // Sender should be empty string when no wallet
+    expect(html).toContain("sender: hasConnectedWallet() ? connectedWalletAddressValue : ''");
+  });
 });
