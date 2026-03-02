@@ -2,11 +2,41 @@
 
 # compare-dex-routers
 
-A DEX router comparison tool that queries multiple swap routers ([Spandex](https://www.spandex.exchange/) and Curve Finance) and returns quotes from each. Compare pricing, routes, and gas estimates side-by-side. Includes a built-in web UI for testing quotes interactively.
+A DEX router comparison and swap execution tool. Queries multiple swap routers ([Spandex](https://www.spandex.exchange/) and Curve Finance) for side-by-side quote comparison, then lets you execute the winning trade directly from the browser. Spandex aggregates across 0x, Fabric, KyberSwap, Odos, LiFi, Relay, and Velora. Includes a built-in web UI with wallet connection, token autocomplete, auto-refreshing quotes, and gas-adjusted recommendations.
 
 ![Web UI screenshot](docs/screenshot.png)
 
-## Supported Chains
+## Quick start
+
+```sh
+cp env.example .env   # fill in ALCHEMY_API_KEY
+npm install
+npm run dev           # starts server at http://localhost:3000
+```
+
+Open `http://localhost:3000` in a browser to use the UI.
+
+## Features
+
+**Token selection** — Autocomplete powered by a local tokenlist (`data/tokenlist.json`). Filters by the selected chain, shows token logos, and accepts name, symbol, or address. After selection the input displays `SYMBOL (0xABCD…1234)`.
+
+**Wallet connection** — Detects wallets via ERC-6963 multi-provider discovery with `window.ethereum` fallback. Connect/disconnect with one click; the sender address auto-fills into the quote form.
+
+**Swap execution** — Approve and Swap buttons appear on each quote. Uses raw EIP-1193 provider calls. Handles chain switching when the wallet is on the wrong network and shows transaction status (pending → confirmed / failed).
+
+**Auto-refresh** — Quotes re-fetch every 15 seconds with a visible countdown. Refreshing pauses while a transaction is in flight and resumes after it completes or fails.
+
+**Gas-adjusted comparison** — The recommendation factors in gas costs when available. For ETH/WETH swaps, gas-adjusted output amounts are shown so you can compare net value received.
+
+**MEV protection guidance** — An info button on the quote form opens a modal with chain-specific MEV advice: Flashbots Protect for Ethereum, bloXroute for BSC, and sequencer details for L2 chains.
+
+**Brutalist design** — High-contrast black/white with a `#0055FF` blue accent. Color-blind-safe, no border-radius. Inline results with collapsible details.
+
+## Tokenlist
+
+Token autocomplete reads from `data/tokenlist.json`, served by the `GET /tokenlist` endpoint. You can replace this file with your own [Uniswap-format tokenlist](https://tokenlists.org/) to customize available tokens.
+
+## Supported chains
 
 | Chain     | ID    |
 | --------- | ----- |
@@ -35,9 +65,11 @@ Compare quotes from multiple routers (Spandex and Curve) side-by-side.
 
 ### `GET /quote`
 
-Returns a quote from the Spandex router (aggregates across 0x, Fabric, KyberSwap, Odos, LiFi, Relay, Velora).
+Single quote from the Spandex router. Same parameters as `/compare`.
 
-Same parameters as `/compare`.
+### `GET /tokenlist`
+
+Returns the contents of `data/tokenlist.json`.
 
 ### `GET /chains`
 
@@ -47,87 +79,51 @@ Returns the list of supported chains.
 
 Health check endpoint.
 
+### `GET /metrics`
+
+Prometheus-compatible metrics (enabled via `METRICS_ENABLED`).
+
 ### `GET /`
 
-Interactive web UI for comparing quotes.
+Interactive web UI.
 
-## Prerequisites
+## Environment variables
 
-- Node.js >= 20
-- An [Alchemy](https://www.alchemy.com/) API key (or per-chain RPC URL overrides)
+Copy `env.example` to `.env` and fill in your keys.
 
-## Setup
-
-```sh
-cp env.example .env
-```
-
-Edit `.env` and fill in your keys:
-
-```
-PORT=3000
-HOST=0.0.0.0
-APP_ID=flashprofits
-ALCHEMY_API_KEY=your_key_here
-```
-
-Optional environment variables:
-
-| Variable          | Description                                  |
-| ----------------- | -------------------------------------------- |
-| `ZEROX_API_KEY`   | 0x API key for the 0x provider               |
-| `FABRIC_API_KEY`  | Fabric API key                               |
-| `RPC_URL_<id>`    | Per-chain RPC override (e.g. `RPC_URL_8453`) |
-
-Install dependencies:
-
-```sh
-npm install
-```
+| Variable          | Required | Description                                  |
+| ----------------- | -------- | -------------------------------------------- |
+| `ALCHEMY_API_KEY` | yes      | Alchemy API key for RPC access               |
+| `ZEROX_API_KEY`   | no       | 0x API key                                   |
+| `FABRIC_API_KEY`  | no       | Fabric API key                               |
+| `RPC_URL_<id>`    | no       | Per-chain RPC override (e.g. `RPC_URL_8453`) |
+| `CURVE_ENABLED`   | no       | Enable Curve Finance quotes                  |
+| `COMPARE_ENABLED` | no       | Enable the `/compare` endpoint               |
+| `METRICS_ENABLED` | no       | Enable the `/metrics` endpoint               |
+| `SENTRY_DSN`      | no       | Sentry DSN for error tracking                |
+| `LOG_LEVEL`       | no       | Log level (default `info`)                   |
 
 ## Development
 
-Start the server with file watching:
-
 ```sh
-npm run dev
-```
-
-The server starts at `http://localhost:3000` by default. Open it in a browser to use the quote UI.
-
-### Other Commands
-
-```sh
-npm run typecheck       # Type-check without emitting
-npm run lint            # Lint with ESLint
-npm run lint:fix        # Lint and auto-fix
-npm run format          # Format with Prettier
-npm run format:check    # Check formatting
-npm test                # Run tests
-npm run test:watch      # Run tests in watch mode
-npm run test:coverage   # Run tests with coverage
+npm run dev             # dev server with file watch
+npm run typecheck       # type-check without emitting
+npm run lint            # lint with ESLint
+npm run lint:fix        # lint and auto-fix
+npm run format          # format with Prettier
+npm test                # run tests (Vitest)
+npm run test:coverage   # tests with coverage
 ```
 
 ## Production
-
-### Direct
 
 ```sh
 npm start
 ```
 
-### Docker
-
-Build and run with Docker Compose:
+Or with Docker:
 
 ```sh
 docker compose up --build -d
-```
-
-This builds the image, installs production dependencies only, and starts the server on port 3000 (configurable via `PORT` in `.env`).
-
-To stop:
-
-```sh
-docker compose down
+docker compose down       # to stop
 ```
