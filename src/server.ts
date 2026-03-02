@@ -601,7 +601,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-size: 0.875rem;
       font-weight: 600;
     }
-    .wallet-address { font-family: monospace; font-size: 0.75rem; padding-left: 0.375rem; border-left: 3px solid #0055FF; }
+    .wallet-address { font-family: monospace; font-size: 0.75rem; padding-left: 0.375rem; border-left: 3px solid #0055FF; word-break: break-all; }
     .wallet-message {
       font-size: 0.75rem;
       font-style: italic;
@@ -682,7 +682,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .autocomplete-title { display: flex; align-items: baseline; gap: 0.25rem; }
     .autocomplete-symbol { font-weight: 600; font-size: 0.875rem; }
     .autocomplete-name { color: #666; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .autocomplete-addr { font-family: monospace; color: #666; font-size: 0.625rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .autocomplete-addr { font-family: monospace; color: #666; font-size: 0.625rem; word-break: break-all; }
     
     /* Results Section - Inline below form */
     #result { display: none; }
@@ -1226,9 +1226,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       window.__selectedWalletInfo = connectedWalletInfo;
     }
 
+    // Never truncate addresses - always show full 0x... address
+    // This is a project convention in AGENTS.md
     function truncateAddress(address) {
-      if (typeof address !== 'string' || address.length < 10) return address || '';
-      return address.slice(0, 6) + '...' + address.slice(-4);
+      if (typeof address !== 'string') return address || '';
+      return address; // Return full address, no truncation
     }
 
     function walletName(info) {
@@ -1472,13 +1474,14 @@ const INDEX_HTML = `<!DOCTYPE html>
         .slice(0, 20);
     }
 
-    // Format token for display: 'SYMBOL (0xABCD...1234)'
+    // Format token for display: 'SYMBOL (0xFullAddress)' - NEVER truncate
+    // This is a project convention in AGENTS.md
     function formatTokenDisplay(symbol, address) {
       const sym = String(symbol || '').trim();
       const addr = String(address || '').trim();
       if (!addr) return sym || '';
-      const truncated = addr.length > 10 ? addr.slice(0, 10) + '...' + addr.slice(-4) : addr;
-      return sym ? sym + ' (' + truncated + ')' : truncated;
+      // Show full address - no truncation
+      return sym ? sym + ' (' + addr + ')' : addr;
     }
 
     // Extract address from display format or data-address attribute
