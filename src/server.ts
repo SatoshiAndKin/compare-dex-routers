@@ -778,6 +778,18 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-weight: 600;
       margin-left: 0.25rem;
     }
+    .tokenlist-trust-warning {
+      background: #FFF3CD;
+      border: 2px solid #CC7A00;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+    .tokenlist-trust-warning strong {
+      font-weight: 700;
+      color: #856404;
+    }
     .tokenlist-toggle {
       position: relative;
       width: 36px;
@@ -1547,6 +1559,9 @@ const INDEX_HTML = `<!DOCTYPE html>
         <!-- Tokenlist Sources Section -->
         <div class="settings-section">
           <div class="settings-section-title">Tokenlist Sources</div>
+          <div class="tokenlist-trust-warning">
+            <strong>⚠️ Only load tokenlists from trusted sources.</strong> Malicious tokenlists can contain fake token addresses (e.g., a fake USDC) that could trick you into sending funds to scammers.
+          </div>
           <div class="tokenlist-add-row">
             <input type="text" id="tokenlistUrlInput" placeholder="https://tokens.uniswap.org">
             <button type="button" id="addTokenlistBtn" class="btn-small">Load</button>
@@ -1564,9 +1579,9 @@ const INDEX_HTML = `<!DOCTYPE html>
             <div id="localTokensToggle" class="tokenlist-toggle on" role="switch" aria-checked="true" aria-label="Toggle local tokens" tabindex="0"></div>
           </div>
           <div class="local-tokens-actions">
-            <button type="button" id="exportLocalTokensBtn" class="btn-small" disabled>Export</button>
+            <button type="button" id="exportLocalTokensBtn" class="btn-small" disabled>Export Tokenlist</button>
             <label class="btn-small btn-import-label">
-              Import
+              Import Tokenlist
               <input type="file" id="importLocalTokensInput" accept=".json" hidden>
             </label>
           </div>
