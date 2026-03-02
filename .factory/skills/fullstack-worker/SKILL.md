@@ -19,9 +19,9 @@ Use for features that modify:
 
 - `src/server.ts` contains EVERYTHING: HTTP server, route handlers, and the entire UI as an inline HTML template literal (`INDEX_HTML`). The HTML includes inline `<style>` and `<script>` blocks.
 - The app uses vanilla JS — no React, no bundler, no build step. All client-side code is inline in the template.
-- Modal pattern exists (MEV modal): `.modal-overlay` + `.modal` with open/close/focus/aria handling. Reuse this pattern for new modals.
-- Token autocomplete: `setupAutocomplete(inputId, listId)` creates dropdowns with `findTokenMatches(value, chainId)`. The `tokenlistTokens` global array holds all loaded tokens.
-- localStorage is used for persistence (currently `customTokenlistUrl` key). Always wrap in try/catch for corrupt data.
+- Modal pattern exists (MEV modal, settings modal): `.modal-overlay` + `.modal` with open/close/focus/aria handling. Reuse this pattern for new modals.
+- Token data model: `tokenlistSources` array of `{url, enabled, name, tokens, error?}` objects. Each token carries `_source` field. `getTokensForChain()` merges from all enabled sources with dedup. `findTokenMatches()` sets `_needsDisambiguation` flag for same-symbol disambiguation.
+- localStorage keys: `customTokenlists` (JSON array of `{url, enabled, name}`) for remote lists. `localTokenList` for local tokens. Always wrap in try/catch for corrupt data.
 - The `/tokenlist/proxy?url=` endpoint proxies remote tokenlist URLs (HTTPS-only, 5MB limit, 30s timeout).
 
 ## Work Procedure
