@@ -1425,6 +1425,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     const OLD_CUSTOM_TOKENLIST_URL_KEY = 'customTokenlistUrl';
     // New multi-tokenlist storage key
     const CUSTOM_TOKENLISTS_KEY = 'customTokenlists';
+    // Default tokenlist enabled state (stored separately since default is not in customTokenlists)
+    const DEFAULT_TOKENLIST_ENABLED_KEY = 'defaultTokenlistEnabled';
 
     const walletProvidersByUuid = new Map();
     let fallbackWalletProvider = null;
@@ -2131,16 +2133,22 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     // Save tokenlist sources to localStorage
     function saveTokenlistSources() {
+      // Save custom tokenlists (excluding default which has url === null)
       const data = tokenlistSources
-        .filter(s => s.url !== null) // Don't save default
+        .filter(s => s.url !== null)
         .map(s => ({
           url: s.url,
           enabled: s.enabled,
           name: s.name
         }));
 
+      // Save default tokenlist enabled state separately
+      const defaultSource = tokenlistSources.find(s => s.url === null);
+      const defaultEnabled = defaultSource ? defaultSource.enabled : true;
+
       try {
         localStorage.setItem(CUSTOM_TOKENLISTS_KEY, JSON.stringify(data));
+        localStorage.setItem(DEFAULT_TOKENLIST_ENABLED_KEY, String(defaultEnabled));
       } catch {
         // Ignore storage errors
       }
@@ -3479,9 +3487,21 @@ const INDEX_HTML = `<!DOCTYPE html>
     async function initializeTokenlistSources() {
       // Step 1: Load default tokenlist first
       const defaultTokens = await loadDefaultTokenlist();
+      
+      // Read default tokenlist enabled state from localStorage (default: true for new visitors)
+      let defaultEnabled = true;
+      try {
+        const stored = localStorage.getItem(DEFAULT_TOKENLIST_ENABLED_KEY);
+        if (stored !== null) {
+          defaultEnabled = stored === 'true';
+        }
+      } catch {
+        // Ignore storage errors, use default
+      }
+      
       tokenlistSources = [{
         url: null, // null indicates default
-        enabled: true,
+        enabled: defaultEnabled,
         name: DEFAULT_TOKENLIST_NAME,
         tokens: defaultTokens,
         error: null
