@@ -101,3 +101,8 @@ Read `/Users/bryan/code/compare-dex-routers/src/server.ts` to verify swap/approv
 - **Playwright MCP tools vs agent-browser CLI**: Playwright MCP tools (`browser_evaluate`, `browser_wait_for`, etc.) are more stable for complex eval + interaction sequences than `agent-browser` CLI. The CLI sometimes loses page context after page updates or eval calls. Use Playwright MCP for reliable testing.
 - **Form field fill**: Direct DOM manipulation via `page.evaluate()` (setting `.value` and dispatching `input`/`change` events) is more reliable than `browser_fill` or `agent-browser fill` for autocomplete inputs, as those commands can sometimes navigate away.
 
+## Known Issues & Quirks (from settings-multilist validation round 1)
+
+- **Settings overlay targeting**: For backdrop-close testing, target `#settingsModal` specifically. Generic `.modal-overlay` selectors can match the hidden MEV overlay first and fail to close Settings.
+- **Reliable disambiguation fixture**: `https://tokens.coingecko.com/uniswap/all.json` is a reliable list for duplicate-symbol/different-address assertions (e.g., multiple `PEPE` tokens with different addresses).
+
