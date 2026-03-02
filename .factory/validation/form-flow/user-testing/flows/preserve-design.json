@@ -1,0 +1,60 @@
+{
+  "groupId": "preserve-design",
+  "milestone": "form-flow",
+  "testedAt": "2026-03-02T04:35:00Z",
+  "credentials": {
+    "account": "none needed (stateless app)",
+    "namespace": "preserve-design"
+  },
+  "toolsUsed": ["playwright-mcp", "terminal"],
+  "assertions": {
+    "VAL-PRESERVE-001": {
+      "status": "pass",
+      "evidence": "After submitting a quote comparison (USDC to WETH on Base), the auto-refresh countdown appeared showing 'Auto-refresh in 14s' and ticked down to 10s during testing. Network requests confirmed /compare calls. Screenshot: val-preserve-001-autorefresh.png shows countdown at 11s with full results visible.",
+      "notes": "Timer countdown verified via DOM text match (Auto-refresh in Ns pattern). Network log shows GET /compare request with 200 response."
+    },
+    "VAL-PRESERVE-002": {
+      "status": "pass",
+      "evidence": "Clicked From Token input, typed 'USD'. Autocomplete dropdown appeared with two filtered results: USDbC (USD Base Coin, 0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA) and USDC (USD Coin, 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913). Each result showed token logo, symbol, name, and full address. Screenshot: val-preserve-002-autocomplete.png.",
+      "notes": ""
+    },
+    "VAL-PRESERVE-003": {
+      "status": "pass",
+      "evidence": "After submitting a comparison, result card shows 'Approve' and 'Swap' buttons. Both buttons are present but disabled (because no wallet is connected), which is correct behavior. Screenshot: val-preserve-001-autorefresh.png shows both buttons in the result area.",
+      "notes": "Buttons are disabled when no wallet is connected, which is expected. They become active after wallet connection."
+    },
+    "VAL-PRESERVE-004": {
+      "status": "pass",
+      "evidence": "Clicked 'MEV Protection' button in the results area. A dialog modal opened with heading 'MEV Protection', explanation text about MEV (Maximal Extractable Value) and front-running, a link to Flashbots Docs, and chain-specific guidance for Base (L2) explaining the centralized sequencer. Screenshot: val-preserve-004-mev-modal.png.",
+      "notes": ""
+    },
+    "VAL-PRESERVE-005": {
+      "status": "pass",
+      "evidence": "1) After form submission, URL updated to include chainId=8453, from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913, to=0x4200000000000000000000000000000000000006, amount=1000, slippageBps=50. NO sender parameter in URL. 2) Navigating to URL with those params restored all form values correctly (Chain=Base, From=USDC, Amount=1000, To=WETH, Slippage=50). 3) Loading URL with sender=0x1234... param caused no JS errors - sender was silently ignored. The only console error was a 400 from /compare due to 'ETH' not being a valid address (expected).",
+      "notes": "Old bookmarked URLs with sender param are handled gracefully."
+    },
+    "VAL-PRESERVE-006": {
+      "status": "pass",
+      "evidence": "Default on Base: From=USDC (0x833589fC...2913), To=WETH (0x42000000...0006). After changing chain to Ethereum (1): From=USDC (0xA0b86991...eB48), To=WETH (0xC02aaA39...6Cc2). Token addresses updated to match the selected chain. Screenshot: val-preserve-006-chain-change.png.",
+      "notes": ""
+    },
+    "VAL-PRESERVE-007": {
+      "status": "pass",
+      "evidence": "Ran 'npm test -- --run': 6 test files, 100 tests passed, 0 failed. Duration: 1.02s. Test files: curve.test.ts, observability.test.ts, config.test.ts, quote.test.ts, server.quote-compare.test.ts, server.integration.test.ts. Grep for getElementById('sender') in src/ found only test assertions verifying it's NOT in the HTML. A dedicated test 'GET / has no references to getElementById(sender)' exists and passes.",
+      "notes": ""
+    },
+    "VAL-DESIGN-001": {
+      "status": "pass",
+      "evidence": "Full-page screenshot (val-design-001-brutalist.png) confirms brutalist design. CSS check: zero elements with border-radius (sharp edges throughout). Color palette: body bg=rgb(255,255,255) (#fff), text=rgb(0,0,0) (#000), submit button bg=rgb(0,85,255) (#0055FF). Font: system-ui, -apple-system, sans-serif (1 family) plus monospace for inputs (2 families max). No gradients, no rounded corners.",
+      "notes": ""
+    },
+    "VAL-DESIGN-002": {
+      "status": "pass",
+      "evidence": "Wallet Connect button is inside <form> element (walletInForm=true). Uses same border styling (2px solid rgb(0,0,0)) as form inputs. Background: rgb(255,255,255) (white, same as inputs). Font: system-ui (same family). No extra margin (0px). No distinct background color or extra border separating it. Visually flows naturally between Chain selector and From Token row. Screenshot: val-design-001-brutalist.png.",
+      "notes": ""
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 9 assertions: 9 passed, 0 failed, 0 blocked. All preserved behaviors work correctly (auto-refresh, autocomplete, approve/swap buttons, MEV modal, URL bookmarking, chain change tokens, unit tests). Brutalist design is maintained with consistent styling across all elements including the wallet section."
+}

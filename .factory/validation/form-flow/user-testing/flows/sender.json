@@ -1,0 +1,149 @@
+{
+  "groupId": "sender",
+  "milestone": "form-flow",
+  "testedAt": "2026-03-02T04:58:00.000Z",
+  "credentials": {
+    "account": "none (stateless app)",
+    "namespace": "flow-sender"
+  },
+  "toolsUsed": ["playwright"],
+  "assertions": [
+    {
+      "id": "VAL-SENDER-001",
+      "title": "No sender input visible",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3001/", "expected": "Page loads with form", "observed": "Page loaded with form containing Chain, From Token, Amount, To Token, Slippage, Compare Quotes" },
+        { "action": "Check DOM for element with id='sender'", "expected": "No element found", "observed": "document.getElementById('sender') returned null" },
+        { "action": "Check DOM for input with name='sender'", "expected": "No element found", "observed": "querySelector('[name=\"sender\"]') returned null" },
+        { "action": "Check DOM for labels containing 'sender'", "expected": "No labels found", "observed": "Zero labels containing 'sender' text" },
+        { "action": "Check all input elements", "expected": "Only from, amount, to, slippageBps inputs", "observed": "Four inputs: id=from, id=amount, id=to, id=slippageBps — no sender" },
+        { "action": "Grep source code for getElementById('sender')", "expected": "No references in source", "observed": "No references in src/server.ts; only test assertions in __tests__/ confirming absence" },
+        { "action": "Grep source code for senderInput", "expected": "No references in source", "observed": "No references in src/server.ts; only test assertions confirming absence" }
+      ],
+      "evidence": {
+        "screenshots": ["val-sender-001-full-form.png"],
+        "consoleErrors": "none (only favicon.ico 404 — known cosmetic issue)",
+        "domSnapshot": "All form inputs: [id=from, id=amount, id=to, id=slippageBps]. No element with id=sender, name=sender, or label containing 'sender'.",
+        "sourceCode": "grep for getElementById('sender') and senderInput in src/ returned zero matches (only test files asserting their absence)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SENDER-002",
+      "title": "Connected wallet address used as sender",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3001/", "expected": "Page loads", "observed": "Page loaded" },
+        { "action": "Inject mock ERC-6963 wallet provider with address 0xDeAdBeEf00000000000000000000000000000001", "expected": "Mock wallet available", "observed": "Mock wallet injected successfully" },
+        { "action": "Click Connect Wallet", "expected": "Provider menu shown", "observed": "Provider menu displayed with Frame and Mock Wallet options" },
+        { "action": "Click Mock Wallet", "expected": "Wallet connected, address displayed", "observed": "Wallet connected, showing 'Mock Wallet' and '0xDeAd...0001'" },
+        { "action": "Select Ethereum chain, submit form", "expected": "/compare request includes sender=0xDeAdBeEf...", "observed": "/compare request URL: ...&sender=0xDeAdBeEf00000000000000000000000000000001 — matches mock wallet address exactly" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50&sender=0xDeAdBeEf00000000000000000000000000000001 => 200 OK"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SENDER-003",
+      "title": "No sender when wallet disconnected",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3001/ (no wallet injected)", "expected": "Page loads, no wallet connected", "observed": "Page loaded with 'Connect Wallet' button, no wallet connected" },
+        { "action": "Select Ethereum chain, click Compare Quotes", "expected": "/compare request has no sender parameter", "observed": "/compare URL: chainId=1&from=...&to=...&amount=1000&slippageBps=50 — no sender= parameter at all" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none (only favicon.ico 404)",
+        "network": "GET /compare?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50 => 200 OK — no sender parameter present"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SENDER-004",
+      "title": "No sender URL parameter",
+      "status": "pass",
+      "steps": [
+        { "action": "Submit form without wallet", "expected": "URL has no sender param", "observed": "URL: http://localhost:3001/?chainId=1&from=0xA0b86991...&to=0xC02aaA39...&amount=1000&slippageBps=50 — no sender" },
+        { "action": "Submit form with wallet connected", "expected": "URL still has no sender param", "observed": "URL: http://localhost:3001/?chainId=1&from=0xA0b86991...&to=0xC02aaA39...&amount=1000&slippageBps=50 — no sender, only chainId/from/to/amount/slippageBps" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "urlBar": "Both with and without wallet: URL contains only chainId, from, to, amount, slippageBps. Sender never appears in URL."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SENDER-005",
+      "title": "Auto-refresh uses connected wallet as sender",
+      "status": "pass",
+      "steps": [
+        { "action": "Connect mock wallet (0xDeAdBeEf...0001), submit form on Ethereum", "expected": "Initial /compare includes sender", "observed": "Initial /compare request includes sender=0xDeAdBeEf00000000000000000000000000000001" },
+        { "action": "Wait 16 seconds for auto-refresh cycle", "expected": "Auto-refresh /compare also includes sender", "observed": "Three /compare requests all include sender=0xDeAdBeEf00000000000000000000000000000001. Auto-refresh countdown visible ('Auto-refresh in 4s')" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "All 3 /compare requests during auto-refresh included sender=0xDeAdBeEf00000000000000000000000000000001"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SENDER-006",
+      "title": "No JS errors from removed sender input",
+      "status": "pass",
+      "steps": [
+        { "action": "Fresh page load at http://localhost:3001/, submit form", "expected": "No JS errors in console", "observed": "Console: 0 errors (only favicon 404 on initial load, which is cosmetic/known)" },
+        { "action": "Load URL with sender= param", "expected": "No JS errors", "observed": "Console: 0 JS errors. The sender param was silently ignored." },
+        { "action": "Auto-refresh cycle with wallet connected", "expected": "No JS errors", "observed": "Console: 0 errors during 16s auto-refresh period" },
+        { "action": "Grep source for getElementById('sender')", "expected": "No references", "observed": "Zero matches in src/ (only test assertions confirming absence)" },
+        { "action": "Grep source for senderInput", "expected": "No references", "observed": "Zero matches in src/ (only test assertions confirming absence)" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none — zero JS errors across page load, form submission, URL param restoration, and auto-refresh",
+        "sourceCode": "No references to getElementById('sender') or senderInput in src/server.ts"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Form works without wallet connection",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3001/, no wallet injected", "expected": "Form loads, Connect Wallet button shown", "observed": "Form loaded with Connect Wallet button visible" },
+        { "action": "Select Ethereum chain, submit with default tokens (USDC→WETH, amount 1000)", "expected": "Valid quote results appear", "observed": "Results displayed: 'RECOMMENDED', '0.507197037919937502 WETH', 'Via Spandex / kyberswap', with Approve/Swap buttons. Auto-refresh started." },
+        { "action": "Check console for JS errors", "expected": "No JS errors", "observed": "Only favicon.ico 404 (known cosmetic)" }
+      ],
+      "evidence": {
+        "screenshots": ["val-cross-003-results-no-wallet.png"],
+        "consoleErrors": "none (only favicon.ico 404 — known cosmetic)",
+        "network": "GET /compare?chainId=1&from=0xA0b86991...&to=0xC02aaA39...&amount=1000&slippageBps=50 => 200 OK (no sender param)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "title": "Old bookmarked URL with sender param is harmless",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3001/?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50&sender=0x1234567890123456789012345678901234567890", "expected": "Page loads normally, sender param ignored", "observed": "Page loaded, form restored values (Ethereum, USDC, WETH, 1000, 50), auto-submitted comparison, results displayed successfully" },
+        { "action": "Check console for JS errors", "expected": "No JS errors", "observed": "Console: 0 errors. Sender param silently ignored." },
+        { "action": "Verify results appear", "expected": "Quote results displayed", "observed": "Results: 'RECOMMENDED', '0.507235118599817057 WETH', 'Via Spandex / kyberswap'" }
+      ],
+      "evidence": {
+        "screenshots": ["val-cross-004-old-bookmark.png"],
+        "consoleErrors": "none — zero errors when loading URL with old sender= parameter",
+        "network": "Page auto-submitted comparison and received 200 OK results"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 assertions: all 8 passed. The sender input has been completely removed from the DOM and source code. The connected wallet address is correctly used as the sender parameter in /compare API requests. The sender parameter is never exposed in the URL bar. Auto-refresh correctly propagates the wallet address. Old bookmarked URLs with sender= are silently ignored with no JS errors."
+}
