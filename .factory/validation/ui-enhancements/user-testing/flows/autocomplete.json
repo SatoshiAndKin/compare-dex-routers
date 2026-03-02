@@ -1,0 +1,42 @@
+{
+  "group": "autocomplete",
+  "assertions": {
+    "VAL-AUTO-006": {
+      "status": "pass",
+      "evidence": "GET /tokenlist returned HTTP 200. Has tokens array: True. Token count: 1367. First token sample verified with chainId, address, name, symbol, decimals fields present.",
+      "reason": null
+    },
+    "VAL-AUTO-001": {
+      "status": "pass",
+      "evidence": "Typed USDC in #from input. Dropdown appeared with 1 item showing USDC token with full address (Base chain). Screenshot: val-auto-001-from-autocomplete.png",
+      "reason": null
+    },
+    "VAL-AUTO-002": {
+      "status": "pass",
+      "evidence": "Typed WETH in #to input. Dropdown appeared with 1 item showing WETH token with full address (Base chain). Screenshot: val-auto-002-to-autocomplete.png",
+      "reason": null
+    },
+    "VAL-AUTO-003": {
+      "status": "pass",
+      "evidence": "Mock wallet injected and connected. Wallet visible: {\"hasAddress\": true, \"hasDisconnect\": true}. Typed USDC in From field. Dropdown appeared with 1 item. Screenshot: val-auto-003-autocomplete-with-wallet.png",
+      "reason": null
+    },
+    "VAL-AUTO-004": {
+      "status": "pass",
+      "evidence": "Typed USDC, clicked first autocomplete item. Item shows USDC symbol with full 42-char address. Input value populated with token symbol and full address in parentheses. data-address attribute set to full contract address. Dropdown hidden after selection. Screenshots: val-auto-004-before-select.png, val-auto-004-after-select.png",
+      "reason": null
+    },
+    "VAL-AUTO-005": {
+      "status": "pass",
+      "evidence": "Base USDC: shows USDC token with Base chain contract address. Ethereum USDC: shows USDC token with different Ethereum chain contract address. Addresses differ between chains: True. Screenshots: val-auto-005-base-usdc.png, val-auto-005-ethereum-usdc.png",
+      "reason": null
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": [
+    "playwright-python-chromium",
+    "urllib"
+  ],
+  "summary": "Tested 6 assertions: 6 passed, 0 failed, 0 blocked"
+}

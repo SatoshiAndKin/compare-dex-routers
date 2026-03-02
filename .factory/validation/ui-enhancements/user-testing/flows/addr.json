@@ -1,0 +1,92 @@
+{
+  "groupId": "addr",
+  "testedAt": "2026-03-02T08:30:00Z",
+  "credentials": {
+    "account": "none",
+    "namespace": "addr"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-ADDR-001",
+      "title": "Wallet address shown in full",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "Page loads", "observed": "Page loaded with form" },
+        { "action": "Inject ERC-6963 mock wallet provider", "expected": "Mock wallet registered", "observed": "Mock wallet injected successfully" },
+        { "action": "Click Connect Wallet then select Mock Wallet", "expected": "Wallet connects and shows address", "observed": "Wallet row shows full 42-char address (0x + 40 hex chars), not truncated with ellipsis" },
+        { "action": "Evaluate page body for address match", "expected": "Full 42-char address present", "observed": "isFull: true, full 42-char address found in page text" }
+      ],
+      "evidence": {
+        "screenshots": ["val-addr-001-full-wallet-address.png"],
+        "addressLength": 42,
+        "truncated": false
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ADDR-002",
+      "title": "Token input shows full address after selection",
+      "status": "pass",
+      "steps": [
+        { "action": "Clear From Token field and type USDC", "expected": "Autocomplete dropdown appears", "observed": "Dropdown appeared with USDC item showing full address" },
+        { "action": "Click USDC autocomplete item", "expected": "Input field populated with full address", "observed": "From Token field shows USDC with full 42-char contract address in parentheses, no truncation" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "inputContainsFullAddress": true,
+        "truncated": false
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ADDR-003",
+      "title": "Autocomplete dropdown shows full addresses",
+      "status": "pass",
+      "steps": [
+        { "action": "Clear From Token field and type USDC", "expected": "Autocomplete dropdown shows token with full address", "observed": "Dropdown item shows symbol, name, and full 42-char contract address (no ellipsis truncation)" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "dropdownAddressLength": 42,
+        "truncated": false
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ADDR-004",
+      "title": "Full addresses don't break layout",
+      "status": "pass",
+      "steps": [
+        { "action": "With wallet connected and tokens selected, take screenshot at 1280px width", "expected": "Layout intact, no overflow", "observed": "Layout correct at desktop width - wallet row, token inputs, and form all display properly" },
+        { "action": "Resize viewport to 375px width", "expected": "Layout adapts, no broken/overflowing content", "observed": "At 375px: wallet address wraps to next line properly, token inputs scroll horizontally within bounds. No content breaks outside container." }
+      ],
+      "evidence": {
+        "screenshots": ["val-addr-004-desktop.png", "val-addr-004-375px.png"],
+        "desktopLayoutOk": true,
+        "mobileLayoutOk": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ADDR-005",
+      "title": "Result details show full addresses",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to Ethereum USDC-to-WETH compare URL", "expected": "Page loads and auto-submits compare", "observed": "Page loaded, Spandex results loaded after ~8 seconds" },
+        { "action": "Click Details [+] to expand result details", "expected": "Details section expands with address fields", "observed": "Details expanded, showing field-value elements for From, To, Router Address, Approval Token, Approval Spender" },
+        { "action": "Evaluate all .field-value elements for addresses", "expected": "All address fields show full 42-char addresses, no truncation", "observed": "From: USDC with full 42-char token address. To: WETH with full 42-char token address. Router Address: full 42-char contract address. Approval Token: full 42-char token address. Approval Spender: full 42-char router address. Only truncated field is Router Calldata (hex-encoded tx data, not an address - expected)." }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "allAddressFieldsFull": true,
+        "truncatedAddresses": false,
+        "note": "Router Calldata is hex-encoded tx data (expected truncation), not a token address"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. Full 42-char wallet address shown after connecting mock wallet. Token input shows full address after autocomplete selection. Autocomplete dropdown items show full contract addresses. Layout intact at both desktop (1280px) and mobile (375px) widths with long addresses. Result details fields (From, To, Router Address, Approval Token, Approval Spender) all show full 42-char addresses."
+}

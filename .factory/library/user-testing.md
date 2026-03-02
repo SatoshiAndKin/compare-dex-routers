@@ -32,7 +32,7 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 ## Flow Validator Guidance: Web UI
 
 **Tool:** agent-browser skill (Playwright browser automation)
-**App URL:** http://localhost:3001/
+**App URL:** http://localhost:3002/
 **Session naming:** Use your assigned session ID (e.g., "54ae4ea52d92__token", "54ae4ea52d92__wallet", etc.)
 
 ### Isolation Rules
@@ -81,7 +81,7 @@ Read `/Users/bryan/code/compare-dex-routers/src/server.ts` to verify swap/approv
 ## Flow Validator Guidance: API
 
 **Tool:** curl
-**Base URL:** http://localhost:3001/
+**Base URL:** http://localhost:3002/
 **Isolation:** No isolation needed — stateless API calls
 
 ---

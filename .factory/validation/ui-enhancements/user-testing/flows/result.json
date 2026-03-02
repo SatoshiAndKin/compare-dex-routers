@@ -1,0 +1,155 @@
+{
+  "groupId": "result",
+  "testedAt": "2026-03-02T08:35:00Z",
+  "credentials": {
+    "account": "none",
+    "namespace": "result"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-RESULT-001",
+      "title": "Recommended badge is flat label",
+      "status": "pass",
+      "steps": [
+        { "action": "Load Ethereum USDC/WETH compare results", "expected": "Results with RECOMMENDED badge", "observed": "Results loaded with RECOMMENDED badge visible" },
+        { "action": "Evaluate getComputedStyle on .result-recommendation.winner element", "expected": "Flat label style (no thick border, no box-like padding)", "observed": "borderWidth: '0px 0px 2px' (only bottom underline, no box border), padding: '0px', className: 'result-recommendation winner'" }
+      ],
+      "evidence": {
+        "screenshots": ["val-result-003-step-indicators.png"],
+        "borderWidth": "0px 0px 2px",
+        "padding": "0px",
+        "isFlatLabel": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RESULT-002",
+      "title": "Alternative badge is flat label",
+      "status": "pass",
+      "steps": [
+        { "action": "Switch to Curve tab to see ALTERNATIVE badge", "expected": "ALTERNATIVE badge visible with flat style", "observed": "Curve tab shows ALTERNATIVE badge" },
+        { "action": "Evaluate getComputedStyle on .result-recommendation.alternative element", "expected": "Matching flat label style", "observed": "borderWidth: '0px 0px 2px', padding: '0px', color: 'rgb(204, 41, 0)', className: 'result-recommendation alternative'" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "borderWidth": "0px 0px 2px",
+        "padding": "0px",
+        "color": "rgb(204, 41, 0)",
+        "isFlatLabel": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RESULT-003",
+      "title": "Approve and Swap shown as step indicators",
+      "status": "pass",
+      "steps": [
+        { "action": "View Spandex result for USDC->WETH (approval required)", "expected": "Both Approve and Swap shown as numbered steps", "observed": "Step container .tx-steps shows: '1.' + Approve button, '2.' + Swap button (disabled). Step classes: tx-step-num '1.', tx-step, tx-step-num '2.', tx-step. Swap is step-disabled before approval." }
+      ],
+      "evidence": {
+        "screenshots": ["val-result-003-step-indicators.png"],
+        "stepContainer": ".tx-steps",
+        "step1": "1. Approve",
+        "step2": "2. Swap",
+        "swapInitiallyDisabled": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RESULT-004",
+      "title": "Approved step shows checkmark when done",
+      "status": "pass",
+      "steps": [
+        { "action": "Inject mock wallet with eth_sendTransaction and eth_getTransactionReceipt support", "expected": "Mock wallet available", "observed": "Mock wallet injected successfully" },
+        { "action": "Connect mock wallet", "expected": "Wallet connects", "observed": "Wallet connected showing full address" },
+        { "action": "Click Approve button on Spandex result card", "expected": "Approval tx sent, status updates", "observed": "tx returned mock hash, receipt returned status: 0x1 (success)" },
+        { "action": "Check Approve button state after approval", "expected": "Approve shows checkmark/done indicator and is disabled", "observed": "Approve button text: 'Approved ✓', class: 'tx-btn approve-btn approved', disabled: true" }
+      ],
+      "evidence": {
+        "screenshots": ["val-result-004-005-approve-done.png"],
+        "approveBtnText": "Approved ✓",
+        "approveBtnClass": "tx-btn approve-btn approved",
+        "approveDisabled": true,
+        "hasCheckmark": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RESULT-005",
+      "title": "Swap becomes primary after approval",
+      "status": "pass",
+      "steps": [
+        { "action": "After approval completes (from VAL-RESULT-004 test)", "expected": "Swap button becomes primary/active action", "observed": "Swap button class: 'tx-btn swap-btn' (no disabled class), disabled: false, cursor: pointer. Button is now the active primary action." }
+      ],
+      "evidence": {
+        "screenshots": ["val-result-004-005-approve-done.png"],
+        "swapBtnClass": "tx-btn swap-btn",
+        "swapDisabled": false,
+        "swapIsActive": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RESULT-006",
+      "title": "No step indicator without approval",
+      "status": "pass",
+      "steps": [
+        { "action": "Switch to Curve tab (Curve does not require approval)", "expected": "Only Swap button shown, no numbered step indicators", "observed": "Curve result shows only button 'Swap' in a .tx-steps container. No '1.' or '2.' numbering. No Approve button. The .tx-steps container has only the Swap button, confirming no step indicator." }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "onlySwapVisible": true,
+        "noStepNumbers": true,
+        "noApproveButton": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "Full form-to-results flow",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/ (Base chain selected)", "expected": "Form displayed with Base chain", "observed": "Base (8453) chain selected, USDC/WETH pre-filled" },
+        { "action": "Clear From Token field, type 'USDC', click autocomplete item", "expected": "USDC selected via autocomplete with full address", "observed": "From Token field shows USDC with full 42-char contract address in parentheses" },
+        { "action": "Click '100' slippage preset button", "expected": "Slippage updates to 100, button becomes active", "observed": "Slippage input changed to '100', button '100' got [active] state" },
+        { "action": "Click 'Compare Quotes'", "expected": "Form submits, results appear with flat badges", "observed": "URL: ...chainId=8453&from=0x833589...&to=0x420000...&amount=1000&slippageBps=100. Results show RECOMMENDED flat badge (underline only, no box). Step indicator visible: 1. Approve, 2. Swap." }
+      ],
+      "evidence": {
+        "screenshots": ["val-cross-001-full-flow.png"],
+        "urlParams": "chainId=8453&from=<USDC-base-address>&to=<WETH-base-address>&amount=1000&slippageBps=100",
+        "recommendedBadgeFlat": true,
+        "stepIndicatorVisible": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Compare results without wallet",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to Ethereum USDC/WETH compare without connecting wallet", "expected": "Results load, transaction buttons disabled/greyed", "observed": "Results loaded. Approve button: class 'tx-btn approve-btn wallet-required', opacity: 0.4, cursor: not-allowed, aria-disabled: true. Swap button: [disabled]." },
+        { "action": "Click Approve button without wallet", "expected": "Shows 'wallet required' indication", "observed": "Click triggered: walletMsgText: 'Connect wallet first', txStatusText: 'Connect wallet first', txStatusClass: 'tx-status error'. 'FAILED: CONNECT WALLET FIRST' shown in red box below buttons." }
+      ],
+      "evidence": {
+        "screenshots": ["val-cross-003-no-wallet.png"],
+        "buttonsGreyed": true,
+        "walletRequiredCssOpacity": "0.4",
+        "walletRequiredCursor": "not-allowed",
+        "walletRequiredMessage": "FAILED: CONNECT WALLET FIRST",
+        "walletRequiredIndication": true
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Auto-refresh (15s timer) caused result card to re-render mid-test, invalidating DOM element refs. Had to re-snapshot after auto-refresh.",
+      "resolved": true,
+      "resolution": "Paused auto-refresh via clearInterval(window._refreshTimer) before interactive tests like approve click",
+      "affectedAssertions": ["VAL-RESULT-004", "VAL-RESULT-005"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 8 assertions: all 8 passed. RECOMMENDED and ALTERNATIVE badges are flat labels (borderWidth: 0px 0px 2px, no box/button styling). Approve/Swap step indicator shows numbered sequential steps when approval required. After mock approval, Approve shows 'Approved ✓' (disabled). Swap becomes active/enabled after approval. Curve result (no approval) shows only Swap with no step numbering. Full form-to-results flow works with autocomplete + preset + flat badges. Transaction buttons greyed with wallet-required indication when no wallet connected."
+}
