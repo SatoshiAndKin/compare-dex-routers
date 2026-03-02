@@ -1,0 +1,207 @@
+{
+  "groupId": "token-selection",
+  "testedAt": "2026-03-01T16:05:00Z",
+  "credentials": {
+    "account": "N/A",
+    "namespace": "token-group"
+  },
+  "toolsUsed": ["agent-browser", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-TOKEN-001",
+      "title": "Tokenlist endpoint serves valid JSON",
+      "status": "pass",
+      "steps": [
+        { "action": "curl GET http://localhost:3001/tokenlist", "expected": "200 with JSON containing tokens array", "observed": "200 returned with 1367 tokens, each with chainId, address, name, symbol, decimals, logoURI fields" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A",
+        "network": "GET /tokenlist -> 200, response body has tokens array (1367 items) with fields: chainId, address, name, symbol, decimals, logoURI, extensions"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-002",
+      "title": "Autocomplete shows tokens for current chain",
+      "status": "pass",
+      "steps": [
+        { "action": "Select Ethereum (1) chain", "expected": "Chain selector updated", "observed": "Chain selector set to Ethereum (1)" },
+        { "action": "Type 'USD' in From field", "expected": "Dropdown with Ethereum tokens matching 'USD'", "observed": "Dropdown appeared with 15 Ethereum-chain tokens matching 'USD' (BUSD, GUSD, LUSD, MUSD, PYUSD, etc.)" },
+        { "action": "Switch to Base (8453) and type 'USD'", "expected": "Dropdown shows only Base chain tokens", "observed": "Dropdown showed 2 Base-chain tokens: USDbC, USDC" }
+      ],
+      "evidence": {
+        "screenshots": ["autocomplete-usd-ethereum.png", "base-tokens-usd.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-003",
+      "title": "Autocomplete filters by token name",
+      "status": "pass",
+      "steps": [
+        { "action": "Type 'USD' in From field on Ethereum chain", "expected": "Tokens matching by name (e.g. 'Binance USD', 'USD Coin') shown", "observed": "15 tokens shown including BUSD (Binance USD), GUSD (Gemini Dollar), LUSD (Liquity USD), MUSD (mStable USD), PYUSD (PayPal USD), USDC (USD Coin)" }
+      ],
+      "evidence": {
+        "screenshots": ["autocomplete-usd-ethereum.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-004",
+      "title": "Autocomplete filters by token symbol",
+      "status": "pass",
+      "steps": [
+        { "action": "Type 'WETH' in From field on Ethereum chain", "expected": "WETH (Wrapped Ether) shown in dropdown", "observed": "Exactly 1 result: WETH (Wrapped Ether) with address 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" }
+      ],
+      "evidence": {
+        "screenshots": ["symbol-filter-weth.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-005",
+      "title": "Autocomplete accepts address input",
+      "status": "pass",
+      "steps": [
+        { "action": "Type partial address '0xA0b8699' in From field", "expected": "Matching token shown in dropdown", "observed": "USDC (USD Coin) shown as match for partial address" },
+        { "action": "Type full address '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'", "expected": "USDC shown in dropdown", "observed": "Exactly 1 result: USDC" },
+        { "action": "Type unknown address '0x1234567890abcdef1234567890abcdef12345678'", "expected": "No dropdown or raw address accepted", "observed": "No dropdown shown (0 items), field retains the typed address for manual entry" }
+      ],
+      "evidence": {
+        "screenshots": ["partial-address-match.png", "unknown-address.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-006",
+      "title": "Selecting a token fills the address field",
+      "status": "pass",
+      "steps": [
+        { "action": "Type 'USDC' in From field", "expected": "USDC shown in autocomplete dropdown", "observed": "USDC shown in dropdown" },
+        { "action": "Click USDC in dropdown", "expected": "From field filled with USDC address", "observed": "From field value set to 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" }
+      ],
+      "evidence": {
+        "screenshots": ["field-filled-after-selection.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-007",
+      "title": "Changing chain updates autocomplete and defaults",
+      "status": "pass",
+      "steps": [
+        { "action": "Check Ethereum defaults", "expected": "From/To fields have Ethereum default tokens", "observed": "From: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC), To: 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 (WETH)" },
+        { "action": "Switch to Base (8453)", "expected": "From/To fields update to Base chain defaults", "observed": "From: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913, To: 0x4200000000000000000000000000000000000006 (Base chain addresses)" },
+        { "action": "Type 'USD' on Base chain", "expected": "Only Base chain tokens shown", "observed": "2 results: USDbC (USD Base Coin), USDC (USD Coin) - all Base chain tokens" }
+      ],
+      "evidence": {
+        "screenshots": ["ethereum-defaults.png", "base-tokens-usd.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-008",
+      "title": "Token logos displayed in autocomplete",
+      "status": "pass",
+      "steps": [
+        { "action": "Type 'USD' on Ethereum chain and observe dropdown", "expected": "Token logos shown alongside name and symbol", "observed": "Screenshots confirm logos displayed for BUSD, GUSD, LUSD, MUSD, PYUSD, RLUSD. Each autocomplete item shows logo image, bold symbol, name, and address. Logo onerror handler hides broken images gracefully." }
+      ],
+      "evidence": {
+        "screenshots": ["autocomplete-usd-ethereum.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-009",
+      "title": "Manual address entry still works",
+      "status": "pass",
+      "steps": [
+        { "action": "Enter non-listed PEPE token address 0x6982508145454Ce325dDbE47a25d4ec3d2311933 in From field", "expected": "Address accepted in field", "observed": "Address entered successfully, no dropdown shown (not in tokenlist)" },
+        { "action": "Submit compare request via curl with manual address", "expected": "GET /compare returns 200", "observed": "GET /compare -> 200 (response included spandex_error and curve_error as expected for an unusual token pair, but the request was processed successfully)" }
+      ],
+      "evidence": {
+        "screenshots": ["manual-address-entered.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1&from=0x6982508145454Ce325dDbE47a25d4ec3d2311933&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000000&slippageBps=50 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-010",
+      "title": "Empty autocomplete results",
+      "status": "pass",
+      "steps": [
+        { "action": "Type 'zzzzz' in From field", "expected": "No dropdown or 'No tokens found' message, no JS errors", "observed": "Dropdown did not appear (0 items, list not shown). No JavaScript console errors." }
+      ],
+      "evidence": {
+        "screenshots": ["no-match-zzzzz.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-011",
+      "title": "Tokenlist fetched on page load and replaces built-in list",
+      "status": "pass",
+      "steps": [
+        { "action": "Reload page and check network requests", "expected": "GET /tokenlist request fired on page load", "observed": "Network log shows 'GET http://localhost:3001/tokenlist (fetch)' immediately after page document load" },
+        { "action": "Check HTML source for BUILTIN_TOKENS", "expected": "No BUILTIN_TOKENS embedded in HTML", "observed": "grep for 'BUILTIN_TOKENS' in HTML source returned 0 matches" },
+        { "action": "Verify autocomplete works after load", "expected": "Autocomplete shows tokens from fetched tokenlist", "observed": "Typing 'USD' shows 15 Ethereum tokens from the fetched Uniswap tokenlist (1367 total tokens)" }
+      ],
+      "evidence": {
+        "screenshots": ["page-load.png", "autocomplete-usd-ethereum.png"],
+        "consoleErrors": "none",
+        "network": "GET /tokenlist on page load confirmed in network requests log"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "title": "URL parameters updated with token selection",
+      "status": "pass",
+      "steps": [
+        { "action": "Select USDC via autocomplete in From field", "expected": "USDC address fills From field", "observed": "From field set to 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" },
+        { "action": "Select WETH via autocomplete in To field", "expected": "WETH address fills To field", "observed": "To field set to 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+        { "action": "Click Compare Quotes", "expected": "URL updated with token addresses as search params", "observed": "URL updated to: http://localhost:3001/?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50" }
+      ],
+      "evidence": {
+        "screenshots": ["url-params-after-compare.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare with correct params confirmed"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "data/tokenlist.json was missing on disk (not committed to git due to Droid-Shield false positives). Had to run the init.sh download step (curl https://tokens.uniswap.org) to create it before the /tokenlist endpoint would work.",
+      "resolved": true,
+      "resolution": "Downloaded tokenlist from Uniswap as specified in .factory/init.sh",
+      "affectedAssertions": ["VAL-TOKEN-001", "VAL-TOKEN-002", "VAL-TOKEN-003", "VAL-TOKEN-004", "VAL-TOKEN-005", "VAL-TOKEN-006", "VAL-TOKEN-007", "VAL-TOKEN-008", "VAL-TOKEN-009", "VAL-TOKEN-010", "VAL-TOKEN-011"]
+    },
+    {
+      "description": "agent-browser fill command sometimes caused the page to navigate to about:blank, requiring re-opening the URL. Workaround was to use eval-based DOM manipulation for field interactions.",
+      "resolved": true,
+      "resolution": "Used agent-browser eval with direct DOM manipulation (input.value = ..., dispatchEvent) instead of fill command for reliable form interaction",
+      "affectedAssertions": ["VAL-TOKEN-006", "VAL-CROSS-004"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 12 assertions: all 12 passed. Token autocomplete works correctly: fetches tokenlist on page load, filters by name/symbol/address, shows logos, handles chain switching with updated defaults, accepts manual address entry, handles empty results gracefully, and updates URL parameters after quote comparison."
+}

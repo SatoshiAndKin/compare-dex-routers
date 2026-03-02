@@ -1,0 +1,28 @@
+{
+  "group": "branding",
+  "assertions": {
+    "VAL-BRAND-001": {
+      "status": "pass",
+      "evidence": "Browser title is 'Compare DEX Routers'. Page heading (h1) reads 'Compare DEX Routers'. Confirmed via browser_navigate snapshot and page.evaluate(). Screenshot: brand-full-page.png",
+      "notes": "Only console error is favicon.ico 404 which is cosmetic per testing guidance."
+    },
+    "VAL-BRAND-002": {
+      "status": "pass",
+      "evidence": "Full-page screenshot taken (brand-full-page.png). page.evaluate() text search confirmed: hasFlashProfits=false, hasCowSwapTrader=false. All visible branding says 'Compare DEX Routers'.",
+      "notes": "No forbidden branding text found in rendered UI."
+    },
+    "VAL-BRAND-003": {
+      "status": "pass",
+      "evidence": "Read package.json line 2: \"name\": \"compare-dex-routers\"",
+      "notes": "Package name matches expected value."
+    },
+    "VAL-BRAND-004": {
+      "status": "pass",
+      "evidence": "ripgrep searches: 'FlashProfits' (case-insensitive) in src/ -> no matches. 'cowswap-trader' (case-insensitive) in src/ -> no matches. 'CowSwap Trader' (case-insensitive) in src/ -> no matches. 'FlashProfits' in openapi.yaml -> no matches. 'cowswap-trader' in openapi.yaml -> no matches.",
+      "notes": "All source and config files are clean of forbidden references."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["playwright-browser", "Read", "Grep"]
+}

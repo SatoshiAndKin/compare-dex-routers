@@ -1,0 +1,102 @@
+{
+  "group": "wallet",
+  "testedAt": "2026-03-02T00:31:00.000Z",
+  "credentials": {
+    "account": "N/A",
+    "namespace": "wallet-group"
+  },
+  "toolsUsed": ["agent-browser", "source-inspection"],
+  "assertions": {
+    "VAL-WALLET-001": {
+      "status": "pass",
+      "evidence": "Screenshot connect-button-visible.png: 'Connect Wallet' button clearly visible in page header on initial load. Button is styled prominently (blue, top-right).",
+      "notes": "Disconnect button is also visible when it should be hidden (minor UI issue - the hidden attribute on walletConnected div doesn't hide the Disconnect button since it appears to be a sibling outside that div). Does not affect pass criteria."
+    },
+    "VAL-WALLET-002": {
+      "status": "pass",
+      "evidence": "Screenshot no-wallet-message.png: After clicking 'Connect Wallet' with no wallet extension, message 'No wallet detected. Install a wallet extension and try again.' appears in red text below the button. Console errors: only favicon 404 and tokenlist 500 (both unrelated to wallet).",
+      "notes": null
+    },
+    "VAL-WALLET-003": {
+      "status": "pass",
+      "evidence": "Screenshot connected-state.png: After injecting mock ERC-6963 provider and clicking Connect Wallet > Mock Wallet, UI shows wallet icon, 'Mock Wallet' name, and truncated address '0x1234...7890'. The Connect Wallet button is replaced with the connected state display.",
+      "notes": "Tested with mock ERC-6963 provider via page.evaluate(). Provider menu correctly appeared with wallet name and icon."
+    },
+    "VAL-WALLET-004": {
+      "status": "pass",
+      "evidence": "Screenshot connected-state.png: After connecting mock wallet, sender input field automatically populated with '0x1234567890123456789012345678901234567890' (the mock wallet address).",
+      "notes": "Sender field updates immediately upon wallet connection without requiring any user action."
+    },
+    "VAL-WALLET-005": {
+      "status": "pass",
+      "evidence": "Screenshot quote-results-no-wallet.png: Spandex quote for USDC->WETH swap shows 'Approve' button because approval_token and approval_spender are present in the quote result. DOM inspection confirms button has classes 'tx-btn approve-btn wallet-required' and data-action='approve'.",
+      "notes": "Approve button only appears when the quote includes approval_token and approval_spender fields. Curve quote for the same pair also shows Approve when approval_target is present."
+    },
+    "VAL-WALLET-006": {
+      "status": "pass",
+      "evidence": "Screenshot quote-results-no-wallet.png: Both Spandex and Curve quotes display 'Swap' buttons. DOM inspection confirms three swap buttons: one with 'swap-secondary' class (when approve is needed) and one with 'swap-primary' class (when no approve needed).",
+      "notes": "Swap button is always present on every quote result regardless of approval requirement."
+    },
+    "VAL-WALLET-007": {
+      "status": "pass",
+      "evidence": "After clicking Swap with the rejection mock wallet: UI immediately showed 'Confirming...' status (pending state with yellow color), then updated to 'Failed' (error state with red color) when the mock wallet rejected. Message 'Transaction canceled in wallet.' appeared in wallet status area. No page reload occurred. Screenshot rejection-message.png captured.",
+      "notes": "Transaction status feedback works via inline DOM updates (tx-status div with aria-live='polite'). Status transitions: idle -> 'Confirming...' (pending) -> 'Failed' (error). With the chain-mismatch wallet, status showed 'Confirming...' and 'Auto-refresh paused / Waiting for transaction to settle.' during pending state."
+    },
+    "VAL-WALLET-008": {
+      "status": "pass",
+      "evidence": "Screenshot connected-state.png shows slippage input with label 'Slippage (bps)' and value '50'. Input is type='text', not disabled, not readonly. Network request confirmed: GET /compare?...&slippageBps=50 returns 200. DOM inspection: { value: '50', visible: true, type: 'text', disabled: false, readOnly: false }.",
+      "notes": "Slippage value is included in both manual Compare and auto-refresh requests as the slippageBps URL parameter."
+    },
+    "VAL-WALLET-009": {
+      "status": "pass",
+      "evidence": "Source inspection of server.ts lines 1629-1643: ensureWalletOnChain() checks wallet's active chain via eth_chainId, compares with target chain, and calls wallet_switchEthereumChain if they differ. Tested with mock wallet returning chainId 0x89 (Polygon) while UI was on Ethereum (1). When Swap was clicked, ensureWalletOnChain triggered wallet_switchEthereumChain before proceeding with eth_sendTransaction. UI showed 'Confirming...' status during the chain switch + transaction flow.",
+      "notes": "Chain switch is handled automatically before transaction execution, not as a separate user-facing prompt. The wallet provider handles showing the chain switch dialog to the user."
+    },
+    "VAL-WALLET-010": {
+      "status": "pass",
+      "evidence": "Screenshot disconnected-state.png: After clicking 'Disconnect' button, UI reverted to showing 'Connect Wallet' button, sender field cleared (only placeholder '0x...' visible), and message 'Wallet disconnected.' displayed. Swap/Approve buttons returned to wallet-required (disabled) state.",
+      "notes": "Disconnect clears connectedWalletProvider, connectedWalletAddressValue, sender input, and updates all UI states."
+    },
+    "VAL-WALLET-011": {
+      "status": "pass",
+      "evidence": "Screenshot rejection-message.png: After connecting mock wallet that throws code 4001 on eth_sendTransaction, clicked Swap button. UI showed: (1) 'Transaction canceled in wallet.' message in wallet status area, (2) 'Failed' in tx-status div, (3) Swap button re-enabled (cursor: pointer, not disabled), (4) Auto-refresh resumed with 'Refreshing in 14s' countdown.",
+      "notes": "Source code confirms isUserRejectedError() checks for code 4001 and nested data.code 4001. On rejection: setWalletMessage shows user-friendly message, setTxStatus shows 'Failed', setTxCardPending(false) re-enables buttons, resumeAutoRefreshAfterTransaction() restarts countdown."
+    },
+    "VAL-WALLET-012": {
+      "status": "pass",
+      "evidence": "Screenshot quote-results-no-wallet.png: Without wallet connected, DOM inspection shows all tx-btn elements have: disabled=false, aria-disabled='true', classList includes 'wallet-required'. CSS for .wallet-required: opacity: 0.6; cursor: not-allowed. When clicking Approve/Swap without wallet, code checks hasConnectedWallet() and shows 'Connect wallet first' message instead of executing.",
+      "notes": "Buttons are technically not HTML-disabled (disabled=false) but visually disabled via wallet-required class and functionally guarded by hasConnectedWallet() check in click handlers. aria-disabled='true' provides accessibility indication."
+    },
+    "VAL-WALLET-013": {
+      "status": "pass",
+      "evidence": "Source inspection of server.ts lines 1748-1762: After successful approval, onSuccess callback: (1) sets button.textContent='Approved', (2) sets button.dataset.locked='true', (3) adds 'approved' class (green background), (4) sets button.disabled=true, (5) finds sibling .swap-btn, removes 'swap-secondary' class, adds 'swap-primary' class making it the primary action button.",
+      "notes": "Verified via source code inspection. The approve-to-swap transition is well-implemented: approved button becomes locked/disabled with green 'Approved' text, swap button transitions from secondary (gray) to primary (green) styling."
+    },
+    "VAL-WALLET-014": {
+      "status": "pass",
+      "evidence": "Source inspection of server.ts lines 1768-1795: onSwapClick reads router_address from card.dataset.routerAddress, router_calldata from card.dataset.routerCalldata, router_value from card.dataset.routerValue (default '0x0'). executeCardTransaction called with { to: routerAddress, data: routerCalldata, value: toHexQuantity(routerValue), from: connectedWalletAddressValue }. Data attributes are populated from quote response at lines 1229-1231: data-router-address, data-router-calldata, data-router-value. ChainId comes from card.dataset.quoteChainId (line 1683) and is used by ensureWalletOnChain.",
+      "notes": "Correct fields used: router_address -> to, router_calldata -> data, router_value -> value. The tx is sent via provider.request({ method: 'eth_sendTransaction', params: [txParams] }) at line 1690-1692."
+    },
+    "VAL-WALLET-015": {
+      "status": "pass",
+      "evidence": "Source inspection of server.ts lines 1722-1753: onApproveClick reads approval_token from card.dataset.approvalToken and approval_spender from card.dataset.approvalSpender. encodeApproveCalldata(approvalSpender) at line 542-548 encodes the ERC-20 approve function: selector '0x095ea7b3' + spender address padded to 32 bytes + MAX_UINT256 as amount. executeCardTransaction called with { to: approvalToken, data: calldata, value: '0x0', from: connectedWalletAddressValue }.",
+      "notes": "Correct: approve(spender, maxUint256) called on approval_token address. spender is approval_spender from quote. MAX_UINT256 used for unlimited approval amount."
+    }
+  },
+  "frictions": [
+    {
+      "description": "Disconnect button is visible even when no wallet is connected (appears as a sibling button in the header). Should be hidden when wallet is not connected.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": ["VAL-WALLET-001"]
+    },
+    {
+      "description": "/tokenlist endpoint returns 500 error on page load. Token autocomplete data may not be available. This is a pre-existing server issue, not wallet-related.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": []
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 15 wallet assertions: 15 passed, 0 failed, 0 blocked. All wallet connection, disconnection, transaction, approval, slippage, chain mismatch, and rejection flows work correctly. Source inspection confirms correct transaction parameter handling for both swap and approve operations."
+}

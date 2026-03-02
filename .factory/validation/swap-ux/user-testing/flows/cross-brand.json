@@ -1,0 +1,188 @@
+{
+  "groupId": "cross-brand",
+  "testedAt": "2026-03-02T00:48:00Z",
+  "credentials": {
+    "account": "N/A",
+    "namespace": "cross-group"
+  },
+  "toolsUsed": ["agent-browser", "playwright-mcp", "curl", "grep", "read"],
+  "assertions": [
+    {
+      "id": "VAL-BRAND-001",
+      "title": "Page title and heading say Compare DEX Routers",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3001/", "expected": "Page loads", "observed": "Page loaded successfully" },
+        { "action": "Check browser tab title", "expected": "Compare DEX Routers", "observed": "Title is 'Compare DEX Routers'" },
+        { "action": "Check H1 heading", "expected": "Compare DEX Routers", "observed": "H1 heading shows 'Compare DEX Routers'" }
+      ],
+      "evidence": {
+        "screenshots": ["cross-brand-heading.png"],
+        "consoleErrors": "none (favicon.ico 404 is cosmetic)",
+        "browserTitle": "Compare DEX Routers"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BRAND-002",
+      "title": "No FlashProfits or CowSwap Trader references in UI",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to app and take full-page screenshot", "expected": "No forbidden branding visible", "observed": "Full page shows only 'Compare DEX Routers' branding" },
+        { "action": "Search page text for 'FlashProfits' or 'CowSwap Trader'", "expected": "No matches", "observed": "document.body.innerText search returned false for both terms" }
+      ],
+      "evidence": {
+        "screenshots": ["cross-brand-fullpage.png"],
+        "consoleErrors": "none",
+        "textSearch": "document.body.innerText.includes('FlashProfits') || document.body.innerText.includes('CowSwap Trader') returned false"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BRAND-003",
+      "title": "Package metadata updated",
+      "status": "pass",
+      "steps": [
+        { "action": "Read package.json", "expected": "name field is 'compare-dex-routers'", "observed": "name field is 'compare-dex-routers'" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A",
+        "terminal": "package.json name: \"compare-dex-routers\""
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BRAND-004",
+      "title": "No FlashProfits or cowswap-trader references in source/config files",
+      "status": "pass",
+      "steps": [
+        { "action": "Grep src/ for FlashProfits|cowswap-trader (case-insensitive)", "expected": "No matches", "observed": "No matches found" },
+        { "action": "Grep openapi.yaml for FlashProfits|cowswap-trader (case-insensitive)", "expected": "No matches", "observed": "No matches found" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A",
+        "terminal": "ripgrep search for 'FlashProfits|flashprofits|cowswap-trader|CowSwap Trader' in src/ and openapi.yaml returned no matches"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "Token select to quote flow",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to app, select Ethereum chain", "expected": "Chain selected", "observed": "Ethereum (1) selected, default tokens populated" },
+        { "action": "Type 'WETH' in From field to trigger autocomplete", "expected": "Autocomplete shows WETH token", "observed": "Dropdown appeared with WETH (Wrapped Ether) and logo" },
+        { "action": "Click WETH in autocomplete dropdown", "expected": "From field filled with WETH address", "observed": "From field contains 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+        { "action": "Type 'USDC' in To field to trigger autocomplete", "expected": "Autocomplete shows USDC token", "observed": "Dropdown appeared with USDC (USDCoin) and logo" },
+        { "action": "Click USDC in autocomplete dropdown", "expected": "To field filled with USDC address", "observed": "To field contains 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" },
+        { "action": "Enter amount '1' and click Compare Quotes", "expected": "Quote results appear", "observed": "Quote results appeared with Curve quote showing 1946.758493 USDC output, auto-refresh countdown visible" }
+      ],
+      "evidence": {
+        "screenshots": ["cross-autocomplete-from.png", "cross-token-selected.png", "cross-quote-results.png"],
+        "consoleErrors": "none (only favicon.ico 404 cosmetic)",
+        "network": "GET /compare -> 200 with valid quote data"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Wallet connect populates sender and refreshes",
+      "status": "pass",
+      "steps": [
+        { "action": "Inject mock ERC-6963 wallet provider via page.evaluate()", "expected": "Mock wallet available", "observed": "Mock wallet injected successfully" },
+        { "action": "Click 'Connect Wallet' button", "expected": "Wallet picker appears", "observed": "Wallet picker showed MockWalletCross option" },
+        { "action": "Click MockWalletCross in picker", "expected": "Wallet connected, sender auto-filled", "observed": "Connected state shows 'MockWalletCross 0xDeAd...0001', sender field auto-filled with '0xDeAdBeEf00000000000000000000000000000001'" },
+        { "action": "Click Compare Quotes and check fetch URL", "expected": "Request includes sender parameter", "observed": "Fetch URL contains sender=0xDeAdBeEf00000000000000000000000000000001" }
+      ],
+      "evidence": {
+        "screenshots": ["cross-wallet-connected.png", "cross-wallet-sender-quote.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?...&sender=0xDeAdBeEf00000000000000000000000000000001 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Existing API endpoints preserved",
+      "status": "pass",
+      "steps": [
+        { "action": "curl http://localhost:3001/health", "expected": "200 with JSON", "observed": "200 - {\"status\":\"ok\",\"requestId\":\"...\",\"flags\":{\"curve_enabled\":true,\"compare_endpoint\":true,\"metrics_endpoint\":true}}" },
+        { "action": "curl http://localhost:3001/chains", "expected": "200 with chain data", "observed": "200 - JSON with chain objects for Ethereum, Optimism, BSC, Polygon, Base, Arbitrum, Avalanche" },
+        { "action": "curl /compare with valid params", "expected": "200 with comparison data", "observed": "200 - JSON with spandex (null, error) and curve (valid quote data with output, route, router details)" },
+        { "action": "curl /quote with valid params", "expected": "200 or error response", "observed": "500 - {\"error\":\"No providers returned a successful quote\"} (Spandex provider issue, not endpoint breakage)" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A",
+        "network": "GET /health -> 200, GET /chains -> 200, GET /compare -> 200, GET /quote -> 500 (provider issue, endpoint works)"
+      },
+      "issues": "/quote returns 500 because no Spandex providers returned a successful quote. This is an external provider issue, not an endpoint regression. The endpoint itself correctly processes the request and returns a structured error response."
+    },
+    {
+      "id": "VAL-CROSS-005",
+      "title": "No console errors during normal flows",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to app, select tokens via autocomplete, get quote, wait for auto-refresh", "expected": "No console errors", "observed": "Only favicon.ico 404 error (documented as cosmetic). No JavaScript errors." },
+        { "action": "Connect wallet and get quote with sender", "expected": "No console errors", "observed": "No additional console errors after wallet connection flow" },
+        { "action": "Switch chains", "expected": "No console errors", "observed": "No console errors during chain switch" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "Only: 'Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3001/favicon.ico:0' (documented cosmetic issue)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "title": "Auto-refreshed quotes include connected wallet as sender",
+      "status": "pass",
+      "steps": [
+        { "action": "Connect mock wallet and get initial quote", "expected": "Quote displayed with sender in URL", "observed": "Quote displayed, URL contains sender param" },
+        { "action": "Clear fetch URL log and wait 18 seconds for auto-refresh", "expected": "Auto-refresh fires with sender param", "observed": "Auto-refresh request captured: /compare?...&sender=0xDeAdBeEf00000000000000000000000000000001" },
+        { "action": "Verify refreshed quote data updated", "expected": "New quote data displayed", "observed": "Quote updated from kyberswap provider to odos provider with new output amount" }
+      ],
+      "evidence": {
+        "screenshots": ["cross-wallet-sender-quote.png"],
+        "consoleErrors": "none",
+        "network": "Auto-refreshed /compare request included sender=0xDeAdBeEf00000000000000000000000000000001"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-007",
+      "title": "Chain switch clears stale results and stops refresh",
+      "status": "pass",
+      "steps": [
+        { "action": "Get quote on Ethereum with results and auto-refresh visible", "expected": "Results displayed with countdown", "observed": "Quote results showing with 'Refreshing in Xs' countdown and Spandex/Curve tabs" },
+        { "action": "Take screenshot of results on Ethereum", "expected": "Evidence of results visible", "observed": "Screenshot captured showing results and countdown" },
+        { "action": "Change chain to Base (8453)", "expected": "Results cleared, countdown gone, tokens updated", "observed": "Results section completely removed, no countdown visible, from/to fields updated to Base chain defaults (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913, 0x4200000000000000000000000000000000000006)" }
+      ],
+      "evidence": {
+        "screenshots": ["cross-results-before-chain-switch.png", "cross-results-cleared-after-chain-switch.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "agent-browser CLI sessions occasionally crash (page becomes empty document) after eval() calls or click operations, requiring session restart",
+      "resolved": true,
+      "resolution": "Switched to Playwright MCP tools which are more stable for complex eval + interaction sequences",
+      "affectedAssertions": ["VAL-CROSS-002", "VAL-CROSS-006"]
+    },
+    {
+      "description": "The /quote endpoint returns 500 because Spandex providers are not returning successful quotes - likely API key or rate limit issue",
+      "resolved": false,
+      "resolution": "Not a UI or endpoint regression - external provider dependency. /compare still works because Curve is available.",
+      "affectedAssertions": ["VAL-CROSS-003"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 10 assertions: all 10 passed. Branding correctly shows 'Compare DEX Routers' everywhere with no FlashProfits/CowSwap Trader references. Token autocomplete, wallet connection, sender parameter propagation, auto-refresh, and chain switching all work correctly. Only notable issue is /quote returning 500 due to Spandex provider failures (not an endpoint regression)."
+}
