@@ -18,3 +18,6 @@ if [ ! -f .env ]; then
   cp env.example .env
   echo "Created .env from env.example - fill in ALCHEMY_API_KEY"
 fi
+
+# Kill any existing dev server on port 3002 (idempotent)
+lsof -ti :3002 | xargs kill 2>/dev/null || true

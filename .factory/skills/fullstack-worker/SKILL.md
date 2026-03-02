@@ -57,10 +57,12 @@ npm test            # All tests must pass
 ```
 
 Then manually verify via playwright browser tools:
-- Navigate to http://localhost:3001/
+- Navigate to http://localhost:3002/
 - Take a snapshot to verify UI renders correctly
 - Test the specific user interactions this feature adds
 - Check console for errors
+
+**IMPORTANT:** NEVER truncate addresses. Always display full 0x addresses. This is a project convention.
 
 Each interactive check = one entry in `interactiveChecks` with the full action sequence and observed result.
 
@@ -68,9 +70,9 @@ Each interactive check = one entry in `interactiveChecks` with the full action s
 
 If you modified server-side code, the dev server (running with tsx --watch) should auto-reload. If it doesn't respond, restart it:
 ```bash
-lsof -ti :3001 | xargs kill 2>/dev/null; PORT=3001 npm run dev &
+lsof -ti :3002 | xargs kill 2>/dev/null; PORT=3002 npm run dev &
 sleep 3
-curl -sf http://localhost:3001/health
+curl -sf http://localhost:3002/health
 ```
 
 ## Example Handoff

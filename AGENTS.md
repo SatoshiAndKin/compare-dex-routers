@@ -64,6 +64,7 @@ Tests are in `src/__tests__/`. Run with `npm test`. Tests use Vitest with mocked
 
 ## Conventions
 
+- **NEVER truncate addresses.** Always display full 0x addresses in the UI and API responses. No `0xABCD...1234` patterns.
 - All source files in `src/` directory
 - Test files: `src/__tests__/*.test.ts`
 - ESLint with TypeScript strict rules, Prettier formatting
