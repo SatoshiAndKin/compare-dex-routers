@@ -538,6 +538,37 @@ const INDEX_HTML = `<!DOCTYPE html>
       flex-shrink: 0;
     }
 
+    /* Settings Gear Icon */
+    .settings-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .settings-btn:hover { background: #f0f0f0; }
+    .settings-btn:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    .settings-btn svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    /* Form Header Row with Chain Selector and Settings */
+    .form-header-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .form-header-row .form-group { flex: 1; margin-bottom: 0; }
+
     /* Modal Overlay */
     .modal-overlay {
       position: fixed;
@@ -657,6 +688,31 @@ const INDEX_HTML = `<!DOCTYPE html>
       color: #666;
       font-style: italic;
       margin-top: 0.25rem;
+    }
+
+    /* Settings Modal Section */
+    .settings-section {
+      margin-bottom: 1.25rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #e0e0e0;
+    }
+    .settings-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+    .settings-section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid #000;
+    }
+    .settings-placeholder {
+      font-size: 0.875rem;
+      color: #666;
+      font-style: italic;
+      padding: 0.5rem;
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
     }
     
     /* Form Row Layout */
@@ -1102,28 +1158,26 @@ const INDEX_HTML = `<!DOCTYPE html>
   
   <!-- Wallet Section - Inline with trading flow -->
   <form id="form">
-    <!-- Row 1: Chain Selector -->
-    <div class="form-group">
-      <label for="chainId">Chain</label>
-      <select id="chainId">
-        <option value="1">Ethereum (1)</option>
-        <option value="8453" selected>Base (8453)</option>
-        <option value="42161">Arbitrum (42161)</option>
-        <option value="10">Optimism (10)</option>
-        <option value="137">Polygon (137)</option>
-        <option value="56">BSC (56)</option>
-        <option value="43114">Avalanche (43114)</option>
-      </select>
-    </div>
-    <!-- Row 1.5: Custom Tokenlist URL -->
-    <div class="form-group">
-      <label for="tokenlistUrl">Tokenlist URL (optional)</label>
-      <div class="tokenlist-url-row">
-        <input type="text" id="tokenlistUrl" placeholder="https://tokens.uniswap.org">
-        <button type="button" id="loadTokenlistBtn" class="btn-small">Load</button>
-        <button type="button" id="resetTokenlistBtn" class="btn-small btn-secondary" hidden>Reset</button>
+    <!-- Row 1: Chain Selector + Settings Gear -->
+    <div class="form-header-row">
+      <div class="form-group">
+        <label for="chainId">Chain</label>
+        <select id="chainId">
+          <option value="1">Ethereum (1)</option>
+          <option value="8453" selected>Base (8453)</option>
+          <option value="42161">Arbitrum (42161)</option>
+          <option value="10">Optimism (10)</option>
+          <option value="137">Polygon (137)</option>
+          <option value="56">BSC (56)</option>
+          <option value="43114">Avalanche (43114)</option>
+        </select>
       </div>
-      <div id="tokenlistMessage" class="tokenlist-message" aria-live="polite"></div>
+      <button type="button" id="settingsBtn" class="settings-btn" aria-label="Open settings" aria-haspopup="dialog" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
     </div>
     <!-- Row 2: Wallet (integrated into form flow) -->
     <div class="form-group wallet-group">
@@ -1221,6 +1275,42 @@ const INDEX_HTML = `<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="settingsModalTitle" class="modal-title">Settings</h2>
+        <button type="button" id="settingsModalClose" class="modal-close" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Tokenlist URL Section -->
+        <div class="settings-section">
+          <div class="settings-section-title">Tokenlist URL</div>
+          <div class="tokenlist-url-row">
+            <input type="text" id="tokenlistUrl" placeholder="https://tokens.uniswap.org">
+            <button type="button" id="loadTokenlistBtn" class="btn-small">Load</button>
+            <button type="button" id="resetTokenlistBtn" class="btn-small btn-secondary" hidden>Reset</button>
+          </div>
+          <div id="tokenlistMessage" class="tokenlist-message" aria-live="polite"></div>
+        </div>
+        <!-- Tokenlist Sources Section (placeholder for multi-tokenlist feature) -->
+        <div class="settings-section">
+          <div class="settings-section-title">Tokenlist Sources</div>
+          <div id="tokenlistSourcesContent" class="settings-placeholder">
+            Multiple tokenlist support coming soon
+          </div>
+        </div>
+        <!-- Local Tokens Section (placeholder for custom tokens feature) -->
+        <div class="settings-section">
+          <div class="settings-section-title">Local Tokens</div>
+          <div id="localTokensContent" class="settings-placeholder">
+            Custom token support coming soon
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
     let tokenlistTokens = [];
@@ -1299,6 +1389,11 @@ const INDEX_HTML = `<!DOCTYPE html>
     const refreshIndicator = document.getElementById('refreshIndicator');
     const refreshCountdown = document.getElementById('refreshCountdown');
     const refreshStatus = document.getElementById('refreshStatus');
+
+    // Settings Modal Elements
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const settingsModalClose = document.getElementById('settingsModalClose');
 
     function hasConnectedWallet() {
       return Boolean(connectedWalletProvider && connectedWalletAddressValue);
@@ -1391,6 +1486,23 @@ const INDEX_HTML = `<!DOCTYPE html>
       document.body.style.overflow = '';
       // Return focus to the button that opened the modal
       mevInfoBtn.focus();
+    }
+
+    // Settings Modal Functions
+    function openSettingsModal() {
+      settingsModal.classList.add('show');
+      settingsBtn.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = 'hidden';
+      // Focus the close button for accessibility
+      settingsModalClose.focus();
+    }
+
+    function closeSettingsModal() {
+      settingsModal.classList.remove('show');
+      settingsBtn.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = '';
+      // Return focus to the button that opened the modal
+      settingsBtn.focus();
     }
 
     // Render chain-specific content in modal
@@ -2318,6 +2430,21 @@ const INDEX_HTML = `<!DOCTYPE html>
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && mevModal.classList.contains('show')) {
         closeMevModal();
+      }
+      if (event.key === 'Escape' && settingsModal.classList.contains('show')) {
+        closeSettingsModal();
+      }
+    });
+
+    // Settings Modal event listeners
+    settingsBtn.addEventListener('click', openSettingsModal);
+
+    settingsModalClose.addEventListener('click', closeSettingsModal);
+
+    // Close settings modal on overlay click (outside the modal)
+    settingsModal.addEventListener('click', (event) => {
+      if (event.target === settingsModal) {
+        closeSettingsModal();
       }
     });
 
