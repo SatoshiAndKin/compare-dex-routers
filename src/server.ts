@@ -95,6 +95,118 @@ async function loadTokenList(): Promise<TokenListPayload> {
   return parsed;
 }
 
+// Maximum response size for proxy endpoint (5MB)
+const TOKENLIST_PROXY_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Fetch and validate a remote tokenlist URL via server-side proxy.
+ * This avoids CORS issues when loading custom tokenlists.
+ *
+ * Validation:
+ * - URL must start with https://
+ * - Response must be valid JSON with a tokens array
+ * - Response body limited to 5MB
+ *
+ * Returns the parsed tokenlist on success.
+ * Throws Error with descriptive message on failure.
+ */
+async function fetchProxyTokenList(urlString: string): Promise<TokenListPayload> {
+  // Validate URL parameter exists and is a string
+  if (!urlString || typeof urlString !== "string") {
+    throw new Error("Missing url parameter");
+  }
+
+  // Parse and validate URL
+  let url: URL;
+  try {
+    url = new URL(urlString);
+  } catch {
+    throw new Error("Invalid URL format");
+  }
+
+  // Enforce HTTPS only
+  if (url.protocol !== "https:") {
+    throw new Error("URL must use HTTPS protocol");
+  }
+
+  // Fetch the remote URL
+  let response: Response;
+  try {
+    response = await fetch(urlString, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(30000), // 30 second timeout
+    });
+  } catch (err: unknown) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to fetch remote URL: ${detail}`, { cause: err });
+  }
+
+  if (!response.ok) {
+    throw new Error(`Remote server returned HTTP ${response.status}`);
+  }
+
+  // Check content-length header if present
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && parseInt(contentLength, 10) > TOKENLIST_PROXY_MAX_BYTES) {
+    throw new Error(`Response too large: ${contentLength} bytes exceeds 5MB limit`);
+  }
+
+  // Read response body with size limit
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Failed to read response body");
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      totalBytes += value.length;
+      if (totalBytes > TOKENLIST_PROXY_MAX_BYTES) {
+        throw new Error("Response body exceeds 5MB limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  // Combine chunks and parse JSON
+  const bodyBytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bodyBytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  const bodyText = new TextDecoder().decode(bodyBytes);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    throw new Error("Response is not valid JSON");
+  }
+
+  // Validate tokens array exists
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !Array.isArray((parsed as Record<string, unknown>).tokens)
+  ) {
+    throw new Error("Response must contain a tokens array");
+  }
+
+  return parsed as TokenListPayload;
+}
+
 async function findQuote(
   chainId: number,
   from: string,
@@ -648,6 +760,36 @@ const INDEX_HTML = `<!DOCTYPE html>
       letter-spacing: 0.05em;
     }
 
+    /* Tokenlist URL Input */
+    .tokenlist-url-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .tokenlist-url-row input {
+      flex: 1;
+      min-width: 0;
+    }
+    .btn-small {
+      font-size: 0.75rem;
+      padding: 0.375rem 0.625rem;
+      white-space: nowrap;
+    }
+    .btn-small.btn-secondary {
+      background: #666;
+      color: #fff;
+      border-color: #666;
+    }
+    .btn-small.btn-secondary:hover { background: #555; }
+    .tokenlist-message {
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+      min-height: 1rem;
+    }
+    .tokenlist-message.error { color: #CC0000; font-weight: 600; }
+    .tokenlist-message.success { color: #007700; }
+    .tokenlist-message.loading { color: #666; font-style: italic; }
+
     /* Wallet Section - Integrated into form flow (no extra border/section) */
     .wallet-group {
       margin-bottom: 0.75rem;
@@ -972,6 +1114,16 @@ const INDEX_HTML = `<!DOCTYPE html>
         <option value="56">BSC (56)</option>
         <option value="43114">Avalanche (43114)</option>
       </select>
+    </div>
+    <!-- Row 1.5: Custom Tokenlist URL -->
+    <div class="form-group">
+      <label for="tokenlistUrl">Tokenlist URL (optional)</label>
+      <div class="tokenlist-url-row">
+        <input type="text" id="tokenlistUrl" placeholder="https://tokens.uniswap.org">
+        <button type="button" id="loadTokenlistBtn" class="btn-small">Load</button>
+        <button type="button" id="resetTokenlistBtn" class="btn-small btn-secondary" hidden>Reset</button>
+      </div>
+      <div id="tokenlistMessage" class="tokenlist-message" aria-live="polite"></div>
     </div>
     <!-- Row 2: Wallet (integrated into form flow) -->
     <div class="form-group wallet-group">
@@ -1567,6 +1719,96 @@ const INDEX_HTML = `<!DOCTYPE html>
         tokenlistTokens = [];
       }
     }
+
+    // Load custom tokenlist from URL via proxy endpoint
+    async function loadCustomTokenlist(url) {
+      const res = await fetch('/tokenlist/proxy?url=' + encodeURIComponent(url));
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || ('HTTP ' + res.status));
+      }
+      const data = await res.json();
+      tokenlistTokens = Array.isArray(data.tokens) ? data.tokens : [];
+    }
+
+    // Tokenlist URL input elements
+    const tokenlistUrlInput = document.getElementById('tokenlistUrl');
+    const loadTokenlistBtn = document.getElementById('loadTokenlistBtn');
+    const resetTokenlistBtn = document.getElementById('resetTokenlistBtn');
+    const tokenlistMessage = document.getElementById('tokenlistMessage');
+    const CUSTOM_TOKENLIST_URL_KEY = 'customTokenlistUrl';
+
+    function setTokenlistMessage(text, kind) {
+      tokenlistMessage.textContent = text || '';
+      tokenlistMessage.className = 'tokenlist-message' + (kind ? ' ' + kind : '');
+    }
+
+    function showResetButton(show) {
+      resetTokenlistBtn.hidden = !show;
+    }
+
+    // Load custom tokenlist from URL
+    async function handleLoadCustomTokenlist() {
+      const url = String(tokenlistUrlInput.value || '').trim();
+      if (!url) {
+        setTokenlistMessage('Enter a tokenlist URL', 'error');
+        return;
+      }
+
+      loadTokenlistBtn.disabled = true;
+      loadTokenlistBtn.textContent = 'Loading...';
+      setTokenlistMessage('Fetching tokenlist...', 'loading');
+
+      try {
+        await loadCustomTokenlist(url);
+        localStorage.setItem(CUSTOM_TOKENLIST_URL_KEY, url);
+        setTokenlistMessage('Loaded ' + tokenlistTokens.length + ' tokens', 'success');
+        showResetButton(true);
+        // Update autocomplete with new tokens if there's input
+        if (fromInput.value.trim()) fromAutocomplete.refresh();
+        if (toInput.value.trim()) toAutocomplete.refresh();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setTokenlistMessage('Error: ' + msg, 'error');
+      } finally {
+        loadTokenlistBtn.disabled = false;
+        loadTokenlistBtn.textContent = 'Load';
+      }
+    }
+
+    // Reset to default tokenlist
+    async function handleResetTokenlist() {
+      loadTokenlistBtn.disabled = true;
+      setTokenlistMessage('Resetting...', 'loading');
+
+      try {
+        localStorage.removeItem(CUSTOM_TOKENLIST_URL_KEY);
+        tokenlistUrlInput.value = '';
+        await loadTokenlist();
+        setTokenlistMessage('Reset to default (' + tokenlistTokens.length + ' tokens)', 'success');
+        showResetButton(false);
+        // Update autocomplete
+        if (fromInput.value.trim()) fromAutocomplete.refresh();
+        if (toInput.value.trim()) toAutocomplete.refresh();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setTokenlistMessage('Error: ' + msg, 'error');
+      } finally {
+        loadTokenlistBtn.disabled = false;
+      }
+    }
+
+    // Wire up button handlers
+    loadTokenlistBtn.addEventListener('click', handleLoadCustomTokenlist);
+    resetTokenlistBtn.addEventListener('click', handleResetTokenlist);
+
+    // Load on Enter in URL input
+    tokenlistUrlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void handleLoadCustomTokenlist();
+      }
+    });
 
     function getTokensForChain(chainId) {
       const cid = Number(chainId);
@@ -2744,10 +2986,33 @@ const INDEX_HTML = `<!DOCTYPE html>
       params.get('chainId') && params.get('from') && params.get('to') && params.get('amount')
     );
 
-    loadTokenlist().then(() => {
+    // Check for custom tokenlist URL in localStorage and load it
+    const savedTokenlistUrl = localStorage.getItem(CUSTOM_TOKENLIST_URL_KEY);
+    let tokenlistLoadPromise;
+
+    if (savedTokenlistUrl) {
+      // Restore custom URL in input field
+      tokenlistUrlInput.value = savedTokenlistUrl;
+      showResetButton(true);
+      setTokenlistMessage('Loading saved tokenlist...', 'loading');
+
+      tokenlistLoadPromise = loadCustomTokenlist(savedTokenlistUrl)
+        .then(() => {
+          setTokenlistMessage('Loaded ' + tokenlistTokens.length + ' tokens from saved URL', 'success');
+        })
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          setTokenlistMessage('Failed to load saved URL: ' + msg + '. Using default.', 'error');
+          return loadTokenlist();
+        });
+    } else {
+      tokenlistLoadPromise = loadTokenlist();
+    }
+
+    tokenlistLoadPromise.then(() => {
       // Now we can format tokens with symbols from the loaded tokenlist
       const chainId = Number(chainIdInput.value);
-      
+
       if (params.get('from')) {
         const fromAddr = params.get('from');
         const fromToken = findTokenByAddress(fromAddr, chainId);
@@ -2759,7 +3024,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           fromInput.dataset.address = fromAddr;
         }
       }
-      
+
       if (params.get('to')) {
         const toAddr = params.get('to');
         const toToken = findTokenByAddress(toAddr, chainId);
@@ -2771,12 +3036,12 @@ const INDEX_HTML = `<!DOCTYPE html>
           toInput.dataset.address = toAddr;
         }
       }
-      
+
       // Apply defaults if no URL params for from/to
       if (!params.get('from') && !params.get('to')) {
         applyDefaults(chainId);
       }
-      
+
       const activeElement = document.activeElement;
       if (activeElement === fromInput) {
         fromAutocomplete.refresh();
@@ -2853,6 +3118,36 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       logError("Failed to load tokenlist", err);
       const details = err instanceof Error ? err.message : String(err);
       sendError(res, 500, `Failed to load tokenlist: ${details}`);
+    }
+    return;
+  }
+
+  // Proxy endpoint for custom tokenlist URLs (avoids CORS issues)
+  if (url.pathname === "/tokenlist/proxy" && req.method === "GET") {
+    const remoteUrl = url.searchParams.get("url");
+
+    if (!remoteUrl) {
+      sendError(res, 400, "Missing url parameter");
+      return;
+    }
+
+    try {
+      const tokenList = await fetchProxyTokenList(remoteUrl);
+      sendJson(res, 200, tokenList);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+
+      // Determine appropriate status code
+      if (
+        message.includes("Missing url") ||
+        message.includes("Invalid URL") ||
+        message.includes("HTTPS")
+      ) {
+        sendError(res, 400, message);
+      } else {
+        // Fetch failures, parse errors, size limits - all 502
+        sendError(res, 502, message);
+      }
     }
     return;
   }
