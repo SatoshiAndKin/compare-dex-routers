@@ -810,6 +810,51 @@ const INDEX_HTML = `<!DOCTYPE html>
       border-color: #0055FF;
     }
 
+    /* Local Token Entry */
+    .local-token-entry {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      border: 1px solid #e0e0e0;
+      margin-bottom: 0.5rem;
+      background: #fafafa;
+    }
+    .local-token-entry:last-child { margin-bottom: 0; }
+    .local-token-symbol {
+      font-weight: 700;
+      font-size: 0.875rem;
+      min-width: 60px;
+    }
+    .local-token-address {
+      font-family: monospace;
+      font-size: 0.625rem;
+      color: #666;
+      flex: 1;
+      word-break: break-all;
+    }
+    .local-token-chain {
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.125rem 0.25rem;
+      background: #e0e0e0;
+      color: #666;
+      white-space: nowrap;
+    }
+    .local-token-remove-btn {
+      background: transparent;
+      border: none;
+      color: #666;
+      font-size: 1rem;
+      padding: 0 0.25rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .local-token-remove-btn:hover { color: #CC0000; }
+    .local-token-remove-btn:focus { outline: 2px solid #0055FF; }
+
     /* Unrecognized Token Popup */
     .unrecognized-token-info {
       border: 2px solid #CC7A00;
@@ -1482,11 +1527,11 @@ const INDEX_HTML = `<!DOCTYPE html>
           </div>
         </div>
         </div>
-        <!-- Local Tokens Section (placeholder for custom tokens feature) -->
+        <!-- Local Tokens Section -->
         <div class="settings-section">
           <div class="settings-section-title">Local Tokens</div>
-          <div id="localTokensContent" class="settings-placeholder">
-            Custom token support coming soon
+          <div id="localTokensContent">
+            <!-- Local tokens rendered by JS -->
           </div>
         </div>
       </div>
@@ -1734,6 +1779,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     // Settings Modal Functions
     function openSettingsModal() {
+      renderLocalTokens();
       settingsModal.classList.add('show');
       settingsBtn.setAttribute('aria-expanded', 'true');
       document.body.style.overflow = 'hidden';
@@ -1795,6 +1841,54 @@ const INDEX_HTML = `<!DOCTYPE html>
         existing.push({ ...token, _source: LOCAL_TOKENS_SOURCE_NAME });
         saveLocalTokenList(existing);
       }
+    }
+
+    function removeTokenFromLocalList(address, chainId) {
+      const existing = loadLocalTokenList();
+      const filtered = existing.filter(t =>
+        !(String(t.address).toLowerCase() === String(address).toLowerCase() &&
+          Number(t.chainId) === Number(chainId))
+      );
+      saveLocalTokenList(filtered);
+      renderLocalTokens();
+      refreshAutocomplete();
+    }
+
+    function renderLocalTokens() {
+      const container = document.getElementById('localTokensContent');
+      if (!container) return;
+
+      const localTokens = loadLocalTokenList();
+
+      if (localTokens.length === 0) {
+        container.innerHTML = '<div class="settings-placeholder">No custom tokens saved</div>';
+        return;
+      }
+
+      let html = '';
+      for (const token of localTokens) {
+        const chainName = CHAIN_NAMES[String(token.chainId)] || 'Chain ' + token.chainId;
+        html += '<div class="local-token-entry" data-address="' + escapeHtml(token.address) + '" data-chain-id="' + token.chainId + '">';
+        html += '<span class="local-token-symbol">' + escapeHtml(token.symbol || '???') + '</span>';
+        html += '<span class="local-token-address">' + escapeHtml(token.address) + '</span>';
+        html += '<span class="local-token-chain">' + escapeHtml(chainName) + '</span>';
+        html += '<button type="button" class="local-token-remove-btn" data-action="remove-local-token" data-address="' + escapeHtml(token.address) + '" data-chain-id="' + token.chainId + '" aria-label="Remove token">&times;</button>';
+        html += '</div>';
+      }
+
+      container.innerHTML = html;
+
+      // Wire up event handlers
+      container.querySelectorAll('[data-action="remove-local-token"]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const btn = e.currentTarget;
+          const address = btn.dataset.address;
+          const chainId = Number(btn.dataset.chainId);
+          if (address && chainId) {
+            removeTokenFromLocalList(address, chainId);
+          }
+        });
+      });
     }
 
     // Unrecognized Token Modal Elements
@@ -1912,6 +2006,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       // Add to local list
       addTokenToLocalList(token);
+      renderLocalTokens();
 
       // Update input field with formatted display
       const input = unrecognizedTokenState.targetInput === 'from' ? fromInput : toInput;
@@ -4003,6 +4098,9 @@ const INDEX_HTML = `<!DOCTYPE html>
           updateUrl: false,
         });
       }
+
+      // Render local tokens on page load
+      renderLocalTokens();
     });
 
     // Update token counts when chain changes
