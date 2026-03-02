@@ -124,7 +124,7 @@ describe("server integration", () => {
     expect(res.status).toBe(200);
     expect(res.body).toContain('id="refreshIndicator"');
     expect(res.body).toContain("AUTO_REFRESH_SECONDS = 15");
-    expect(res.body).toContain("Refreshing in ");
+    expect(res.body).toContain("Auto-refresh in ");
   });
 
   it("GET / preserves result tab and scroll position during refresh re-render", async () => {

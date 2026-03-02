@@ -300,112 +300,372 @@ const INDEX_HTML = `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Compare DEX Routers</title>
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
-    h1 { margin: 0 0 16px; color: #333; }
-    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-    .wallet-controls { position: relative; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-    .wallet-button { padding: 10px 16px; font-size: 14px; }
-    .wallet-provider-menu { position: absolute; top: calc(100% + 4px); right: 0; min-width: 220px; background: #fff; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14); z-index: 30; padding: 6px; }
-    .wallet-provider-option { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; background: transparent; color: #222; border: none; border-radius: 4px; padding: 8px; font-size: 14px; }
-    .wallet-provider-option:hover { background: #f3f7ff; }
-    .wallet-provider-icon, .wallet-connected-icon { width: 20px; height: 20px; object-fit: cover; border-radius: 50%; background: #f0f0f0; flex-shrink: 0; }
-    .wallet-connected { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #333; }
-    .wallet-connected[hidden] { display: none !important; }
-    .wallet-address { font-family: monospace; color: #222; }
-    .wallet-disconnect-btn { padding: 6px 10px; font-size: 12px; background: #666; }
-    .wallet-disconnect-btn:hover { background: #555; }
-    .wallet-message { font-size: 12px; color: #666; max-width: 280px; text-align: right; }
-    @media (max-width: 720px) {
-      .page-header { flex-direction: column; }
-      .wallet-controls { align-items: flex-start; }
-      .wallet-message { text-align: left; }
+    /* BRUTALIST DESIGN: High contrast, no border-radius, max 2 fonts */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    
+    /* Respect hidden attribute - critical for wallet state */
+    [hidden] { display: none !important; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #fff;
+      color: #000;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.5;
     }
-    form { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    .form-group { margin-bottom: 16px; position: relative; }
-    label { display: block; font-weight: 600; margin-bottom: 6px; color: #555; }
-    input { width: 100%; padding: 10px; font-size: 14px; font-family: monospace; border: 1px solid #ddd; border-radius: 4px; }
-    input:focus { outline: none; border-color: #0066cc; }
-    .form-row { display: flex; gap: 16px; }
+    
+    /* Typography */
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; letter-spacing: -0.02em; }
+    h2, h3, h4 { font-weight: 600; }
+    .mono { font-family: monospace; }
+    
+    /* Form Elements */
+    form { margin-bottom: 1rem; }
+    .form-group { margin-bottom: 0.75rem; position: relative; }
+    label { display: block; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+    input, select {
+      width: 100%;
+      padding: 0.5rem;
+      font-family: monospace;
+      font-size: 0.875rem;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+    }
+    input:focus, select:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    input::placeholder { color: #666; }
+    
+    /* Form Row Layout */
+    .form-row { display: flex; gap: 1rem; }
     .form-row .form-group { flex: 1; }
-    button { padding: 12px 24px; font-size: 16px; cursor: pointer; background: #0066cc; color: white; border: none; border-radius: 4px; }
-    button:hover { background: #0052a3; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .form-row .form-group.narrow { flex: 0 0 120px; }
+    
+    /* Buttons - Accent Color: Electric Blue #0055FF (color-blind safe) */
+    button {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.625rem 1rem;
+      cursor: pointer;
+      border: 2px solid #000;
+      background: #fff;
+      color: #000;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    button:hover { background: #f0f0f0; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    
+    .btn-primary {
+      background: #0055FF;
+      color: #fff;
+      border-color: #0055FF;
+    }
+    .btn-primary:hover { background: #0046CC; }
+    
+    .btn-secondary {
+      background: #000;
+      color: #fff;
+    }
+    .btn-secondary:hover { background: #333; }
+    
+    /* Wallet Section - Inline with form */
+    .wallet-section {
+      border: 2px solid #000;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      background: #f8f8f8;
+    }
+    .wallet-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .wallet-status {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    .wallet-address { font-family: monospace; font-size: 0.75rem; }
+    .wallet-message {
+      font-size: 0.75rem;
+      font-style: italic;
+      margin-top: 0.5rem;
+    }
+    .wallet-message.error { color: #000; font-weight: 600; }
+    .wallet-provider-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      min-width: 200px;
+      background: #fff;
+      border: 2px solid #000;
+      z-index: 100;
+      margin-top: 0.25rem;
+    }
+    .wallet-provider-option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-align: left;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-bottom: 1px solid #000;
+      padding: 0.5rem;
+      font-size: 0.875rem;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+    .wallet-provider-option:last-child { border-bottom: none; }
+    .wallet-provider-option:hover { background: #f0f0f0; }
+    .wallet-provider-icon, .wallet-connected-icon {
+      width: 18px;
+      height: 18px;
+      object-fit: cover;
+      background: #e0e0e0;
+      flex-shrink: 0;
+    }
+    
+    /* Autocomplete */
+    .autocomplete-list {
+      position: absolute;
+      z-index: 50;
+      background: #fff;
+      border: 2px solid #000;
+      border-top: none;
+      max-height: 240px;
+      overflow-y: auto;
+      width: 100%;
+      display: none;
+    }
+    .autocomplete-list.show { display: block; }
+    .autocomplete-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.375rem 0.5rem;
+      cursor: pointer;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover, .autocomplete-item.active { background: #f0f0f0; }
+    .autocomplete-logo {
+      width: 18px;
+      height: 18px;
+      object-fit: cover;
+      background: #e0e0e0;
+      flex-shrink: 0;
+    }
+    .autocomplete-meta { min-width: 0; flex: 1; }
+    .autocomplete-title { display: flex; align-items: baseline; gap: 0.25rem; }
+    .autocomplete-symbol { font-weight: 600; font-size: 0.875rem; }
+    .autocomplete-name { color: #666; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .autocomplete-addr { font-family: monospace; color: #666; font-size: 0.625rem; }
+    
+    /* Results Section - Inline below form */
     #result { display: none; }
     #result.show { display: block; }
-    .result-box { background: #1e1e1e; color: #d4d4d4; padding: 20px; border-radius: 0 0 8px 8px; }
-    .error { color: #e74c3c; }
-    .result-header { color: #888; margin-bottom: 12px; font-size: 14px; }
-    .field { margin-bottom: 12px; }
-    .field-label { color: #888; font-size: 12px; text-transform: uppercase; }
-    .field-value { color: #4ec9b0; word-break: break-all; }
-    .field-value.number { color: #b5cea8; }
-    .provider-tag { display: inline-block; background: #264f78; color: #9cdcfe; padding: 3px 10px; border-radius: 4px; font-size: 13px; margin-left: 8px; }
-    .recommendation-banner { padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; font-size: 13px; }
-    .recommendation-banner.winner { background: #1a3a1a; color: #4ec9b0; border: 1px solid #2d5a2d; }
-    .recommendation-banner.loser { background: #3a2a1a; color: #d4a054; border: 1px solid #5a3a1a; }
-    .recommendation-banner.error { background: #3a1a1a; color: #e74c3c; border: 1px solid #5a1a1a; }
-    .tabs { display: flex; gap: 0; }
-    .tab { padding: 10px 20px; cursor: pointer; background: #ccc; color: #555; border: none; border-radius: 8px 8px 0 0; font-size: 14px; font-weight: 600; }
-    .tab.active { background: #1e1e1e; color: #d4d4d4; }
+    
+    /* Primary Result - Output Amount + Actions Inline */
+    .result-primary {
+      border: 2px solid #000;
+      padding: 1rem;
+      margin-bottom: 0.5rem;
+      background: #fff;
+    }
+    .result-output {
+      font-size: 2rem;
+      font-weight: 700;
+      font-family: monospace;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .result-output-label {
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #666;
+      margin-bottom: 0.125rem;
+    }
+    .result-recommendation {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+      padding: 0.25rem 0.5rem;
+      display: inline-block;
+      border: 2px solid #000;
+    }
+    .result-recommendation.winner { background: #000; color: #fff; }
+    .result-recommendation.alternative { background: #fff; color: #000; }
+    
+    /* Transaction Buttons */
+    .tx-actions { margin-top: 1rem; padding-top: 0.75rem; border-top: 2px solid #000; }
+    .tx-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .tx-btn {
+      font-size: 0.875rem;
+      padding: 0.625rem 1rem;
+      border: 2px solid #000;
+      background: #fff;
+      color: #000;
+    }
+    .tx-btn.swap-btn { background: #0055FF; color: #fff; border-color: #0055FF; }
+    .tx-btn.swap-btn:hover { background: #0046CC; }
+    .tx-btn.approve-btn { background: #fff; color: #000; border: 2px solid #000; }
+    .tx-btn.approve-btn:hover { background: #f0f0f0; }
+    .tx-btn.approved { background: #000; color: #fff; border-color: #000; }
+    .tx-btn.wallet-required { opacity: 0.4; }
+    .tx-status {
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    /* Status uses text + weight, not just color */
+    .tx-status.pending::before { content: "PENDING: "; }
+    .tx-status.success::before { content: "SUCCESS: "; }
+    .tx-status.error::before { content: "FAILED: "; }
+    .tx-status.pending { color: #666; }
+    .tx-status.success { color: #000; background: #e8e8e8; padding: 0.125rem 0.25rem; }
+    .tx-status.error { color: #000; background: #f0f0f0; padding: 0.125rem 0.25rem; border: 1px solid #000; }
+    
+    /* Tabs - Compact */
+    .tabs {
+      display: flex;
+      border: 2px solid #000;
+      border-bottom: none;
+    }
+    .tab {
+      flex: 1;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #fff;
+      color: #666;
+      border: none;
+      border-right: 2px solid #000;
+      cursor: pointer;
+    }
+    .tab:last-child { border-right: none; }
+    .tab.active { background: #000; color: #fff; }
+    .tab:hover:not(.active) { background: #f0f0f0; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
-    .route-step { background: #2d2d2d; padding: 10px; border-radius: 4px; margin: 8px 0; }
-    .route-step-header { color: #dcdcaa; margin-bottom: 6px; }
-    .autocomplete-list { position: absolute; z-index: 10; background: white; border: 1px solid #ddd; border-top: none; border-radius: 0 0 4px 4px; max-height: 280px; overflow-y: auto; width: 100%; display: none; }
-    .autocomplete-list.show { display: block; }
-    .autocomplete-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; }
-    .autocomplete-item:hover, .autocomplete-item.active { background: #e8f0fe; }
-    .autocomplete-logo { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: #f0f0f0; flex-shrink: 0; }
-    .autocomplete-meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-    .autocomplete-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-    .autocomplete-symbol { font-weight: 600; color: #333; font-family: system-ui, sans-serif; }
-    .autocomplete-name { color: #666; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .autocomplete-addr { color: #888; font-size: 11px; font-family: monospace; }
-    .tx-actions { margin-top: 16px; padding-top: 14px; border-top: 1px solid #333; }
-    .tx-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
-    .tx-btn { padding: 9px 14px; font-size: 14px; border-radius: 4px; border: none; cursor: pointer; }
-    .tx-btn.swap-primary { background: #22a55a; color: #fff; }
-    .tx-btn.swap-primary:hover { background: #1f934f; }
-    .tx-btn.swap-secondary { background: #2f4f6f; color: #d7e8ff; }
-    .tx-btn.swap-secondary:hover { background: #3c638c; }
-    .tx-btn.approve-btn { background: #6b7280; color: #fff; }
-    .tx-btn.approve-btn:hover { background: #5b6270; }
-    .tx-btn.approved { background: #1f934f; color: #fff; }
-    .tx-btn.wallet-required { opacity: 0.6; cursor: not-allowed; }
-    .tx-status { margin-top: 10px; font-size: 13px; color: #9ca3af; min-height: 18px; }
-    .tx-status.pending { color: #f6c85f; }
-    .tx-status.success { color: #34d399; }
-    .tx-status.error { color: #f87171; }
-    .refresh-indicator { margin-bottom: 10px; padding: 10px 12px; border-radius: 6px; border: 1px solid #2f4f6f; background: #142233; color: #d7e8ff; }
-    .refresh-indicator-meta { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 12px; }
-    .refresh-indicator-status { color: #9ca3af; min-height: 16px; }
-    .refresh-indicator-status.error { color: #f87171; }
-    .refresh-indicator-progress { margin-top: 8px; height: 4px; border-radius: 999px; background: #0f1726; overflow: hidden; }
-    .refresh-indicator-progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, #4ec9b0, #34d399); transition: width 0.2s linear; }
+    
+    /* Secondary Details - Collapsible */
+    .details-toggle {
+      width: 100%;
+      text-align: left;
+      padding: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #f0f0f0;
+      border: 2px solid #000;
+      border-top: none;
+      cursor: pointer;
+    }
+    .details-toggle:hover { background: #e0e0e0; }
+    .details-toggle::after { content: " [+]"; font-family: monospace; }
+    .details-toggle.open::after { content: " [-]"; }
+    .details-content {
+      display: none;
+      border: 2px solid #000;
+      border-top: none;
+      padding: 0.75rem;
+      background: #f8f8f8;
+    }
+    .details-content.open { display: block; }
+    
+    /* Field Display */
+    .field { margin-bottom: 0.5rem; }
+    .field-label {
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #666;
+      margin-bottom: 0.125rem;
+    }
+    .field-value {
+      font-family: monospace;
+      font-size: 0.75rem;
+      word-break: break-all;
+    }
+    .field-value.number { font-weight: 600; }
+    
+    /* Route Steps */
+    .route-step {
+      border: 1px solid #000;
+      padding: 0.5rem;
+      margin: 0.5rem 0;
+      background: #fff;
+    }
+    .route-step-header { font-weight: 600; font-size: 0.75rem; margin-bottom: 0.25rem; }
+    
+    /* Refresh Indicator - Subtle */
+    .refresh-indicator {
+      font-size: 0.625rem;
+      color: #666;
+      padding: 0.25rem 0.5rem;
+      border: 1px solid #e0e0e0;
+      background: #fafafa;
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .refresh-indicator-status { font-style: italic; }
+    .refresh-indicator-status.error { color: #000; font-weight: 600; font-style: normal; }
+    
+    /* Error Display */
+    .error-message {
+      border: 2px solid #000;
+      padding: 0.75rem;
+      background: #f8f8f8;
+      font-weight: 600;
+    }
+    
+    /* Responsive */
+    @media (max-width: 600px) {
+      .form-row { flex-direction: column; }
+      .form-row .form-group.narrow { flex: 1; }
+      .wallet-row { flex-direction: column; align-items: flex-start; }
+    }
   </style>
 </head>
 <body>
-  <div class="page-header">
-    <h1>Compare DEX Routers</h1>
-    <div class="wallet-controls">
-      <button type="button" id="connectWalletBtn" class="wallet-button">Connect Wallet</button>
-      <div id="walletConnected" class="wallet-connected" hidden>
-        <img id="walletConnectedIcon" class="wallet-connected-icon" alt="Wallet icon" hidden>
-        <span id="walletConnectedName"></span>
+  <h1>Compare DEX Routers</h1>
+  
+  <!-- Wallet Section - Inline with trading flow -->
+  <div class="wallet-section">
+    <div class="wallet-row">
+      <button type="button" id="connectWalletBtn">Connect Wallet</button>
+      <div id="walletConnected" class="wallet-row" hidden style="gap: 0.5rem;">
+        <img id="walletConnectedIcon" class="wallet-connected-icon" alt="" hidden>
+        <span id="walletConnectedName" class="wallet-status"></span>
         <span id="walletConnectedAddress" class="wallet-address"></span>
-        <button type="button" id="disconnectWalletBtn" class="wallet-disconnect-btn">Disconnect</button>
+        <button type="button" id="disconnectWalletBtn" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Disconnect</button>
       </div>
-      <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
-      <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
     </div>
+    <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
+    <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
   </div>
 
   <form id="form">
     <div class="form-row">
-      <div class="form-group">
+      <div class="form-group narrow">
         <label for="chainId">Chain</label>
-        <select id="chainId" style="width: 200px; padding: 10px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px;">
+        <select id="chainId">
           <option value="1">Ethereum (1)</option>
           <option value="8453" selected>Base (8453)</option>
           <option value="42161">Arbitrum (42161)</option>
@@ -415,50 +675,43 @@ const INDEX_HTML = `<!DOCTYPE html>
           <option value="43114">Avalanche (43114)</option>
         </select>
       </div>
-      <div class="form-group">
+      <div class="form-group narrow">
         <label for="slippageBps">Slippage (bps)</label>
-        <input type="text" id="slippageBps" value="50" style="width: 120px;">
+        <input type="text" id="slippageBps" value="50">
+      </div>
+      <div class="form-group narrow">
+        <label for="amount">Amount</label>
+        <input type="text" id="amount" value="1000">
       </div>
     </div>
     <div class="form-group">
-      <label for="from">From (token address)</label>
-      <input type="text" id="from" placeholder="0x... or search by symbol/name/address" autocomplete="off">
+      <label for="from">From Token</label>
+      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="fromAutocomplete"></div>
     </div>
     <div class="form-group">
-      <label for="to">To (token address)</label>
-      <input type="text" id="to" placeholder="0x... or search by symbol/name/address" autocomplete="off">
+      <label for="to">To Token</label>
+      <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
     </div>
     <div class="form-group">
-      <label for="amount">Input Amount (human-readable)</label>
-      <input type="text" id="amount" value="1000" style="width: 200px;">
+      <label for="sender">Sender (optional)</label>
+      <input type="text" id="sender" placeholder="0x... (auto-filled from wallet)">
     </div>
-    <div class="form-group">
-      <label for="sender">Sender (optional, for approval check)</label>
-      <input type="text" id="sender" placeholder="0x...">
-    </div>
-    <button type="submit" id="submit">Compare Quotes</button>
+    <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
   </form>
 
   <div id="result">
     <div id="refreshIndicator" class="refresh-indicator" hidden>
-      <div class="refresh-indicator-meta">
-        <span id="refreshCountdown">Refreshing in 15s</span>
-        <span id="refreshStatus" class="refresh-indicator-status" aria-live="polite"></span>
-      </div>
-      <div class="refresh-indicator-progress" aria-hidden="true">
-        <div id="refreshProgress" class="refresh-indicator-progress-fill"></div>
-      </div>
+      <span id="refreshCountdown">Auto-refresh in 15s</span>
+      <span id="refreshStatus" class="refresh-indicator-status" aria-live="polite"></span>
     </div>
     <div class="tabs">
       <button class="tab active" data-tab="recommended" id="tabRecommended">Recommended</button>
       <button class="tab" data-tab="alternative" id="tabAlternative">Alternative</button>
     </div>
-    <div class="result-box">
-      <div class="tab-content active" id="recommendedContent"></div>
-      <div class="tab-content" id="alternativeContent"></div>
-    </div>
+    <div class="tab-content active" id="recommendedContent"></div>
+    <div class="tab-content" id="alternativeContent"></div>
   </div>
 
   <script>
@@ -509,7 +762,6 @@ const INDEX_HTML = `<!DOCTYPE html>
     const refreshIndicator = document.getElementById('refreshIndicator');
     const refreshCountdown = document.getElementById('refreshCountdown');
     const refreshStatus = document.getElementById('refreshStatus');
-    const refreshProgress = document.getElementById('refreshProgress');
 
     function hasConnectedWallet() {
       return Boolean(connectedWalletProvider && connectedWalletAddressValue);
@@ -822,6 +1074,46 @@ const INDEX_HTML = `<!DOCTYPE html>
         .slice(0, 20);
     }
 
+    // Format token for display: 'SYMBOL (0xABCD...1234)'
+    function formatTokenDisplay(symbol, address) {
+      const sym = String(symbol || '').trim();
+      const addr = String(address || '').trim();
+      if (!addr) return sym || '';
+      const truncated = addr.length > 10 ? addr.slice(0, 10) + '...' + addr.slice(-4) : addr;
+      return sym ? sym + ' (' + truncated + ')' : truncated;
+    }
+
+    // Extract address from display format or data-address attribute
+    function extractAddressFromInput(input) {
+      // First check data-address attribute
+      const dataAddr = input.dataset.address;
+      if (dataAddr && /^0x[a-fA-F0-9]{40}$/.test(dataAddr)) {
+        return dataAddr;
+      }
+      
+      const value = String(input.value || '').trim();
+      
+      // Check if it's already a plain address
+      if (/^0x[a-fA-F0-9]{40}$/.test(value)) {
+        return value;
+      }
+      
+      // Try to extract from 'SYMBOL (0xABCD...1234)' format
+      // The pattern is: (0xHEX...HEX)
+      if (value.includes('...') && value.includes('(') && value.includes(')')) {
+        // We only have partial address in display, need full from data-address
+        return dataAddr || value;
+      }
+      
+      // Check for partial address pattern that might be a real address
+      if (value.startsWith('0x') && value.length >= 6) {
+        // Could be a partial or full address - if we have data-address use it
+        if (dataAddr) return dataAddr;
+      }
+      
+      return value; // Return as-is, validation will catch issues
+    }
+
     function setupAutocomplete(inputId, listId) {
       const input = document.getElementById(inputId);
       const list = document.getElementById(listId);
@@ -836,7 +1128,10 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
 
       function selectToken(token) {
-        input.value = token.address;
+        // Show 'SYMBOL (0xABCD...1234)' format in input
+        input.value = formatTokenDisplay(token.symbol, token.address);
+        // Store full address in data-address attribute
+        input.dataset.address = token.address;
         hide();
       }
 
@@ -987,8 +1282,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     function readCompareParamsFromForm() {
       return cloneCompareParams({
         chainId: chainIdInput.value,
-        from: fromInput.value,
-        to: toInput.value,
+        from: extractAddressFromInput(fromInput),
+        to: extractAddressFromInput(toInput),
         amount: amountInput.value,
         slippageBps: slippageInput.value,
         sender: senderInput.value,
@@ -1035,26 +1330,19 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
     }
 
-    function getRefreshProgressPercent() {
-      const elapsed = AUTO_REFRESH_SECONDS - autoRefreshState.secondsRemaining;
-      if (elapsed <= 0) return 0;
-      return Math.min(100, Math.max(0, (elapsed / AUTO_REFRESH_SECONDS) * 100));
-    }
-
     function updateRefreshIndicator() {
       const shouldShow = result.classList.contains('show') && Boolean(autoRefreshState.lastParams);
       refreshIndicator.hidden = !shouldShow;
       if (!shouldShow) {
-        refreshProgress.style.width = '0%';
         return;
       }
 
       if (autoRefreshState.paused) {
         refreshCountdown.textContent = 'Auto-refresh paused';
       } else if (autoRefreshState.inFlight) {
-        refreshCountdown.textContent = 'Refreshing quotes...';
+        refreshCountdown.textContent = 'Refreshing...';
       } else {
-        refreshCountdown.textContent = 'Refreshing in ' + autoRefreshState.secondsRemaining + 's';
+        refreshCountdown.textContent = 'Auto-refresh in ' + autoRefreshState.secondsRemaining + 's';
       }
 
       refreshStatus.classList.remove('error');
@@ -1062,13 +1350,10 @@ const INDEX_HTML = `<!DOCTYPE html>
         refreshStatus.textContent = autoRefreshState.errorMessage;
         refreshStatus.classList.add('error');
       } else if (autoRefreshState.paused) {
-        refreshStatus.textContent = 'Waiting for transaction to settle.';
+        refreshStatus.textContent = 'Waiting for transaction.';
       } else {
         refreshStatus.textContent = '';
       }
-
-      const width = autoRefreshState.inFlight ? 100 : getRefreshProgressPercent();
-      refreshProgress.style.width = width + '%';
     }
 
     function stopAutoRefresh(options = {}) {
@@ -1191,11 +1476,38 @@ const INDEX_HTML = `<!DOCTYPE html>
       updateRefreshIndicator();
     }
 
+    function findTokenByAddress(address, chainId) {
+      const addr = String(address || '').toLowerCase();
+      const cid = Number(chainId);
+      return tokenlistTokens.find((t) => 
+        Number(t.chainId) === cid && 
+        String(t.address || '').toLowerCase() === addr
+      );
+    }
+
     function applyDefaults(chainId) {
       const defaults = DEFAULT_TOKENS[chainId];
       if (defaults) {
-        fromInput.value = defaults.from;
-        toInput.value = defaults.to;
+        const fromToken = findTokenByAddress(defaults.from, chainId);
+        const toToken = findTokenByAddress(defaults.to, chainId);
+        
+        // Set from input with display format and data-address
+        if (fromToken) {
+          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
+          fromInput.dataset.address = fromToken.address;
+        } else {
+          fromInput.value = defaults.from;
+          fromInput.dataset.address = defaults.from;
+        }
+        
+        // Set to input with display format and data-address
+        if (toToken) {
+          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
+          toInput.dataset.address = toToken.address;
+        } else {
+          toInput.value = defaults.to;
+          toInput.dataset.address = defaults.to;
+        }
       }
     }
 
@@ -1224,7 +1536,6 @@ const INDEX_HTML = `<!DOCTYPE html>
       const approvalSpender = String(options.approvalSpender || '');
       const approvalRequired = Boolean(approvalToken && approvalSpender);
       const walletRequiredClass = hasConnectedWallet() ? '' : ' wallet-required';
-      const swapStyleClass = approvalRequired ? 'swap-secondary' : 'swap-primary';
 
       return (
         '<div class="tx-actions" data-quote-chain-id="' + quoteChainId + '" data-router-address="' + routerAddress +
@@ -1234,96 +1545,86 @@ const INDEX_HTML = `<!DOCTYPE html>
             (approvalRequired
               ? '<button type="button" class="tx-btn approve-btn' + walletRequiredClass + '" data-action="approve">Approve</button>'
               : '') +
-            '<button type="button" class="tx-btn swap-btn ' + swapStyleClass + walletRequiredClass + '" data-action="swap">Swap</button>' +
+            '<button type="button" class="tx-btn swap-btn' + walletRequiredClass + '" data-action="swap">Swap</button>' +
           '</div>' +
           '<div class="tx-status" aria-live="polite"></div>' +
         '</div>'
       );
     }
 
+    // Render secondary details (collapsible)
+    function renderSecondaryDetails(data, type) {
+      const details = [];
+      
+      details.push('<div class="field"><div class="field-label">Router Address</div><div class="field-value">' + data.router_address + '</div></div>');
+      details.push('<div class="field"><div class="field-label">Router Calldata</div><div class="field-value" style="font-size: 0.625rem; word-break: break-all;">' + data.router_calldata.slice(0, 100) + (data.router_calldata.length > 100 ? '...' : '') + '</div></div>');
+      
+      if (data.router_value) {
+        details.push('<div class="field"><div class="field-label">Router Value (wei)</div><div class="field-value number">' + data.router_value + '</div></div>');
+      }
+      
+      if (data.approval_token) {
+        details.push('<div class="field"><div class="field-label">Approval Token</div><div class="field-value">' + data.approval_token + '</div></div>');
+        details.push('<div class="field"><div class="field-label">Approval Spender</div><div class="field-value">' + data.approval_spender + '</div></div>');
+      }
+      
+      if (data.gas_used) {
+        details.push('<div class="field"><div class="field-label">Gas Used</div><div class="field-value number">' + data.gas_used + '</div></div>');
+      }
+      
+      if (type === 'spandex' && data.slippage_bps) {
+        details.push('<div class="field"><div class="field-label">Slippage</div><div class="field-value number">' + data.slippage_bps + ' bps</div></div>');
+      }
+      
+      return details.join('');
+    }
+
     function renderSpandexQuote(data, isWinner, quoteChainId) {
-      const banner = isWinner
-        ? '<div class="recommendation-banner winner">RECOMMENDED</div>'
-        : '<div class="recommendation-banner loser">Alternative quote</div>';
-      return banner + \`
-        <div class="result-header">Spandex Quote <span class="provider-tag">\${data.provider}</span></div>
-        <div class="field">
-          <div class="field-label">Output Amount</div>
-          <div class="field-value number">\${data.output_amount}\${data.to_symbol ? ' ' + data.to_symbol : ''}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Gas Used</div>
-          <div class="field-value number">\${data.gas_used}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">From</div>
-          <div class="field-value">\${data.from_symbol ? data.from_symbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${data.from}</span></div>
-        </div>
-        <div class="field">
-          <div class="field-label">To</div>
-          <div class="field-value">\${data.to_symbol ? data.to_symbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${data.to}</span></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Input Amount</div>
-          <div class="field-value number">\${data.amount}\${data.from_symbol ? ' ' + data.from_symbol : ''}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Slippage</div>
-          <div class="field-value number">\${data.slippage_bps} bps</div>
-        </div>
-        \${data.approval_token ? \`
-        <div class="field">
-          <div class="field-label">Approval Token</div>
-          <div class="field-value">\${data.approval_token}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Approval Spender</div>
-          <div class="field-value">\${data.approval_spender}</div>
-        </div>
-        \` : ''}
-        <div class="field">
-          <div class="field-label">Router Address</div>
-          <div class="field-value">\${data.router_address}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Router Calldata</div>
-          <div class="field-value" style="font-size: 11px;">\${data.router_calldata}</div>
-        </div>
-        \${data.router_value ? \`
-        <div class="field">
-          <div class="field-label">Router Value (wei)</div>
-          <div class="field-value number">\${data.router_value}</div>
-        </div>
-        \` : ''}
-        \${renderQuoteActions({
-          quoteChainId,
-          routerAddress: data.router_address,
-          routerCalldata: data.router_calldata,
-          routerValue: data.router_value || '0x0',
-          approvalToken: data.approval_token || '',
-          approvalSpender: data.approval_spender || '',
-        })}
-      \`;
+      const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
+      const providerLabel = 'Spandex' + (data.provider ? ' / ' + data.provider : '');
+      
+      // Primary section: output + buttons inline
+      const primary = 
+        '<div class="result-primary">' +
+          recommendationLabel +
+          '<div class="result-output-label">You receive (estimated)</div>' +
+          '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
+          '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via ' + providerLabel + '</div></div>' +
+          renderQuoteActions({
+            quoteChainId,
+            routerAddress: data.router_address,
+            routerCalldata: data.router_calldata,
+            routerValue: data.router_value || '0x0',
+            approvalToken: data.approval_token || '',
+            approvalSpender: data.approval_spender || '',
+          }) +
+        '</div>';
+      
+      // Secondary details (collapsible)
+      const secondary = 
+        '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
+        '<div class="details-content">' +
+          '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
+          '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
+          '<div class="field"><div class="field-label">Input Amount</div><div class="field-value number">' + data.amount + (data.from_symbol ? ' ' + data.from_symbol : '') + '</div></div>' +
+          renderSecondaryDetails(data, 'spandex') +
+        '</div>';
+      
+      return primary + secondary;
     }
 
     function formatCurveRoute(route, symbols) {
       if (!route || route.length === 0) return '';
       return route.map((step, i) => {
         const poolName = step.poolName || step.poolId || 'Unknown Pool';
-        const showPoolId = step.poolName && step.poolId && step.poolName !== step.poolId;
         const inputSymbol = symbols[step.inputCoinAddress?.toLowerCase()] || '';
         const outputSymbol = symbols[step.outputCoinAddress?.toLowerCase()] || '';
-        return \`
-        <div class="route-step">
-          <div class="route-step-header">Step \${i + 1}: \${poolName}\${showPoolId ? ' <span style="color: #888; font-size: 11px;">' + step.poolId + '</span>' : ''}</div>
-          <div class="field-label">Pool</div>
-          <div class="field-value"><span style="color: #888; font-size: 11px;">\${step.poolAddress || ''}</span></div>
-          <div class="field-label">Input</div>
-          <div class="field-value">\${inputSymbol ? inputSymbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${step.inputCoinAddress || ''}</span></div>
-          <div class="field-label">Output</div>
-          <div class="field-value">\${outputSymbol ? outputSymbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${step.outputCoinAddress || ''}</span></div>
-        </div>
-      \`}).join('');
+        return '<div class="route-step">' +
+          '<div class="route-step-header">Step ' + (i + 1) + ': ' + poolName + '</div>' +
+          '<div class="field"><div class="field-label">Input</div><div class="field-value">' + (inputSymbol ? inputSymbol + ' ' : '') + (step.inputCoinAddress || '') + '</div></div>' +
+          '<div class="field"><div class="field-label">Output</div><div class="field-value">' + (outputSymbol ? outputSymbol + ' ' : '') + (step.outputCoinAddress || '') + '</div></div>' +
+        '</div>';
+      }).join('');
     }
 
     function renderCurveQuote(data, isWinner, quoteChainId) {
@@ -1333,60 +1634,39 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (data.route_symbols) {
         Object.entries(data.route_symbols).forEach(([k, v]) => { symbols[k.toLowerCase()] = v; });
       }
-      const banner = isWinner
-        ? '<div class="recommendation-banner winner">RECOMMENDED</div>'
-        : '<div class="recommendation-banner loser">Alternative quote</div>';
-      return banner + \`
-        <div class="result-header">Curve Quote</div>
-        <div class="field">
-          <div class="field-label">Output Amount</div>
-          <div class="field-value number">\${data.output_amount}\${data.to_symbol ? ' ' + data.to_symbol : ''}</div>
-        </div>
-        \${data.gas_used ? \`
-        <div class="field">
-          <div class="field-label">Gas Used</div>
-          <div class="field-value number">\${data.gas_used}</div>
-        </div>
-        \` : ''}
-        <div class="field">
-          <div class="field-label">From</div>
-          <div class="field-value">\${data.from_symbol ? data.from_symbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${data.from}</span></div>
-        </div>
-        <div class="field">
-          <div class="field-label">To</div>
-          <div class="field-value">\${data.to_symbol ? data.to_symbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${data.to}</span></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Input Amount</div>
-          <div class="field-value number">\${data.amount}\${data.from_symbol ? ' ' + data.from_symbol : ''}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Route (\${data.route.length} steps)</div>
-          \${formatCurveRoute(data.route, symbols)}
-        </div>
-        \${data.approval_target ? \`
-        <div class="field">
-          <div class="field-label">Approval Target</div>
-          <div class="field-value">\${data.approval_target}</div>
-        </div>
-        \` : ''}
-        <div class="field">
-          <div class="field-label">Router Address</div>
-          <div class="field-value">\${data.router_address}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Router Calldata</div>
-          <div class="field-value" style="font-size: 11px;">\${data.router_calldata}</div>
-        </div>
-        \${renderQuoteActions({
-          quoteChainId,
-          routerAddress: data.router_address,
-          routerCalldata: data.router_calldata,
-          routerValue: '0x0',
-          approvalToken: data.from || '',
-          approvalSpender: data.approval_target || '',
-        })}
-      \`;
+      
+      const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
+      
+      // Primary section: output + buttons inline
+      const primary = 
+        '<div class="result-primary">' +
+          recommendationLabel +
+          '<div class="result-output-label">You receive (estimated)</div>' +
+          '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
+          '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via Curve</div></div>' +
+          renderQuoteActions({
+            quoteChainId,
+            routerAddress: data.router_address,
+            routerCalldata: data.router_calldata,
+            routerValue: '0x0',
+            approvalToken: data.from || '',
+            approvalSpender: data.approval_target || '',
+          }) +
+        '</div>';
+      
+      // Secondary details (collapsible)
+      const secondary = 
+        '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
+        '<div class="details-content">' +
+          '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
+          '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
+          '<div class="field"><div class="field-label">Input Amount</div><div class="field-value number">' + data.amount + (data.from_symbol ? ' ' + data.from_symbol : '') + '</div></div>' +
+          (data.route && data.route.length > 0 ? '<div class="field"><div class="field-label">Route (' + data.route.length + ' steps)</div>' + formatCurveRoute(data.route, symbols) + '</div>' : '') +
+          (data.approval_target ? '<div class="field"><div class="field-label">Approval Target</div><div class="field-value">' + data.approval_target + '</div></div>' : '') +
+          renderSecondaryDetails(data, 'curve') +
+        '</div>';
+      
+      return primary + secondary;
     }
 
     function showCompareResult(data, options = {}) {
@@ -1398,18 +1678,19 @@ const INDEX_HTML = `<!DOCTYPE html>
         setActiveTab('recommended');
       }
 
-      let reasonHtml = '<div class="field" style="margin-bottom: 16px;">' +
-        '<div class="field-label">Comparison</div>' +
-        '<div class="field-value">' + data.recommendation_reason + '</div>';
+      const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || Number(chainIdInput.value);
+
+      // Build comparison reason text with typography, not color
+      let reasonHtml = '<div style="padding: 0.5rem; border: 2px solid #000; margin-bottom: 0.5rem; background: #f8f8f8;">';
+      reasonHtml += '<div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Reason</div>';
+      reasonHtml += '<div style="font-size: 0.875rem;">' + data.recommendation_reason + '</div>';
       if (data.gas_price_gwei) {
-        reasonHtml += '<div class="field-value number" style="font-size: 12px; margin-top: 4px;">Gas price: ' + data.gas_price_gwei + ' gwei</div>';
+        reasonHtml += '<div class="field-value number" style="font-size: 0.75rem; margin-top: 0.25rem;">Gas: ' + data.gas_price_gwei + ' gwei</div>';
       }
       reasonHtml += '</div>';
 
-      const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || Number(chainIdInput.value);
-
       if (data.recommendation === 'spandex' && data.spandex) {
-        tabRecommended.textContent = 'Spandex (Recommended)';
+        tabRecommended.textContent = 'Spandex';
         recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true, quoteChainId);
         if (data.curve) {
           tabAlternative.textContent = 'Curve';
@@ -1418,10 +1699,10 @@ const INDEX_HTML = `<!DOCTYPE html>
         } else {
           tabAlternative.textContent = 'Curve';
           tabAlternative.style.display = '';
-          alternativeContent.innerHTML = '<div class="recommendation-banner error">' + (data.curve_error || 'No quote available') + '</div>';
+          alternativeContent.innerHTML = '<div class="error-message">' + (data.curve_error || 'No quote available') + '</div>';
         }
       } else if (data.recommendation === 'curve' && data.curve) {
-        tabRecommended.textContent = 'Curve (Recommended)';
+        tabRecommended.textContent = 'Curve';
         recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, true, quoteChainId);
         if (data.spandex) {
           tabAlternative.textContent = 'Spandex';
@@ -1430,7 +1711,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         } else {
           tabAlternative.textContent = 'Spandex';
           tabAlternative.style.display = '';
-          alternativeContent.innerHTML = '<div class="recommendation-banner error">' + (data.spandex_error || 'No quote available') + '</div>';
+          alternativeContent.innerHTML = '<div class="error-message">' + (data.spandex_error || 'No quote available') + '</div>';
         }
       } else if (data.spandex) {
         tabRecommended.textContent = 'Spandex';
@@ -1444,7 +1725,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         alternativeContent.innerHTML = '';
       } else {
         tabRecommended.textContent = 'Results';
-        recommendedContent.innerHTML = '<div class="error">No quotes available. ' +
+        recommendedContent.innerHTML = '<div class="error-message">No quotes available. ' +
           (data.spandex_error ? 'Spandex: ' + data.spandex_error + '. ' : '') +
           (data.curve_error ? 'Curve: ' + data.curve_error : '') + '</div>';
         tabAlternative.style.display = 'none';
@@ -1464,7 +1745,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     function showError(msg) {
       result.className = 'show';
-      recommendedContent.innerHTML = '<div class="error">' + msg + '</div>';
+      recommendedContent.innerHTML = '<div class="error-message">' + msg + '</div>';
       tabRecommended.textContent = 'Results';
       tabAlternative.style.display = 'none';
       alternativeContent.innerHTML = '';
@@ -1858,19 +2139,59 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Restore from URL params or apply chain defaults
     const params = new URLSearchParams(window.location.search);
     if (params.get('chainId')) chainIdInput.value = params.get('chainId');
-    if (params.get('from')) fromInput.value = params.get('from');
-    else applyDefaults(Number(chainIdInput.value));
-    if (params.get('to')) toInput.value = params.get('to');
+    if (params.get('from')) {
+      const fromAddr = params.get('from');
+      fromInput.dataset.address = fromAddr;
+      // Will format with symbol after tokenlist loads
+    } else {
+      // Will apply defaults after tokenlist loads
+    }
+    if (params.get('to')) {
+      const toAddr = params.get('to');
+      toInput.dataset.address = toAddr;
+      // Will format with symbol after tokenlist loads
+    }
     if (params.get('amount')) amountInput.value = params.get('amount');
     if (params.get('slippageBps')) slippageInput.value = params.get('slippageBps');
     if (params.get('sender')) senderInput.value = params.get('sender');
-    if (!params.get('from') && !params.get('to')) applyDefaults(Number(chainIdInput.value));
 
     const shouldLoadFromUrlParams = Boolean(
       params.get('chainId') && params.get('from') && params.get('to') && params.get('amount')
     );
 
     loadTokenlist().then(() => {
+      // Now we can format tokens with symbols from the loaded tokenlist
+      const chainId = Number(chainIdInput.value);
+      
+      if (params.get('from')) {
+        const fromAddr = params.get('from');
+        const fromToken = findTokenByAddress(fromAddr, chainId);
+        if (fromToken) {
+          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
+          fromInput.dataset.address = fromToken.address;
+        } else {
+          fromInput.value = fromAddr;
+          fromInput.dataset.address = fromAddr;
+        }
+      }
+      
+      if (params.get('to')) {
+        const toAddr = params.get('to');
+        const toToken = findTokenByAddress(toAddr, chainId);
+        if (toToken) {
+          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
+          toInput.dataset.address = toToken.address;
+        } else {
+          toInput.value = toAddr;
+          toInput.dataset.address = toAddr;
+        }
+      }
+      
+      // Apply defaults if no URL params for from/to
+      if (!params.get('from') && !params.get('to')) {
+        applyDefaults(chainId);
+      }
+      
       const activeElement = document.activeElement;
       if (activeElement === fromInput) {
         fromAutocomplete.refresh();
