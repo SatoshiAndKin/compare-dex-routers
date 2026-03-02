@@ -38,7 +38,6 @@ npm run dev           # starts server with file watching at http://localhost:300
 - `src/curve.ts` - Curve Finance API integration (Ethereum only)
 - `src/quote.ts` - Query parameter parsing and validation
 - `src/env.ts` - .env file loader (imported first in server.ts)
-- `src/default-tokenlist.ts` - Built-in Ethereum token list for autocomplete
 - `src/logger.ts` - Structured logging with pino and log scrubbing
 - `src/sentry.ts` - Sentry error tracking integration
 - `src/tracing.ts` - Request ID propagation for distributed tracing
