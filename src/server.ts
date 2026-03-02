@@ -714,7 +714,107 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #f8f8f8;
       border: 1px solid #e0e0e0;
     }
-    
+
+    /* Tokenlist Sources */
+    .tokenlist-add-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .tokenlist-add-row input {
+      flex: 1;
+      min-width: 0;
+    }
+    .tokenlist-entry {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      border: 1px solid #e0e0e0;
+      margin-bottom: 0.5rem;
+      background: #fafafa;
+    }
+    .tokenlist-entry:last-child { margin-bottom: 0; }
+    .tokenlist-entry.disabled { opacity: 0.5; background: #f0f0f0; }
+    .tokenlist-entry.error { border-color: #CC0000; background: #fff0f0; }
+    .tokenlist-entry-name {
+      flex: 1;
+      min-width: 0;
+      font-weight: 600;
+      font-size: 0.875rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tokenlist-entry-count {
+      font-size: 0.75rem;
+      color: #666;
+      white-space: nowrap;
+    }
+    .tokenlist-entry-error {
+      font-size: 0.75rem;
+      color: #CC0000;
+      font-weight: 600;
+      margin-left: 0.25rem;
+    }
+    .tokenlist-toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background: #ccc;
+      border: 2px solid #000;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .tokenlist-toggle::after {
+      content: '';
+      position: absolute;
+      top: 1px;
+      left: 1px;
+      width: 14px;
+      height: 14px;
+      background: #fff;
+      border: 1px solid #000;
+      transition: transform 0.15s;
+    }
+    .tokenlist-toggle.on {
+      background: #0055FF;
+    }
+    .tokenlist-toggle.on::after {
+      transform: translateX(16px);
+    }
+    .tokenlist-remove-btn {
+      background: transparent;
+      border: none;
+      color: #666;
+      font-size: 1rem;
+      padding: 0 0.25rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .tokenlist-remove-btn:hover { color: #CC0000; }
+    .tokenlist-remove-btn:focus { outline: 2px solid #0055FF; }
+    .tokenlist-retry-btn {
+      font-size: 0.625rem;
+      padding: 0.125rem 0.25rem;
+      background: #0055FF;
+      color: #fff;
+      border-color: #0055FF;
+    }
+
+    /* Source badge in autocomplete */
+    .autocomplete-source {
+      font-size: 0.5rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.125rem 0.25rem;
+      background: #e0e0e0;
+      color: #666;
+      margin-left: 0.25rem;
+    }
+
     /* Form Row Layout */
     .form-row { display: flex; gap: 1rem; }
     .form-row .form-group { flex: 1; }
@@ -1283,22 +1383,18 @@ const INDEX_HTML = `<!DOCTYPE html>
         <button type="button" id="settingsModalClose" class="modal-close" aria-label="Close modal">&times;</button>
       </div>
       <div class="modal-body">
-        <!-- Tokenlist URL Section -->
-        <div class="settings-section">
-          <div class="settings-section-title">Tokenlist URL</div>
-          <div class="tokenlist-url-row">
-            <input type="text" id="tokenlistUrl" placeholder="https://tokens.uniswap.org">
-            <button type="button" id="loadTokenlistBtn" class="btn-small">Load</button>
-            <button type="button" id="resetTokenlistBtn" class="btn-small btn-secondary" hidden>Reset</button>
-          </div>
-          <div id="tokenlistMessage" class="tokenlist-message" aria-live="polite"></div>
-        </div>
-        <!-- Tokenlist Sources Section (placeholder for multi-tokenlist feature) -->
+        <!-- Tokenlist Sources Section -->
         <div class="settings-section">
           <div class="settings-section-title">Tokenlist Sources</div>
-          <div id="tokenlistSourcesContent" class="settings-placeholder">
-            Multiple tokenlist support coming soon
+          <div class="tokenlist-add-row">
+            <input type="text" id="tokenlistUrlInput" placeholder="https://tokens.uniswap.org">
+            <button type="button" id="addTokenlistBtn" class="btn-small">Load</button>
           </div>
+          <div id="tokenlistMessage" class="tokenlist-message" aria-live="polite"></div>
+          <div id="tokenlistSourcesList">
+            <!-- Tokenlist entries rendered by JS -->
+          </div>
+        </div>
         </div>
         <!-- Local Tokens Section (placeholder for custom tokens feature) -->
         <div class="settings-section">
@@ -1313,7 +1409,17 @@ const INDEX_HTML = `<!DOCTYPE html>
 
   <script>
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
-    let tokenlistTokens = [];
+    const DEFAULT_TOKENLIST_NAME = 'Default Tokenlist';
+
+    // Multi-tokenlist data model:
+    // - tokenlistSources: array of {url, enabled, name, tokens, error?}
+    // - Each token in tokens array has _source field
+    let tokenlistSources = [];
+    // Legacy single-tokenlist URL key (for migration)
+    const OLD_CUSTOM_TOKENLIST_URL_KEY = 'customTokenlistUrl';
+    // New multi-tokenlist storage key
+    const CUSTOM_TOKENLISTS_KEY = 'customTokenlists';
+
     const walletProvidersByUuid = new Map();
     let fallbackWalletProvider = null;
     let connectedWalletProvider = null;
@@ -1827,127 +1933,331 @@ const INDEX_HTML = `<!DOCTYPE html>
       return lower.startsWith('0x') ? lower.slice(2) : lower;
     }
 
-    async function loadTokenlist() {
+    // Normalize URL for duplicate detection (lowercase host, strip trailing slash)
+    function normalizeTokenlistUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.origin.toLowerCase() + parsed.pathname.replace(/\\/+$/, '');
+      } catch {
+        return url.toLowerCase().replace(/\\/+$/, '');
+      }
+    }
+
+    // Load default tokenlist from server
+    async function loadDefaultTokenlist() {
       try {
         const res = await fetch('/tokenlist');
         if (!res.ok) {
           throw new Error('HTTP ' + res.status);
         }
         const data = await res.json();
-        tokenlistTokens = Array.isArray(data.tokens) ? data.tokens : [];
+        const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+        // Tag tokens with source
+        return tokens.map(t => ({ ...t, _source: DEFAULT_TOKENLIST_NAME }));
       } catch {
-        tokenlistTokens = [];
+        return [];
       }
     }
 
     // Load custom tokenlist from URL via proxy endpoint
-    async function loadCustomTokenlist(url) {
+    async function loadTokenlistFromUrl(url) {
       const res = await fetch('/tokenlist/proxy?url=' + encodeURIComponent(url));
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || ('HTTP ' + res.status));
       }
       const data = await res.json();
-      tokenlistTokens = Array.isArray(data.tokens) ? data.tokens : [];
+      const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+      // Name from the tokenlist, or URL fallback
+      const name = data.name || url;
+      return { tokens, name };
     }
 
-    // Tokenlist URL input elements
-    const tokenlistUrlInput = document.getElementById('tokenlistUrl');
-    const loadTokenlistBtn = document.getElementById('loadTokenlistBtn');
-    const resetTokenlistBtn = document.getElementById('resetTokenlistBtn');
+    // Tokenlist Sources UI Elements
+    const tokenlistUrlInput = document.getElementById('tokenlistUrlInput');
+    const addTokenlistBtn = document.getElementById('addTokenlistBtn');
     const tokenlistMessage = document.getElementById('tokenlistMessage');
-    const CUSTOM_TOKENLIST_URL_KEY = 'customTokenlistUrl';
+    const tokenlistSourcesList = document.getElementById('tokenlistSourcesList');
 
     function setTokenlistMessage(text, kind) {
       tokenlistMessage.textContent = text || '';
       tokenlistMessage.className = 'tokenlist-message' + (kind ? ' ' + kind : '');
     }
 
-    function showResetButton(show) {
-      resetTokenlistBtn.hidden = !show;
+    // Count tokens for a specific chain
+    function countTokensForChain(tokens, chainId) {
+      const cid = Number(chainId);
+      return tokens.filter(t => Number(t.chainId) === cid).length;
     }
 
-    // Load custom tokenlist from URL
-    async function handleLoadCustomTokenlist() {
+    // Get all tokens from enabled sources for a chain
+    function getTokensForChain(chainId) {
+      const cid = Number(chainId);
+      const seen = new Set();
+      const result = [];
+
+      // Get tokens from all enabled sources
+      for (const source of tokenlistSources) {
+        if (!source.enabled || !source.tokens) continue;
+
+        for (const token of source.tokens) {
+          if (Number(token.chainId) !== cid || typeof token.address !== 'string') continue;
+          const addr = token.address.toLowerCase();
+          if (seen.has(addr)) continue;
+          seen.add(addr);
+          result.push(token);
+        }
+      }
+
+      return result;
+    }
+
+    // Get current chain ID
+    function getCurrentChainId() {
+      return Number(chainIdInput.value);
+    }
+
+    // Render tokenlist sources in settings modal
+    function renderTokenlistSources() {
+      const chainId = getCurrentChainId();
+
+      if (tokenlistSources.length === 0) {
+        tokenlistSourcesList.innerHTML = '<div class="settings-placeholder">No tokenlists loaded</div>';
+        return;
+      }
+
+      let html = '';
+      for (let i = 0; i < tokenlistSources.length; i++) {
+        const source = tokenlistSources[i];
+        const isDefault = source.url === null;
+        const tokenCount = source.tokens ? countTokensForChain(source.tokens, chainId) : 0;
+        const displayName = source.name || (isDefault ? DEFAULT_TOKENLIST_NAME : source.url);
+        const hasError = Boolean(source.error);
+
+        html += '<div class="tokenlist-entry' + (source.enabled ? '' : ' disabled') + (hasError ? ' error' : '') + '" data-index="' + i + '">';
+        html += '<span class="tokenlist-entry-name">' + escapeHtml(displayName) + '</span>';
+        html += '<span class="tokenlist-entry-count">' + tokenCount + ' tokens</span>';
+
+        if (hasError) {
+          html += '<span class="tokenlist-entry-error">' + escapeHtml(source.error) + '</span>';
+          html += '<button type="button" class="btn-small tokenlist-retry-btn" data-action="retry" data-index="' + i + '">Retry</button>';
+        }
+
+        // Toggle switch
+        html += '<div class="tokenlist-toggle' + (source.enabled ? ' on' : '') + '" data-action="toggle" data-index="' + i + '" role="switch" aria-checked="' + source.enabled + '" tabindex="0"></div>';
+
+        // Remove button (not for default)
+        if (!isDefault) {
+          html += '<button type="button" class="tokenlist-remove-btn" data-action="remove" data-index="' + i + '" aria-label="Remove tokenlist">&times;</button>';
+        }
+
+        html += '</div>';
+      }
+
+      tokenlistSourcesList.innerHTML = html;
+
+      // Wire up event handlers
+      tokenlistSourcesList.querySelectorAll('[data-action]').forEach(el => {
+        el.addEventListener('click', handleTokenlistSourceAction);
+        if (el.getAttribute('role') === 'switch') {
+          el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleTokenlistSourceAction(e);
+            }
+          });
+        }
+      });
+    }
+
+    // Escape HTML for safe display
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Handle tokenlist source actions (toggle, remove, retry)
+    function handleTokenlistSourceAction(e) {
+      const el = e.currentTarget;
+      const action = el.dataset.action;
+      const index = Number(el.dataset.index);
+
+      if (action === 'toggle') {
+        tokenlistSources[index].enabled = !tokenlistSources[index].enabled;
+        saveTokenlistSources();
+        renderTokenlistSources();
+        refreshAutocomplete();
+      } else if (action === 'remove') {
+        tokenlistSources.splice(index, 1);
+        saveTokenlistSources();
+        renderTokenlistSources();
+        refreshAutocomplete();
+      } else if (action === 'retry') {
+        const source = tokenlistSources[index];
+        source.error = null;
+        renderTokenlistSources();
+        // Re-fetch the tokenlist
+        loadTokenlistSource(source.url, index);
+      }
+    }
+
+    // Refresh autocomplete dropdowns
+    function refreshAutocomplete() {
+      if (fromInput.value.trim()) fromAutocomplete.refresh();
+      if (toInput.value.trim()) toAutocomplete.refresh();
+    }
+
+    // Save tokenlist sources to localStorage
+    function saveTokenlistSources() {
+      const data = tokenlistSources
+        .filter(s => s.url !== null) // Don't save default
+        .map(s => ({
+          url: s.url,
+          enabled: s.enabled,
+          name: s.name
+        }));
+
+      try {
+        localStorage.setItem(CUSTOM_TOKENLISTS_KEY, JSON.stringify(data));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
+    // Load tokenlist sources from localStorage
+    function loadTokenlistSourcesFromStorage() {
+      try {
+        const data = localStorage.getItem(CUSTOM_TOKENLISTS_KEY);
+        if (data) {
+          return JSON.parse(data);
+        }
+      } catch {
+        // Corrupt data, treat as empty
+      }
+      return null;
+    }
+
+    // Migrate old single-URL format to new multi-list format
+    function migrateOldTokenlistUrl() {
+      try {
+        const oldUrl = localStorage.getItem(OLD_CUSTOM_TOKENLIST_URL_KEY);
+        if (oldUrl) {
+          // Migrate to new format
+          const newList = [{ url: oldUrl, enabled: true, name: oldUrl }];
+          localStorage.setItem(CUSTOM_TOKENLISTS_KEY, JSON.stringify(newList));
+          localStorage.removeItem(OLD_CUSTOM_TOKENLIST_URL_KEY);
+          return newList;
+        }
+      } catch {
+        // Ignore migration errors
+      }
+      return null;
+    }
+
+    // Load a tokenlist source and update state
+    async function loadTokenlistSource(url, index) {
+      try {
+        const { tokens, name } = await loadTokenlistFromUrl(url);
+        const taggedTokens = tokens.map(t => ({ ...t, _source: name }));
+        tokenlistSources[index].tokens = taggedTokens;
+        tokenlistSources[index].name = name;
+        tokenlistSources[index].error = null;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        tokenlistSources[index].error = msg;
+        tokenlistSources[index].tokens = [];
+      }
+      renderTokenlistSources();
+      refreshAutocomplete();
+    }
+
+    // Add a new tokenlist
+    async function handleAddTokenlist() {
       const url = String(tokenlistUrlInput.value || '').trim();
       if (!url) {
         setTokenlistMessage('Enter a tokenlist URL', 'error');
         return;
       }
 
-      loadTokenlistBtn.disabled = true;
-      loadTokenlistBtn.textContent = 'Loading...';
-      setTokenlistMessage('Fetching tokenlist...', 'loading');
-
+      // Validate URL format
       try {
-        await loadCustomTokenlist(url);
-        localStorage.setItem(CUSTOM_TOKENLIST_URL_KEY, url);
-        setTokenlistMessage('Loaded ' + tokenlistTokens.length + ' tokens', 'success');
-        showResetButton(true);
-        // Update autocomplete with new tokens if there's input
-        if (fromInput.value.trim()) fromAutocomplete.refresh();
-        if (toInput.value.trim()) toAutocomplete.refresh();
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setTokenlistMessage('Error: ' + msg, 'error');
-      } finally {
-        loadTokenlistBtn.disabled = false;
-        loadTokenlistBtn.textContent = 'Load';
+        new URL(url);
+      } catch {
+        setTokenlistMessage('Invalid URL format', 'error');
+        return;
       }
-    }
 
-    // Reset to default tokenlist
-    async function handleResetTokenlist() {
-      loadTokenlistBtn.disabled = true;
-      setTokenlistMessage('Resetting...', 'loading');
+      // Check for HTTPS
+      if (!url.toLowerCase().startsWith('https://')) {
+        setTokenlistMessage('URL must use HTTPS', 'error');
+        return;
+      }
+
+      // Check for duplicate
+      const normalizedUrl = normalizeTokenlistUrl(url);
+      const isDuplicate = tokenlistSources.some(s =>
+        s.url && normalizeTokenlistUrl(s.url) === normalizedUrl
+      );
+      if (isDuplicate) {
+        setTokenlistMessage('This tokenlist is already added', 'error');
+        return;
+      }
+
+      // Add entry with loading state
+      const newIndex = tokenlistSources.length;
+      tokenlistSources.push({ url, enabled: true, name: url, tokens: [], error: null });
+
+      addTokenlistBtn.disabled = true;
+      addTokenlistBtn.textContent = 'Loading...';
+      setTokenlistMessage('Fetching tokenlist...', 'loading');
+      renderTokenlistSources();
 
       try {
-        localStorage.removeItem(CUSTOM_TOKENLIST_URL_KEY);
+        await loadTokenlistSource(url, newIndex);
+        saveTokenlistSources();
+        setTokenlistMessage('Added "' + escapeHtml(tokenlistSources[newIndex].name) + '"', 'success');
         tokenlistUrlInput.value = '';
-        await loadTokenlist();
-        setTokenlistMessage('Reset to default (' + tokenlistTokens.length + ' tokens)', 'success');
-        showResetButton(false);
-        // Update autocomplete
-        if (fromInput.value.trim()) fromAutocomplete.refresh();
-        if (toInput.value.trim()) toAutocomplete.refresh();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         setTokenlistMessage('Error: ' + msg, 'error');
+        // Keep the entry with error state
+        renderTokenlistSources();
       } finally {
-        loadTokenlistBtn.disabled = false;
+        addTokenlistBtn.disabled = false;
+        addTokenlistBtn.textContent = 'Load';
       }
     }
 
     // Wire up button handlers
-    loadTokenlistBtn.addEventListener('click', handleLoadCustomTokenlist);
-    resetTokenlistBtn.addEventListener('click', handleResetTokenlist);
+    addTokenlistBtn.addEventListener('click', handleAddTokenlist);
 
     // Load on Enter in URL input
     tokenlistUrlInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        void handleLoadCustomTokenlist();
+        void handleAddTokenlist();
       }
     });
 
-    function getTokensForChain(chainId) {
-      const cid = Number(chainId);
-      const seen = new Set();
-      return tokenlistTokens.filter((t) => {
-        if (Number(t.chainId) !== cid || typeof t.address !== 'string') return false;
-        const addr = t.address.toLowerCase();
-        if (seen.has(addr)) return false;
-        seen.add(addr);
-        return true;
-      });
-    }
-
+    // Find token matches for autocomplete
     function findTokenMatches(value, chainId) {
       const query = value.trim().toLowerCase();
       if (!query) return [];
 
       const normalizedQuery = normalizeAddress(query);
-      return getTokensForChain(chainId)
+      const tokens = getTokensForChain(chainId);
+
+      // Track which symbols are duplicated across sources
+      const symbolCounts = new Map();
+      for (const token of tokens) {
+        const symbol = String(token.symbol || '').toLowerCase();
+        symbolCounts.set(symbol, (symbolCounts.get(symbol) || 0) + 1);
+      }
+
+      return tokens
         .filter((token) => {
           const symbol = String(token.symbol || '').toLowerCase();
           const name = String(token.name || '').toLowerCase();
@@ -1960,6 +2270,11 @@ const INDEX_HTML = `<!DOCTYPE html>
             address.includes(query) ||
             normalizedAddress.includes(normalizedQuery)
           );
+        })
+        .map(token => {
+          const symbol = String(token.symbol || '').toLowerCase();
+          const needsDisambiguation = (symbolCounts.get(symbol) || 0) > 1;
+          return { ...token, _needsDisambiguation: needsDisambiguation };
         })
         .slice(0, 20);
     }
@@ -2069,12 +2384,21 @@ const INDEX_HTML = `<!DOCTYPE html>
           name.className = 'autocomplete-name';
           name.textContent = token.name || '';
 
+          title.appendChild(symbol);
+          title.appendChild(name);
+
+          // Add source badge if disambiguation is needed
+          if (token._needsDisambiguation && token._source) {
+            const sourceBadge = document.createElement('span');
+            sourceBadge.className = 'autocomplete-source';
+            sourceBadge.textContent = token._source;
+            title.appendChild(sourceBadge);
+          }
+
           const address = document.createElement('div');
           address.className = 'autocomplete-addr';
           address.textContent = token.address || '';
 
-          title.appendChild(symbol);
-          title.appendChild(name);
           meta.appendChild(title);
           meta.appendChild(address);
 
@@ -2369,10 +2693,16 @@ const INDEX_HTML = `<!DOCTYPE html>
     function findTokenByAddress(address, chainId) {
       const addr = String(address || '').toLowerCase();
       const cid = Number(chainId);
-      return tokenlistTokens.find((t) => 
-        Number(t.chainId) === cid && 
-        String(t.address || '').toLowerCase() === addr
-      );
+      // Search through enabled sources only
+      for (const source of tokenlistSources) {
+        if (!source.enabled || !source.tokens) continue;
+        const found = source.tokens.find((t) =>
+          Number(t.chainId) === cid &&
+          String(t.address || '').toLowerCase() === addr
+        );
+        if (found) return found;
+      }
+      return undefined;
     }
 
     function applyDefaults(chainId) {
@@ -3121,30 +3451,54 @@ const INDEX_HTML = `<!DOCTYPE html>
       params.get('chainId') && params.get('from') && params.get('to') && params.get('amount')
     );
 
-    // Check for custom tokenlist URL in localStorage and load it
-    const savedTokenlistUrl = localStorage.getItem(CUSTOM_TOKENLIST_URL_KEY);
-    let tokenlistLoadPromise;
+    // Initialize tokenlist sources on page load
+    async function initializeTokenlistSources() {
+      // Step 1: Load default tokenlist first
+      const defaultTokens = await loadDefaultTokenlist();
+      tokenlistSources = [{
+        url: null, // null indicates default
+        enabled: true,
+        name: DEFAULT_TOKENLIST_NAME,
+        tokens: defaultTokens,
+        error: null
+      }];
 
-    if (savedTokenlistUrl) {
-      // Restore custom URL in input field
-      tokenlistUrlInput.value = savedTokenlistUrl;
-      showResetButton(true);
-      setTokenlistMessage('Loading saved tokenlist...', 'loading');
+      // Step 2: Check for migration from old single-URL format
+      const migrated = migrateOldTokenlistUrl();
+      let savedLists = migrated || loadTokenlistSourcesFromStorage();
 
-      tokenlistLoadPromise = loadCustomTokenlist(savedTokenlistUrl)
-        .then(() => {
-          setTokenlistMessage('Loaded ' + tokenlistTokens.length + ' tokens from saved URL', 'success');
-        })
-        .catch((err) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          setTokenlistMessage('Failed to load saved URL: ' + msg + '. Using default.', 'error');
-          return loadTokenlist();
+      // Step 3: Load saved custom tokenlists
+      if (savedLists && savedLists.length > 0) {
+        const loadPromises = savedLists.map(async (saved) => {
+          const index = tokenlistSources.length;
+          tokenlistSources.push({
+            url: saved.url,
+            enabled: saved.enabled !== false, // default to true
+            name: saved.name || saved.url,
+            tokens: [],
+            error: null
+          });
+
+          try {
+            const { tokens, name } = await loadTokenlistFromUrl(saved.url);
+            tokenlistSources[index].tokens = tokens.map(t => ({ ...t, _source: name }));
+            tokenlistSources[index].name = name;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            tokenlistSources[index].error = msg;
+            tokenlistSources[index].tokens = [];
+          }
         });
-    } else {
-      tokenlistLoadPromise = loadTokenlist();
+
+        await Promise.all(loadPromises);
+      }
+
+      // Step 4: Render the sources list
+      renderTokenlistSources();
     }
 
-    tokenlistLoadPromise.then(() => {
+    // Load tokenlists and then initialize the UI
+    initializeTokenlistSources().then(() => {
       // Now we can format tokens with symbols from the loaded tokenlist
       const chainId = Number(chainIdInput.value);
 
@@ -3191,6 +3545,11 @@ const INDEX_HTML = `<!DOCTYPE html>
           updateUrl: false,
         });
       }
+    });
+
+    // Update token counts when chain changes
+    chainIdInput.addEventListener('change', () => {
+      renderTokenlistSources();
     });
   </script>
 </body>
