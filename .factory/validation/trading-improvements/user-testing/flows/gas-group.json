@@ -1,0 +1,75 @@
+{
+  "groupId": "gas-group",
+  "testedAt": "2026-03-02T02:00:00Z",
+  "credentials": {
+    "account": "N/A",
+    "namespace": "gas-group"
+  },
+  "toolsUsed": ["playwright-mcp", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-TRADE-001",
+      "title": "Gas costs factored into recommendation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl GET /compare?chainId=1&from=USDC&to=WETH&amount=1000&slippageBps=50 (no sender)",
+          "expected": "recommendation_reason mentions gas-adjusted comparison or fallback note about missing gas",
+          "observed": "recommendation_reason: 'Spandex (kyberswap) outputs 0.000153 WETH more (+0.030%). Gas estimates unavailable for Curve, comparing raw output only.' — Correctly falls back to raw output comparison with missing-gas note when Curve has no gas_used."
+        },
+        {
+          "action": "Inspect source code for gas-adjusted comparison logic (src/server.ts lines 248-330)",
+          "expected": "Three code paths: (1) both have gas + ETH output → subtract gas from output, (2) both have gas + non-ETH output → note gas costs in reason, (3) missing gas → fallback to raw output with note",
+          "observed": "All three paths verified in source. ETH output path computes spandexAdjustedOutput = spandexOutput - spandexGasCostEth and compares. Non-ETH path notes gas costs. Missing gas path adds 'Gas estimates unavailable for X, comparing raw output only.'"
+        },
+        {
+          "action": "Verify unit tests cover gas reversal scenario",
+          "expected": "Test exists where higher raw output router loses after gas adjustment",
+          "observed": "Test 'GET /compare recommendation flips when gas costs reverse the output advantage' in server.quote-compare.test.ts verifies Spandex with 1.50 ETH output + 15M gas loses to Curve with 1.49 ETH + 10K gas after adjustment."
+        },
+        {
+          "action": "Navigate to UI, submit USDC→WETH comparison on Ethereum",
+          "expected": "Recommendation reason visible in UI with gas context",
+          "observed": "UI displays: 'Spandex (odos) outputs 0.000011 WETH more (+0.002%). Gas estimates unavailable for Curve, comparing raw output only.' with 'Gas: 0.0363 gwei' below."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["comparison-shows-gas-adjustment.png"],
+        "consoleErrors": "none (favicon.ico 404 is cosmetic)",
+        "network": "GET /compare -> 200, recommendation_reason contains 'Gas estimates unavailable for Curve, comparing raw output only', gas_price_gwei: 0.0340, spandex.gas_used: 714466, curve.gas_used: null"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TRADE-004",
+      "title": "Symmetric gas display for both routers",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to UI, submit USDC→WETH comparison on Ethereum, expand Spandex details",
+          "expected": "Gas Used field visible with numeric value",
+          "observed": "Gas Used: 716697 displayed in Spandex quote details"
+        },
+        {
+          "action": "Switch to Curve tab, expand details",
+          "expected": "Gas Used field visible showing 'N/A' when gas unavailable",
+          "observed": "Gas Used: N/A displayed in Curve quote details (no sender provided, so gas estimation unavailable)"
+        },
+        {
+          "action": "Verify source code renders Gas Used symmetrically (src/server.ts line 1783-1784)",
+          "expected": "Both router quote displays use same Gas Used field with value or 'N/A' fallback",
+          "observed": "Code: const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null; details.push('Gas Used' + (gasUsed || 'N/A')). Applied identically to both Spandex and Curve quote rendering."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["both-quotes-show-gas.png"],
+        "consoleErrors": "none (favicon.ico 404 is cosmetic)",
+        "network": "GET /compare -> 200, spandex.gas_used: 714466, curve.gas_used: null (displayed as N/A in UI)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 2 assertions: 2 passed. VAL-TRADE-001 confirmed gas-adjusted comparison logic works correctly — falls back to raw output with missing-gas note when Curve lacks gas data, and source code + unit tests verify the full gas-adjusted path for ETH output. VAL-TRADE-004 confirmed symmetric Gas Used display: Spandex shows numeric value (716697), Curve shows 'N/A', using identical rendering code."
+}
