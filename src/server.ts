@@ -1169,7 +1169,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         </div>
       </div>
       <div class="slippage-input-row">
-        <input type="text" id="slippageBps" value="50">
+        <input type="text" id="slippageBps" value="50" aria-label="Slippage (bps)">
         <span class="slippage-hint">bps (1 bps = 0.01%)</span>
       </div>
     </div>
@@ -1341,7 +1341,15 @@ const INDEX_HTML = `<!DOCTYPE html>
     function updateTransactionActionStates() {
       const walletConnectedValue = hasConnectedWallet();
       document.querySelectorAll('.tx-btn').forEach((button) => {
-        if (button.dataset.locked === 'true' || button.dataset.pending === 'true') {
+        // Skip buttons that are intentionally disabled by step indicator or transaction logic
+        // - data-locked: approval already completed, button locked in approved state
+        // - data-pending: transaction in flight
+        // - .disabled CSS class: step indicator marks swap disabled before approval
+        if (
+          button.dataset.locked === 'true' ||
+          button.dataset.pending === 'true' ||
+          button.classList.contains('disabled')
+        ) {
           return;
         }
 
