@@ -1,0 +1,23 @@
+{
+  "milestone": "ux-fixes",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-DROP-001",
+    "VAL-DROP-002",
+    "VAL-DROP-003",
+    "VAL-COLOR-001",
+    "VAL-COLOR-002",
+    "VAL-COLOR-003"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
