@@ -106,3 +106,8 @@ Read `/Users/bryan/code/compare-dex-routers/src/server.ts` to verify swap/approv
 - **Settings overlay targeting**: For backdrop-close testing, target `#settingsModal` specifically. Generic `.modal-overlay` selectors can match the hidden MEV overlay first and fail to close Settings.
 - **Reliable disambiguation fixture**: `https://tokens.coingecko.com/uniswap/all.json` is a reliable list for duplicate-symbol/different-address assertions (e.g., multiple `PEPE` tokens with different addresses).
 
+## Known Issues & Quirks (from custom-tokens validation round 1)
+
+- **VAL-CROSS-003 currently fails**: Local Tokens does not have a source-level toggle in Settings (only Import/Export/remove token controls). Local tokens are always merged into autocomplete.
+- **Cross-flow fixture note**: `cUSDC` (`0x39AA39c021dfbaE8faC545936693aC917d5E7563`) also exists in the CoinGecko list and can be deduplicated with local tokens. For pure local-token chain-switch checks, remove/disable CoinGecko first.
+

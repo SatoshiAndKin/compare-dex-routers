@@ -18,7 +18,7 @@ Open `http://localhost:3000` in a browser to use the UI.
 
 ## Features
 
-**Token selection** — Autocomplete powered by a local tokenlist (`data/tokenlist.json`) or a custom remote tokenlist URL. Filters by the selected chain, shows token logos, and accepts name, symbol, or address. After selection the input displays the symbol followed by the full contract address. Dropdowns have a minimum width of 320 px. Full addresses are displayed throughout the UI — no truncation anywhere.
+**Token selection** — Autocomplete powered by a built-in tokenlist (`data/tokenlist.json`) plus any custom remote tokenlists added via the settings panel. Filters by the selected chain, shows token logos, and accepts name, symbol, or address. When multiple lists contain tokens with the same symbol, the source list name is shown for disambiguation. After selection the input displays the symbol followed by the full contract address. Dropdowns have a minimum width of 320 px. Full addresses are displayed throughout the UI — no truncation anywhere. Setting from and to to the same token automatically swaps them.
 
 **Wallet connection** — Integrated directly in the form flow (Chain → Wallet → Tokens → Slippage → Compare). Detects wallets via ERC-6963 multi-provider discovery with `window.ethereum` fallback. Connect/disconnect with one click; the connected address is used automatically as the sender. The wallet provider menu supports scrolling when many wallets are available.
 
@@ -34,11 +34,21 @@ Open `http://localhost:3000` in a browser to use the UI.
 
 **Brutalist design** — High-contrast black/white with WCAG AA compliant color accents: blue (`#0055FF`) for the recommended quote, dark orange (`#CC2900`) for alternatives, dark green (`#007700`) for success states, and dark red (`#CC0000`) for errors. Labels get blue left borders; result cards get colored left borders. The "Recommended" badge is a flat label rather than a pill. No border-radius. Inline results with collapsible details.
 
-## Tokenlist
+## Tokenlist management
 
-Token autocomplete reads from `data/tokenlist.json`, served by the `GET /tokenlist` endpoint. You can replace this file with your own [Uniswap-format tokenlist](https://tokenlists.org/) to customize available tokens.
+Token autocomplete reads from `data/tokenlist.json` (the built-in default list) plus any custom remote tokenlists you add. Click the **gear icon** next to the chain selector to open the settings panel.
 
-The UI also has an optional **Tokenlist URL** input where you can paste a remote tokenlist URL (e.g. `https://tokens.uniswap.org`). The app fetches it through a server-side proxy (`GET /tokenlist/proxy?url=...`) to avoid CORS issues. The custom URL is persisted in `localStorage` and survives page reloads.
+**Multiple tokenlists** — Add as many custom tokenlist URLs as you want (e.g. `https://tokens.uniswap.org`). Each list can be independently toggled on/off. Remote lists are fetched through a server-side proxy (`GET /tokenlist/proxy?url=...`) to avoid CORS issues. All list URLs and toggle states persist in `localStorage`.
+
+**Chain mismatch warnings** — If a loaded tokenlist has no tokens for the currently selected chain, a warning is displayed in the settings panel.
+
+**Unrecognized token detection** — Entering a contract address that isn't in any active tokenlist triggers an on-chain ERC-20 metadata lookup via `GET /token-metadata`. If the address is a valid ERC-20 token, a popup offers to save it to your local token list.
+
+**Local token management** — Custom tokens saved via the popup are stored in `localStorage` and appear in autocomplete alongside list tokens. You can view and remove individual local tokens from the settings panel.
+
+**Export/Import** — Export your local tokens as a [Uniswap-format tokenlist](https://tokenlists.org/) JSON file. Import tokens from a previously exported file. Useful for sharing custom token sets across browsers or devices.
+
+**Trust warning** — The settings panel includes a reminder to only use tokenlist sources you trust, since malicious lists could include scam tokens.
 
 ## Supported chains
 
@@ -82,6 +92,15 @@ Server-side proxy for fetching remote tokenlists. Avoids CORS restrictions.
 | Param | Required | Description                          |
 | ----- | -------- | ------------------------------------ |
 | `url` | yes      | Remote tokenlist URL to fetch        |
+
+### `GET /token-metadata`
+
+Looks up on-chain ERC-20 metadata for a given token address. Used by the UI for unrecognized token detection.
+
+| Param     | Required | Description                        |
+| --------- | -------- | ---------------------------------- |
+| `chainId` | yes      | Chain ID (see table above)         |
+| `address` | yes      | Token contract address             |
 
 ### `GET /chains`
 
