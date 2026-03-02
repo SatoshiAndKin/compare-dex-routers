@@ -1,0 +1,50 @@
+{
+  "milestone": "custom-tokens",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 23,
+    "passed": 22,
+    "failed": 1,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CROSS-001",
+    "VAL-CROSS-002",
+    "VAL-CROSS-005",
+    "VAL-CROSS-006",
+    "VAL-IO-001",
+    "VAL-IO-002",
+    "VAL-IO-003",
+    "VAL-IO-004",
+    "VAL-IO-005",
+    "VAL-LOCAL-001",
+    "VAL-LOCAL-002",
+    "VAL-LOCAL-003",
+    "VAL-LOCAL-004",
+    "VAL-LOCAL-005",
+    "VAL-TOKEN-001",
+    "VAL-TOKEN-002",
+    "VAL-TOKEN-003",
+    "VAL-TOKEN-004",
+    "VAL-TOKEN-005",
+    "VAL-TOKEN-006",
+    "VAL-TOKEN-007",
+    "VAL-TOKEN-008"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-CROSS-003",
+      "reason": "Local Tokens source is not toggleable in Settings; there is no source-level on/off control and local tokens are always merged into autocomplete."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added custom-tokens round 1 notes covering VAL-CROSS-003 failure and cUSDC/CoinGecko dedup test-fixture behavior for future reruns.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}
