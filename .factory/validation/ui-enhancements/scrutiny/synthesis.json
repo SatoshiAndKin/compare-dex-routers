@@ -1,0 +1,93 @@
+{
+  "milestone": "ui-enhancements",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test",
+      "exitCode": 0,
+      "note": "109 tests passed across 6 test files"
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "note": "0 errors"
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0,
+      "note": "0 errors, 3 warnings (complexity warnings in compareQuotes and handleRequest — pre-existing pattern)"
+    }
+  },
+  "reviewsSummary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library/architecture.md",
+      "description": "Updated stale token display format doc from '0xABCD...1234' to 'full 42-char address, never truncated', added note about dead code path in extractAddressFromInput",
+      "sourceFeature": "full-address-display"
+    },
+    {
+      "target": "library/architecture.md",
+      "description": "Added /tokenlist/proxy endpoint to the API endpoints list with behavioral description",
+      "sourceFeature": "custom-tokenlist-url"
+    },
+    {
+      "target": "library/architecture.md",
+      "description": "Added codebase quirk: updateTransactionActionStates() broadly re-enables all .tx-btn buttons on wallet connect, overriding the step-indicator's intentional disabled state on the Swap button",
+      "sourceFeature": "result-ui-polish"
+    },
+    {
+      "target": "library/environment.md",
+      "description": "Documented that data/tokenlist.json is untracked, created by init.sh, not included in Docker image — /tokenlist returns 500 in Docker without volume mount",
+      "sourceFeature": "autocomplete-wallet-fix"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention: all new server endpoints must include observability calls — recordRequest(), logError() on errors, trackError() for error metrics. Pattern already used by /quote, /compare, /tokenlist but missing from the new /tokenlist/proxy endpoint.",
+      "evidence": "Feature custom-tokenlist-url added /tokenlist/proxy without any observability calls. All other non-trivial endpoints (/quote at line ~3173, /compare at ~3222, /tokenlist at ~3118) call recordRequest(), logError(), and/or trackError(). Without documented convention, workers consistently omit this.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add accessibility convention: all form inputs must have a <label for=\"id\"> element (not a <span>). Currently AGENTS.md has no guidance on form accessibility. The slippage field's label was changed to <span> in form-ux-improvements, breaking programmatic label association.",
+      "evidence": "Feature form-ux-improvements replaced <label for=\"slippageBps\"> with <span class=\"slippage-label\">. Every other form field (chain, tokenlist URL, from token, amount, to token) retains a proper <label>. Worker had no explicit guidance to preserve this pattern.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add security note: server-side proxy endpoints must validate that resolved hostnames are not private/internal IP ranges (SSRF). The /tokenlist/proxy endpoint currently only checks url.protocol === 'https:' but does not block private IP ranges (10.x, 172.16.x, 192.168.x, 127.0.0.1, ::1). Low risk for a developer tool, but the pattern should be documented before more proxy endpoints are added.",
+      "evidence": "Feature custom-tokenlist-url added /tokenlist/proxy without SSRF IP filtering. The feature description only required HTTPS validation. Security convention should be proactive, not reactive.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "AGENTS.md API Endpoints section does not list GET /tokenlist/proxy",
+      "reason": "The AGENTS.md endpoint list documents existing stable endpoints, not implementation details. The new endpoint is documented in library/architecture.md. Updating AGENTS.md itself is an orchestrator decision — recommending it above as a suggestedGuidanceUpdate instead."
+    },
+    {
+      "observation": "readme-screenshot: fullstack-worker skill's test-first approach doesn't apply to documentation-only tasks",
+      "reason": "The skill already has a 'client-side-only changes' clause that covers this case. No change needed to skill or AGENTS.md — the worker handled it correctly."
+    }
+  ],
+  "previousRound": null,
+  "featuresReviewed": [
+    { "id": "autocomplete-wallet-fix", "status": "pass", "issues": 0, "reviewFile": ".factory/validation/ui-enhancements/scrutiny/reviews/autocomplete-wallet-fix.json" },
+    { "id": "full-address-display", "status": "pass", "issues": 2, "issuesSeverity": "non_blocking", "reviewFile": ".factory/validation/ui-enhancements/scrutiny/reviews/full-address-display.json" },
+    { "id": "form-ux-improvements", "status": "pass", "issues": 1, "issuesSeverity": "non_blocking", "reviewFile": ".factory/validation/ui-enhancements/scrutiny/reviews/form-ux-improvements.json" },
+    { "id": "result-ui-polish", "status": "pass", "issues": 1, "issuesSeverity": "non_blocking", "reviewFile": ".factory/validation/ui-enhancements/scrutiny/reviews/result-ui-polish.json" },
+    { "id": "custom-tokenlist-url", "status": "pass", "issues": 4, "issuesSeverity": "non_blocking", "reviewFile": ".factory/validation/ui-enhancements/scrutiny/reviews/custom-tokenlist-url.json" },
+    { "id": "readme-screenshot", "status": "pass", "issues": 0, "reviewFile": ".factory/validation/ui-enhancements/scrutiny/reviews/readme-screenshot.json" }
+  ]
+}

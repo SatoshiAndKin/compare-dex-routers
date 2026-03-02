@@ -1,0 +1,56 @@
+{
+  "featureId": "custom-tokenlist-url",
+  "reviewedAt": "2026-03-02T07:30:00.000Z",
+  "commitId": "fba5758",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation that covers all four requirements: server proxy endpoint with validation, UI input with Load/Reset buttons, localStorage persistence with auto-fetch on page load, and 9 test cases. The proxy function uses streaming body reads with a 5MB limit, validates HTTPS-only URLs, checks JSON structure for a tokens array, and applies a 30-second fetch timeout. UI code properly uses textContent (not innerHTML) to display messages, preventing XSS. Error handling covers all specified cases with correct HTTP status codes. The client-side code includes Enter-key support, autocomplete refresh after token loading, and graceful fallback to default tokenlist if saved URL fails on reload.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 3125,
+        "severity": "non_blocking",
+        "description": "SSRF risk: The proxy endpoint fetches any HTTPS URL without filtering for private/internal IP ranges (e.g., 10.x, 172.16.x, 192.168.x, 127.0.0.1, ::1). An attacker could use this to probe internal services that have HTTPS endpoints. For a developer tool this is low risk, but worth noting for future hardening."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 3126,
+        "severity": "non_blocking",
+        "description": "No observability on proxy endpoint: Other endpoints (/tokenlist, /quote, /compare) call logError(), recordRequest(), and trackError() for monitoring. The /tokenlist/proxy endpoint has none of these, making it harder to debug and monitor usage or abuse."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 3139,
+        "severity": "non_blocking",
+        "description": "Fragile error-to-status-code mapping: The route handler uses message.includes('Missing url'), message.includes('Invalid URL'), message.includes('HTTPS') to determine 400 vs 502. If error messages in fetchProxyTokenList are ever refactored, the status classification would break silently. A more robust approach would be custom error types or error codes."
+      },
+      {
+        "file": "src/__tests__/server.integration.test.ts",
+        "line": 434,
+        "severity": "non_blocking",
+        "description": "4 of 9 proxy tests hit external services (tokens.uniswap.org, example.com) in real time. While the test file is already named 'integration', these create flakiness risk if external services are down or rate-limit. Consider mocking fetch for unit-level tests and keeping a single integration smoke test."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md API Endpoints section does not list the new GET /tokenlist/proxy endpoint. The worker added the endpoint but did not update the documentation.",
+      "evidence": "AGENTS.md lists /health, /chains, /compare, /quote, /metrics but not /tokenlist/proxy. Compare to git show fba5758 which adds the route handler at line ~3125."
+    },
+    {
+      "area": "conventions",
+      "observation": "No convention documented for adding observability (logging, metrics, error tracking) to new endpoints. The proxy endpoint lacks recordRequest(), logError(), and trackError() calls that all other non-trivial endpoints use. If AGENTS.md or the skill documented this pattern, workers would replicate it consistently.",
+      "evidence": "src/server.ts: /quote uses recordRequest() at lines 3173,3190 and trackError() at 3199; /compare uses them at 3222,3230,3231; /tokenlist uses logError() at 3118. The new /tokenlist/proxy at 3125-3152 has none."
+    },
+    {
+      "area": "conventions",
+      "observation": "No security guidance for server-side proxy endpoints (SSRF filtering). The proxy fetches arbitrary HTTPS URLs without private IP filtering. If more proxy endpoints are added, this pattern could proliferate.",
+      "evidence": "src/server.ts fetchProxyTokenList() at line ~137 validates only url.protocol === 'https:' but does not check for private/reserved IP ranges."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The custom-tokenlist-url feature fully implements all four requirements: (1) GET /tokenlist/proxy with HTTPS validation, 5MB streaming limit, JSON+tokens-array validation, and proper 400/502 error codes; (2) UI input with Load/Reset buttons, loading states, and error messages; (3) localStorage persistence with auto-fetch on reload and graceful fallback; (4) 9 integration tests covering all validation paths. Non-blocking issues: no SSRF private-IP filtering, no observability (logging/metrics/error-tracking) on the proxy endpoint, fragile string-based error classification, and external-service-dependent tests. Three shared state observations flagged for AGENTS.md (missing endpoint docs, missing observability convention, missing SSRF guidance)."
+}

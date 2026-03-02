@@ -1,0 +1,26 @@
+{
+  "featureId": "autocomplete-wallet-fix",
+  "reviewedAt": "2026-03-02T07:25:00.000Z",
+  "commitId": "no-code-changes-needed",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "No code changes were made. The worker investigated all three items in the feature description and found no bugs. This is a valid 'investigation + verification' outcome. Evidence reviewed:\n\n1. /tokenlist endpoint (server.ts:3113-3121): Reads data/tokenlist.json via loadTokenList() with proper caching and error handling. The Docker 500 error is expected since the Dockerfile doesn't COPY data/ — the feature explicitly scopes this to 'running natively'. Natively, data/tokenlist.json exists (590KB, 1367 tokens, downloaded by init.sh) and resolves via process.cwd(). Worker confirmed 200 status with curl.\n\n2. Autocomplete + wallet interaction: The setupAutocomplete function (server.ts:1888-2031) operates independently of wallet state — it queries findTokenMatches() which filters tokenlistTokens by chain, with no reference to wallet connection state. The wallet code (ERC-6963 announceProvider, connect/disconnect) doesn't touch the autocomplete inputs or dropdown. Worker verified this with browser testing: injected a mock ERC-6963 wallet, connected it, and confirmed autocomplete still works for both From and To fields.\n\n3. Existing test coverage is thorough: server.integration.test.ts has tests for /tokenlist 200, content-type, token structure, caching, 500 on missing file, and /tokenlist/proxy with 8+ edge cases. All 100 tests pass.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The data/ directory is untracked (not in git) and not in .gitignore. It's created by init.sh downloading from Uniswap. This means data/tokenlist.json availability is implicit — it depends on init.sh having run. The Dockerfile doesn't include data/, so Docker deployments will always 500 on /tokenlist unless a volume mount is configured. This isn't documented in AGENTS.md or .factory/library/.",
+      "evidence": "git status shows '?? data/' (untracked). Dockerfile only COPYs package*.json, src/, and tsconfig.json. .gitignore does not mention data/. init.sh downloads tokenlist.json to data/ if missing."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The /tokenlist endpoint has a known Docker limitation that could trip up future workers: it will always 500 in Docker unless data/tokenlist.json is volume-mounted or the Dockerfile is updated to include it. This is a common gotcha for this codebase that could be documented in .factory/library/.",
+      "evidence": "Dockerfile (lines 3-10) does not COPY data/. server.ts:81 resolves tokenlist path via process.cwd() + 'data/tokenlist.json'. Feature description itself notes 'returns 500 when the server runs in Docker because data/tokenlist.json isn't mounted.'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The worker correctly determined no code changes were needed. The /tokenlist endpoint works natively (data/tokenlist.json exists via init.sh), and autocomplete is architecturally independent of wallet connection state — confirmed both via code inspection and browser testing with mock ERC-6963 wallet. All 100 tests pass, typecheck clean, lint clean. The worker followed the skill procedure (investigation, server verification, browser verification with/without wallet, chain switching). Two shared-state observations noted regarding the undocumented data/ directory lifecycle and Docker tokenlist limitation."
+}
