@@ -173,4 +173,31 @@ describe("config", () => {
       expect(result).toBe("");
     });
   });
+
+  describe("getTokenName", () => {
+    it("calls readContract and caches result", async () => {
+      process.env.ALCHEMY_API_KEY = "test-key";
+      const { getTokenName, getClient } = await loadConfig();
+      const mockClient = getClient(1);
+      vi.mocked(mockClient.readContract).mockResolvedValue("USD Coin");
+
+      const result = await getTokenName(1, "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+      expect(result).toBe("USD Coin");
+
+      // Second call should use cache
+      const result2 = await getTokenName(1, "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+      expect(result2).toBe("USD Coin");
+      expect(mockClient.readContract).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns empty string on error", async () => {
+      process.env.ALCHEMY_API_KEY = "test-key";
+      const { getTokenName, getClient } = await loadConfig();
+      const mockClient = getClient(1);
+      vi.mocked(mockClient.readContract).mockRejectedValue(new Error("revert"));
+
+      const result = await getTokenName(1, "0x0000000000000000000000000000000000000001");
+      expect(result).toBe("");
+    });
+  });
 });

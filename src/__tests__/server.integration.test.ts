@@ -478,4 +478,53 @@ describe("server integration", () => {
       expect(body.error).toBeDefined();
     });
   });
+
+  // Token metadata endpoint tests
+  describe("GET /token-metadata", () => {
+    it("returns 400 when chainId parameter is missing", async () => {
+      const res = await request(
+        `${baseUrl}/token-metadata?address=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`
+      );
+      expect(res.status).toBe(400);
+      const body = JSON.parse(res.body);
+      expect(body.error).toContain("Missing or invalid chainId");
+    });
+
+    it("returns 400 when address parameter is missing", async () => {
+      const res = await request(`${baseUrl}/token-metadata?chainId=1`);
+      expect(res.status).toBe(400);
+      const body = JSON.parse(res.body);
+      expect(body.error).toContain("Missing or invalid address");
+    });
+
+    it("returns 400 for unsupported chainId", async () => {
+      const res = await request(
+        `${baseUrl}/token-metadata?chainId=999&address=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`
+      );
+      expect(res.status).toBe(400);
+      const body = JSON.parse(res.body);
+      expect(body.error).toContain("Unsupported chain");
+    });
+
+    it("returns 400 for invalid address format", async () => {
+      const res = await request(`${baseUrl}/token-metadata?chainId=1&address=not-an-address`);
+      expect(res.status).toBe(400);
+      const body = JSON.parse(res.body);
+      expect(body.error).toContain("Invalid address format");
+    });
+
+    it("returns 400 for address with wrong length", async () => {
+      const res = await request(`${baseUrl}/token-metadata?chainId=1&address=0x1234`);
+      expect(res.status).toBe(400);
+      const body = JSON.parse(res.body);
+      expect(body.error).toContain("Invalid address format");
+    });
+
+    it("returns application/json content-type", async () => {
+      const res = await request(
+        `${baseUrl}/token-metadata?chainId=1&address=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`
+      );
+      expect(res.headers["content-type"]).toContain("application/json");
+    });
+  });
 });

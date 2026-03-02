@@ -12,6 +12,7 @@ import {
   getSpandexConfig,
   getTokenDecimals,
   getTokenSymbol,
+  getTokenName,
   getClient,
   SUPPORTED_CHAINS,
   DEFAULT_TOKENS,
@@ -3685,6 +3686,77 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       } else {
         // Fetch failures, parse errors, size limits - all 502
         sendError(res, 502, message);
+      }
+    }
+    return;
+  }
+
+  // Token metadata endpoint - fetches ERC-20 name, symbol, decimals from chain
+  if (url.pathname === "/token-metadata" && req.method === "GET") {
+    const chainIdParam = url.searchParams.get("chainId");
+    const addressParam = url.searchParams.get("address");
+
+    // Validate chainId
+    const chainId = parseInt(chainIdParam || "", 10);
+    if (isNaN(chainId) || chainId <= 0) {
+      sendError(res, 400, "Missing or invalid chainId parameter");
+      return;
+    }
+
+    if (!SUPPORTED_CHAINS[chainId]) {
+      sendError(res, 400, `Unsupported chain: ${chainId}`);
+      return;
+    }
+
+    // Validate address format
+    if (!addressParam) {
+      sendError(res, 400, "Missing or invalid address parameter");
+      return;
+    }
+
+    const addressRegex = /^0x[a-fA-F0-9]{40}$/;
+    if (!addressRegex.test(addressParam)) {
+      sendError(res, 400, "Invalid address format");
+      return;
+    }
+
+    try {
+      const [name, symbol, decimals] = await Promise.all([
+        getTokenName(chainId, addressParam),
+        getTokenSymbol(chainId, addressParam),
+        getTokenDecimals(chainId, addressParam),
+      ]);
+
+      // Check if this is a valid ERC-20 token (at least one metadata field should be present)
+      if (!name && !symbol && decimals === 0) {
+        sendError(res, 404, "Not a valid ERC-20 token");
+        return;
+      }
+
+      sendJson(res, 200, { name, symbol, decimals });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logError(`Token metadata fetch failed: chain=${chainId} address=${addressParam}`, err);
+
+      // Check for specific error types
+      if (message.includes("Unsupported chain")) {
+        sendError(res, 400, message);
+      } else if (
+        message.includes("revert") ||
+        message.includes("call revert") ||
+        message.includes("execution reverted") ||
+        message.includes("returned no data") ||
+        message.includes("not a contract")
+      ) {
+        sendError(res, 404, "Not a valid ERC-20 token");
+      } else if (
+        message.includes("timeout") ||
+        message.includes("network") ||
+        message.includes("ECONNREFUSED")
+      ) {
+        sendError(res, 500, `RPC error: ${message}`);
+      } else {
+        sendError(res, 500, message);
       }
     }
     return;

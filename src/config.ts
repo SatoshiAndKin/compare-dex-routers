@@ -69,6 +69,13 @@ const erc20Abi = [
     inputs: [],
     outputs: [{ type: "string" }],
   },
+  {
+    name: "name",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "string" }],
+  },
 ] as const;
 
 function buildProviders() {
@@ -160,6 +167,28 @@ export async function getTokenSymbol(chainId: number, address: string): Promise<
     return symbol;
   } catch {
     symbolCache.set(key, "");
+    return "";
+  }
+}
+
+const nameCache = new Map<string, string>();
+
+export async function getTokenName(chainId: number, address: string): Promise<string> {
+  const key = `${chainId}:${address.toLowerCase()}`;
+  const cached = nameCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const client = getClient(chainId);
+  try {
+    const name = await client.readContract({
+      address: address as Address,
+      abi: erc20Abi,
+      functionName: "name",
+    });
+    nameCache.set(key, name);
+    return name;
+  } catch {
+    nameCache.set(key, "");
     return "";
   }
 }
