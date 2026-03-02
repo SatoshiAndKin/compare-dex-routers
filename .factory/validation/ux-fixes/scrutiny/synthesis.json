@@ -1,61 +1,47 @@
 {
   "milestone": "ux-fixes",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": { "passed": true, "command": "npm test", "exitCode": 0, "note": "100 tests passed" },
     "typecheck": { "passed": true, "command": "npm run typecheck", "exitCode": 0 },
     "lint": { "passed": true, "command": "npm run lint", "exitCode": 0, "note": "2 complexity warnings (pre-existing), 0 errors" }
   },
   "reviewsSummary": {
-    "total": 2,
+    "total": 1,
     "passed": 1,
-    "failed": 1,
-    "failedFeatures": ["add-color-accents"]
+    "failed": 0,
+    "failedFeatures": [],
+    "note": "Re-run review: only fix-color-contrast reviewed (fixing prior add-color-accents failures). Prior passing reviews (fix-dropdown-sizing) unchanged."
   },
-  "blockingIssues": [
-    {
-      "featureId": "add-color-accents",
-      "severity": "blocking",
-      "description": "WCAG AA contrast failure: .result-recommendation.alternative uses #FF3300 background with #fff text at 12px bold. Contrast ratio 3.67:1; WCAG AA requires 4.5:1 for normal text (12px does not qualify as large text). Fix: darken to #CC2900 (~5.0:1) or use dark text on orange.",
-      "file": "src/server.ts",
-      "line": 726
-    },
-    {
-      "featureId": "add-color-accents",
-      "severity": "blocking",
-      "description": "WCAG AA contrast failure: .tx-status.success uses #00AA00 text on actual #e8e8e8 background. Contrast ratio 2.54:1; fails even the 3:1 large-text threshold. Worker incorrectly calculated against white (4.57:1) but the actual background is #e8e8e8. Fix: darken to #007700 (4.7:1 on #e8e8e8) or change background to #fff.",
-      "file": "src/server.ts",
-      "line": 756
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [
     {
       "target": "library",
       "file": ".factory/library/color-system.md",
-      "description": "Created color-system.md documenting the UI color palette, WCAG contrast ratios against actual backgrounds, known failures, and design rules. Prevents future workers from repeating the error of calculating contrast against white when the actual CSS background differs.",
-      "sourceFeature": "add-color-accents"
+      "description": "Updated color-system.md to replace old failing hex values (#FF3300, #00AA00) with corrected canonical values (#CC2900, #007700). Removed 'Known WCAG AA Failures' section (issues resolved). Added note about the old values being corrected in commit 4bbb562.",
+      "sourceFeature": "fix-color-contrast"
     }
   ],
   "suggestedGuidanceUpdates": [
     {
       "target": "AGENTS.md",
-      "suggestion": "Update the Brutalist design rules color palette entry from 'black (#000) / white (#fff) + #0055FF accent' to list all four accent colors now in use: #0055FF (blue/primary), #CC2900 (orange/alternative — corrected from #FF3300 which fails contrast), #007700 (green/success — corrected from #00AA00), #CC0000 (red/error). This prevents workers from treating #0055FF as the only valid accent and from introducing ad hoc colors.",
-      "evidence": "Feature add-color-accents (commit 0fea9f1) expanded the palette to four colors. Without documentation, future workers may add more colors or use the uncorrected hex values that fail WCAG AA.",
+      "suggestion": "Update the Brutalist design rules color palette entry from 'black (#000) / white (#fff) + #0055FF accent' to list all four accent colors now in use: #0055FF (blue/primary), #CC2900 (orange/alternative), #007700 (green/success), #CC0000 (red/error). This prevents workers from treating #0055FF as the only valid accent and from introducing ad hoc colors or reverting to the old failing values.",
+      "evidence": "The palette was expanded to four colors in add-color-accents (commit 0fea9f1) and corrected in fix-color-contrast (commit 4bbb562). Without documentation update, future workers may add more colors or use the old uncorrected hex values. Flagged by both the add-color-accents and fix-color-contrast reviewers.",
       "isSystemic": false
     },
     {
       "target": "skills/fullstack-worker",
-      "suggestion": "Enforce that the lint check is mandatory in the verification step. Worker for add-color-accents ran typecheck and tests but skipped 'npm run lint'. The SKILL.md already lists lint as required, but the worker deviated without noting it. Consider making the lint step the first in the verification checklist to make skipping it more visible.",
-      "evidence": "add-color-accents handoff commandsRun lists only npm run typecheck, npm test, and curl health check. The fullstack-worker SKILL.md section 4 explicitly requires 'npm run lint'. Deviation was not flagged in the handoff skillFeedback.",
-      "isSystemic": false
+      "suggestion": "Make 'npm run lint' the first mandatory verification step, before typecheck and tests. Two workers (add-color-accents and fix-color-contrast) skipped lint during verification. The skill already requires it, but workers are consistently skipping it. Moving it to first position makes the omission more visible.",
+      "evidence": "Both add-color-accents handoff and fix-color-contrast handoff list commandsRun as: typecheck, test, curl health. Both omit lint. The fullstack-worker SKILL.md requires lint. This is a recurring deviation across two workers on the same milestone.",
+      "isSystemic": true
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "CSS text-truncation pattern (overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0) is repeated in multiple places and could be documented as a utility class convention.",
-      "reason": "The codebase uses inline CSS architecture in a single server.ts file — utility class conventions would require a style tag restructure. Low priority and inconsistent with the existing architecture pattern. Not actionable without broader refactoring."
+      "observation": "CSS text-truncation pattern is repeated in multiple places and could be documented as a utility class convention.",
+      "reason": "Carried over from round 1 rejection — still not actionable without broader refactoring of the inline CSS architecture."
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/ux-fixes/scrutiny/synthesis-round-1.json"
 }
