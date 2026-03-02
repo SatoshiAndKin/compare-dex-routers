@@ -612,6 +612,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       top: 100%;
       left: 0;
       min-width: 200px;
+      max-height: 300px;
+      overflow-y: auto;
       background: #fff;
       border: 2px solid #000;
       z-index: 100;
@@ -634,6 +636,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .wallet-provider-option:last-child { border-bottom: none; }
     .wallet-provider-option:hover { background: #f0f0f0; }
+    .wallet-provider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .wallet-provider-icon, .wallet-connected-icon {
       width: 18px;
       height: 18px;
@@ -651,7 +654,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       border-top: none;
       max-height: 240px;
       overflow-y: auto;
-      width: 100%;
+      min-width: 320px;
+      width: max-content;
+      max-width: 450px;
       display: none;
     }
     .autocomplete-list.show { display: block; }
@@ -676,7 +681,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .autocomplete-title { display: flex; align-items: baseline; gap: 0.25rem; }
     .autocomplete-symbol { font-weight: 600; font-size: 0.875rem; }
     .autocomplete-name { color: #666; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .autocomplete-addr { font-family: monospace; color: #666; font-size: 0.625rem; }
+    .autocomplete-addr { font-family: monospace; color: #666; font-size: 0.625rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     
     /* Results Section - Inline below form */
     #result { display: none; }
