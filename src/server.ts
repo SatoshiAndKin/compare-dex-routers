@@ -911,10 +911,6 @@ const INDEX_HTML = `<!DOCTYPE html>
       <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
     </div>
-    <div class="form-group">
-      <label for="sender">Sender (optional)</label>
-      <input type="text" id="sender" placeholder="0x... (auto-filled from wallet)">
-    </div>
     <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
   </form>
 
@@ -985,7 +981,6 @@ const INDEX_HTML = `<!DOCTYPE html>
     });
     const MAX_UINT256_HEX = 'f'.repeat(64);
 
-    const senderInput = document.getElementById('sender');
     const connectWalletBtn = document.getElementById('connectWalletBtn');
     const walletConnected = document.getElementById('walletConnected');
     const walletConnectedIcon = document.getElementById('walletConnectedIcon');
@@ -1291,7 +1286,6 @@ const INDEX_HTML = `<!DOCTYPE html>
         connectedWalletProvider = provider;
         connectedWalletAddressValue = account;
         connectedWalletInfo = info || { name: 'Wallet', icon: '' };
-        senderInput.value = account;
 
         setWalletGlobals();
         closeWalletProviderMenu();
@@ -1313,7 +1307,6 @@ const INDEX_HTML = `<!DOCTYPE html>
       connectedWalletProvider = null;
       connectedWalletAddressValue = '';
       connectedWalletInfo = null;
-      senderInput.value = '';
       setWalletGlobals();
       closeWalletProviderMenu();
       updateWalletStateUi();
@@ -1673,7 +1666,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         to: extractAddressFromInput(toInput),
         amount: amountInput.value,
         slippageBps: slippageInput.value,
-        sender: senderInput.value,
+        sender: hasConnectedWallet() ? connectedWalletAddressValue : '',
       });
     }
 
@@ -1702,11 +1695,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       url.searchParams.set('to', normalized.to);
       url.searchParams.set('amount', normalized.amount);
       url.searchParams.set('slippageBps', normalized.slippageBps);
-      if (normalized.sender) {
-        url.searchParams.set('sender', normalized.sender);
-      } else {
-        url.searchParams.delete('sender');
-      }
+      // Sender is never written to URL - it comes from wallet connection state
+      url.searchParams.delete('sender');
       // Remove MEV protection param if it exists (no longer used)
       url.searchParams.delete('mevProtection');
       window.history.replaceState({}, '', url.toString());
@@ -2568,7 +2558,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     if (params.get('amount')) amountInput.value = params.get('amount');
     if (params.get('slippageBps')) slippageInput.value = params.get('slippageBps');
-    if (params.get('sender')) senderInput.value = params.get('sender');
+    // Sender param from URL is silently ignored - sender comes from wallet connection state
 
     // Remove any stale mevProtection param from URL
     if (params.has('mevProtection')) {
