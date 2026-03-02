@@ -2194,6 +2194,10 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
 
     // Add a new tokenlist
+    // NOTE: If the initial fetch fails, we do NOT add an entry to tokenlistSources.
+    // The error is shown only in the status message area. This is per VAL-MULTI-007.
+    // Error-state entries with retry UI only exist for lists that were previously
+    // loaded successfully but fail on page reload (VAL-MULTI-011).
     async function handleAddTokenlist() {
       const url = String(tokenlistUrlInput.value || '').trim();
       if (!url) {
@@ -2225,25 +2229,26 @@ const INDEX_HTML = `<!DOCTYPE html>
         return;
       }
 
-      // Add entry with loading state
-      const newIndex = tokenlistSources.length;
-      tokenlistSources.push({ url, enabled: true, name: url, tokens: [], error: null });
-
       addTokenlistBtn.disabled = true;
       addTokenlistBtn.textContent = 'Loading...';
       setTokenlistMessage('Fetching tokenlist...', 'loading');
-      renderTokenlistSources();
 
       try {
-        await loadTokenlistSource(url, newIndex);
+        // Fetch the tokenlist BEFORE adding to tokenlistSources
+        const { tokens, name } = await loadTokenlistFromUrl(url);
+        const taggedTokens = tokens.map(t => ({ ...t, _source: name }));
+
+        // Only add to tokenlistSources after successful fetch
+        tokenlistSources.push({ url, enabled: true, name, tokens: taggedTokens, error: null });
         saveTokenlistSources();
-        setTokenlistMessage('Added "' + escapeHtml(tokenlistSources[newIndex].name) + '"', 'success');
+        setTokenlistMessage('Added "' + escapeHtml(name) + '"', 'success');
         tokenlistUrlInput.value = '';
+        renderTokenlistSources();
+        refreshAutocomplete();
       } catch (err) {
+        // On failure, do NOT add to tokenlistSources - just show error message
         const msg = err instanceof Error ? err.message : String(err);
         setTokenlistMessage('Error: ' + msg, 'error');
-        // Keep the entry with error state
-        renderTokenlistSources();
       } finally {
         addTokenlistBtn.disabled = false;
         addTokenlistBtn.textContent = 'Load';
