@@ -366,7 +366,7 @@ const INDEX_HTML = `<!DOCTYPE html>
   <title>Compare DEX Routers</title>
   <style>
     /* BRUTALIST DESIGN: High contrast, no border-radius, max 2 fonts */
-    /* Color Palette: Black/White + Blue accent (#0055FF) + Orange accent (#FF3300) + Green (#00AA00) + Red (#CC0000) */
+    /* Color Palette: Black/White + Blue accent (#0055FF) + Orange accent (#CC2900) + Green (#007700) + Red (#CC0000) */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { font-size: 16px; }
     
@@ -697,7 +697,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #fff;
     }
     .result-primary.winner { border-left-color: #0055FF; }
-    .result-primary.alternative { border-left-color: #FF3300; }
+    .result-primary.alternative { border-left-color: #CC2900; }
     .result-output {
       font-size: 2rem;
       font-weight: 700;
@@ -723,7 +723,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       border: 2px solid #000;
     }
     .result-recommendation.winner { background: #0055FF; color: #fff; border-color: #0055FF; }
-    .result-recommendation.alternative { background: #FF3300; color: #fff; border-color: #FF3300; }
+    .result-recommendation.alternative { background: #CC2900; color: #fff; border-color: #CC2900; }
     
     /* Transaction Buttons */
     .tx-actions { margin-top: 1rem; padding-top: 0.75rem; border-top: 2px solid #000; }
@@ -753,7 +753,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .tx-status.success::before { content: "SUCCESS: "; }
     .tx-status.error::before { content: "FAILED: "; }
     .tx-status.pending { color: #666; }
-    .tx-status.success { color: #00AA00; background: #e8e8e8; padding: 0.125rem 0.25rem; }
+    .tx-status.success { color: #007700; background: #e8e8e8; padding: 0.125rem 0.25rem; }
     .tx-status.error { color: #CC0000; background: #f0f0f0; padding: 0.125rem 0.25rem; border: 1px solid #CC0000; }
     
     /* Tabs - Compact */
@@ -777,7 +777,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .tab:last-child { border-right: none; }
     .tab.active { background: #000; color: #fff; border-bottom: 3px solid #0055FF; }
-    .tab.active[data-tab="alternative"] { border-bottom-color: #FF3300; }
+    .tab.active[data-tab="alternative"] { border-bottom-color: #CC2900; }
     .tab:hover:not(.active) { background: #f0f0f0; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
