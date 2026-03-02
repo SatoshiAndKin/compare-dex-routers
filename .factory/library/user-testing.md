@@ -10,6 +10,7 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 
 - **URL:** http://localhost:3002/
 - **Dev server:** `PORT=3002 npm run dev` (uses tsx with file watching)
+- **Settings panel:** Click the gear icon in the form area to open tokenlist settings
 - **Tools:** Playwright v1.58.2 available globally at /opt/homebrew/bin/playwright
 - **Browser automation:** playwright MCP tools (browser_navigate, browser_snapshot, browser_click, etc.)
 

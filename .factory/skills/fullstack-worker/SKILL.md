@@ -15,6 +15,15 @@ Use for features that modify:
 - Supporting source files (config, tokenlist serving, etc.)
 - Test files in `src/__tests__/`
 
+## Architecture Context
+
+- `src/server.ts` contains EVERYTHING: HTTP server, route handlers, and the entire UI as an inline HTML template literal (`INDEX_HTML`). The HTML includes inline `<style>` and `<script>` blocks.
+- The app uses vanilla JS — no React, no bundler, no build step. All client-side code is inline in the template.
+- Modal pattern exists (MEV modal): `.modal-overlay` + `.modal` with open/close/focus/aria handling. Reuse this pattern for new modals.
+- Token autocomplete: `setupAutocomplete(inputId, listId)` creates dropdowns with `findTokenMatches(value, chainId)`. The `tokenlistTokens` global array holds all loaded tokens.
+- localStorage is used for persistence (currently `customTokenlistUrl` key). Always wrap in try/catch for corrupt data.
+- The `/tokenlist/proxy?url=` endpoint proxies remote tokenlist URLs (HTTPS-only, 5MB limit, 30s timeout).
+
 ## Work Procedure
 
 ### 1. Understand the Feature
@@ -36,15 +45,11 @@ For client-side-only changes (inline JS):
 
 - Make changes to `src/server.ts` and/or other source files
 - For the inline HTML template: be careful with template literal escaping (backticks, `${}`). The HTML is inside a tagged template string.
-- Keep client-side JS clean - use `const`/`let`, proper error handling, no global namespace pollution
-- For wallet features: use viem imports from CDN or inline the minimal needed code since this is vanilla JS (no bundler). The server already has viem - for browser-side, either use importmap pointing to an ESM CDN (e.g., esm.sh or unpkg) or embed the needed logic directly.
-
-**IMPORTANT for viem browser usage:** Since there's no bundler, you CANNOT import viem normally in the inline script. Options:
-- Use `<script type="importmap">` with CDN URLs for viem
-- Or implement wallet interaction using raw EIP-1193 provider.request() calls (simpler, no external deps)
-- The raw approach: `provider.request({ method: 'eth_sendTransaction', params: [{ to, data, value, from }] })` for swaps, and similarly for approvals
-
-Choose the simplest approach that works reliably.
+- Keep client-side JS clean — use `const`/`let`, proper error handling, no global namespace pollution
+- Follow the existing brutalist UI style (thick borders, high contrast, monospace elements for addresses)
+- **NEVER truncate addresses.** Always display full 0x addresses. This is a project convention.
+- For modals: follow the MEV modal pattern (overlay click closes, Escape closes, body scroll lock, aria attributes)
+- For localStorage: always wrap reads in try/catch, handle corrupt JSON gracefully by treating as empty/default
 
 ### 4. Verify
 
@@ -62,8 +67,6 @@ Then manually verify via playwright browser tools:
 - Test the specific user interactions this feature adds
 - Check console for errors
 
-**IMPORTANT:** NEVER truncate addresses. Always display full 0x addresses. This is a project convention.
-
 Each interactive check = one entry in `interactiveChecks` with the full action sequence and observed result.
 
 ### 5. Restart Dev Server If Needed
@@ -79,35 +82,25 @@ curl -sf http://localhost:3002/health
 
 ```json
 {
-  "salientSummary": "Added GET /tokenlist endpoint serving data/tokenlist.json with proper Content-Type and error handling. Added 4 test cases for the endpoint (200 with valid JSON, content-type header, tokens array structure, 500 on missing file). Verified via curl and playwright that autocomplete dropdown shows chain-filtered tokens with logos.",
-  "whatWasImplemented": "GET /tokenlist endpoint in server.ts that reads and serves data/tokenlist.json. Client-side JS fetches /tokenlist on page load, filters tokens by current chainId, and populates autocomplete dropdowns for from/to token inputs. Autocomplete matches by name, symbol, or address (case-insensitive). Token logos shown via img tags with onerror fallback.",
+  "salientSummary": "Implemented settings gear modal replacing inline tokenlist URL input. Modal opens/closes with gear click, X button, Escape, and backdrop click. Focus management follows MEV modal pattern. All 5 GEAR assertions verified via playwright: gear visible, panel opens, closes correctly, keyboard accessible, state preserved on reopen.",
+  "whatWasImplemented": "Settings gear icon (SVG cog) in form header row. Settings modal following .modal-overlay + .modal pattern from MEV modal. Tokenlist URL input, Load/Reset buttons, and status message all relocated inside modal. Gear icon has aria-expanded, aria-haspopup attributes. Focus trapped in modal on open, returns to gear on close. Body scroll locked when modal open.",
   "whatWasLeftUndone": "",
   "verification": {
     "commandsRun": [
       { "command": "npm run typecheck", "exitCode": 0, "observation": "No type errors" },
       { "command": "npm run lint", "exitCode": 0, "observation": "No lint errors" },
-      { "command": "npm test", "exitCode": 0, "observation": "All 28 tests pass, coverage 84%" },
-      { "command": "curl -sf http://localhost:3001/tokenlist | python3 -c \"import json,sys; d=json.load(sys.stdin); print(len(d['tokens']))\"", "exitCode": 0, "observation": "1367 tokens returned" }
+      { "command": "npm test", "exitCode": 0, "observation": "All 32 tests pass" }
     ],
     "interactiveChecks": [
-      { "action": "Navigated to http://localhost:3001/, typed 'USDC' in From field", "observed": "Autocomplete dropdown appeared with USDC entries for Base chain (chainId 8453), each showing logo, name, and symbol" },
-      { "action": "Clicked USDC entry in dropdown", "observed": "From field filled with 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 (USDC on Base)" },
-      { "action": "Switched chain to Ethereum, typed 'WETH'", "observed": "Dropdown shows WETH for Ethereum (chainId 1), not Base" },
-      { "action": "Checked browser console", "observed": "No errors. /tokenlist fetched successfully on page load." }
+      { "action": "Navigated to http://localhost:3002/, looked for settings gear", "observed": "Gear icon visible in form header row, no inline tokenlist URL input present" },
+      { "action": "Clicked gear icon", "observed": "Settings modal opened with tokenlist URL input, Load button. Focus moved to close button." },
+      { "action": "Pressed Escape", "observed": "Modal closed, focus returned to gear icon" },
+      { "action": "Tabbed to gear, pressed Enter", "observed": "Modal opened via keyboard" },
+      { "action": "Added tokenlist URL, closed modal, reopened", "observed": "URL input still showed the entered URL, state preserved" }
     ]
   },
   "tests": {
-    "added": [
-      {
-        "file": "src/__tests__/server.integration.test.ts",
-        "cases": [
-          { "name": "GET /tokenlist returns 200 with JSON", "verifies": "Endpoint serves tokenlist file" },
-          { "name": "GET /tokenlist has correct content-type", "verifies": "Response has application/json content-type" },
-          { "name": "GET /tokenlist response has tokens array", "verifies": "Response body structure matches tokenlist format" },
-          { "name": "GET /tokenlist returns 500 when file missing", "verifies": "Error handling when tokenlist.json not found" }
-        ]
-      }
-    ]
+    "added": []
   },
   "discoveredIssues": []
 }
@@ -115,8 +108,8 @@ curl -sf http://localhost:3002/health
 
 ## When to Return to Orchestrator
 
-- Feature requires a new npm dependency (mission says no new deps)
-- The inline HTML template is too complex to modify safely (structural refactoring needed)
+- Feature requires a new npm dependency not already in package.json
+- The inline HTML template needs structural refactoring beyond the feature scope
 - Dev server won't start or tests fail for reasons unrelated to this feature
-- Wallet integration requires a bundler/build step that can't be worked around
-- Requirements are ambiguous about browser-side viem usage approach
+- Requirements are ambiguous about a specific UI behavior or data model choice
+- A precondition is not met (e.g., expected function or data structure doesn't exist yet)
