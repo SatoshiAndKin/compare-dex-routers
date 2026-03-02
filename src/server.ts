@@ -773,35 +773,64 @@ const INDEX_HTML = `<!DOCTYPE html>
       color: #666;
       margin-bottom: 0.125rem;
     }
+    /* Flat label style for recommendation badges - not button-like */
     .result-recommendation {
-      font-size: 0.75rem;
+      font-size: 0.625rem;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.15em;
       margin-bottom: 0.5rem;
-      padding: 0.25rem 0.5rem;
+      padding: 0;
       display: inline-block;
-      border: 2px solid #000;
+      border: none;
+      border-bottom: 2px solid;
     }
-    .result-recommendation.winner { background: #0055FF; color: #fff; border-color: #0055FF; }
-    .result-recommendation.alternative { background: #CC2900; color: #fff; border-color: #CC2900; }
+    .result-recommendation.winner { color: #0055FF; border-bottom-color: #0055FF; }
+    .result-recommendation.alternative { color: #CC2900; border-bottom-color: #CC2900; }
     
-    /* Transaction Buttons */
+    /* Transaction Buttons - Step Indicator Pattern */
     .tx-actions { margin-top: 1rem; padding-top: 0.75rem; border-top: 2px solid #000; }
-    .tx-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .tx-steps { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+    .tx-step {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .tx-step-num {
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
     .tx-btn {
       font-size: 0.875rem;
       padding: 0.625rem 1rem;
       border: 2px solid #000;
       background: #fff;
       color: #000;
+      cursor: pointer;
     }
     .tx-btn.swap-btn { background: #0055FF; color: #fff; border-color: #0055FF; }
     .tx-btn.swap-btn:hover { background: #0046CC; }
-    .tx-btn.approve-btn { background: #fff; color: #000; border: 2px solid #000; }
-    .tx-btn.approve-btn:hover { background: #f0f0f0; }
-    .tx-btn.approved { background: #000; color: #fff; border-color: #000; }
-    .tx-btn.wallet-required { opacity: 0.4; }
+    .tx-btn.approve-btn { background: #0055FF; color: #fff; border-color: #0055FF; }
+    .tx-btn.approve-btn:hover { background: #0046CC; }
+    .tx-btn.approved { background: #007700; color: #fff; border-color: #007700; cursor: default; }
+    .tx-btn.approved:hover { background: #007700; }
+    .tx-btn.disabled, .tx-btn.wallet-required { 
+      opacity: 0.4; 
+      cursor: not-allowed; 
+      background: #e0e0e0;
+      color: #666;
+      border-color: #999;
+    }
+    .tx-btn.disabled:hover, .tx-btn.wallet-required:hover { background: #e0e0e0; }
+    .tx-checkmark {
+      font-size: 0.875rem;
+      color: #007700;
+      margin-left: 0.25rem;
+      font-weight: 700;
+    }
     .tx-status {
       margin-top: 0.5rem;
       font-size: 0.75rem;
@@ -2059,19 +2088,39 @@ const INDEX_HTML = `<!DOCTYPE html>
       const approvalRequired = Boolean(approvalToken && approvalSpender);
       const walletRequiredClass = hasConnectedWallet() ? '' : ' wallet-required';
 
-      return (
-        '<div class="tx-actions" data-quote-chain-id="' + quoteChainId + '" data-router-address="' + routerAddress +
-        '" data-router-calldata="' + routerCalldata + '" data-router-value="' + routerValue +
-        '" data-approval-token="' + approvalToken + '" data-approval-spender="' + approvalSpender + '">' +
-          '<div class="tx-buttons">' +
-            (approvalRequired
-              ? '<button type="button" class="tx-btn approve-btn' + walletRequiredClass + '" data-action="approve">Approve</button>'
-              : '') +
-            '<button type="button" class="tx-btn swap-btn' + walletRequiredClass + '" data-action="swap">Swap</button>' +
-          '</div>' +
-          '<div class="tx-status" aria-live="polite"></div>' +
-        '</div>'
-      );
+      // Step indicator pattern: show numbered steps when approval is required
+      // When no approval needed, show only the Swap button
+      if (approvalRequired) {
+        return (
+          '<div class="tx-actions" data-quote-chain-id="' + quoteChainId + '" data-router-address="' + routerAddress +
+          '" data-router-calldata="' + routerCalldata + '" data-router-value="' + routerValue +
+          '" data-approval-token="' + approvalToken + '" data-approval-spender="' + approvalSpender + '">' +
+            '<div class="tx-steps">' +
+              '<div class="tx-step">' +
+                '<span class="tx-step-num">1.</span>' +
+                '<button type="button" class="tx-btn approve-btn' + walletRequiredClass + '" data-action="approve">Approve</button>' +
+              '</div>' +
+              '<div class="tx-step">' +
+                '<span class="tx-step-num">2.</span>' +
+                '<button type="button" class="tx-btn swap-btn disabled' + walletRequiredClass + '" data-action="swap" disabled>Swap</button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="tx-status" aria-live="polite"></div>' +
+          '</div>'
+        );
+      } else {
+        // No approval needed - show only Swap button, no step indicators
+        return (
+          '<div class="tx-actions" data-quote-chain-id="' + quoteChainId + '" data-router-address="' + routerAddress +
+          '" data-router-calldata="' + routerCalldata + '" data-router-value="' + routerValue +
+          '" data-approval-token="" data-approval-spender="">' +
+            '<div class="tx-steps">' +
+              '<button type="button" class="tx-btn swap-btn' + walletRequiredClass + '" data-action="swap">Swap</button>' +
+            '</div>' +
+            '<div class="tx-status" aria-live="polite"></div>' +
+          '</div>'
+        );
+      }
     }
 
     // Render secondary details (collapsible)
@@ -2566,15 +2615,17 @@ const INDEX_HTML = `<!DOCTYPE html>
           from: connectedWalletAddressValue,
         },
         () => {
-          button.textContent = 'Approved';
+          // Show checkmark and mark as approved
+          button.innerHTML = 'Approved<span class="tx-checkmark"> ✓</span>';
           button.dataset.locked = 'true';
           button.classList.add('approved');
           button.disabled = true;
 
+          // Enable the Swap button (remove disabled state)
           const swapButton = card.querySelector('.swap-btn');
           if (swapButton) {
-            swapButton.classList.remove('swap-secondary');
-            swapButton.classList.add('swap-primary');
+            swapButton.classList.remove('disabled');
+            swapButton.disabled = false;
           }
         }
       );
