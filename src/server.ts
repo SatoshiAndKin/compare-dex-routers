@@ -550,6 +550,11 @@ const INDEX_HTML = `<!DOCTYPE html>
     .form-row { display: flex; gap: 1rem; }
     .form-row .form-group { flex: 1; }
     .form-row .form-group.narrow { flex: 0 0 120px; }
+
+    /* Non-collapsible Form Row - stays horizontal even at 375px */
+    .form-row-fixed { display: flex; gap: 0.5rem; }
+    .form-row-fixed .form-group { flex: 1; min-width: 0; }
+    .form-row-fixed .form-group.amount-group { flex: 0 0 100px; }
     
     /* Buttons - Accent Color: Electric Blue #0055FF (color-blind safe) */
     button {
@@ -581,17 +586,14 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .btn-secondary:hover { background: #333; }
     
-    /* Wallet Section - Inline with form */
-    .wallet-section {
-      border: 2px solid #000;
-      padding: 0.75rem;
-      margin-bottom: 1rem;
-      background: #f8f8f8;
+    /* Wallet Section - Integrated into form flow (no extra border/section) */
+    .wallet-group {
+      margin-bottom: 0.75rem;
     }
     .wallet-row {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.5rem;
       flex-wrap: wrap;
     }
     .wallet-status {
@@ -602,7 +604,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .wallet-message {
       font-size: 0.75rem;
       font-style: italic;
-      margin-top: 0.5rem;
+      margin-top: 0.25rem;
     }
     .wallet-message.error { color: #000; font-weight: 600; }
     .wallet-provider-menu {
@@ -848,7 +850,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     @media (max-width: 600px) {
       .form-row { flex-direction: column; }
       .form-row .form-group.narrow { flex: 1; }
-      .wallet-row { flex-direction: column; align-items: flex-start; }
+      /* Note: .form-row-fixed does NOT collapse - stays horizontal at all widths */
     }
   </style>
 </head>
@@ -856,60 +858,56 @@ const INDEX_HTML = `<!DOCTYPE html>
   <h1>Compare DEX Routers</h1>
   
   <!-- Wallet Section - Inline with trading flow -->
-  <div class="wallet-section">
-    <div class="wallet-row">
-      <button type="button" id="connectWalletBtn">Connect Wallet</button>
-      <div id="walletConnected" class="wallet-row" hidden style="gap: 0.5rem;">
-        <img id="walletConnectedIcon" class="wallet-connected-icon" alt="" hidden>
-        <span id="walletConnectedName" class="wallet-status"></span>
-        <span id="walletConnectedAddress" class="wallet-address"></span>
-        <button type="button" id="disconnectWalletBtn" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Disconnect</button>
-      </div>
-    </div>
-    <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
-    <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
-  </div>
-
   <form id="form">
-    <div class="form-row">
-      <div class="form-group narrow">
-        <label for="chainId">Chain</label>
-        <select id="chainId">
-          <option value="1">Ethereum (1)</option>
-          <option value="8453" selected>Base (8453)</option>
-          <option value="42161">Arbitrum (42161)</option>
-          <option value="10">Optimism (10)</option>
-          <option value="137">Polygon (137)</option>
-          <option value="56">BSC (56)</option>
-          <option value="43114">Avalanche (43114)</option>
-        </select>
+    <!-- Row 1: Chain Selector -->
+    <div class="form-group">
+      <label for="chainId">Chain</label>
+      <select id="chainId">
+        <option value="1">Ethereum (1)</option>
+        <option value="8453" selected>Base (8453)</option>
+        <option value="42161">Arbitrum (42161)</option>
+        <option value="10">Optimism (10)</option>
+        <option value="137">Polygon (137)</option>
+        <option value="56">BSC (56)</option>
+        <option value="43114">Avalanche (43114)</option>
+      </select>
+    </div>
+    <!-- Row 2: Wallet (integrated into form flow) -->
+    <div class="form-group wallet-group">
+      <div class="wallet-row">
+        <button type="button" id="connectWalletBtn">Connect Wallet</button>
+        <div id="walletConnected" class="wallet-row" hidden style="gap: 0.5rem;">
+          <img id="walletConnectedIcon" class="wallet-connected-icon" alt="" hidden>
+          <span id="walletConnectedName" class="wallet-status"></span>
+          <span id="walletConnectedAddress" class="wallet-address"></span>
+          <button type="button" id="disconnectWalletBtn" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Disconnect</button>
+        </div>
       </div>
-      <div class="form-group narrow">
-        <label for="slippageBps">Slippage (bps)</label>
-        <input type="text" id="slippageBps" value="50">
+      <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
+      <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
+    </div>
+    <!-- Row 3: From Token + Amount (non-collapsible, stays horizontal at 375px) -->
+    <div class="form-row-fixed">
+      <div class="form-group">
+        <label for="from">From Token</label>
+        <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+        <div class="autocomplete-list" id="fromAutocomplete"></div>
       </div>
-      <div class="form-group narrow">
+      <div class="form-group amount-group">
         <label for="amount">Amount</label>
         <input type="text" id="amount" value="1000">
       </div>
     </div>
-    <div style="margin-bottom: 0.75rem;">
-      <button type="button" id="mevInfoBtn" class="mev-info-btn" aria-haspopup="dialog">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-        MEV Protection
-      </button>
-    </div>
-    <div class="form-group">
-      <label for="from">From Token</label>
-      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
-      <div class="autocomplete-list" id="fromAutocomplete"></div>
-    </div>
+    <!-- Row 4: To Token -->
     <div class="form-group">
       <label for="to">To Token</label>
       <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
+    </div>
+    <!-- Row 5: Slippage -->
+    <div class="form-group" style="max-width: 150px;">
+      <label for="slippageBps">Slippage (bps)</label>
+      <input type="text" id="slippageBps" value="50">
     </div>
     <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
   </form>
@@ -925,6 +923,15 @@ const INDEX_HTML = `<!DOCTYPE html>
     </div>
     <div class="tab-content active" id="recommendedContent"></div>
     <div class="tab-content" id="alternativeContent"></div>
+    <!-- MEV Protection info button - positioned near swap action area -->
+    <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 2px solid #000;">
+      <button type="button" id="mevInfoBtn" class="mev-info-btn" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        MEV Protection
+      </button>
+    </div>
   </div>
 
   <!-- MEV Protection Modal -->
