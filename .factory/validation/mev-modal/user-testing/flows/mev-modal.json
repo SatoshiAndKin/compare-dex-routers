@@ -1,0 +1,34 @@
+{
+  "flowId": "mev-modal",
+  "milestone": "mev-modal",
+  "assertionResults": [
+    {
+      "id": "VAL-TRADE-002",
+      "status": "pass",
+      "evidence": [
+        "screenshot(mev-button-visible): MEV Protection button with shield icon is clearly visible in the form area, between the chain/slippage/amount row and the token inputs",
+        "screenshot(modal-open-with-explanation): Clicking the button opens a modal dialog titled 'MEV Protection'. The modal explains MEV in plain language: 'MEV (Maximal Extractable Value) means bots can see your pending swap and front-run it, sandwiching your trade to profit at your expense. A protected RPC sends your transaction directly to block builders, bypassing the public mempool.'",
+        "The modal contains a link 'Learn more at Flashbots Docs →' pointing to https://docs.flashbots.net/flashbots-protect/overview",
+        "The modal is dismissible via the × close button (tested successfully - modal closes and returns to main UI)",
+        "Console errors: only favicon.ico 404 (cosmetic, expected)"
+      ],
+      "notes": "All criteria met: info button visible, modal opens with plain-language MEV explanation, links to Flashbots docs, modal is dismissible."
+    },
+    {
+      "id": "VAL-TRADE-003",
+      "status": "pass",
+      "evidence": [
+        "screenshot(modal-ethereum-with-add-button): With Ethereum selected, modal shows 'Ethereum Mainnet' section stating 'Your swap is vulnerable to sandwich attacks. Add Flashbots Protect to send transactions privately.' Includes 'Add Flashbots Protect to Wallet' button (disabled with 'Connect wallet first' message since no wallet connected).",
+        "screenshot(modal-base-sequencer-message): With Base (8453) selected, modal shows 'Base (L2)' section stating 'This chain uses a centralized sequencer that processes transactions in order received. Sandwich attacks are significantly harder. No additional protection needed.'",
+        "screenshot(modal-bsc-with-add-button): With BSC (56) selected, modal shows 'BSC (BNB Chain)' section stating 'BSC has active MEV bots. Add bloXroute BSC Protect for private transaction submission.' Includes 'Add bloXroute Protect to Wallet' button (disabled with 'Connect wallet first' message).",
+        "Polygon (137) verified: Shows 'Polygon' section stating 'MEV protection is useful on this chain but no free public protection RPC is currently available.'",
+        "Add-to-wallet buttons are correctly disabled when no wallet is connected (acceptable behavior per test instructions)",
+        "Console errors: only favicon.ico 404 (cosmetic, expected)"
+      ],
+      "notes": "All four chain categories verified: Ethereum (Flashbots Protect with add button), L2/Base (sequencer message, no action needed), BSC (bloXroute with add button), Polygon (no free protection available). Modal content updates dynamically when chain is changed."
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["agent-browser"]
+}
