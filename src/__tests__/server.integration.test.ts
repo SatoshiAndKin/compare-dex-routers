@@ -162,34 +162,97 @@ describe("server integration", () => {
   });
 
   it("GET /tokenlist returns 200 with JSON body", async () => {
-    delete process.env.TOKENLIST_PATH;
-    const res = await request(`${baseUrl}/tokenlist`);
-    expect(res.status).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(Array.isArray(body.tokens)).toBe(true);
-    expect(body.tokens.length).toBeGreaterThan(0);
+    const dir = await mkdtemp(join(tmpdir(), "tokenlist-200-"));
+    const tokenlistPath = join(dir, "tokenlist.json");
+    const fixture = {
+      tokens: [
+        {
+          chainId: 1,
+          address: "0x0000000000000000000000000000000000000001",
+          name: "Test Token",
+          symbol: "TST",
+          decimals: 18,
+          logoURI: "https://example.com/tst.png",
+        },
+      ],
+    };
+    await writeFile(tokenlistPath, JSON.stringify(fixture), "utf8");
+    process.env.TOKENLIST_PATH = tokenlistPath;
+    try {
+      const res = await request(`${baseUrl}/tokenlist`);
+      expect(res.status).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(Array.isArray(body.tokens)).toBe(true);
+      expect(body.tokens.length).toBeGreaterThan(0);
+    } finally {
+      delete process.env.TOKENLIST_PATH;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("GET /tokenlist returns application/json content-type", async () => {
-    delete process.env.TOKENLIST_PATH;
-    const res = await request(`${baseUrl}/tokenlist`);
-    expect(res.headers["content-type"]).toContain("application/json");
+    const dir = await mkdtemp(join(tmpdir(), "tokenlist-ct-"));
+    const tokenlistPath = join(dir, "tokenlist.json");
+    await writeFile(
+      tokenlistPath,
+      JSON.stringify({
+        tokens: [
+          {
+            chainId: 1,
+            address: "0x0000000000000000000000000000000000000001",
+            name: "T",
+            symbol: "T",
+            decimals: 18,
+            logoURI: "",
+          },
+        ],
+      }),
+      "utf8"
+    );
+    process.env.TOKENLIST_PATH = tokenlistPath;
+    try {
+      const res = await request(`${baseUrl}/tokenlist`);
+      expect(res.headers["content-type"]).toContain("application/json");
+    } finally {
+      delete process.env.TOKENLIST_PATH;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("GET /tokenlist response has token objects with expected fields", async () => {
-    delete process.env.TOKENLIST_PATH;
-    const res = await request(`${baseUrl}/tokenlist`);
-    const body = JSON.parse(res.body);
-    const token = body.tokens[0];
+    const dir = await mkdtemp(join(tmpdir(), "tokenlist-fields-"));
+    const tokenlistPath = join(dir, "tokenlist.json");
+    const fixture = {
+      tokens: [
+        {
+          chainId: 1,
+          address: "0x0000000000000000000000000000000000000001",
+          name: "Test Token",
+          symbol: "TST",
+          decimals: 18,
+          logoURI: "https://example.com/tst.png",
+        },
+      ],
+    };
+    await writeFile(tokenlistPath, JSON.stringify(fixture), "utf8");
+    process.env.TOKENLIST_PATH = tokenlistPath;
+    try {
+      const res = await request(`${baseUrl}/tokenlist`);
+      const body = JSON.parse(res.body);
+      const token = body.tokens[0];
 
-    expect(token).toMatchObject({
-      chainId: expect.any(Number),
-      address: expect.any(String),
-      name: expect.any(String),
-      symbol: expect.any(String),
-      decimals: expect.any(Number),
-      logoURI: expect.any(String),
-    });
+      expect(token).toMatchObject({
+        chainId: expect.any(Number),
+        address: expect.any(String),
+        name: expect.any(String),
+        symbol: expect.any(String),
+        decimals: expect.any(Number),
+        logoURI: expect.any(String),
+      });
+    } finally {
+      delete process.env.TOKENLIST_PATH;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("GET /tokenlist caches file contents in memory after first read", async () => {
