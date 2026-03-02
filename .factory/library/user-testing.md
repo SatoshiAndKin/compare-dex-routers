@@ -86,6 +86,11 @@ Read `/Users/bryan/code/compare-dex-routers/src/server.ts` to verify swap/approv
 
 ---
 
+## Known Issues & Quirks (from ux-polish validation round 1)
+
+- **Curve gas estimation requires funded sender**: Gas estimation for Curve (`gas_used`) only succeeds when the sender actually holds the tokens. For testing Curve gas display, inject a mock fetch response with `gas_used` set, or skip live gas testing (the code path is verified via source inspection).
+- **Auto-refresh interference**: The 15s auto-refresh can interfere with interactive testing (closing expanded details, changing tabs). Take screenshots quickly or pause auto-refresh via `clearInterval(window._refreshTimer)` if needed.
+
 ## Known Issues & Quirks (from swap-ux validation round 1)
 
 - **data/tokenlist.json**: Must be downloaded on disk via `.factory/init.sh` (curl from https://tokens.uniswap.org). Not committed to git. Without it, /tokenlist returns 500.

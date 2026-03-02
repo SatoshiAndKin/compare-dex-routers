@@ -1,0 +1,74 @@
+{
+  "groupId": "groupA",
+  "testedAt": "2026-03-02T02:23:00Z",
+  "assertions": [
+    {
+      "id": "VAL-POLISH-001",
+      "title": "Disconnect button hidden when no wallet connected",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3001/", "expected": "Page loads with Connect Wallet button visible", "observed": "Page loaded, Connect Wallet button visible" },
+        { "action": "Check DOM for Disconnect button visibility", "expected": "Disconnect button not visible", "observed": "Disconnect button exists in DOM but is hidden (display:none). 0 visible disconnect buttons found." },
+        { "action": "Inject mock wallet and click Connect Wallet", "expected": "Wallet connects and Disconnect button appears", "observed": "Mock Wallet connected. Disconnect button now visible alongside wallet name (Mock Wallet) and truncated address (0x1234...7890)." }
+      ],
+      "evidence": {
+        "screenshots": ["val-polish-001-initial-no-disconnect.png", "val-polish-001-disconnect-visible-after-connect.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic)",
+        "domInspection": "Disconnect button found in DOM with visible=false on initial load; visible=true after wallet connect"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-POLISH-003",
+      "title": "Token input shows symbol and truncated address",
+      "status": "pass",
+      "steps": [
+        { "action": "Observe default token inputs on page load (Base chain)", "expected": "Token inputs show symbol + truncated address", "observed": "From Token shows 'USDC (0x833589fC...2913)', To Token shows 'WETH (0x42000000...0006)'" },
+        { "action": "Clear From Token input and type 'DAI' to trigger autocomplete", "expected": "Autocomplete dropdown appears with DAI token", "observed": "Dropdown appeared with DAI (Dai Stablecoin) and full address" },
+        { "action": "Click DAI in autocomplete dropdown", "expected": "Input shows 'DAI (0x50c5...<truncated>)' format", "observed": "Input shows 'DAI (0x50c57259...B0Cb)'" },
+        { "action": "Check data-address attribute for full address", "expected": "Full address stored in data-address", "observed": "data-address='0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb' - full address preserved for quote requests" }
+      ],
+      "evidence": {
+        "screenshots": ["val-polish-003-token-symbol-truncated-address.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic)",
+        "domInspection": "displayValue='DAI (0x50c57259...B0Cb)', data-address='0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb'"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-POLISH-007",
+      "title": "Wallet connect integrated into flow",
+      "status": "pass",
+      "steps": [
+        { "action": "Observe layout of Connect Wallet button relative to trading form", "expected": "Connect Wallet is near/part of the trading flow", "observed": "Connect Wallet button is positioned directly below the heading and above the trading form. Heading bottom=56px, wallet section top=86px, form top=182px. The wallet area is visually part of the main content flow." },
+        { "action": "Verify button is not isolated in a corner", "expected": "Button is centered with the form, not in a distant corner", "observed": "Button is left-aligned at x=234, matching the form content area. Same horizontal alignment as form fields." }
+      ],
+      "evidence": {
+        "screenshots": ["val-polish-007-wallet-connect-near-form.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic)",
+        "layoutMeasurement": "Wallet button at y=86, form starts at y=182. Gap of ~56px. Both in same content column."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-POLISH-008",
+      "title": "Secondary details collapsed or below",
+      "status": "pass",
+      "steps": [
+        { "action": "Submit a Compare Quotes request (USDC->WETH on Base)", "expected": "Quote results appear with primary info visible", "observed": "Results show: tokens, amount out (0.512... WETH), gas (0.0075 gwei), recommended label, approve/swap buttons. A 'Details [+]' button is collapsed below." },
+        { "action": "Click 'Details [+]' to expand secondary info", "expected": "Detailed data (router address, calldata, approval details) appears", "observed": "Expanded section shows: From/To addresses, Input Amount, Router Address, Router Calldata (truncated), Approval Token, Approval Spender, Gas Used, Slippage. Button changes to 'Details [-]'." },
+        { "action": "Verify primary view is clean without expansion", "expected": "Primary view shows only tokens, amounts, gas, swap action", "observed": "Confirmed: primary view shows RECOMMENDED label, amount out, via provider, approve/swap buttons. All technical details hidden behind Details [+] toggle." }
+      ],
+      "evidence": {
+        "screenshots": ["val-polish-008-primary-view-clean.png", "val-polish-008-details-expanded.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic)",
+        "domInspection": "Details section toggled via [+]/[-] button; primary view clean with tokens, amounts, gas, and action buttons"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["Playwright MCP"],
+  "summary": "Tested 4 assertions: all 4 passed. VAL-POLISH-001 (disconnect hidden without wallet), VAL-POLISH-003 (token symbol + truncated address), VAL-POLISH-007 (wallet connect near form), VAL-POLISH-008 (details collapsed below primary view)."
+}
