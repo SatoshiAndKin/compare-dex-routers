@@ -1,6 +1,6 @@
 ---
 name: fullstack-worker
-description: Implements server-side endpoints and inline HTML/JS UI features for the CowSwap Trader app
+description: Implements server-side endpoints and inline HTML/JS UI features for the Compare DEX Routers app
 ---
 
 # Fullstack Worker
