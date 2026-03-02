@@ -254,4 +254,14 @@ describe("server integration", () => {
       delete process.env.TOKENLIST_PATH;
     }
   });
+
+  it("GET / shows Gas: N/A in quote details when gas_used is missing", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+
+    // The renderSecondaryDetails function now always shows Gas Used field
+    // It should show "N/A" when gas data is missing
+    expect(res.body).toContain("Gas Used");
+    expect(res.body).toContain("N/A");
+  });
 });

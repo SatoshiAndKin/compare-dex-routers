@@ -289,7 +289,9 @@ describe("server /quote and /compare", () => {
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.recommendation).toBe("curve");
-    expect(body.recommendation_reason).toContain("Curve outputs");
+    // New format shows gas-adjusted comparison for WETH output
+    expect(body.recommendation_reason).toContain("Curve returns");
+    expect(body.recommendation_reason).toContain("after gas");
     expect(body.gas_price_gwei).toBe("1.0000");
   });
 
@@ -395,5 +397,112 @@ describe("server /quote and /compare", () => {
     const metrics = await request(`${baseUrl}/metrics`);
     expect(metrics.status).toBe(404);
     expect(JSON.parse(metrics.body).error).toBe("Not found");
+  });
+
+  it("GET /compare factors gas into recommendation when output is WETH", async () => {
+    // Spandex: 1.5 ETH output, 20000 gas
+    // Curve: 1.49 ETH output, 10000 gas
+    // Gas price: 1 gwei = 1e9 wei
+    // Spandex gas cost: 20000 * 1e9 / 1e18 = 0.00002 ETH
+    // Curve gas cost: 10000 * 1e9 / 1e18 = 0.00001 ETH
+    // Adjusted Spandex: 1.5 - 0.00002 = 1.49998 ETH
+    // Adjusted Curve: 1.49 - 0.00001 = 1.48999 ETH
+    // Spandex should still win after gas adjustment
+    getQuoteMock.mockResolvedValue(
+      makeQuote({ outputAmount: 1_500_000_000_000_000_000n, gasUsed: 20000n })
+    );
+    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "1.49", gas: "10000" }));
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.recommendation).toBe("spandex");
+    expect(body.recommendation_reason).toContain("after gas");
+    expect(body.recommendation_reason).toContain("ETH");
+  });
+
+  it("GET /compare shows gas-aware comparison for non-ETH output", async () => {
+    // Create a mock where output token is USDC (not ETH/WETH)
+    getTokenSymbolMock.mockImplementation(async (_chainId: number, token: string) =>
+      token.toLowerCase() === ADDR_FROM.toLowerCase() ? "WETH" : "USDC"
+    );
+
+    getQuoteMock.mockResolvedValue(
+      makeQuote({ outputAmount: 2_500_000_000n, gasUsed: 20000n }) // 2500 USDC (6 decimals)
+    );
+    findCurveQuoteMock.mockResolvedValue({
+      ...makeCurveQuote({ output: "2600", gas: "30000" }),
+      to_symbol: "USDC",
+    });
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.recommendation).toBe("curve");
+    // Should show gas costs in ETH but not subtract from USDC output
+    expect(body.recommendation_reason).toContain("gas-aware");
+  });
+
+  it("GET /compare falls back to raw output when gas unavailable for one router", async () => {
+    // Spandex has gas, Curve doesn't
+    getQuoteMock.mockResolvedValue(
+      makeQuote({ outputAmount: 1_500_000_000_000_000_000n, gasUsed: 20000n })
+    );
+    findCurveQuoteMock.mockResolvedValue({
+      ...makeCurveQuote({ output: "1.6" }),
+      gas_used: undefined, // No gas estimate for Curve
+    });
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.recommendation).toBe("curve");
+    expect(body.recommendation_reason).toContain("Gas estimates unavailable");
+    expect(body.recommendation_reason).toContain("Curve");
+    expect(body.recommendation_reason).toContain("comparing raw output only");
+  });
+
+  it("GET /compare falls back to raw output when gas unavailable for both routers", async () => {
+    // Neither has gas estimates
+    getQuoteMock.mockResolvedValue(
+      makeQuote({ outputAmount: 1_500_000_000_000_000_000n, gasUsed: 0n })
+    );
+    findCurveQuoteMock.mockResolvedValue({
+      ...makeCurveQuote({ output: "1.6" }),
+      gas_used: undefined,
+    });
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.recommendation).toBe("curve");
+    expect(body.recommendation_reason).toContain("Gas estimates unavailable");
+    expect(body.recommendation_reason).toContain("Spandex");
+    expect(body.recommendation_reason).toContain("Curve");
+  });
+
+  it("GET /compare shows gas price in response when available", async () => {
+    getQuoteMock.mockResolvedValue(makeQuote());
+    findCurveQuoteMock.mockResolvedValue(makeCurveQuote());
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.gas_price_gwei).toBe("1.0000");
   });
 });

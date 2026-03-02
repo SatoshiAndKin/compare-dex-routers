@@ -192,6 +192,28 @@ interface CompareResult {
   gas_price_gwei: string | null;
 }
 
+// Known WETH addresses by chainId
+const WETH_ADDRESSES: Record<number, string> = {
+  1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // Ethereum mainnet
+  8453: "0x4200000000000000000000000000000000000006", // Base
+  42161: "0x82aF49447D8a07e3340369C42921F5baB03F7D1D", // Arbitrum
+  10: "0x4200000000000000000000000000000000000006", // Optimism
+  137: "0x7ceB23bD638e8c21a3e6f28A20c2eE60b7E34F54", // Polygon
+  56: "0xbb4CdB9CBd36B01bD1cBaEB2Fe939D64f10c92b3", // BSC (WBNB)
+  43114: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", // Avalanche (WAVAX)
+};
+
+// Check if output token is ETH/WETH
+function isEthOutput(symbol: string, address: string, chainId: number): boolean {
+  const normalizedSymbol = symbol.toUpperCase();
+  if (normalizedSymbol === "ETH" || normalizedSymbol === "WETH") return true;
+
+  const wethAddress = WETH_ADDRESSES[chainId];
+  if (wethAddress && address.toLowerCase() === wethAddress.toLowerCase()) return true;
+
+  return false;
+}
+
 async function compareQuotes(
   chainId: number,
   from: string,
@@ -230,33 +252,76 @@ async function compareQuotes(
     const curveOutput = Number(curveResult.result.output_amount);
     const spandexGas = Number(spandex.result.gas_used || "0");
     const curveGas = Number(curveResult.result.gas_used || "0");
-    const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
-    const spandexGasCostEth = gasPriceWei > 0 ? (spandexGas * gasPriceWei) / 1e18 : 0;
-    const curveGasCostEth = gasPriceWei > 0 ? (curveGas * gasPriceWei) / 1e18 : 0;
 
-    if (curveOutput > spandexOutput) {
-      recommendation = "curve";
-      const diff = curveOutput - spandexOutput;
-      const pct = ((diff / spandexOutput) * 100).toFixed(3);
-      reason = `Curve outputs ${diff.toFixed(6)} more (+${pct}%)`;
-      if (curveGasCostEth > 0 && spandexGasCostEth > 0) {
-        reason += `. Gas: Curve ${curveGas} units (~${curveGasCostEth.toFixed(6)} ETH) vs Spandex ${spandexGas} units (~${spandexGasCostEth.toFixed(6)} ETH)`;
-      } else if (curveGasCostEth > 0) {
-        reason += `. Curve gas: ${curveGas} units (~${curveGasCostEth.toFixed(6)} ETH)`;
+    // Determine gas availability
+    const spandexHasGas = spandexGas > 0 && gasPriceGwei !== null;
+    const curveHasGas = curveGas > 0 && gasPriceGwei !== null;
+    const bothHaveGas = spandexHasGas && curveHasGas;
+
+    // Compute gas costs in ETH
+    const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
+    const spandexGasCostEth = spandexHasGas ? (spandexGas * gasPriceWei) / 1e18 : 0;
+    const curveGasCostEth = curveHasGas ? (curveGas * gasPriceWei) / 1e18 : 0;
+
+    // Determine if output is ETH/WETH
+    const outputIsEth = isEthOutput(spandex.result.to_symbol, spandex.result.to, chainId);
+    const outputSymbol = spandex.result.to_symbol || "tokens";
+
+    if (bothHaveGas && outputIsEth) {
+      // Gas-adjusted comparison: subtract gas cost from output
+      const spandexAdjustedOutput = spandexOutput - spandexGasCostEth;
+      const curveAdjustedOutput = curveOutput - curveGasCostEth;
+
+      if (curveAdjustedOutput > spandexAdjustedOutput) {
+        recommendation = "curve";
+        reason = `Curve returns ${curveOutput.toFixed(6)} ETH (${curveAdjustedOutput.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ETH (${spandexAdjustedOutput.toFixed(6)} ETH after gas). Curve recommended.`;
+      } else if (spandexAdjustedOutput > curveAdjustedOutput) {
+        recommendation = "spandex";
+        reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ETH (${spandexAdjustedOutput.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ETH (${curveAdjustedOutput.toFixed(6)} ETH after gas). Spandex recommended.`;
+      } else {
+        recommendation = "spandex";
+        reason = `Equal gas-adjusted output: ${spandexAdjustedOutput.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
       }
-    } else if (spandexOutput > curveOutput) {
-      recommendation = "spandex";
-      const diff = spandexOutput - curveOutput;
-      const pct = ((diff / curveOutput) * 100).toFixed(3);
-      reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} more (+${pct}%)`;
-      if (curveGasCostEth > 0 && spandexGasCostEth > 0) {
-        reason += `. Gas: Spandex ${spandexGas} units (~${spandexGasCostEth.toFixed(6)} ETH) vs Curve ${curveGas} units (~${curveGasCostEth.toFixed(6)} ETH)`;
-      } else if (spandexGasCostEth > 0) {
-        reason += `. Spandex gas: ${spandexGas} units (~${spandexGasCostEth.toFixed(6)} ETH)`;
+    } else if (bothHaveGas && !outputIsEth) {
+      // Gas-aware comparison: note gas costs in reason but compare raw output
+      if (curveOutput > spandexOutput) {
+        recommendation = "curve";
+        const diff = curveOutput - spandexOutput;
+        const pct = ((diff / spandexOutput) * 100).toFixed(3);
+        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Curve ${curveGasCostEth.toFixed(6)} ETH vs Spandex ${spandexGasCostEth.toFixed(6)} ETH. Curve recommended (gas-aware).`;
+      } else if (spandexOutput > curveOutput) {
+        recommendation = "spandex";
+        const diff = spandexOutput - curveOutput;
+        const pct = ((diff / curveOutput) * 100).toFixed(3);
+        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Spandex ${spandexGasCostEth.toFixed(6)} ETH vs Curve ${curveGasCostEth.toFixed(6)} ETH. Spandex recommended (gas-aware).`;
+      } else {
+        recommendation = "spandex";
+        reason = `Equal output amounts. Gas costs: Spandex ${spandexGasCostEth.toFixed(6)} ETH vs Curve ${curveGasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
       }
     } else {
-      recommendation = "spandex";
-      reason = "Equal output amounts; defaulting to Spandex for multi-provider coverage";
+      // Fall back to raw output comparison with a note about missing gas
+      const missingGas: string[] = [];
+      if (!spandexHasGas) missingGas.push("Spandex");
+      if (!curveHasGas) missingGas.push("Curve");
+      const missingGasNote =
+        missingGas.length > 0
+          ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw output only.`
+          : "";
+
+      if (curveOutput > spandexOutput) {
+        recommendation = "curve";
+        const diff = curveOutput - spandexOutput;
+        const pct = ((diff / spandexOutput) * 100).toFixed(3);
+        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+      } else if (spandexOutput > curveOutput) {
+        recommendation = "spandex";
+        const diff = spandexOutput - curveOutput;
+        const pct = ((diff / curveOutput) * 100).toFixed(3);
+        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+      } else {
+        recommendation = "spandex";
+        reason = `Equal output amounts; defaulting to Spandex for multi-provider coverage.${missingGasNote}`;
+      }
     }
   } else if (spandex.result) {
     recommendation = "spandex";
@@ -1568,9 +1633,9 @@ const INDEX_HTML = `<!DOCTYPE html>
         details.push('<div class="field"><div class="field-label">Approval Spender</div><div class="field-value">' + data.approval_spender + '</div></div>');
       }
       
-      if (data.gas_used) {
-        details.push('<div class="field"><div class="field-label">Gas Used</div><div class="field-value number">' + data.gas_used + '</div></div>');
-      }
+      // Always show Gas Used field - "N/A" if missing or zero
+      const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null;
+      details.push('<div class="field"><div class="field-label">Gas Used</div><div class="field-value number">' + (gasUsed || 'N/A') + '</div></div>');
       
       if (type === 'spandex' && data.slippage_bps) {
         details.push('<div class="field"><div class="field-label">Slippage</div><div class="field-value number">' + data.slippage_bps + ' bps</div></div>');
