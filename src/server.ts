@@ -402,6 +402,58 @@ const INDEX_HTML = `<!DOCTYPE html>
     input:focus, select:focus { outline: 3px solid #0055FF; outline-offset: 0; }
     input::placeholder { color: #666; }
     
+    /* Toggle Switch for MEV Protection */
+    .toggle-wrapper { position: relative; }
+    .toggle-input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      padding: 0.375rem 0;
+    }
+    .toggle-switch {
+      width: 44px;
+      height: 22px;
+      background: #e0e0e0;
+      border: 2px solid #000;
+      position: relative;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      background: #fff;
+      border: 1px solid #000;
+      transition: transform 0.2s;
+    }
+    .toggle-input:checked + .toggle-label .toggle-switch {
+      background: #0055FF;
+    }
+    .toggle-input:checked + .toggle-label .toggle-switch::after {
+      transform: translateX(22px);
+    }
+    .toggle-input:disabled + .toggle-label {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+    .toggle-input:disabled + .toggle-label .toggle-switch {
+      background: #e0e0e0;
+    }
+    .toggle-text {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .toggle-input:checked + .toggle-label .toggle-text { color: #0055FF; }
+    .toggle-input:disabled + .toggle-label .toggle-text { color: #666; }
+    
     /* Form Row Layout */
     .form-row { display: flex; gap: 1rem; }
     .form-row .form-group { flex: 1; }
@@ -745,6 +797,16 @@ const INDEX_HTML = `<!DOCTYPE html>
         <input type="text" id="slippageBps" value="50">
       </div>
       <div class="form-group narrow">
+        <label for="mevProtection">MEV Protection</label>
+        <div class="toggle-wrapper">
+          <input type="checkbox" id="mevProtection" class="toggle-input">
+          <label for="mevProtection" class="toggle-label" title="MEV Protection only available on Ethereum mainnet">
+            <span class="toggle-switch"></span>
+            <span class="toggle-text">Off</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group narrow">
         <label for="amount">Amount</label>
         <input type="text" id="amount" value="1000">
       </div>
@@ -824,6 +886,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     const toInput = document.getElementById('to');
     const amountInput = document.getElementById('amount');
     const slippageInput = document.getElementById('slippageBps');
+    const mevProtectionInput = document.getElementById('mevProtection');
     const refreshIndicator = document.getElementById('refreshIndicator');
     const refreshCountdown = document.getElementById('refreshCountdown');
     const refreshStatus = document.getElementById('refreshStatus');
@@ -883,6 +946,66 @@ const INDEX_HTML = `<!DOCTYPE html>
           button.disabled = false;
         }
       });
+    }
+
+    // MEV Protection toggle state management
+    const FLASHBOTS_RPC_URL = 'https://rpc.flashbots.net';
+    const ETHEREUM_CHAIN_ID = 1;
+
+    function updateMevProtectionState(chainId) {
+      const isEthereum = Number(chainId) === ETHEREUM_CHAIN_ID;
+      const wasChecked = mevProtectionInput.checked;
+      
+      if (!isEthereum) {
+        // Disable and uncheck for non-Ethereum chains
+        mevProtectionInput.checked = false;
+        mevProtectionInput.disabled = true;
+        updateMevProtectionText();
+      } else {
+        // Enable for Ethereum
+        mevProtectionInput.disabled = false;
+        updateMevProtectionText();
+      }
+      
+      return wasChecked && !isEthereum; // Returns true if we had to uncheck
+    }
+
+    function updateMevProtectionText() {
+      const label = mevProtectionInput.nextElementSibling;
+      if (!label) return;
+      const textEl = label.querySelector('.toggle-text');
+      if (!textEl) return;
+      textEl.textContent = mevProtectionInput.checked ? 'ON' : 'Off';
+    }
+
+    function isMevProtectionEnabled() {
+      return mevProtectionInput && !mevProtectionInput.disabled && mevProtectionInput.checked;
+    }
+
+    function persistMevProtectionState() {
+      const params = new URLSearchParams(window.location.search);
+      if (mevProtectionInput.checked && !mevProtectionInput.disabled) {
+        params.set('mevProtection', 'true');
+      } else {
+        params.delete('mevProtection');
+      }
+      const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+      window.history.replaceState({}, '', newUrl);
+    }
+
+    function restoreMevProtectionFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const mevParam = params.get('mevProtection');
+      const currentChainId = Number(chainIdInput.value);
+      
+      if (mevParam === 'true' && currentChainId === ETHEREUM_CHAIN_ID) {
+        mevProtectionInput.checked = true;
+        mevProtectionInput.disabled = false;
+      } else {
+        mevProtectionInput.checked = false;
+        mevProtectionInput.disabled = currentChainId !== ETHEREUM_CHAIN_ID;
+      }
+      updateMevProtectionText();
     }
 
     function setWalletGlobals() {
@@ -1385,6 +1508,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       } else {
         url.searchParams.delete('sender');
       }
+      // Persist MEV protection state
+      if (mevProtectionInput.checked && !mevProtectionInput.disabled) {
+        url.searchParams.set('mevProtection', 'true');
+      } else {
+        url.searchParams.delete('mevProtection');
+      }
       window.history.replaceState({}, '', url.toString());
     }
 
@@ -1580,9 +1709,17 @@ const INDEX_HTML = `<!DOCTYPE html>
       stopAutoRefresh();
       clearResultDisplay();
       currentQuoteChainId = null;
+      updateMevProtectionState(Number(this.value));
+      persistMevProtectionState();
       applyDefaults(Number(this.value));
       fromAutocomplete.hide();
       toAutocomplete.hide();
+    });
+
+    // MEV Protection toggle event listener
+    mevProtectionInput.addEventListener('change', function() {
+      updateMevProtectionText();
+      persistMevProtectionState();
     });
 
     // Tab switching
@@ -1996,6 +2133,41 @@ const INDEX_HTML = `<!DOCTYPE html>
       });
     }
 
+    // Flashbots MEV Protection: Add and switch to Flashbots RPC
+    async function enableFlashbotsProtection(provider) {
+      // Flashbots chain params for wallet_addEthereumChain
+      const flashbotsChain = {
+        chainId: '0x1',
+        chainName: 'Ethereum (Flashbots Protect)',
+        rpcUrls: [FLASHBOTS_RPC_URL],
+        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+        blockExplorerUrls: ['https://etherscan.io'],
+      };
+
+      try {
+        // wallet_addEthereumChain is a no-op if user already has this network
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [flashbotsChain],
+        });
+
+        // Switch to Flashbots chain
+        await provider.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: '0x1' }],
+        });
+
+        return { success: true };
+      } catch (err) {
+        // User declined or error
+        const code = err && typeof err === 'object' ? err.code : undefined;
+        if (code === 4001 || isUserRejectedError(err)) {
+          return { success: false, reason: 'declined' };
+        }
+        return { success: false, reason: err instanceof Error ? err.message : 'Unknown error' };
+      }
+    }
+
     async function waitForTransactionReceipt(provider, txHash) {
       const timeoutMs = 120000;
       const pollIntervalMs = 1500;
@@ -2017,7 +2189,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       throw new Error('Timed out waiting for transaction confirmation');
     }
 
-    async function executeCardTransaction(card, txParams, onSuccess) {
+    async function executeCardTransaction(card, txParams, onSuccess, options = {}) {
       if (!hasConnectedWallet()) {
         setWalletMessage('Connect wallet first', true);
         setTxStatus(card, 'Connect wallet first', 'error');
@@ -2034,12 +2206,33 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
 
       const chainId = card.dataset.quoteChainId || currentQuoteChainId || chainIdInput.value;
+      const useMevProtection = options.useMevProtection === true && Number(chainId) === ETHEREUM_CHAIN_ID;
+
       setTxCardPending(card, true);
       setTxStatus(card, 'Confirming...', 'pending');
       pauseAutoRefreshForTransaction();
 
+      let mevProtectionActive = false;
+
       try {
+        // Handle MEV Protection for Ethereum mainnet swaps
+        if (useMevProtection) {
+          setTxStatus(card, 'Enabling MEV Protection...', 'pending');
+          const mevResult = await enableFlashbotsProtection(provider);
+          
+          if (!mevResult.success) {
+            // Show warning but proceed with normal provider
+            setWalletMessage('MEV Protection could not be enabled. Transaction will be sent through your default RPC.', true);
+            // Continue with normal transaction flow
+          } else {
+            mevProtectionActive = true;
+            setWalletMessage('');
+          }
+        }
+
         await ensureWalletOnChain(provider, chainId);
+        setTxStatus(card, 'Confirming...', 'pending');
+        
         const txHash = await provider.request({
           method: 'eth_sendTransaction',
           params: [txParams],
@@ -2051,7 +2244,11 @@ const INDEX_HTML = `<!DOCTYPE html>
           if (typeof onSuccess === 'function') {
             onSuccess();
           }
-          setWalletMessage('');
+          if (mevProtectionActive) {
+            setWalletMessage('Transaction submitted via Flashbots Protect. You may switch back to your default RPC manually.');
+          } else {
+            setWalletMessage('');
+          }
           setTxStatus(card, 'Success', 'success');
           return;
         }
@@ -2139,7 +2336,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         data: routerCalldata,
         value: toHexQuantity(routerValue || '0x0'),
         from: connectedWalletAddressValue,
-      });
+      }, undefined, { useMevProtection: isMevProtectionEnabled() });
     }
 
     result.addEventListener('click', (event) => {
@@ -2219,6 +2416,10 @@ const INDEX_HTML = `<!DOCTYPE html>
     if (params.get('amount')) amountInput.value = params.get('amount');
     if (params.get('slippageBps')) slippageInput.value = params.get('slippageBps');
     if (params.get('sender')) senderInput.value = params.get('sender');
+
+    // Initialize MEV protection state based on chain
+    updateMevProtectionState(Number(chainIdInput.value));
+    restoreMevProtectionFromUrl();
 
     const shouldLoadFromUrlParams = Boolean(
       params.get('chainId') && params.get('from') && params.get('to') && params.get('amount')
