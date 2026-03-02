@@ -1,0 +1,34 @@
+{
+  "featureId": "chain-mismatch-warnings",
+  "reviewedAt": "2026-03-02T16:55:00.000Z",
+  "commitId": "a84d5eb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation is clean and correct. The feature adds 3 logical components: (1) a CHAIN_NAMES constant mapping all 7 supported chain IDs to human-readable names, (2) a .tokenlist-chain-warning CSS class with orange styling, and (3) conditional rendering in renderTokenlistSources() that shows '0 tokens for [ChainName]' when a list has zero tokens for the current chain. The hasChainMismatch flag correctly prioritizes error state over chain mismatch (via !hasError guard). Dynamic updates work because renderTokenlistSources() is called on chain change (line 3571). The CHAIN_NAMES map covers all 7 chains in the selector with a sensible fallback ('this chain') for unknown IDs. Two non-blocking issues identified.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 763,
+        "severity": "non_blocking",
+        "description": "WCAG contrast concern: The warning color #CC7A00 has approximately 3.15:1 contrast against the #fafafa background of .tokenlist-entry. The project's color-system.md documents that 12px bold does NOT qualify as large text, so the 4.5:1 WCAG AA threshold applies. The documented orange in the color system is #CC2900 (5.41:1). Consider using a darker orange or the established #CC2900."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2052,
+        "severity": "non_blocking",
+        "description": "Transient false-positive warning during loading: When a new tokenlist is added (line 2230), it starts with tokens:[] and renderTokenlistSources() is called at line 2235 before the fetch completes. During this brief window, the warning '0 tokens for ...' appears alongside the 'Fetching tokenlist...' status message. Same applies during retry (line 2120). This resolves once the fetch completes, but a loading state check (e.g., tracking a 'loading' flag on the source) could prevent the momentary false positive."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker introduced a new color (#CC7A00) that is not in the documented color-system.md palette. The color system documents #CC2900 as the canonical orange. New colors should be vetted against WCAG AA thresholds and added to the palette if intentionally different.",
+      "evidence": "src/server.ts:763 uses #CC7A00 for .tokenlist-chain-warning. .factory/library/color-system.md documents #CC2900 as the orange accent with 5.41:1 contrast on white."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The chain mismatch warning implementation is clean: CHAIN_NAMES constant covers all supported chains, the warning renders correctly when tokenCount === 0 with error state taking proper precedence, and dynamic updates fire on chain selector change. Two non-blocking issues: (1) the #CC7A00 color may fail WCAG AA against the #fafafa entry background and isn't in the documented color palette, and (2) a brief false-positive warning appears during tokenlist loading since the loading state isn't distinguished from an empty-tokens state."
+}

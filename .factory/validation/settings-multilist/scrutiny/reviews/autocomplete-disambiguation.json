@@ -1,0 +1,44 @@
+{
+  "featureId": "autocomplete-disambiguation",
+  "reviewedAt": "2026-03-02T17:10:00.000Z",
+  "commitId": "a84d5eb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The autocomplete disambiguation feature was implemented in commit 9f9862d ('Add multi-tokenlist management with per-list toggles') by a prior worker, not by the worker assigned to this feature. The assigned worker (session 1e66a128) correctly identified that the functionality was already in place and performed verification-only work with no new code changes. The implementation is correct: getTokensForChain() deduplicates tokens by lowercase address across enabled sources (first source wins), findTokenMatches() tracks symbol counts and sets _needsDisambiguation flag when the same symbol appears at multiple addresses, source badges render via the .autocomplete-source CSS class when disambiguation is needed, and selectToken() correctly stores the full address in data-address. Toggled-off sources are properly excluded via the source.enabled check in getTokensForChain(). All expectedBehavior items from the feature spec are satisfied by the existing code.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 2356,
+        "severity": "non_blocking",
+        "description": "Comment says '// Show SYMBOL (0xABCD...1234) format in input' implying address truncation, but formatTokenDisplay() at line 2305-2308 correctly shows the full address (SYMBOL (0xFullAddress)). The comment is misleading and contradicts the project convention of never truncating addresses. Should be updated to say '// Show SYMBOL (0xFullAddress) format in input'."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2273,
+        "severity": "non_blocking",
+        "description": "The symbolCounts map counts symbols across ALL tokens for the chain (post-dedup), not just the filtered search results. This means the disambiguation badge may appear even when only one match is shown (e.g., searching by address). This is acceptable behavior (shows source attribution), but the comment 'Track which symbols are duplicated across sources' slightly mischaracterizes the logic — it tracks duplication across the entire chain token set, not specifically 'across sources'."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker made no code changes and reported commitId 'a84d5eb' which belongs to a different feature ('Add chain mismatch warnings'). The actual disambiguation code was introduced in commit '9f9862d'. When a worker finds a feature already implemented, the handoff commitId field should reference the commit that actually contains the relevant code, not just the latest HEAD.",
+      "evidence": "Handoff commitId is a84d5eb (chain mismatch warnings commit). git log -S '_needsDisambiguation' shows the code was introduced in 9f9862d."
+    },
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill's 'Write Tests First' step says to add unit tests for server-side changes but doesn't provide guidance for verification-only features where no code changes are needed. The worker correctly skipped writing tests but the skill procedure doesn't explicitly account for this 'already implemented' scenario. The worker followed the procedure reasonably given the situation.",
+      "evidence": "Skill SKILL.md step 2 says 'Write Tests First (Red Phase)' but worker had nothing to implement. handoff.skillFeedback.followedProcedure is true with no deviations."
+    },
+    {
+      "area": "conventions",
+      "observation": "There is no unit test coverage for the client-side disambiguation logic (findTokenMatches symbol counting, _needsDisambiguation flag, getTokensForChain dedup). The inline HTML/JS architecture makes this hard to test, but the dedup and disambiguation logic could potentially be extracted or tested via integration tests that inspect the rendered HTML. Mission AGENTS.md doesn't mention this gap.",
+      "evidence": "grep for '_needsDisambiguation|disambiguation' in src/__tests__/ returns no results. All verification was manual via Playwright."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The autocomplete disambiguation feature is correctly implemented: source badges appear when same-symbol tokens exist at different addresses, same-address tokens are deduplicated, toggled-off lists are excluded, and address selection sets the correct data-address. The code was implemented in a prior commit (9f9862d) as part of multi-tokenlist management. The assigned worker performed verification-only work with no new code changes and confirmed all expectedBehavior items. Two non-blocking code comment issues noted. No regressions to chain switching, quote comparison, slippage presets, or MEV modal functionality."
+}

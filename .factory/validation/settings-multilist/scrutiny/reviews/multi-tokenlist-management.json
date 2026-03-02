@@ -1,0 +1,56 @@
+{
+  "featureId": "multi-tokenlist-management",
+  "reviewedAt": "2026-03-02T17:05:00.000Z",
+  "commitId": "9f9862d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The multi-tokenlist implementation is solid overall. The data model migration from single to multi-list is well-structured with proper try/catch guards. Toggle, remove, retry, duplicate detection, and chain-specific token counting all work correctly. The core `getTokensForChain()` deduplication and source-aware `findTokenByAddress()` are correct. Two notable issues: (1) `loadTokenlistSource` swallows all errors internally, making the `catch` block in `handleAddTokenlist` dead code — on fetch failure, a misleading 'Added ...' success message is shown and the input is cleared; (2) the default tokenlist's toggle state is not persisted across reload because `saveTokenlistSources()` excludes `url === null` entries and `initializeTokenlistSources()` always resets default to `enabled: true`.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 2240,
+        "severity": "non_blocking",
+        "description": "Dead catch block / misleading success message: `loadTokenlistSource()` (line 2179) catches all errors internally and never rethrows. This makes the `catch` block in `handleAddTokenlist` (line 2243) unreachable dead code. When a fetch fails, execution continues to line 2239-2241: `saveTokenlistSources()` saves the entry with error state, `setTokenlistMessage('Added \"...\"', 'success')` shows a misleading success message, and `tokenlistUrlInput.value = ''` clears the input. The entry does correctly show error state with retry in the list, but the success message is confusing."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2134,
+        "severity": "non_blocking",
+        "description": "Default tokenlist toggle state not persisted: `saveTokenlistSources()` filters out `url === null` entries (line 2135), so the default list's enabled/disabled state is never saved to localStorage. `initializeTokenlistSources()` (line 3476) always sets the default to `enabled: true`. If a user toggles the default list off and reloads, it resets to on. The expected behavior says 'All settings (URLs, toggles) survive page reload identically' — this doesn't hold for the default list toggle."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2240,
+        "severity": "non_blocking",
+        "description": "Double-escaping in textContent setter: `setTokenlistMessage` uses `textContent` (line 1997), which already prevents HTML injection. The `escapeHtml()` call on line 2240 double-escapes special characters. A tokenlist named 'Tokens & More' would display as 'Added \"Tokens &amp; More\"'. Harmless for typical names but technically incorrect."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2165,
+        "severity": "non_blocking",
+        "description": "Migration overwrites new data if old key exists: `migrateOldTokenlistUrl()` checks for old `customTokenlistUrl` key and, if found, writes to `customTokenlists` — potentially overwriting any existing new-format data. The `const migrated = migrateOldTokenlistUrl()` call at line 3486 runs before `loadTokenlistSourcesFromStorage()`, and if migration succeeds, the OR shortcircuit skips loading. In practice this edge case (both keys coexisting) is extremely unlikely since migration removes the old key."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill file references outdated data model names. Line 23 says 'The `tokenlistTokens` global array holds all loaded tokens' — this is now `tokenlistSources` with a fundamentally different structure (array of source objects, each with tokens sub-array and `_source` tagging). Line 24 says 'localStorage is used for persistence (currently `customTokenlistUrl` key)' — now `customTokenlists`. Future workers using this skill will have incorrect assumptions about the data model.",
+      "evidence": ".factory/skills/fullstack-worker/SKILL.md lines 23-24 reference `tokenlistTokens` and `customTokenlistUrl`, which were replaced by `tokenlistSources` and `customTokenlists` in commit 9f9862d."
+    },
+    {
+      "area": "knowledge",
+      "observation": "No library documentation was created for the tokenlist source data model. The multi-list architecture (tokenlistSources array structure, _source field tagging, normalizeTokenlistUrl for dedup, getTokensForChain merging, default list identified by url===null) is complex enough to warrant a library entry. Future workers may need to understand this data model for the upcoming local-tokenlist-management and export-import-integration features.",
+      "evidence": ".factory/library/ has entries for architecture, color-system, environment, mev-protection, and user-testing but nothing about the tokenlist source data model introduced in commit 9f9862d."
+    },
+    {
+      "area": "conventions",
+      "observation": "The worker correctly followed the procedure: baseline validation, implementation, typecheck/lint/test, manual Playwright verification. skillFeedback.followedProcedure is true with no deviations. No new tests were added, which is consistent with the skill guidance that client-side-only changes are tested manually.",
+      "evidence": "Handoff shows all 109 tests pass, typecheck clean, lint clean. 10 interactive Playwright checks cover the main user flows."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The multi-tokenlist management implementation correctly replaces the single-list model with a source-tagged multi-list system. Core functionality — add/toggle/remove lists, persistence, migration, deduplication, chain-specific counts, error/retry states — is all working. Four non-blocking issues identified: (1) dead catch block causing misleading success message on fetch failure, (2) default list toggle state not persisting across reload, (3) minor double-escaping in textContent, (4) migration could theoretically overwrite new data if old key coexists. The skill file needs updating to reflect the new data model, and a library entry for the tokenlist source architecture would help future workers."
+}
