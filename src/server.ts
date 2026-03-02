@@ -855,6 +855,23 @@ const INDEX_HTML = `<!DOCTYPE html>
     .local-token-remove-btn:hover { color: #CC0000; }
     .local-token-remove-btn:focus { outline: 2px solid #0055FF; }
 
+    /* Local Tokens Actions Row */
+    .local-tokens-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .btn-import-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      margin: 0;
+    }
+    .btn-import-label input[type="file"] {
+      display: none;
+    }
+
     /* Unrecognized Token Popup */
     .unrecognized-token-info {
       border: 2px solid #CC7A00;
@@ -1530,6 +1547,14 @@ const INDEX_HTML = `<!DOCTYPE html>
         <!-- Local Tokens Section -->
         <div class="settings-section">
           <div class="settings-section-title">Local Tokens</div>
+          <div class="local-tokens-actions">
+            <button type="button" id="exportLocalTokensBtn" class="btn-small" disabled>Export</button>
+            <label class="btn-small btn-import-label">
+              Import
+              <input type="file" id="importLocalTokensInput" accept=".json" hidden>
+            </label>
+          </div>
+          <div id="localTokensMessage" class="tokenlist-message" aria-live="polite"></div>
           <div id="localTokensContent">
             <!-- Local tokens rendered by JS -->
           </div>
@@ -1854,11 +1879,169 @@ const INDEX_HTML = `<!DOCTYPE html>
       refreshAutocomplete();
     }
 
+    // Local Tokens Export/Import Elements
+    const exportLocalTokensBtn = document.getElementById('exportLocalTokensBtn');
+    const importLocalTokensInput = document.getElementById('importLocalTokensInput');
+    const localTokensMessage = document.getElementById('localTokensMessage');
+
+    function setLocalTokensMessage(text, kind) {
+      localTokensMessage.textContent = text || '';
+      localTokensMessage.className = 'tokenlist-message' + (kind ? ' ' + kind : '');
+    }
+
+    // Export local tokens as Uniswap tokenlist JSON format
+    function exportLocalTokenList() {
+      const localTokens = loadLocalTokenList();
+      if (localTokens.length === 0) {
+        setLocalTokensMessage('No tokens to export', 'error');
+        return;
+      }
+
+      const payload = {
+        name: 'Local Tokens',
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
+        tokens: localTokens.map(t => ({
+          chainId: t.chainId,
+          address: t.address,
+          name: t.name,
+          symbol: t.symbol,
+          decimals: t.decimals,
+        })),
+      };
+
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      // Create temporary download link
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'local-tokens.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setLocalTokensMessage('Exported ' + localTokens.length + ' token' + (localTokens.length === 1 ? '' : 's'), 'success');
+    }
+
+    // Import tokens from a Uniswap tokenlist JSON file
+    function importLocalTokenList(file) {
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        try {
+          const content = event.target.result;
+          if (typeof content !== 'string') {
+            throw new Error('File content is not text');
+          }
+
+          let parsed;
+          try {
+            parsed = JSON.parse(content);
+          } catch {
+            throw new Error('File is not valid JSON');
+          }
+
+          // Validate Uniswap tokenlist structure
+          if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.tokens)) {
+            throw new Error('File must contain a tokens array');
+          }
+
+          const importedTokens = parsed.tokens;
+          if (importedTokens.length === 0) {
+            throw new Error('Tokenlist contains no tokens');
+          }
+
+          // Validate each token has required fields
+          const validTokens = [];
+          for (const token of importedTokens) {
+            if (
+              typeof token.chainId === 'number' &&
+              typeof token.address === 'string' &&
+              /^0x[a-fA-F0-9]{40}$/.test(token.address) &&
+              typeof token.symbol === 'string' &&
+              typeof token.decimals === 'number'
+            ) {
+              validTokens.push({
+                chainId: token.chainId,
+                address: token.address,
+                name: token.name || token.symbol || 'Unknown',
+                symbol: token.symbol,
+                decimals: token.decimals,
+              });
+            }
+          }
+
+          if (validTokens.length === 0) {
+            throw new Error('No valid tokens found in file');
+          }
+
+          // Merge with existing tokens (dedup by address+chainId)
+          const existing = loadLocalTokenList();
+          let addedCount = 0;
+
+          for (const token of validTokens) {
+            const isDuplicate = existing.some(t =>
+              String(t.address).toLowerCase() === String(token.address).toLowerCase() &&
+              Number(t.chainId) === Number(token.chainId)
+            );
+            if (!isDuplicate) {
+              existing.push({ ...token, _source: LOCAL_TOKENS_SOURCE_NAME });
+              addedCount++;
+            }
+          }
+
+          saveLocalTokenList(existing);
+          renderLocalTokens();
+          refreshAutocomplete();
+
+          if (addedCount === 0) {
+            setLocalTokensMessage('All tokens already exist in your list', 'success');
+          } else {
+            setLocalTokensMessage('Imported ' + addedCount + ' new token' + (addedCount === 1 ? '' : 's'), 'success');
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setLocalTokensMessage('Import error: ' + msg, 'error');
+        }
+      };
+
+      reader.onerror = () => {
+        setLocalTokensMessage('Failed to read file', 'error');
+      };
+
+      reader.readAsText(file);
+    }
+
+    // Wire up export button
+    if (exportLocalTokensBtn) {
+      exportLocalTokensBtn.addEventListener('click', exportLocalTokenList);
+    }
+
+    // Wire up import input
+    if (importLocalTokensInput) {
+      importLocalTokensInput.addEventListener('change', (e) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+          importLocalTokenList(files[0]);
+          // Reset input so same file can be selected again
+          e.target.value = '';
+        }
+      });
+    }
+
     function renderLocalTokens() {
       const container = document.getElementById('localTokensContent');
       if (!container) return;
 
       const localTokens = loadLocalTokenList();
+
+      // Update export button disabled state
+      if (exportLocalTokensBtn) {
+        exportLocalTokensBtn.disabled = localTokens.length === 0;
+      }
 
       if (localTokens.length === 0) {
         container.innerHTML = '<div class="settings-placeholder">No custom tokens saved</div>';
