@@ -707,6 +707,19 @@ const INDEX_HTML = `<!DOCTYPE html>
       padding-bottom: 0.25rem;
       border-bottom: 1px solid #000;
     }
+    .local-tokens-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid #000;
+    }
+    .local-tokens-header .settings-section-title {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
     .settings-placeholder {
       font-size: 0.875rem;
       color: #666;
@@ -1546,7 +1559,10 @@ const INDEX_HTML = `<!DOCTYPE html>
         </div>
         <!-- Local Tokens Section -->
         <div class="settings-section">
-          <div class="settings-section-title">Local Tokens</div>
+          <div class="local-tokens-header">
+            <div class="settings-section-title" style="display: inline;">Local Tokens</div>
+            <div id="localTokensToggle" class="tokenlist-toggle on" role="switch" aria-checked="true" aria-label="Toggle local tokens" tabindex="0"></div>
+          </div>
           <div class="local-tokens-actions">
             <button type="button" id="exportLocalTokensBtn" class="btn-small" disabled>Export</button>
             <label class="btn-small btn-import-label">
@@ -1618,6 +1634,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Local tokenlist key - stores user-saved tokens in Uniswap tokenlist format
     const LOCAL_TOKEN_LIST_KEY = 'localTokenList';
     const LOCAL_TOKENS_SOURCE_NAME = 'Local Tokens';
+    // Local tokens enabled state (toggle in settings panel)
+    const LOCAL_TOKENS_ENABLED_KEY = 'localTokensEnabled';
 
     const walletProvidersByUuid = new Map();
     let fallbackWalletProvider = null;
@@ -1855,6 +1873,28 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
     }
 
+    // Local tokens enabled/disabled state (toggle in settings panel)
+    function loadLocalTokensEnabled() {
+      try {
+        const data = localStorage.getItem(LOCAL_TOKENS_ENABLED_KEY);
+        if (data !== null) {
+          return data === 'true';
+        }
+      } catch {
+        // Ignore storage errors
+      }
+      // Default to enabled
+      return true;
+    }
+
+    function saveLocalTokensEnabled(enabled) {
+      try {
+        localStorage.setItem(LOCAL_TOKENS_ENABLED_KEY, String(enabled));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
     function addTokenToLocalList(token) {
       const existing = loadLocalTokenList();
       // Check for duplicate by address+chainId
@@ -2037,6 +2077,14 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (!container) return;
 
       const localTokens = loadLocalTokenList();
+      const localTokensEnabled = loadLocalTokensEnabled();
+
+      // Update toggle state
+      const toggle = document.getElementById('localTokensToggle');
+      if (toggle) {
+        toggle.classList.toggle('on', localTokensEnabled);
+        toggle.setAttribute('aria-checked', String(localTokensEnabled));
+      }
 
       // Update export button disabled state
       if (exportLocalTokensBtn) {
@@ -2051,7 +2099,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       let html = '';
       for (const token of localTokens) {
         const chainName = CHAIN_NAMES[String(token.chainId)] || 'Chain ' + token.chainId;
-        html += '<div class="local-token-entry" data-address="' + escapeHtml(token.address) + '" data-chain-id="' + token.chainId + '">';
+        html += '<div class="local-token-entry' + (localTokensEnabled ? '' : ' disabled') + '" data-address="' + escapeHtml(token.address) + '" data-chain-id="' + token.chainId + '">';
         html += '<span class="local-token-symbol">' + escapeHtml(token.symbol || '???') + '</span>';
         html += '<span class="local-token-address">' + escapeHtml(token.address) + '</span>';
         html += '<span class="local-token-chain">' + escapeHtml(chainName) + '</span>';
@@ -2071,6 +2119,27 @@ const INDEX_HTML = `<!DOCTYPE html>
             removeTokenFromLocalList(address, chainId);
           }
         });
+      });
+    }
+
+    // Handle local tokens toggle
+    function handleLocalTokensToggle() {
+      const currentState = loadLocalTokensEnabled();
+      const newState = !currentState;
+      saveLocalTokensEnabled(newState);
+      renderLocalTokens();
+      refreshAutocomplete();
+    }
+
+    // Wire up local tokens toggle
+    const localTokensToggle = document.getElementById('localTokensToggle');
+    if (localTokensToggle) {
+      localTokensToggle.addEventListener('click', handleLocalTokensToggle);
+      localTokensToggle.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleLocalTokensToggle();
+        }
       });
     }
 
@@ -2237,13 +2306,15 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (found) return true;
       }
 
-      // Check local tokens
-      const localTokens = loadLocalTokenList();
-      const foundLocal = localTokens.find(t =>
-        Number(t.chainId) === cid &&
-        String(t.address || '').toLowerCase() === addr
-      );
-      if (foundLocal) return true;
+      // Check local tokens (if enabled)
+      if (loadLocalTokensEnabled()) {
+        const localTokens = loadLocalTokenList();
+        const foundLocal = localTokens.find(t =>
+          Number(t.chainId) === cid &&
+          String(t.address || '').toLowerCase() === addr
+        );
+        if (foundLocal) return true;
+      }
 
       return false;
     }
@@ -2701,14 +2772,16 @@ const INDEX_HTML = `<!DOCTYPE html>
         }
       }
 
-      // Add local tokens
-      const localTokens = loadLocalTokenList();
-      for (const token of localTokens) {
-        if (Number(token.chainId) !== cid || typeof token.address !== 'string') continue;
-        const addr = token.address.toLowerCase();
-        if (seen.has(addr)) continue;
-        seen.add(addr);
-        result.push(token);
+      // Add local tokens (if enabled)
+      if (loadLocalTokensEnabled()) {
+        const localTokens = loadLocalTokenList();
+        for (const token of localTokens) {
+          if (Number(token.chainId) !== cid || typeof token.address !== 'string') continue;
+          const addr = token.address.toLowerCase();
+          if (seen.has(addr)) continue;
+          seen.add(addr);
+          result.push(token);
+        }
       }
 
       return result;

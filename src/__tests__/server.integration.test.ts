@@ -527,4 +527,48 @@ describe("server integration", () => {
       expect(res.headers["content-type"]).toContain("application/json");
     });
   });
+
+  // Local Tokens Toggle tests
+  describe("Local Tokens Toggle", () => {
+    it("includes Local Tokens section with toggle switch", async () => {
+      const res = await request(`${baseUrl}/`);
+      expect(res.status).toBe(200);
+      // Check for Local Tokens section header with toggle
+      expect(res.body).toContain("local-tokens-header");
+      expect(res.body).toContain('id="localTokensToggle"');
+      expect(res.body).toContain('class="tokenlist-toggle on"');
+      expect(res.body).toContain('aria-label="Toggle local tokens"');
+    });
+
+    it("includes localStorage key for local tokens enabled state", async () => {
+      const res = await request(`${baseUrl}/`);
+      expect(res.status).toBe(200);
+      expect(res.body).toContain("LOCAL_TOKENS_ENABLED_KEY");
+      expect(res.body).toContain("'localTokensEnabled'");
+    });
+
+    it("includes loadLocalTokensEnabled function", async () => {
+      const res = await request(`${baseUrl}/`);
+      expect(res.status).toBe(200);
+      expect(res.body).toContain("function loadLocalTokensEnabled()");
+    });
+
+    it("includes saveLocalTokensEnabled function", async () => {
+      const res = await request(`${baseUrl}/`);
+      expect(res.status).toBe(200);
+      expect(res.body).toContain("function saveLocalTokensEnabled(enabled)");
+    });
+
+    it("getTokensForChain checks local tokens enabled state", async () => {
+      const res = await request(`${baseUrl}/`);
+      expect(res.status).toBe(200);
+      expect(res.body).toContain("if (loadLocalTokensEnabled())");
+    });
+
+    it("includes handleLocalTokensToggle function", async () => {
+      const res = await request(`${baseUrl}/`);
+      expect(res.status).toBe(200);
+      expect(res.body).toContain("function handleLocalTokensToggle()");
+    });
+  });
 });
