@@ -2296,7 +2296,10 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       // Update input field with formatted display
       const input = unrecognizedTokenState.targetInput === 'from' ? fromInput : toInput;
-      input.value = formatTokenDisplay(token.symbol, token.address);
+      const newDisplay = formatTokenDisplay(token.symbol, token.address);
+      // Handle token swap if setting to same value as other field
+      handleTokenSwapIfNeeded(input, token.address, newDisplay);
+      input.value = newDisplay;
       input.dataset.address = token.address;
 
       // Close modal
@@ -2364,11 +2367,18 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       const chainId = getCurrentChainId();
 
+      // Handle token swap if setting to same value as other field
+      // This needs to happen before we update the data-address
+      handleTokenSwapIfNeeded(input, value, value);
+
       // Check if address is already in tokenlists
       if (isAddressInTokenlists(value, chainId)) {
-        // Update data-address if not set
-        if (!input.dataset.address) {
-          input.dataset.address = value;
+        // Update data-address
+        input.dataset.address = value;
+        // Try to find the token to get a nicer display format
+        const token = findTokenByAddress(value, chainId);
+        if (token) {
+          input.value = formatTokenDisplay(token.symbol, token.address);
         }
         return;
       }
@@ -3144,6 +3154,46 @@ const INDEX_HTML = `<!DOCTYPE html>
       return value; // Return as-is, validation will catch issues
     }
 
+    // Handle token swap when setting a token to the same value as the other field
+    // If user sets from=A when to=A: swap (to becomes old-from, from becomes A)
+    // If user sets to=A when from=A: swap (from becomes old-to, to becomes A)
+    // If the other field was empty: just set the new value (no swap needed)
+    function handleTokenSwapIfNeeded(currentInput, newAddress, newDisplay) {
+      const isFromInput = currentInput === fromInput;
+      const otherInput = isFromInput ? toInput : fromInput;
+      const otherAddress = extractAddressFromInput(otherInput);
+
+      // Only proceed if the other field has a valid address (not just typed text or empty)
+      if (!isAddressLike(otherAddress)) {
+        return;
+      }
+
+      // Normalize addresses for comparison
+      const normalizedNew = String(newAddress || '').toLowerCase().trim();
+      const normalizedOther = String(otherAddress || '').toLowerCase().trim();
+
+      // Check if we're setting the same token as the other field
+      if (normalizedNew && normalizedOther && normalizedNew === normalizedOther) {
+        // Get current address before it changes (from data-address attribute)
+        const currentAddress = extractAddressFromInput(currentInput);
+
+        // Only swap if the current field also has a valid different address
+        if (isAddressLike(currentAddress) && currentAddress.toLowerCase() !== normalizedNew) {
+          // There was a different valid value in the current field - swap it to the other field
+          // Reconstruct the display value using the token's symbol
+          const chainId = getCurrentChainId();
+          const token = findTokenByAddress(currentAddress, chainId);
+          const swappedDisplay = token
+            ? formatTokenDisplay(token.symbol, token.address)
+            : currentAddress;
+          otherInput.value = swappedDisplay;
+          otherInput.dataset.address = currentAddress;
+        }
+        // If current field was empty or had non-address content, leave the other field unchanged
+        // (no swap needed - just let the new value be set in the current field)
+      }
+    }
+
     function setupAutocomplete(inputId, listId) {
       const input = document.getElementById(inputId);
       const list = document.getElementById(listId);
@@ -3158,8 +3208,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
 
       function selectToken(token) {
+        // Handle token swap if setting to same value as other field
+        const newDisplay = formatTokenDisplay(token.symbol, token.address);
+        handleTokenSwapIfNeeded(input, token.address, newDisplay);
         // Show 'SYMBOL (0xABCD...1234)' format in input
-        input.value = formatTokenDisplay(token.symbol, token.address);
+        input.value = newDisplay;
         // Store full address in data-address attribute
         input.dataset.address = token.address;
         hide();
