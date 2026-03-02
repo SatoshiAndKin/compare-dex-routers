@@ -810,6 +810,85 @@ const INDEX_HTML = `<!DOCTYPE html>
       border-color: #0055FF;
     }
 
+    /* Unrecognized Token Popup */
+    .unrecognized-token-info {
+      border: 2px solid #CC7A00;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+      background: #fff8f0;
+    }
+    .unrecognized-token-address {
+      font-family: monospace;
+      font-size: 0.75rem;
+      word-break: break-all;
+      background: #f0f0f0;
+      padding: 0.375rem 0.5rem;
+      border: 1px solid #e0e0e0;
+      margin-top: 0.5rem;
+    }
+    .unrecognized-token-loading {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #666;
+      padding: 0.75rem;
+    }
+    .unrecognized-token-loading::before {
+      content: '';
+      width: 16px;
+      height: 16px;
+      border: 2px solid #e0e0e0;
+      border-top-color: #0055FF;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .unrecognized-token-metadata {
+      padding: 0.75rem;
+      border: 1px solid #e0e0e0;
+      background: #f8f8f8;
+    }
+    .unrecognized-token-field {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.375rem;
+    }
+    .unrecognized-token-field:last-child { margin-bottom: 0; }
+    .unrecognized-token-field-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #666;
+      min-width: 80px;
+    }
+    .unrecognized-token-field-value {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    .unrecognized-token-error {
+      font-size: 0.875rem;
+      color: #CC0000;
+      font-weight: 600;
+      padding: 0.75rem;
+      border: 2px solid #CC0000;
+      background: #fff0f0;
+    }
+    .unrecognized-token-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .unrecognized-token-actions .btn-primary {
+      flex: 1;
+    }
+    .unrecognized-token-actions .btn-secondary {
+      flex: 1;
+    }
+
     /* Source badge in autocomplete */
     .autocomplete-source {
       font-size: 0.5rem;
@@ -1414,6 +1493,44 @@ const INDEX_HTML = `<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Unrecognized Token Modal -->
+  <div id="unrecognizedTokenModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="unrecognizedTokenModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="unrecognizedTokenModalTitle" class="modal-title">Unrecognized Token</h2>
+        <button type="button" id="unrecognizedTokenModalClose" class="modal-close" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="unrecognized-token-info">
+          <p class="modal-text">This token address is not in any of your enabled tokenlists. Fetching metadata from the blockchain...</p>
+          <div id="unrecognizedTokenAddress" class="unrecognized-token-address"></div>
+        </div>
+        <div id="unrecognizedTokenLoading" class="unrecognized-token-loading">
+          Fetching token metadata...
+        </div>
+        <div id="unrecognizedTokenMetadata" class="unrecognized-token-metadata" hidden>
+          <div class="unrecognized-token-field">
+            <span class="unrecognized-token-field-label">Name</span>
+            <span id="unrecognizedTokenName" class="unrecognized-token-field-value"></span>
+          </div>
+          <div class="unrecognized-token-field">
+            <span class="unrecognized-token-field-label">Symbol</span>
+            <span id="unrecognizedTokenSymbol" class="unrecognized-token-field-value"></span>
+          </div>
+          <div class="unrecognized-token-field">
+            <span class="unrecognized-token-field-label">Decimals</span>
+            <span id="unrecognizedTokenDecimals" class="unrecognized-token-field-value"></span>
+          </div>
+        </div>
+        <div id="unrecognizedTokenError" class="unrecognized-token-error" hidden></div>
+        <div class="unrecognized-token-actions">
+          <button type="button" id="unrecognizedTokenCancelBtn" class="btn-secondary">Cancel</button>
+          <button type="button" id="unrecognizedTokenSaveBtn" class="btn-primary" disabled>Save to Local List</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
     const DEFAULT_TOKENLIST_NAME = 'Default Tokenlist';
@@ -1428,6 +1545,9 @@ const INDEX_HTML = `<!DOCTYPE html>
     const CUSTOM_TOKENLISTS_KEY = 'customTokenlists';
     // Default tokenlist enabled state (stored separately since default is not in customTokenlists)
     const DEFAULT_TOKENLIST_ENABLED_KEY = 'defaultTokenlistEnabled';
+    // Local tokenlist key - stores user-saved tokens in Uniswap tokenlist format
+    const LOCAL_TOKEN_LIST_KEY = 'localTokenList';
+    const LOCAL_TOKENS_SOURCE_NAME = 'Local Tokens';
 
     const walletProvidersByUuid = new Map();
     let fallbackWalletProvider = null;
@@ -1628,6 +1748,282 @@ const INDEX_HTML = `<!DOCTYPE html>
       // Return focus to the button that opened the modal
       settingsBtn.focus();
     }
+
+    // Local Tokenlist Management
+    function loadLocalTokenList() {
+      try {
+        const data = localStorage.getItem(LOCAL_TOKEN_LIST_KEY);
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (parsed && Array.isArray(parsed.tokens)) {
+            return parsed.tokens.map(t => ({ ...t, _source: LOCAL_TOKENS_SOURCE_NAME }));
+          }
+        }
+      } catch {
+        // Corrupt data, treat as empty
+      }
+      return [];
+    }
+
+    function saveLocalTokenList(tokens) {
+      const payload = {
+        name: 'Local Tokens',
+        timestamp: new Date().toISOString(),
+        tokens: tokens.map(t => ({
+          chainId: t.chainId,
+          address: t.address,
+          name: t.name,
+          symbol: t.symbol,
+          decimals: t.decimals,
+        })),
+      };
+      try {
+        localStorage.setItem(LOCAL_TOKEN_LIST_KEY, JSON.stringify(payload));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
+    function addTokenToLocalList(token) {
+      const existing = loadLocalTokenList();
+      // Check for duplicate by address+chainId
+      const isDuplicate = existing.some(t =>
+        String(t.address).toLowerCase() === String(token.address).toLowerCase() &&
+        Number(t.chainId) === Number(token.chainId)
+      );
+      if (!isDuplicate) {
+        existing.push({ ...token, _source: LOCAL_TOKENS_SOURCE_NAME });
+        saveLocalTokenList(existing);
+      }
+    }
+
+    // Unrecognized Token Modal Elements
+    const unrecognizedTokenModal = document.getElementById('unrecognizedTokenModal');
+    const unrecognizedTokenModalClose = document.getElementById('unrecognizedTokenModalClose');
+    const unrecognizedTokenAddress = document.getElementById('unrecognizedTokenAddress');
+    const unrecognizedTokenLoading = document.getElementById('unrecognizedTokenLoading');
+    const unrecognizedTokenMetadata = document.getElementById('unrecognizedTokenMetadata');
+    const unrecognizedTokenName = document.getElementById('unrecognizedTokenName');
+    const unrecognizedTokenSymbol = document.getElementById('unrecognizedTokenSymbol');
+    const unrecognizedTokenDecimals = document.getElementById('unrecognizedTokenDecimals');
+    const unrecognizedTokenError = document.getElementById('unrecognizedTokenError');
+    const unrecognizedTokenCancelBtn = document.getElementById('unrecognizedTokenCancelBtn');
+    const unrecognizedTokenSaveBtn = document.getElementById('unrecognizedTokenSaveBtn');
+
+    // State for the unrecognized token modal
+    let unrecognizedTokenState = {
+      address: '',
+      chainId: 0,
+      metadata: null,
+      targetInput: null, // 'from' or 'to'
+    };
+
+    function openUnrecognizedTokenModal(address, chainId, targetInput) {
+      unrecognizedTokenState = {
+        address: address,
+        chainId: chainId,
+        metadata: null,
+        targetInput: targetInput,
+      };
+
+      // Reset UI
+      unrecognizedTokenAddress.textContent = address;
+      unrecognizedTokenLoading.hidden = false;
+      unrecognizedTokenMetadata.hidden = true;
+      unrecognizedTokenError.hidden = true;
+      unrecognizedTokenSaveBtn.disabled = true;
+      unrecognizedTokenSaveBtn.textContent = 'Save to Local List';
+
+      // Show modal
+      unrecognizedTokenModal.classList.add('show');
+      document.body.style.overflow = 'hidden';
+      unrecognizedTokenModalClose.focus();
+
+      // Fetch metadata
+      fetchTokenMetadata(address, chainId);
+    }
+
+    function closeUnrecognizedTokenModal() {
+      unrecognizedTokenModal.classList.remove('show');
+      document.body.style.overflow = '';
+      // Return focus to the input that triggered the modal
+      if (unrecognizedTokenState.targetInput === 'from') {
+        fromInput.focus();
+      } else if (unrecognizedTokenState.targetInput === 'to') {
+        toInput.focus();
+      }
+      unrecognizedTokenState = {
+        address: '',
+        chainId: 0,
+        metadata: null,
+        targetInput: null,
+      };
+    }
+
+    async function fetchTokenMetadata(address, chainId) {
+      try {
+        const url = '/token-metadata?chainId=' + encodeURIComponent(chainId) + '&address=' + encodeURIComponent(address);
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+          // Show error
+          unrecognizedTokenLoading.hidden = true;
+          unrecognizedTokenMetadata.hidden = true;
+          unrecognizedTokenError.hidden = false;
+          unrecognizedTokenError.textContent = data.error || ('Failed to fetch metadata (HTTP ' + response.status + ')');
+          unrecognizedTokenSaveBtn.disabled = true;
+          return;
+        }
+
+        // Success - show metadata
+        unrecognizedTokenState.metadata = data;
+        unrecognizedTokenLoading.hidden = true;
+        unrecognizedTokenError.hidden = true;
+        unrecognizedTokenMetadata.hidden = false;
+        unrecognizedTokenName.textContent = data.name || '';
+        unrecognizedTokenSymbol.textContent = data.symbol || '';
+        unrecognizedTokenDecimals.textContent = String(data.decimals || 0);
+        unrecognizedTokenSaveBtn.disabled = false;
+      } catch (err) {
+        // Network or other error
+        unrecognizedTokenLoading.hidden = true;
+        unrecognizedTokenMetadata.hidden = true;
+        unrecognizedTokenError.hidden = false;
+        const msg = err instanceof Error ? err.message : String(err);
+        unrecognizedTokenError.textContent = 'Failed to fetch metadata: ' + msg;
+        unrecognizedTokenSaveBtn.disabled = true;
+      }
+    }
+
+    function handleUnrecognizedTokenSave() {
+      if (!unrecognizedTokenState.metadata || !unrecognizedTokenState.address) {
+        return;
+      }
+
+      const token = {
+        chainId: unrecognizedTokenState.chainId,
+        address: unrecognizedTokenState.address,
+        name: unrecognizedTokenState.metadata.name || '',
+        symbol: unrecognizedTokenState.metadata.symbol || '',
+        decimals: unrecognizedTokenState.metadata.decimals || 18,
+        _source: LOCAL_TOKENS_SOURCE_NAME,
+      };
+
+      // Add to local list
+      addTokenToLocalList(token);
+
+      // Update input field with formatted display
+      const input = unrecognizedTokenState.targetInput === 'from' ? fromInput : toInput;
+      input.value = formatTokenDisplay(token.symbol, token.address);
+      input.dataset.address = token.address;
+
+      // Close modal
+      closeUnrecognizedTokenModal();
+
+      // Refresh autocomplete to include the new token
+      refreshAutocomplete();
+    }
+
+    // Event listeners for unrecognized token modal
+    unrecognizedTokenModalClose.addEventListener('click', closeUnrecognizedTokenModal);
+    unrecognizedTokenCancelBtn.addEventListener('click', closeUnrecognizedTokenModal);
+    unrecognizedTokenSaveBtn.addEventListener('click', handleUnrecognizedTokenSave);
+
+    // Close modal on overlay click
+    unrecognizedTokenModal.addEventListener('click', (event) => {
+      if (event.target === unrecognizedTokenModal) {
+        closeUnrecognizedTokenModal();
+      }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && unrecognizedTokenModal.classList.contains('show')) {
+        closeUnrecognizedTokenModal();
+      }
+    });
+
+    // Check if address is in any enabled tokenlist (including local tokens)
+    function isAddressInTokenlists(address, chainId) {
+      const addr = String(address || '').toLowerCase();
+      const cid = Number(chainId);
+
+      // Check tokenlist sources
+      for (const source of tokenlistSources) {
+        if (!source.enabled || !source.tokens) continue;
+        const found = source.tokens.find(t =>
+          Number(t.chainId) === cid &&
+          String(t.address || '').toLowerCase() === addr
+        );
+        if (found) return true;
+      }
+
+      // Check local tokens
+      const localTokens = loadLocalTokenList();
+      const foundLocal = localTokens.find(t =>
+        Number(t.chainId) === cid &&
+        String(t.address || '').toLowerCase() === addr
+      );
+      if (foundLocal) return true;
+
+      return false;
+    }
+
+    // Handle blur event on token inputs - check for unrecognized addresses
+    function handleTokenInputBlur(input, targetInput) {
+      const value = String(input.value || '').trim();
+
+      // Check if it's a valid address
+      if (!isAddressLike(value)) {
+        return;
+      }
+
+      const chainId = getCurrentChainId();
+
+      // Check if address is already in tokenlists
+      if (isAddressInTokenlists(value, chainId)) {
+        // Update data-address if not set
+        if (!input.dataset.address) {
+          input.dataset.address = value;
+        }
+        return;
+      }
+
+      // Address is not recognized - show popup
+      input.dataset.address = value;
+      openUnrecognizedTokenModal(value, chainId, targetInput);
+    }
+
+    // Add blur listeners to token inputs
+    fromInput.addEventListener('blur', () => handleTokenInputBlur(fromInput, 'from'));
+    toInput.addEventListener('blur', () => handleTokenInputBlur(toInput, 'to'));
+
+    // Also check when a full 42-char address is typed (immediate detection)
+    fromInput.addEventListener('input', () => {
+      const value = String(fromInput.value || '').trim();
+      if (isAddressLike(value) && !isAddressInTokenlists(value, getCurrentChainId())) {
+        // Delay slightly to allow for paste/autocomplete to settle
+        setTimeout(() => {
+          const currentValue = String(fromInput.value || '').trim();
+          if (isAddressLike(currentValue)) {
+            handleTokenInputBlur(fromInput, 'from');
+          }
+        }, 100);
+      }
+    });
+
+    toInput.addEventListener('input', () => {
+      const value = String(toInput.value || '').trim();
+      if (isAddressLike(value) && !isAddressInTokenlists(value, getCurrentChainId())) {
+        setTimeout(() => {
+          const currentValue = String(toInput.value || '').trim();
+          if (isAddressLike(currentValue)) {
+            handleTokenInputBlur(toInput, 'to');
+          }
+        }, 100);
+      }
+    });
 
     // Render chain-specific content in modal
     function renderMevChainContent() {
@@ -2025,6 +2421,16 @@ const INDEX_HTML = `<!DOCTYPE html>
           seen.add(addr);
           result.push(token);
         }
+      }
+
+      // Add local tokens
+      const localTokens = loadLocalTokenList();
+      for (const token of localTokens) {
+        if (Number(token.chainId) !== cid || typeof token.address !== 'string') continue;
+        const addr = token.address.toLowerCase();
+        if (seen.has(addr)) continue;
+        seen.add(addr);
+        result.push(token);
       }
 
       return result;
@@ -2735,6 +3141,13 @@ const INDEX_HTML = `<!DOCTYPE html>
         );
         if (found) return found;
       }
+      // Search local tokens
+      const localTokens = loadLocalTokenList();
+      const foundLocal = localTokens.find((t) =>
+        Number(t.chainId) === cid &&
+        String(t.address || '').toLowerCase() === addr
+      );
+      if (foundLocal) return foundLocal;
       return undefined;
     }
 

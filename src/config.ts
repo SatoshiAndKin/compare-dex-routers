@@ -10,7 +10,7 @@ import {
   velora,
   type Config,
 } from "@spandex/core";
-import { createPublicClient, http, type Address, type PublicClient } from "viem";
+import { createPublicClient, http, type PublicClient, getAddress } from "viem";
 const APP_ID = process.env.APP_ID || "compare-dex-routers";
 
 export const SUPPORTED_CHAINS: Record<number, { name: string; alchemySubdomain: string }> = {
@@ -141,8 +141,10 @@ export async function getTokenDecimals(chainId: number, address: string): Promis
   if (cached !== undefined) return cached;
 
   const client = getClient(chainId);
+  // Normalize address to checksummed format for viem
+  const normalizedAddress = getAddress(address);
   const decimals = await client.readContract({
-    address: address as Address,
+    address: normalizedAddress,
     abi: erc20Abi,
     functionName: "decimals",
   });
@@ -158,8 +160,10 @@ export async function getTokenSymbol(chainId: number, address: string): Promise<
 
   const client = getClient(chainId);
   try {
+    // Normalize address to checksummed format for viem
+    const normalizedAddress = getAddress(address);
     const symbol = await client.readContract({
-      address: address as Address,
+      address: normalizedAddress,
       abi: erc20Abi,
       functionName: "symbol",
     });
@@ -180,8 +184,10 @@ export async function getTokenName(chainId: number, address: string): Promise<st
 
   const client = getClient(chainId);
   try {
+    // Normalize address to checksummed format for viem
+    const normalizedAddress = getAddress(address);
     const name = await client.readContract({
-      address: address as Address,
+      address: normalizedAddress,
       abi: erc20Abi,
       functionName: "name",
     });
