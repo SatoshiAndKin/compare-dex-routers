@@ -18,11 +18,11 @@ Open `http://localhost:3000` in a browser to use the UI.
 
 ## Features
 
-**Token selection** — Autocomplete powered by a local tokenlist (`data/tokenlist.json`). Filters by the selected chain, shows token logos, and accepts name, symbol, or address. After selection the input displays `SYMBOL (0xABCD…1234)`. Dropdowns have a minimum width of 320 px with address truncation for a clean fit.
+**Token selection** — Autocomplete powered by a local tokenlist (`data/tokenlist.json`) or a custom remote tokenlist URL. Filters by the selected chain, shows token logos, and accepts name, symbol, or address. After selection the input displays the symbol followed by the full contract address. Dropdowns have a minimum width of 320 px. Full addresses are displayed throughout the UI — no truncation anywhere.
 
 **Wallet connection** — Integrated directly in the form flow (Chain → Wallet → Tokens → Slippage → Compare). Detects wallets via ERC-6963 multi-provider discovery with `window.ethereum` fallback. Connect/disconnect with one click; the connected address is used automatically as the sender. The wallet provider menu supports scrolling when many wallets are available.
 
-**Swap execution** — Approve and Swap buttons appear on each quote. Uses raw EIP-1193 provider calls. Handles chain switching when the wallet is on the wrong network and shows transaction status (pending → confirmed / failed).
+**Swap execution** — Approve and Swap buttons appear on each quote with a step indicator pattern (Step 1: Approve → Step 2: Swap) when token approval is required. Uses raw EIP-1193 provider calls. Handles chain switching when the wallet is on the wrong network and shows transaction status (pending → confirmed / failed).
 
 **Auto-refresh** — Quotes re-fetch every 15 seconds with a visible countdown. Refreshing pauses while a transaction is in flight and resumes after it completes or fails.
 
@@ -30,11 +30,15 @@ Open `http://localhost:3000` in a browser to use the UI.
 
 **MEV protection guidance** — An info button near the swap action area in results opens a modal with chain-specific MEV advice: Flashbots Protect for Ethereum, bloXroute for BSC, and sequencer details for L2 chains.
 
-**Brutalist design** — High-contrast black/white with WCAG AA compliant color accents: blue (`#0055FF`) for the recommended quote, dark orange (`#CC2900`) for alternatives, dark green (`#007700`) for success states, and dark red (`#CC0000`) for errors. Labels get blue left borders; result cards get colored left borders. No border-radius. Inline results with collapsible details.
+**Slippage presets** — Quick-pick buttons for common slippage values (10, 50, 100, 300 bps) alongside the manual input field. The active preset is highlighted; typing a custom value clears the highlight.
+
+**Brutalist design** — High-contrast black/white with WCAG AA compliant color accents: blue (`#0055FF`) for the recommended quote, dark orange (`#CC2900`) for alternatives, dark green (`#007700`) for success states, and dark red (`#CC0000`) for errors. Labels get blue left borders; result cards get colored left borders. The "Recommended" badge is a flat label rather than a pill. No border-radius. Inline results with collapsible details.
 
 ## Tokenlist
 
 Token autocomplete reads from `data/tokenlist.json`, served by the `GET /tokenlist` endpoint. You can replace this file with your own [Uniswap-format tokenlist](https://tokenlists.org/) to customize available tokens.
+
+The UI also has an optional **Tokenlist URL** input where you can paste a remote tokenlist URL (e.g. `https://tokens.uniswap.org`). The app fetches it through a server-side proxy (`GET /tokenlist/proxy?url=...`) to avoid CORS issues. The custom URL is persisted in `localStorage` and survives page reloads.
 
 ## Supported chains
 
@@ -70,6 +74,14 @@ Single quote from the Spandex router. Same parameters as `/compare`.
 ### `GET /tokenlist`
 
 Returns the contents of `data/tokenlist.json`.
+
+### `GET /tokenlist/proxy`
+
+Server-side proxy for fetching remote tokenlists. Avoids CORS restrictions.
+
+| Param | Required | Description                          |
+| ----- | -------- | ------------------------------------ |
+| `url` | yes      | Remote tokenlist URL to fetch        |
 
 ### `GET /chains`
 
