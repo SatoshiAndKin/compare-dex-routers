@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-disconnect-and-curve-gas",
+  "reviewedAt": "2026-03-02T01:30:00.000Z",
+  "commitId": "345922e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Both fixes are minimal, correct, and well-targeted. The CSS fix properly resolves the specificity conflict where .wallet-connected's display:flex overrode the hidden attribute. The Curve gas_used display correctly uses a conditional to show Gas Used only when the backend provides it, matching the Spandex renderer's HTML structure and CSS classes exactly. The commit modifies only src/server.ts with +7 lines, all tests pass (84/84), typecheck and lint clean.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The Spandex renderer always shows Gas Used unconditionally (line 1255: ${data.gas_used}) while the new Curve renderer conditionally shows it (line 1345: ${data.gas_used ? ... : ''}). This asymmetry is actually correct because Spandex always provides gas_used (defaulting to '0' at line 168) while Curve only returns it when gas estimation succeeds. However, AGENTS.md doesn't document this data model difference between Spandex and Curve quote responses, which could confuse future workers.",
+      "evidence": "src/server.ts line 168: gas_used: quote.simulation.gasUsed?.toString() ?? '0' (always present for Spandex); Curve gas_used is only present when sender is provided and estimation succeeds per src/curve.ts"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. Two clean, focused fixes in a single commit (+7 lines to src/server.ts). Fix 1: CSS rule .wallet-connected[hidden] { display: none !important; } correctly resolves the hidden attribute being overridden by the class's display:flex — verified via browser snapshot showing no disconnect button on load. Fix 2: Conditional Gas Used field in renderCurveQuote matches the Spandex renderer format exactly — appropriately gated on data.gas_used presence since Curve only returns gas estimates when a sender address enables gas simulation. All verification commands passed (typecheck, lint, 84 tests). No blocking issues."
+}
