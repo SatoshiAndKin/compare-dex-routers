@@ -1,0 +1,51 @@
+{
+  "featureId": "gas-adjusted-comparison",
+  "reviewedAt": "2026-03-02T02:10:00.000Z",
+  "commitId": "7816504",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation is correct and well-structured. The compareQuotes function now handles three clear scenarios: (1) ETH/WETH output with gas subtracted directly, (2) non-ETH output with gas costs shown informationally, (3) fallback when gas data is missing. Unit handling is correct — both Spandex and Curve output_amount values are human-readable (via formatUnits), so gas cost subtraction (in ETH) is dimensionally sound. The UI renderSecondaryDetails always shows 'Gas Used' with either the value or 'N/A', applied symmetrically to both renderers. Tests cover the main paths with 6 new test cases.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 196,
+        "severity": "non_blocking",
+        "description": "WETH_ADDRESSES includes non-Ethereum native wrapped tokens (WBNB on BSC line 201, WAVAX on Avalanche line 202), and the reason text hardcodes 'ETH' (lines 278-286). If the compare endpoint were extended to non-Ethereum chains in the future, the text would say 'ETH' instead of the chain's native token symbol. Currently non-blocking because Curve only supports Ethereum (chainId 1), so the gas-adjusted compare path is never reached on other chains."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 207,
+        "severity": "non_blocking",
+        "description": "Function name isEthOutput is slightly misleading since it also matches WBNB (BSC) and WAVAX (Avalanche) by address. A name like isNativeWrappedOutput would be more accurate, though this is cosmetic since Curve only operates on Ethereum."
+      },
+      {
+        "file": "src/__tests__/server.quote-compare.test.ts",
+        "line": 401,
+        "severity": "non_blocking",
+        "description": "No test for a gas-reversal scenario where the router with higher raw output loses after gas adjustment. E.g., Router A outputs 1.5 ETH with 500k gas vs Router B outputs 1.49 ETH with 50k gas, and after gas A falls below B. This is the core value proposition of gas-adjusted comparison and would strengthen confidence in the implementation."
+      },
+      {
+        "file": "src/__tests__/server.integration.test.ts",
+        "line": 258,
+        "severity": "non_blocking",
+        "description": "The Gas: N/A integration test checks static HTML source for 'Gas Used' and 'N/A' strings rather than rendered DOM output. This works because JS is inline in the template, but is fragile — any other 'N/A' string in the page could make the test pass even if gas display logic were broken."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The architecture.md library entry states 'Spandex gas_used is always present (defaults to 0 when simulation absent); Curve gas_used is only present when a sender address is provided and gas estimation succeeds — render Curve gas conditionally'. The gas-adjusted comparison builds on this asymmetry but the library doesn't document the new three-way branching logic (ETH output / non-ETH output / missing gas). Future workers modifying the compare logic should understand these branches.",
+      "evidence": "src/server.ts lines 260-326 implement three distinct comparison paths; .factory/library/architecture.md only describes the raw gas_used availability asymmetry."
+    },
+    {
+      "area": "conventions",
+      "observation": "architecture.md and mission AGENTS.md both say 'All existing API endpoints must remain unchanged' and list /compare as off-limits. This feature intentionally changes /compare's comparison logic and response content (recommendation_reason format, gas_price_gwei field). The boundary language should be clarified to distinguish backward-compatible enhancements from breaking changes.",
+      "evidence": "Mission AGENTS.md 'Off-Limits' section lists /compare; .factory/library/architecture.md states 'All existing API endpoints must remain unchanged: /health, /chains, /compare, /quote, /metrics'. The feature was orchestrator-assigned to modify /compare."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The gas-adjusted comparison feature is correctly implemented. The compareQuotes function cleanly handles three scenarios with proper unit handling (both output amounts are human-readable, gas costs in ETH). UI shows Gas Used symmetrically with N/A fallback. Six new tests cover the main paths. Non-blocking observations: WETH_ADDRESSES includes non-Ethereum chains that don't apply yet, no test for gas-reversal scenario, and the integration test for N/A display is fragile. All verification commands (typecheck, lint, test) passed. Pass."
+}

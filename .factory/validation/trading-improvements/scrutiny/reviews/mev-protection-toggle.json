@@ -1,0 +1,39 @@
+{
+  "featureId": "mev-protection-toggle",
+  "reviewedAt": "2026-03-02T02:05:00.000Z",
+  "commitId": "56c3d4e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean implementation of MEV Protection toggle with Flashbots RPC integration. All 6 spec requirements are met: toggle UI near slippage input, chain-based enable/disable (Ethereum only), Flashbots wallet_addEthereumChain + wallet_switchEthereumChain flow, graceful fallback on user decline, post-transaction messaging, and URL param persistence. The code follows existing patterns (brutalist design, raw EIP-1193 provider.request calls, URL param state management). The executeCardTransaction signature extension via optional options parameter is backward-compatible. Only the swap handler passes useMevProtection, which is correct since approve transactions don't need MEV protection.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 801,
+        "severity": "non_blocking",
+        "description": "The title attribute 'MEV Protection only available on Ethereum mainnet' is always present on the toggle label, even when Ethereum is selected and the toggle is enabled. This is slightly misleading when on mainnet. Consider conditionally setting the title only when the toggle is disabled."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2139,
+        "severity": "non_blocking",
+        "description": "wallet_addEthereumChain with chainId '0x1' (Ethereum mainnet) may be rejected by some wallets (notably older MetaMask versions) since mainnet is a built-in chain that cannot be 're-added'. Newer wallet versions handle this as an RPC URL update. The implementation follows the spec verbatim, so this is not a code bug, but a real-world compatibility concern. The graceful fallback (showing warning and proceeding normally) mitigates this well."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The new URL param 'mevProtection' is not documented in AGENTS.md or the architecture library. The app now accepts ?mevProtection=true as a URL parameter that persists toggle state. Other URL params (chainId, from, to, amount, slippageBps, sender) are implicit but not documented either, so this is consistent with existing practice — but as the param set grows, documenting supported URL params would be beneficial.",
+      "evidence": "src/server.ts diff lines 1508-1514 (URL param persistence) and lines 2417-2420 (URL param restoration). Compare with existing params handling around line 2410."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The Flashbots Protect RPC URL (https://rpc.flashbots.net) is hardcoded in client-side JS. If this URL changes or Flashbots updates their endpoint, it requires editing the inline template. This external dependency could be noted in the environment library for future reference.",
+      "evidence": "src/server.ts line 950: const FLASHBOTS_RPC_URL = 'https://rpc.flashbots.net'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The MEV Protection toggle is correctly implemented with all 6 spec requirements satisfied. The toggle UI follows the brutalist design, correctly enables/disables based on chain selection, integrates Flashbots RPC via wallet_addEthereumChain + wallet_switchEthereumChain, handles user rejection gracefully, shows post-transaction guidance, and persists state via URL params. Two non-blocking issues noted: the tooltip is always visible (cosmetic), and wallet_addEthereumChain for chainId 0x1 has limited wallet compatibility (mitigated by the fallback path). No blocking issues. Worker followed the skill procedure correctly, ran all verification commands (typecheck, lint, test), and performed thorough interactive checks."
+}

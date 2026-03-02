@@ -15,4 +15,5 @@ Architectural decisions, patterns, and conventions.
 - Token autocomplete filters from fetched tokenlist by chainId, matches name/symbol/address
 - Token input display format after selection: `SYMBOL (0xABCD...1234)` — actual address stored in `data-address` attribute; `extractAddressFromInput()` reads `data-address` first, falls back to parsing display format
 - Spandex `gas_used` is always present (defaults to `'0'` when simulation absent); Curve `gas_used` is only present when a sender address is provided and gas estimation succeeds — render Curve gas conditionally
+- Gas-adjusted comparison in `compareQuotes` uses three-way branching: (1) ETH/WETH output — subtract gas cost (gas_used * gas_price_gwei * 1e-9 ETH) directly from output for net comparison; (2) non-ETH output — show gas cost informationally in reason text without adjusting the comparison value; (3) gas unavailable for either router — fall back to raw output comparison with a note. Both renderers show `Gas Used: N/A` when gas data is absent.
 - All existing API endpoints must remain unchanged: /health, /chains, /compare, /quote, /metrics

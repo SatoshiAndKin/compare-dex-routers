@@ -13,3 +13,4 @@ Environment variables, external dependencies, and setup notes.
 - `TOKENLIST_PATH` optional override for the tokenlist file path (defaults to `data/tokenlist.json`)
 - Dev server runs with tsx (TypeScript execution, no build step)
 - viem ^2.46.3 already installed - use for server-side code; browser-side wallet interaction uses raw EIP-1193 provider.request() calls (no CDN import needed)
+- Flashbots Protect RPC URL: `https://rpc.flashbots.net` — hardcoded in client-side JS template (`FLASHBOTS_RPC_URL` constant in `src/server.ts`); used for MEV Protection swap flow on Ethereum mainnet via `wallet_addEthereumChain` + `wallet_switchEthereumChain`
