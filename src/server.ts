@@ -800,7 +800,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         <label for="mevProtection">MEV Protection</label>
         <div class="toggle-wrapper">
           <input type="checkbox" id="mevProtection" class="toggle-input">
-          <label for="mevProtection" class="toggle-label" title="MEV Protection only available on Ethereum mainnet">
+          <label for="mevProtection" class="toggle-label" id="mevProtectionLabel">
             <span class="toggle-switch"></span>
             <span class="toggle-text">Off</span>
           </label>
@@ -955,15 +955,24 @@ const INDEX_HTML = `<!DOCTYPE html>
     function updateMevProtectionState(chainId) {
       const isEthereum = Number(chainId) === ETHEREUM_CHAIN_ID;
       const wasChecked = mevProtectionInput.checked;
+      const label = mevProtectionInput.nextElementSibling;
       
       if (!isEthereum) {
         // Disable and uncheck for non-Ethereum chains
         mevProtectionInput.checked = false;
         mevProtectionInput.disabled = true;
+        // Show tooltip explaining why it's disabled
+        if (label) {
+          label.title = 'MEV Protection only available on Ethereum mainnet';
+        }
         updateMevProtectionText();
       } else {
         // Enable for Ethereum
         mevProtectionInput.disabled = false;
+        // Remove tooltip when enabled (user can toggle it)
+        if (label) {
+          label.removeAttribute('title');
+        }
         updateMevProtectionText();
       }
       

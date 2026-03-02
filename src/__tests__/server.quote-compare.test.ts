@@ -505,4 +505,39 @@ describe("server /quote and /compare", () => {
     const body = JSON.parse(res.body);
     expect(body.gas_price_gwei).toBe("1.0000");
   });
+
+  it("GET /compare recommendation flips when gas costs reverse the output advantage", async () => {
+    // This tests the core value proposition of gas-adjusted comparison:
+    // Router A has higher raw output but much higher gas, so Router B wins after adjustment.
+    //
+    // Spandex: 1.50 ETH output, 15M gas (complex multi-hop route)
+    // Curve: 1.49 ETH output, 10k gas (direct pool swap)
+    // Gas price: 1 gwei = 1e9 wei
+    //
+    // Spandex gas cost: 15,000,000 * 1e9 / 1e18 = 0.015 ETH
+    // Curve gas cost: 10,000 * 1e9 / 1e18 = 0.00001 ETH
+    //
+    // Adjusted outputs:
+    // Spandex: 1.50 - 0.015 = 1.485 ETH
+    // Curve: 1.49 - 0.00001 = 1.48999 ETH
+    //
+    // Curve wins after gas adjustment!
+    getQuoteMock.mockResolvedValue(
+      makeQuote({ outputAmount: 1_500_000_000_000_000_000n, gasUsed: 15_000_000n })
+    );
+    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "1.49", gas: "10000" }));
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    // Spandex has higher raw output but Curve wins after gas adjustment
+    expect(body.recommendation).toBe("curve");
+    expect(body.recommendation_reason).toContain("after gas");
+    expect(body.recommendation_reason).toContain("Curve");
+    // Verify the reason shows both raw and adjusted values
+    expect(body.recommendation_reason).toMatch(/1\.50.*ETH.*1\.485.*ETH.*after gas/i);
+  });
 });
