@@ -311,6 +311,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .wallet-provider-option:hover { background: #f3f7ff; }
     .wallet-provider-icon, .wallet-connected-icon { width: 20px; height: 20px; object-fit: cover; border-radius: 50%; background: #f0f0f0; flex-shrink: 0; }
     .wallet-connected { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #333; }
+    .wallet-connected[hidden] { display: none !important; }
     .wallet-address { font-family: monospace; color: #222; }
     .wallet-disconnect-btn { padding: 6px 10px; font-size: 12px; background: #666; }
     .wallet-disconnect-btn:hover { background: #555; }
@@ -1341,6 +1342,12 @@ const INDEX_HTML = `<!DOCTYPE html>
           <div class="field-label">Output Amount</div>
           <div class="field-value number">\${data.output_amount}\${data.to_symbol ? ' ' + data.to_symbol : ''}</div>
         </div>
+        \${data.gas_used ? \`
+        <div class="field">
+          <div class="field-label">Gas Used</div>
+          <div class="field-value number">\${data.gas_used}</div>
+        </div>
+        \` : ''}
         <div class="field">
           <div class="field-label">From</div>
           <div class="field-value">\${data.from_symbol ? data.from_symbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${data.from}</span></div>
