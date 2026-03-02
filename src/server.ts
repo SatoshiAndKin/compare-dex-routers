@@ -555,7 +555,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     /* Non-collapsible Form Row - stays horizontal even at 375px */
     .form-row-fixed { display: flex; gap: 0.5rem; }
     .form-row-fixed .form-group { flex: 1; min-width: 0; }
-    .form-row-fixed .form-group.amount-group { flex: 0 0 100px; }
+    .form-row-fixed .form-group.amount-group { flex: 0 0 150px; }
     
     /* Buttons - Accent Color: Electric Blue #0055FF (color-blind safe) */
     button {
@@ -586,7 +586,68 @@ const INDEX_HTML = `<!DOCTYPE html>
       color: #fff;
     }
     .btn-secondary:hover { background: #333; }
-    
+
+    /* Slippage Preset Buttons - Brutalist style */
+    .slippage-section { max-width: 300px; }
+    .slippage-label-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+    .slippage-label {
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding-left: 0.5rem;
+      border-left: 4px solid #0055FF;
+    }
+    .slippage-presets {
+      display: flex;
+      gap: 0.25rem;
+      flex-wrap: wrap;
+    }
+    .slippage-preset-btn {
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.5rem;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+      cursor: pointer;
+      min-width: 40px;
+    }
+    .slippage-preset-btn:hover { background: #f0f0f0; }
+    .slippage-preset-btn.active {
+      background: #000;
+      color: #fff;
+    }
+    .slippage-preset-btn:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    .slippage-input-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .slippage-input-row input {
+      width: 80px;
+      padding: 0.5rem;
+      font-family: monospace;
+      font-size: 0.875rem;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+    }
+    .slippage-input-row input:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    .slippage-hint {
+      font-size: 0.625rem;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
     /* Wallet Section - Integrated into form flow (no extra border/section) */
     .wallet-group {
       margin-bottom: 0.75rem;
@@ -915,10 +976,21 @@ const INDEX_HTML = `<!DOCTYPE html>
       <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
     </div>
-    <!-- Row 5: Slippage -->
-    <div class="form-group" style="max-width: 150px;">
-      <label for="slippageBps">Slippage (bps)</label>
-      <input type="text" id="slippageBps" value="50">
+    <!-- Row 5: Slippage with presets -->
+    <div class="form-group slippage-section">
+      <div class="slippage-label-row">
+        <span class="slippage-label">Slippage</span>
+        <div class="slippage-presets">
+          <button type="button" class="slippage-preset-btn" data-bps="10">10</button>
+          <button type="button" class="slippage-preset-btn active" data-bps="50">50</button>
+          <button type="button" class="slippage-preset-btn" data-bps="100">100</button>
+          <button type="button" class="slippage-preset-btn" data-bps="300">300</button>
+        </div>
+      </div>
+      <div class="slippage-input-row">
+        <input type="text" id="slippageBps" value="50">
+        <span class="slippage-hint">bps (1 bps = 0.01%)</span>
+      </div>
     </div>
     <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
   </form>
@@ -1012,6 +1084,33 @@ const INDEX_HTML = `<!DOCTYPE html>
     const toInput = document.getElementById('to');
     const amountInput = document.getElementById('amount');
     const slippageInput = document.getElementById('slippageBps');
+    const slippagePresetBtns = document.querySelectorAll('.slippage-preset-btn');
+
+    // Update active state on slippage preset buttons
+    function updateSlippagePresetActive(value) {
+      const bpsValue = String(value || '').trim();
+      slippagePresetBtns.forEach((btn) => {
+        const btnBps = btn.dataset.bps;
+        btn.classList.toggle('active', btnBps === bpsValue);
+      });
+    }
+
+    // Slippage preset button click handler
+    slippagePresetBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const bps = btn.dataset.bps;
+        if (bps) {
+          slippageInput.value = bps;
+          updateSlippagePresetActive(bps);
+        }
+      });
+    });
+
+    // On custom input, update preset active state
+    slippageInput.addEventListener('input', () => {
+      updateSlippagePresetActive(slippageInput.value);
+    });
+
     const mevInfoBtn = document.getElementById('mevInfoBtn');
     const mevModal = document.getElementById('mevModal');
     const mevModalClose = document.getElementById('mevModalClose');
