@@ -758,6 +758,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-weight: 600;
       margin-left: 0.25rem;
     }
+    .tokenlist-chain-warning {
+      font-size: 0.75rem;
+      color: #CC7A00;
+      font-weight: 600;
+      margin-left: 0.25rem;
+    }
     .tokenlist-toggle {
       position: relative;
       width: 36px;
@@ -1446,6 +1452,15 @@ const INDEX_HTML = `<!DOCTYPE html>
       '42161': '0xa4b1',
       '43114': '0xa86a',
     });
+    const CHAIN_NAMES = Object.freeze({
+      '1': 'Ethereum',
+      '10': 'Optimism',
+      '56': 'BSC',
+      '137': 'Polygon',
+      '8453': 'Base',
+      '42161': 'Arbitrum',
+      '43114': 'Avalanche',
+    });
     const MAX_UINT256_HEX = 'f'.repeat(64);
 
     const connectWalletBtn = document.getElementById('connectWalletBtn');
@@ -2020,6 +2035,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Render tokenlist sources in settings modal
     function renderTokenlistSources() {
       const chainId = getCurrentChainId();
+      const chainName = CHAIN_NAMES[String(chainId)] || 'this chain';
 
       if (tokenlistSources.length === 0) {
         tokenlistSourcesList.innerHTML = '<div class="settings-placeholder">No tokenlists loaded</div>';
@@ -2033,6 +2049,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         const tokenCount = source.tokens ? countTokensForChain(source.tokens, chainId) : 0;
         const displayName = source.name || (isDefault ? DEFAULT_TOKENLIST_NAME : source.url);
         const hasError = Boolean(source.error);
+        const hasChainMismatch = !hasError && tokenCount === 0;
 
         html += '<div class="tokenlist-entry' + (source.enabled ? '' : ' disabled') + (hasError ? ' error' : '') + '" data-index="' + i + '">';
         html += '<span class="tokenlist-entry-name">' + escapeHtml(displayName) + '</span>';
@@ -2041,6 +2058,8 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (hasError) {
           html += '<span class="tokenlist-entry-error">' + escapeHtml(source.error) + '</span>';
           html += '<button type="button" class="btn-small tokenlist-retry-btn" data-action="retry" data-index="' + i + '">Retry</button>';
+        } else if (hasChainMismatch) {
+          html += '<span class="tokenlist-chain-warning">0 tokens for ' + escapeHtml(chainName) + '</span>';
         }
 
         // Toggle switch
