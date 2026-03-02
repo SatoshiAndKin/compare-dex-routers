@@ -1,0 +1,45 @@
+{
+  "featureId": "token-metadata-endpoint",
+  "reviewedAt": "2026-03-02T20:10:00.000Z",
+  "commitId": "a89fe09",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation is correct and follows existing patterns. The endpoint validates inputs properly (chainId, address format), fetches ERC-20 metadata (name, symbol, decimals) in parallel via Promise.all, and returns appropriate HTTP status codes (400/404/500). The new getTokenName() function in config.ts follows the established pattern from getTokenSymbol/getTokenDecimals with caching. CORS headers and Content-Type are properly set (CORS is global in handleRequest, Content-Type set by sendJson). Two non-blocking issues identified around error handling consistency and test coverage gaps.",
+    "issues": [
+      {
+        "file": "src/config.ts",
+        "line": 138,
+        "severity": "non_blocking",
+        "description": "Error handling inconsistency: getTokenDecimals() throws on error (no try/catch) while getTokenName() and getTokenSymbol() catch and return defaults. In the /token-metadata endpoint, Promise.all will reject if getTokenDecimals throws, so the (!name && !symbol && decimals === 0) check on line 4427 of server.ts is only reachable when all three calls succeed but return empty/zero values. The primary non-ERC-20 detection path goes through the catch block, not this check. The code still works correctly — it's just a subtle inconsistency in error handling strategy across the three functions."
+      },
+      {
+        "file": "src/__tests__/server.integration.test.ts",
+        "line": 479,
+        "severity": "non_blocking",
+        "description": "Integration tests only cover 400-level validation errors (missing chainId, missing address, unsupported chain, invalid format). No integration tests for the 404 path (non-ERC-20 address) or 500 path (RPC failure). The 404 case was verified manually via curl against a live server, but automated test coverage for these paths would improve confidence in the error-detection string matching logic in the catch block."
+      },
+      {
+        "file": "src/config.ts",
+        "line": 178,
+        "severity": "non_blocking",
+        "description": "Error caching asymmetry: getTokenName and getTokenSymbol cache empty strings on error, but getTokenDecimals does not cache on error (it throws). For repeated calls to an invalid address, name and symbol resolve instantly from cache while decimals re-fetches from RPC each time. Minor performance concern for repeated lookups of invalid tokens."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "openapi.yaml was not updated to include the new /token-metadata endpoint, even though all pre-existing endpoints (/health, /chains, /compare, /quote) are documented there. AGENTS.md does not mention openapi.yaml as something to keep in sync when adding new endpoints, so the worker had no prompt to update it.",
+      "evidence": "openapi.yaml documents /health, /chains, /compare, /quote but not /token-metadata. AGENTS.md API Endpoints section lists routes but doesn't mention openapi.yaml maintenance."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed the skill procedure correctly: wrote tests first (TDD red phase), implemented changes, ran typecheck/lint/test, then verified manually with curl. skillFeedback.followedProcedure is true with no deviations. The skill's procedure is well-aligned with the worker's actual workflow.",
+      "evidence": "Transcript shows test-first approach: Edit config.test.ts and server.integration.test.ts before editing config.ts and server.ts. All verification commands passed."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The /token-metadata endpoint implementation is correct and complete. It validates chainId (supported chain check) and address (0x + 40 hex regex), fetches name/symbol/decimals in parallel, and returns proper HTTP status codes. The code follows existing patterns (sendJson/sendError, caching, address normalization via getAddress). Three non-blocking issues identified: (1) error handling inconsistency between getTokenDecimals (throws) and getTokenName/getTokenSymbol (catch and return defaults), (2) missing integration tests for 404 and 500 response paths, and (3) error caching asymmetry across the three metadata functions. All feature requirements from the description and expectedBehavior are met."
+}

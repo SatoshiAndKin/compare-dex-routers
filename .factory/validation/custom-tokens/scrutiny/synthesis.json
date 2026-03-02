@@ -1,0 +1,77 @@
+{
+  "milestone": "custom-tokens",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a rule that when workers add a new API endpoint, they must update openapi.yaml in the same feature (or explicitly document why the endpoint is intentionally undocumented).",
+      "evidence": "Feature token-metadata-endpoint added GET /token-metadata but openapi.yaml still only documents /health, /chains, /compare, and /quote.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add an explicit frontend safety rule: escape all user-controlled values (including localStorage-derived fields) before interpolating into HTML text or attribute contexts.",
+      "evidence": "Feature local-tokenlist-management escaped address/symbol but not chainId in data attributes, creating inconsistent handling of user-controlled localStorage values.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Clarify warning-color policy by either adding #CC7A00 to the canonical palette with verified WCAG contrast guidance or requiring workers to use only already-approved colors.",
+      "evidence": "Both tokenlist chain warnings and unrecognized-token warnings use #CC7A00, but .factory/library/color-system.md does not currently include it.",
+      "isSystemic": true
+    },
+    {
+      "target": "fullstack-worker skill",
+      "suggestion": "Clarify that small server-side normalization/safety changes (e.g., viem getAddress normalization) still require a targeted automated test, even when the primary feature is UI-heavy.",
+      "evidence": "In unrecognized-address-popup, config.ts changed server-side address handling but no targeted automated test was added for the normalization path.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Define expected Uniswap tokenlist version field format for export/import interoperability (object {major, minor, patch} vs string), so future workers implement a consistent contract.",
+      "evidence": "Feature export-import-integration exports version as string '1.0.0', which differs from canonical Uniswap tokenlist schema shape.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "No change needed to scrutiny-validator skill because the reviewer reported this run's workflow aligned with the current procedure.",
+      "reason": "already-correct"
+    },
+    {
+      "observation": "Extract inline client-side logic into separate modules solely to enable more unit tests.",
+      "reason": "ambiguous"
+    },
+    {
+      "observation": "localTokenList save/export asymmetry on optional version field requires immediate shared-state update.",
+      "reason": "non-blocking-local-choice"
+    }
+  ],
+  "previousRound": null
+}
