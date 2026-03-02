@@ -1803,11 +1803,30 @@ const INDEX_HTML = `<!DOCTYPE html>
     const POLYGON_CHAIN_ID = 137;
     const AVALANCHE_CHAIN_ID = 43114;
 
+    // Modal scroll lock coordination with reference counting
+    // When multiple modals are open, closing one should not restore body overflow
+    // until all modals are closed.
+    let modalScrollLockCount = 0;
+
+    function lockBodyScroll() {
+      modalScrollLockCount++;
+      if (modalScrollLockCount === 1) {
+        document.body.style.overflow = 'hidden';
+      }
+    }
+
+    function unlockBodyScroll() {
+      modalScrollLockCount = Math.max(0, modalScrollLockCount - 1);
+      if (modalScrollLockCount === 0) {
+        document.body.style.overflow = '';
+      }
+    }
+
     // Open modal
     function openMevModal() {
       renderMevChainContent();
       mevModal.classList.add('show');
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       // Focus the close button for accessibility
       mevModalClose.focus();
     }
@@ -1815,7 +1834,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Close modal
     function closeMevModal() {
       mevModal.classList.remove('show');
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       // Return focus to the button that opened the modal
       mevInfoBtn.focus();
     }
@@ -1825,7 +1844,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       renderLocalTokens();
       settingsModal.classList.add('show');
       settingsBtn.setAttribute('aria-expanded', 'true');
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       // Focus the close button for accessibility
       settingsModalClose.focus();
     }
@@ -1833,7 +1852,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     function closeSettingsModal() {
       settingsModal.classList.remove('show');
       settingsBtn.setAttribute('aria-expanded', 'false');
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       // Return focus to the button that opened the modal
       settingsBtn.focus();
     }
@@ -1939,7 +1958,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       const payload = {
         name: 'Local Tokens',
-        version: '1.0.0',
+        version: { major: 1, minor: 0, patch: 0 },
         timestamp: new Date().toISOString(),
         tokens: localTokens.map(t => ({
           chainId: t.chainId,
@@ -2182,7 +2201,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       // Show modal
       unrecognizedTokenModal.classList.add('show');
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       unrecognizedTokenModalClose.focus();
 
       // Fetch metadata
@@ -2191,7 +2210,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     function closeUnrecognizedTokenModal() {
       unrecognizedTokenModal.classList.remove('show');
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       // Return focus to the input that triggered the modal
       if (unrecognizedTokenState.targetInput === 'from') {
         fromInput.focus();
