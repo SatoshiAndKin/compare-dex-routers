@@ -1,0 +1,28 @@
+{
+  "featureId": "form-ux-improvements",
+  "reviewedAt": "2026-03-02T07:35:00.000Z",
+  "commitId": "dbc079f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, well-structured implementation covering both requirements. Amount field widened from 100px to 150px (within spec range). Four slippage preset buttons (10, 50, 100, 300 bps) added with brutalist styling, active state highlighting, click-to-update, and custom-typing deselection. Max-width 300px constraint applied. Focus styles included for keyboard accessibility. Responsive flex-wrap on presets handles narrow viewports. One non-blocking accessibility regression: the <label for=\"slippageBps\"> was replaced with a <span>, breaking the programmatic association between label and input.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 1163,
+        "severity": "non_blocking",
+        "description": "The <label for=\"slippageBps\"> element was replaced with <span class=\"slippage-label\">Slippage</span>. Every other form field (Chain, Tokenlist URL, From Token, Amount, To Token) retains a proper <label> with a 'for' attribute. The slippage input is now the only form field without a programmatic label association. This means: (1) screen readers won't announce 'Slippage' when the input is focused, (2) clicking the 'Slippage' text won't focus the input. Fix: wrap or add a <label for=\"slippageBps\"> around or alongside the span, or add aria-label=\"Slippage (bps)\" to the input."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "All form fields in the UI use <label for=\"id\"> to associate labels with inputs. The slippage field's label was changed to a <span> in this feature, breaking the pattern. AGENTS.md doesn't document this form accessibility convention, so the worker had no explicit guidance to preserve it.",
+      "evidence": "src/server.ts lines 1107,1120,1145,1150,1156 all use <label for=\"...\"> but line 1163 uses <span class=\"slippage-label\"> instead. The git diff shows the original <label for=\"slippageBps\"> was removed."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The implementation fully satisfies all six expected behaviors: wider amount field (150px), 4 preset buttons with brutalist styling, click-to-update, active highlighting, custom input preserved, and custom typing deselects presets. Slippage section respects 300px max-width. One non-blocking issue: the <label> element for slippageBps was replaced with a <span>, losing programmatic label association (accessibility regression). All other form fields retain proper labels. Worker followed the skill procedure correctly, ran all verification commands (typecheck, lint, test all pass), and did thorough manual browser verification via Playwright."
+}

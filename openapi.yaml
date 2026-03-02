@@ -1,8 +1,8 @@
 openapi: "3.0.3"
 info:
-  title: FlashProfits Spandex Router
+  title: Compare DEX Routers Spandex Router
   version: "1.0.0"
-  description: DEX aggregator quote server querying Spandex and Curve for best-priced swap quotes.
+  description: Compare DEX Routers quote server querying Spandex and Curve for best-priced swap quotes.
 
 servers:
   - url: http://localhost:3000
@@ -159,6 +159,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /token-metadata:
+    get:
+      summary: Get ERC-20 token metadata from blockchain
+      operationId: getTokenMetadata
+      parameters:
+        - name: chainId
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Chain ID (1, 8453, 42161, 10, 137, 56, 43114)
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+          description: Token contract address
+      responses:
+        "200":
+          description: Token metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenMetadata"
+        "400":
+          description: Invalid parameters (missing/invalid chainId or address, unsupported chain)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not a valid ERC-20 token (EOA or non-ERC-20 contract)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: RPC error or timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   schemas:
     Error:
@@ -271,3 +315,16 @@ components:
         gas_price_gwei:
           type: string
           nullable: true
+
+    TokenMetadata:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Token name from ERC-20 name() function
+        symbol:
+          type: string
+          description: Token symbol from ERC-20 symbol() function
+        decimals:
+          type: integer
+          description: Token decimals from ERC-20 decimals() function

@@ -1,0 +1,152 @@
+{
+  "groupId": "refresh",
+  "testedAt": "2026-03-02T00:40:00.000Z",
+  "credentials": {
+    "account": "N/A",
+    "namespace": "refresh-group"
+  },
+  "toolsUsed": ["agent-browser", "playwright-mcp", "source-inspection"],
+  "assertions": [
+    {
+      "id": "VAL-REFRESH-001",
+      "title": "Quotes auto-refresh every 15 seconds",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to app with URL params (chainId=1, USDC->WETH, amount=1000)", "expected": "Form populated and quote auto-submitted", "observed": "Page loaded, quote submitted automatically via URL params" },
+        { "action": "Wait for quote results to load", "expected": "Quote results displayed with countdown", "observed": "Curve quote displayed showing 0.513272 WETH, countdown 'Refreshing in 15s' visible" },
+        { "action": "Install PerformanceObserver to track /compare requests", "expected": "Observer installed", "observed": "Observer installed successfully" },
+        { "action": "Wait 17 seconds for auto-refresh cycle", "expected": "New /compare request fired automatically", "observed": "2 compare requests detected with ~18s interval (includes network latency). UI showed 'Refreshing quotes...' during fetch, then new results with different provider (kyberswap vs initial odos)" }
+      ],
+      "evidence": {
+        "screenshots": ["refresh-001-initial-quote-v2.png", "refresh-001-refreshed-quote.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic)",
+        "network": "PerformanceObserver tracked 2 /compare requests with timestamps 18s apart"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REFRESH-002",
+      "title": "Visual countdown indicator",
+      "status": "pass",
+      "steps": [
+        { "action": "Get initial quote comparison", "expected": "Countdown indicator visible", "observed": "Refresh indicator div visible with 'Refreshing in 15s' text, progress bar with green gradient fill, and status area" },
+        { "action": "Observe countdown ticking", "expected": "Counter decrements each second", "observed": "Observed values: 15s, 12s, 9s, 7s, 6s, 5s, 2s, 0s - counter ticks down every second" },
+        { "action": "Check during refresh fetch", "expected": "Indicator shows refresh in progress", "observed": "Text changes to 'Refreshing quotes...' with progress bar at 100% during fetch" }
+      ],
+      "evidence": {
+        "screenshots": ["refresh-002-countdown-visible.png", "refresh-001-initial-quote-v2.png"],
+        "consoleErrors": "none (favicon.ico 404 is cosmetic)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REFRESH-003",
+      "title": "Refresh stops on Swap or Approve click",
+      "status": "pass",
+      "steps": [
+        { "action": "Source inspection: check executeWalletTransaction in src/server.ts", "expected": "pauseAutoRefreshForTransaction() called before transaction", "observed": "Line 1686: pauseAutoRefreshForTransaction() called after setTxCardPending, before ensureWalletOnChain" },
+        { "action": "Check pauseAutoRefreshForTransaction implementation", "expected": "Sets paused=true and clears timer", "observed": "Lines 1125-1132: Sets autoRefreshState.paused=true, calls clearAutoRefreshTimer(), updates indicator to 'Auto-refresh paused'" },
+        { "action": "Check runAutoRefreshCycle guard", "expected": "Checks paused state before fetching", "observed": "Line 1538: Returns early if autoRefreshState.paused is true" },
+        { "action": "Check setInterval guard", "expected": "Timer tick skips when paused", "observed": "Line 1100: Timer callback checks autoRefreshState.paused and returns early if true" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (source inspection)",
+        "network": "N/A (source inspection)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REFRESH-004",
+      "title": "Refresh preserves UI state",
+      "status": "pass",
+      "steps": [
+        { "action": "Set amount field to '999999' while auto-refresh is counting down", "expected": "Amount field shows 999999", "observed": "Amount field set to 999999 via JS" },
+        { "action": "Screenshot before refresh with form showing 999999", "expected": "Form visible with custom amount", "observed": "Screenshot taken showing amount=999999" },
+        { "action": "Wait for auto-refresh to complete", "expected": "New results loaded, form values preserved", "observed": "Auto-refresh completed successfully with new quote data" },
+        { "action": "Check form values after refresh", "expected": "amount=999999, other fields unchanged, scrollY preserved", "observed": "amount='999999', from/to/slippage/chainId all preserved, scrollY=616.5 maintained" }
+      ],
+      "evidence": {
+        "screenshots": ["refresh-004-before-refresh.png", "refresh-004-after-refresh-preserved.png"],
+        "consoleErrors": "none (favicon.ico 404 is cosmetic)",
+        "network": "Auto-refresh /compare request used original params (amount=1000) not form display value - correct behavior since auto-refresh uses lastParams"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REFRESH-005",
+      "title": "Refresh error handling",
+      "status": "pass",
+      "steps": [
+        { "action": "Source inspection: check runAutoRefreshCycle error path", "expected": "Previous results preserved, error indicator shown, countdown restarts", "observed": "Lines 1566-1571: On comparison.ok===false, sets errorMessage='Refresh failed. Keeping previous quotes.' and calls startAutoRefreshCountdown({clearErrorMessage: false})" },
+        { "action": "Check requestAndRenderCompare with keepExistingResultsOnError", "expected": "Does not clear existing results on error", "observed": "Line 1547: auto-refresh calls requestAndRenderCompare with keepExistingResultsOnError:true, which skips showError() call on failure" },
+        { "action": "Check updateRefreshIndicator error display", "expected": "Error message shown in indicator", "observed": "Lines 1059-1063: If autoRefreshState.errorMessage is set, displays it in refreshStatus span with 'error' CSS class (red color #f87171)" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (source inspection)",
+        "network": "N/A (source inspection)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REFRESH-006",
+      "title": "Resume refresh after transaction",
+      "status": "pass",
+      "steps": [
+        { "action": "Source inspection: check executeWalletTransaction finally block", "expected": "resumeAutoRefreshAfterTransaction() called in finally", "observed": "Line 1718: resumeAutoRefreshAfterTransaction() called in finally block, guaranteeing execution on success, failure, or rejection" },
+        { "action": "Check resumeAutoRefreshAfterTransaction implementation", "expected": "Unpauses and restarts countdown", "observed": "Lines 1135-1142: Sets paused=false, inFlight=false, calls startAutoRefreshCountdown() to restart the 15s cycle" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (source inspection)",
+        "network": "N/A (source inspection)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REFRESH-007",
+      "title": "Manual Compare resets countdown",
+      "status": "pass",
+      "steps": [
+        { "action": "Wait for countdown to tick down to ~2s", "expected": "Countdown at 2s", "observed": "Observed countdown at 2s in the UI" },
+        { "action": "Click Compare Quotes button", "expected": "New fetch initiated, countdown resets", "observed": "Button changed to 'Comparing...', new fetch initiated" },
+        { "action": "Wait for results and check countdown", "expected": "Countdown reset to ~15s (not continuing from 2s)", "observed": "Countdown showed 'Refreshing in 12s' after results loaded (accounting for fetch latency), confirming reset from 15s not continuation from 2s" }
+      ],
+      "evidence": {
+        "screenshots": ["refresh-007-countdown-reset.png"],
+        "consoleErrors": "none (favicon.ico 404 is cosmetic)",
+        "network": "Manual Compare triggered new /compare request, countdown reset after response"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REFRESH-008",
+      "title": "Auto-refresh only after first quote",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to fresh page at http://localhost:3001/", "expected": "Page loads without any /compare requests", "observed": "Page loaded successfully" },
+        { "action": "Install fetch interceptor to track /compare requests", "expected": "Interceptor installed", "observed": "Fetch interceptor installed via window.fetch wrapper" },
+        { "action": "Wait 22 seconds without interacting", "expected": "No /compare requests fired", "observed": "After 22 seconds, window.__compareRequests.length === 0, confirming no auto-refresh activity" },
+        { "action": "Screenshot idle page", "expected": "Page showing form only, no results", "observed": "Form displayed with default fields, no results section, no refresh indicator" }
+      ],
+      "evidence": {
+        "screenshots": ["refresh-008-no-auto-requests.png"],
+        "consoleErrors": "none (favicon.ico 404 is cosmetic)",
+        "network": "0 /compare requests in 22 seconds of idle page"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "agent-browser CLI tool (separate from Playwright MCP) loses page context after page updates - window globals set via eval disappear, page navigates to about:blank. Had to switch to Playwright MCP tools for reliable testing.",
+      "resolved": true,
+      "resolution": "Used Playwright MCP tools (browser_evaluate, browser_wait_for, etc.) instead of agent-browser CLI for the main test flow. Used agent-browser CLI only for VAL-REFRESH-008 initial idle test.",
+      "affectedAssertions": ["VAL-REFRESH-001", "VAL-REFRESH-002", "VAL-REFRESH-004"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 8 assertions: all 8 passed. VAL-REFRESH-001/002/004/007/008 verified via live browser testing with Playwright. VAL-REFRESH-003/005/006 verified via source code inspection (manual-evidence assertions). Auto-refresh fires every ~15s, countdown indicator is visible and functional, form state is preserved during refresh, manual Compare resets the countdown, and no auto-refresh occurs before first user interaction."
+}

@@ -1,0 +1,73 @@
+{
+  "groupId": "flow-layout",
+  "milestone": "form-flow",
+  "testedAt": "2026-03-02T04:37:00Z",
+  "credentials": {
+    "account": "none needed (stateless app)",
+    "namespace": "flow-layout"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": {
+    "VAL-FLOW-001": {
+      "status": "pass",
+      "evidence": "DOM inspection confirms chain selector (SELECT#chainId) is the first interactive element inside <form id='form'>. It's in the first direct child div (index 0, className 'form-group'). Interactive element order: [0] SELECT#chainId, [1] BUTTON#connectWalletBtn, [2] BUTTON#disconnectWalletBtn, [3] INPUT#from, [4] INPUT#amount, [5] INPUT#to, [6] INPUT#slippageBps, [7] BUTTON#submit.",
+      "notes": "Screenshot: flow-desktop-form.png confirms visual layout matches DOM order."
+    },
+    "VAL-FLOW-002": {
+      "status": "pass",
+      "evidence": "Wallet connect button (BUTTON#connectWalletBtn, type='button') is inside <form id='form'> — confirmed via form.contains(walletBtn) === true. It's in the 2nd direct child div (index 1, className 'form-group wallet-group'), directly after the chain selector div. The wallet disconnect button is also inside the form.",
+      "notes": "Wallet button uses type='button' (not submit), so clicking it won't submit the form."
+    },
+    "VAL-FLOW-003": {
+      "status": "pass",
+      "evidence": "From Token (INPUT#from) and Amount (INPUT#amount) are both inside the same container div (className 'form-row-fixed', index 2). Container uses display:flex and flex-wrap:nowrap. At desktop width: both inputs side by side. At 375px viewport: fromTop=219, amountTop=219, sameRow=true — confirmed they remain side-by-side and do NOT collapse to vertical stacking.",
+      "notes": "Screenshots: flow-desktop-form.png (desktop width, side by side), flow-375px-form.png (375px width, still side by side). The .form-row-fixed CSS class with flex-wrap:nowrap ensures no wrapping at narrow viewports."
+    },
+    "VAL-FLOW-004": {
+      "status": "pass",
+      "evidence": "To Token (INPUT#to) is in the 4th direct child div of the form (index 3, className 'form-group'), which appears after the from+amount row (index 2, className 'form-row-fixed') in DOM order. Screenshot confirms visual layout matches.",
+      "notes": "To Token appears on its own full-width row below the From Token + Amount row."
+    },
+    "VAL-FLOW-005": {
+      "status": "pass",
+      "evidence": "Slippage (INPUT#slippageBps) is in the 5th direct child div of the form (index 4, className 'form-group'), which appears after To Token (index 3) in DOM order. Interactive element order: [5] INPUT#to → [6] INPUT#slippageBps.",
+      "notes": "Slippage is on its own row after To Token, not grouped with chain/amount as before."
+    },
+    "VAL-FLOW-006": {
+      "status": "pass",
+      "evidence": "Compare Quotes button (BUTTON#submit, type='submit') is the 6th direct child of the form (index 5, className 'btn-primary'), which appears after the slippage div (index 4) in DOM order. It's the last element in the form.",
+      "notes": "Button is inside the form as the last child, appearing after all input fields."
+    },
+    "VAL-FLOW-007": {
+      "status": "pass",
+      "evidence": "After clicking Compare Quotes, results appear in <div id='result'> which is a sibling element after <form id='form'> in the DOM (confirmed: form.compareDocumentPosition(result) shows result follows form). Results contain: [0] refreshIndicator (auto-refresh timer), [1] tabs (Spandex/Curve), [2] recommendedContent (with output amount '0.5065660915124752 WETH', Approve/Swap buttons), [3] alternativeContent, [4] MEV Protection button. At 1024px viewport, primary results and swap buttons are visible without scrolling.",
+      "notes": "Screenshot: flow-results-desktop.png shows full form + results visible on screen at desktop width."
+    },
+    "VAL-FLOW-008": {
+      "status": "pass",
+      "evidence": "MEV Protection button (BUTTON#mevInfoBtn) is inside <div id='result'> (mevBtnInResult=true) and NOT inside <form id='form'> (mevBtnInForm=false). It's the last child (index 4) of the result container, positioned after the tab content panels containing the swap action area. Old position was between chain row and from token — it's now in the results/swap area.",
+      "notes": "Screenshot: flow-results-desktop.png shows MEV Protection button below the Details section, near the results area with Approve/Swap buttons."
+    },
+    "VAL-FLOW-009": {
+      "status": "pass",
+      "evidence": "Inside recommendedContent tab, DOM order is: [0] Reason block, [1] result-primary (RECOMMENDED card with output amount + Approve/Swap buttons), [2] details-toggle button ('Details [+]'), [3] details-content div (contains From, To, Input Amount, Router Address, Router Calldata, Approval Token, Approval Spender, Gas Used, Slippage). The collapsible details section appears AFTER the primary results and swap buttons in DOM order.",
+      "notes": "Screenshot: flow-details-expanded.png shows expanded details with gas, router info, calldata below the primary results card. Details toggle works (click to expand/collapse)."
+    }
+  },
+  "frictions": [
+    {
+      "description": "Browser session (Playwright MCP) intermittently loses connection after viewport resize or multiple evaluate calls, requiring re-navigation. This appears to be caused by Chrome profile locking (SingletonLock file) from concurrent sessions.",
+      "resolved": true,
+      "resolution": "Cleared Chrome SingletonLock file and used browser_run_code for combined viewport+navigation+evaluation operations. Used browser_evaluate for single-page evaluations.",
+      "affectedAssertions": ["VAL-FLOW-003"]
+    },
+    {
+      "description": "Auto-refresh (15s interval) can change results during testing, causing stale element references. Details section may collapse after auto-refresh re-renders.",
+      "resolved": true,
+      "resolution": "Stopped auto-refresh via clearInterval(window._refreshTimer) before detailed DOM inspection.",
+      "affectedAssertions": ["VAL-FLOW-007", "VAL-FLOW-008", "VAL-FLOW-009"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 9 assertions (VAL-FLOW-001 through VAL-FLOW-009): all 9 passed. Form layout follows the correct order: Chain → Wallet Connect → From Token + Amount (same row, nowrap) → To Token → Slippage → Compare Quotes. Results appear inline after form with MEV button in results area and collapsible details after primary results. Layout maintains horizontal from+amount row even at 375px viewport."
+}

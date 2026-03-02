@@ -38,7 +38,6 @@ npm run dev           # starts server with file watching at http://localhost:300
 - `src/curve.ts` - Curve Finance API integration (Ethereum only)
 - `src/quote.ts` - Query parameter parsing and validation
 - `src/env.ts` - .env file loader (imported first in server.ts)
-- `src/default-tokenlist.ts` - Built-in Ethereum token list for autocomplete
 - `src/logger.ts` - Structured logging with pino and log scrubbing
 - `src/sentry.ts` - Sentry error tracking integration
 - `src/tracing.ts` - Request ID propagation for distributed tracing
@@ -64,6 +63,7 @@ Tests are in `src/__tests__/`. Run with `npm test`. Tests use Vitest with mocked
 
 ## Conventions
 
+- **NEVER truncate addresses.** Always display full 0x addresses in the UI and API responses. No `0xABCD...1234` patterns.
 - All source files in `src/` directory
 - Test files: `src/__tests__/*.test.ts`
 - ESLint with TypeScript strict rules, Prettier formatting

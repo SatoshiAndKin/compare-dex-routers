@@ -1,0 +1,56 @@
+{
+  "featureId": "unrecognized-address-popup",
+  "reviewedAt": "2026-03-02T20:15:00.000Z",
+  "commitId": "0f5349f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation that follows the MEV modal pattern, handles loading/success/error states well, and integrates cleanly with the existing tokenlist system. Both getTokensForChain() and findTokenByAddress() were correctly updated to include local tokens. The config.ts normalization change using viem's getAddress is a genuine improvement over the unsafe `as Address` cast. All identified issues are non-blocking edge cases.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 2185,
+        "severity": "non_blocking",
+        "description": "decimals: unrecognizedTokenState.metadata.decimals || 18 — Uses || instead of ?? for the default. If a token has 0 decimals (extremely rare but valid ERC-20), this would incorrectly default to 18. Should be `?? 18` or `unrecognizedTokenState.metadata.decimals !== undefined ? unrecognizedTokenState.metadata.decimals : 18`."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2251,
+        "severity": "non_blocking",
+        "description": "handleTokenInputBlur() has no guard to check if the unrecognized token modal is already open. Combined with the input event listener (lines 2283-2300) that uses a 100ms setTimeout, a paste-then-blur sequence can trigger the modal twice: blur fires immediately opening the modal, then 100ms later the setTimeout fires handleTokenInputBlur again, resetting the modal and restarting the fetch. Not a crash, but causes a wasted fetch and UI flicker."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2140,
+        "severity": "non_blocking",
+        "description": "fetchTokenMetadata() has no AbortController. If the user closes the modal while the fetch is in flight, the resolved promise still updates DOM elements (loading/metadata/error divs). Since the modal is only hidden (not removed), this causes invisible state changes. If a second modal opens for a different address before the first fetch completes, the first fetch's callback could overwrite the second modal's state."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2220,
+        "severity": "non_blocking",
+        "description": "Escape key handler for unrecognized token modal is a separate document-level listener from the MEV/settings Escape handler (line 3484-3490). If multiple modals are somehow open (e.g., settings modal and unrecognized token modal), pressing Escape would close both. Low risk since the modals shouldn't normally overlap, but not coordinated."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Color #CC7A00 is used for the unrecognized token warning border (.unrecognized-token-info at line 877) and was already used in .tokenlist-chain-warning (line 764). This color is NOT in .factory/library/color-system.md's documented palette. The AGENTS.md notes 'Current warning color #CC7A00 should be validated against light backgrounds' but it hasn't been formally added to the color system with contrast verification.",
+      "evidence": "src/server.ts:877 — `border: 2px solid #CC7A00;` on background #fff8f0. .factory/library/color-system.md lists only Blue (#0055FF), Orange (#CC2900), Green (#007700), Red (#CC0000)."
+    },
+    {
+      "area": "conventions",
+      "observation": "The worker added loadLocalTokenList/saveLocalTokenList/addTokenToLocalList functions for localStorage management. These follow the documented convention of wrapping in try/catch. However the localStorage key 'localTokenList' is now used by both this feature's inline JS functions AND was previously documented in mission AGENTS.md. The architecture.md library file does not mention the local token list data model, only the remote tokenlist proxy pattern.",
+      "evidence": "src/server.ts lines 1829-1880 define local token management functions. .factory/library/architecture.md doesn't mention localTokenList."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker skill says 'Write Tests First (Red Phase)' for server-side changes. The config.ts changes (address normalization with getAddress) are server-side but no new tests were added for them. The existing tests mock viem and pass already-checksummed addresses, so the normalization code path is not exercised. Worker followed procedure for the client-side work (manual playwright verification) but skipped the red phase for config.ts.",
+      "evidence": "Handoff tests.added is empty array. config.test.ts tests use checksummed addresses like '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' and mock readContract, so getAddress normalization is never tested."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The unrecognized token popup correctly detects valid EVM addresses not in enabled tokenlists, fetches metadata from /token-metadata, and provides save/cancel behaviors matching all 8 expectedBehavior items. The implementation properly follows the MEV modal pattern (overlay close, Escape close, body scroll lock, aria attributes, focus management). Four non-blocking issues identified: (1) decimals || 18 should use ?? to handle 0-decimal tokens, (2) no guard against double modal trigger from overlapping blur + input setTimeout, (3) no fetch abort on modal close, (4) uncoordinated Escape handlers. All are edge cases that don't affect the primary user flows verified interactively."
+}

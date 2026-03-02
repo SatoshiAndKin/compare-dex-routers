@@ -1,0 +1,39 @@
+{
+  "groupId": "cross-003-r2",
+  "testedAt": "2026-03-02T21:27:00Z",
+  "credentials": {
+    "account": "stateless-ui-tester-1",
+    "namespace": "ct_r2_cross003"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Toggle local tokens list on/off",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/, switch to Ethereum chain", "expected": "App loads with Ethereum selected", "observed": "App loaded, Ethereum (1) selected" },
+        { "action": "Open settings panel, verify local token exists", "expected": "Local Tokens section shows cUSDC with toggle switch", "observed": "Local Tokens section shows cUSDC (0x39AA39c021dfbaE8faC545936693aC917d5E7563) on Ethereum, toggle is ON (checked)" },
+        { "action": "Close settings, type 'cUSDC' in To Token field with toggle ON", "expected": "cUSDC appears in autocomplete dropdown", "observed": "cUSDC (Compound USD Coin, 0x39AA39c021dfbaE8faC545936693aC917d5E7563) appears in autocomplete" },
+        { "action": "Open settings, toggle Local Tokens OFF", "expected": "Toggle switches to unchecked state", "observed": "Toggle changed to unchecked (OFF)" },
+        { "action": "Close settings, type 'cUSDC' in To Token field with toggle OFF", "expected": "No autocomplete results for cUSDC", "observed": "No autocomplete dropdown appeared — cUSDC not found" },
+        { "action": "Open settings, toggle Local Tokens back ON", "expected": "Toggle switches to checked state", "observed": "Toggle changed to checked (ON)" },
+        { "action": "Close settings, type 'cUSDC' in To Token field with toggle ON again", "expected": "cUSDC reappears in autocomplete dropdown", "observed": "cUSDC (Compound USD Coin, 0x39AA39c021dfbaE8faC545936693aC917d5E7563) reappears in autocomplete" }
+      ],
+      "evidence": {
+        "screenshots": [
+          "ct_r2_cross003-toggle-on-autocomplete.png",
+          "ct_r2_cross003-toggle-off-settings.png",
+          "ct_r2_cross003-toggle-off-no-autocomplete.png",
+          "ct_r2_cross003-toggle-on-reappears.png"
+        ],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored per guidance)",
+        "network": "No relevant network requests for this UI-only toggle test"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion: VAL-CROSS-003 passed. Local Tokens toggle now works correctly — toggling OFF removes local tokens from autocomplete, toggling ON restores them. Previously reported as failing in round 1 (no toggle existed); the fix (commit 834d5df) adds a functional toggle switch."
+}

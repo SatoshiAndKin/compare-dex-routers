@@ -1,0 +1,39 @@
+{
+  "featureId": "full-address-display",
+  "reviewedAt": "2026-03-02T07:30:00.000Z",
+  "commitId": "e1938d3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, minimal diff (10 insertions, 7 deletions in src/server.ts). All four requirements fulfilled: truncateAddress() now returns full address, formatTokenDisplay() shows full address, .autocomplete-addr CSS uses word-break:break-all instead of text-overflow:ellipsis, and .wallet-address CSS also adds word-break:break-all. The .field-value class (result details) already had word-break:break-all so those addresses display correctly too. The router_calldata.slice(0,100) truncation on line 2373 is acceptable — calldata is not an address. All verification commands passed (typecheck, lint, 100 tests). Interactive checks covered wallet address, autocomplete dropdown, token selection, result details, and 375px responsive layout.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 1872,
+        "severity": "non_blocking",
+        "description": "Stale comment references old truncated format: '// Try to extract from SYMBOL (0xABCD...1234) format'. Since addresses are no longer truncated, this comment is misleading. The code block on lines 1874-1877 that checks for '...' in the value is now dead code (unreachable for addresses produced by formatTokenDisplay), though harmless."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 1902,
+        "severity": "non_blocking",
+        "description": "Stale comment: '// Show SYMBOL (0xABCD...1234) format in input' — should say '// Show SYMBOL (0xFullAddress) format in input' to match the new behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The no-truncation convention is well documented in AGENTS.md, mission AGENTS.md, and the skill file. Worker added inline code comments referencing this convention. Good alignment.",
+      "evidence": "Lines 1509-1510 and 1847-1848 both add '// This is a project convention in AGENTS.md' comments."
+    },
+    {
+      "area": "conventions",
+      "observation": "The extractAddressFromInput() function (lines 1860-1886) has a dead code path for handling truncated '0xABCD...1234' format that is now unreachable after this feature. A future cleanup could simplify this function, but no AGENTS.md note exists about it.",
+      "evidence": "Lines 1872-1877: checks for '...' in value — this path can't fire when formatTokenDisplay returns full addresses."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The implementation is correct, minimal, and well-scoped. All four requirements are met: truncateAddress bypassed, formatTokenDisplay shows full address, autocomplete-addr CSS handles overflow via word-break, and wallet-address CSS does likewise. Two stale comments referencing the old truncated format remain (non-blocking). One dead code path in extractAddressFromInput for parsing truncated addresses is harmless but could be cleaned up. Worker followed the skill procedure, ran all verification steps, and provided thorough interactive checks."
+}

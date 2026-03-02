@@ -1,0 +1,23 @@
+{
+  "group": "color",
+  "assertions": {
+    "VAL-COLOR-001": {
+      "status": "pass",
+      "evidence": "CSS analysis and screenshot confirm multiple new accent colors beyond #000/#fff and #0055FF. The Color Palette comment in CSS lists: '#0055FF + Orange accent (#CC2900) + Green (#007700) + Red (#CC0000)'. Applications: (1) All form labels have a bold blue left border (border-left: 4px solid #0055FF) making them visually distinct. (2) Result cards differentiated by border-left-color: winner=#0055FF (blue), alternative=#CC2900 (orange-red). (3) Result recommendation badges: winner badge has background:#0055FF, alternative badge has background:#CC2900. (4) Active tab indicator has border-bottom-color based on tab type: default=#0055FF, alternative tab=#CC2900. (5) Status indicators: success=#007700 text on #e8e8e8, error=#CC0000 on #f0f0f0. (6) Refresh indicator has border-left: 3px solid #0055FF, wallet address also has border-left: 3px solid #0055FF. The page clearly has more than a monotone black/white+blue palette with purposeful use of orange-red, green, and red accents.",
+      "reason": null
+    },
+    "VAL-COLOR-002": {
+      "status": "pass",
+      "evidence": "Computed WCAG contrast ratios for all new accent colors using exact sRGB linearization formula. All exceed WCAG AA minimum (4.5:1 for normal text): (1) #CC2900 on white (#fff): 5.41:1 ✓; (2) white (#fff) on #CC2900 background (badge): 5.41:1 ✓; (3) #007700 on #e8e8e8 background (success status): 4.71:1 ✓; (4) #CC0000 on #f0f0f0 background (error status): 5.17:1 ✓; (5) #0055FF on white: 5.61:1 ✓. Additionally, color is never the sole conveyer of information — status indicators use text prefixes ('PENDING: ', 'SUCCESS: ', 'FAILED: ') prepended via CSS ::before pseudo-element, result cards are labeled 'Recommended' and 'Alternative' in text. No information is conveyed by color alone.",
+      "reason": null
+    },
+    "VAL-COLOR-003": {
+      "status": "pass",
+      "evidence": "CSS inspection confirms brutalist aesthetic is fully preserved: (1) No gradient property found anywhere in the CSS stylesheet. (2) No actual border-radius property applied (only appears in comment '/* BRUTALIST DESIGN: High contrast, no border-radius, max 2 fonts */'; the regex match in hasBorderRadius was a false positive from the comment text). (3) No box-shadow or text-shadow found. (4) New accent colors (#CC2900 orange-red, #007700 green, #CC0000 red) are all bold, flat, high-contrast values consistent with the brutalist palette. (5) Sharp edges maintained on all elements. (6) Screenshot confirms the form uses 2 font families (system-ui + monospace) as required. The color additions complement #0055FF without introducing any soft or decorative elements.",
+      "reason": null
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["playwright-mcp"]
+}

@@ -1,0 +1,23 @@
+{
+  "group": "dropdown",
+  "assertions": {
+    "VAL-DROP-001": {
+      "status": "pass",
+      "evidence": "Screenshot val-drop-001-from-token-autocomplete.png shows From Token autocomplete dropdown with 2 items (USDbC and USDC). Each item displays token logo, symbol, full name, and full contract address. Dropdown has min-width: 320px and extends beyond the narrower From Token column to fit content. DOM inspection confirms no clipping: all items have scrollWidth === clientWidth (316px each). Addresses are fully readable (e.g., 0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA). No nested element overflow detected.",
+      "reason": null
+    },
+    "VAL-DROP-002": {
+      "status": "pass",
+      "evidence": "Screenshot val-drop-002-to-token-autocomplete.png shows To Token autocomplete dropdown with 2 items (USDbC and USDC). Each item displays token logo, symbol, full name, and full contract address without clipping. Dropdown has min-width: 320px. DOM inspection confirms no clipping: all items have scrollWidth === clientWidth (316px each). Full addresses visible and readable.",
+      "reason": null
+    },
+    "VAL-DROP-003": {
+      "status": "pass",
+      "evidence": "Screenshot val-drop-003-wallet-provider-menu.png shows wallet provider menu with 6 providers (Frame, MetaMask, Coinbase Wallet, WalletConnect, Rainbow, Trust Wallet). All provider names fully visible without clipping (scrollWidth === clientWidth for all items). Menu has min-width: 200px, max-height: 300px with overflow: auto for scrolling when many providers are listed. Menu is position: absolute with display: block. Current 6 items fit within the 300px max-height (total height 205.5px). Icons visible for Frame provider.",
+      "reason": null
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["playwright-mcp"]
+}

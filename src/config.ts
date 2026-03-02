@@ -10,8 +10,8 @@ import {
   velora,
   type Config,
 } from "@spandex/core";
-import { createPublicClient, http, type Address, type PublicClient } from "viem";
-const APP_ID = process.env.APP_ID || "flashprofits";
+import { createPublicClient, http, type PublicClient, getAddress } from "viem";
+const APP_ID = process.env.APP_ID || "compare-dex-routers";
 
 export const SUPPORTED_CHAINS: Record<number, { name: string; alchemySubdomain: string }> = {
   1: { name: "Ethereum", alchemySubdomain: "eth-mainnet" },
@@ -64,6 +64,13 @@ const erc20Abi = [
   },
   {
     name: "symbol",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "string" }],
+  },
+  {
+    name: "name",
     type: "function",
     stateMutability: "view",
     inputs: [],
@@ -134,8 +141,10 @@ export async function getTokenDecimals(chainId: number, address: string): Promis
   if (cached !== undefined) return cached;
 
   const client = getClient(chainId);
+  // Normalize address to checksummed format for viem
+  const normalizedAddress = getAddress(address);
   const decimals = await client.readContract({
-    address: address as Address,
+    address: normalizedAddress,
     abi: erc20Abi,
     functionName: "decimals",
   });
@@ -151,8 +160,10 @@ export async function getTokenSymbol(chainId: number, address: string): Promise<
 
   const client = getClient(chainId);
   try {
+    // Normalize address to checksummed format for viem
+    const normalizedAddress = getAddress(address);
     const symbol = await client.readContract({
-      address: address as Address,
+      address: normalizedAddress,
       abi: erc20Abi,
       functionName: "symbol",
     });
@@ -160,6 +171,30 @@ export async function getTokenSymbol(chainId: number, address: string): Promise<
     return symbol;
   } catch {
     symbolCache.set(key, "");
+    return "";
+  }
+}
+
+const nameCache = new Map<string, string>();
+
+export async function getTokenName(chainId: number, address: string): Promise<string> {
+  const key = `${chainId}:${address.toLowerCase()}`;
+  const cached = nameCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const client = getClient(chainId);
+  try {
+    // Normalize address to checksummed format for viem
+    const normalizedAddress = getAddress(address);
+    const name = await client.readContract({
+      address: normalizedAddress,
+      abi: erc20Abi,
+      functionName: "name",
+    });
+    nameCache.set(key, name);
+    return name;
+  } catch {
+    nameCache.set(key, "");
     return "";
   }
 }

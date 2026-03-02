@@ -1,0 +1,40 @@
+{
+  "flowId": "wallet",
+  "milestone": "form-flow",
+  "testedAt": "2026-03-02T05:20:00.000Z",
+  "credentials": {
+    "account": "none (stateless app)",
+    "namespace": "flow-wallet"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": {
+    "VAL-WALLET-001": {
+      "status": "pass",
+      "evidence": "Clicked 'Connect Wallet' button inside form. Provider selection menu appeared with 'Frame' and 'Mock Wallet' options. Clicked 'Mock Wallet'. Wallet connected successfully, showing 'Mock Wallet' provider name and '0xDeAd...0004' truncated address inline in the form. Connect button hidden, disconnect button visible.",
+      "notes": "Wallet connect button is inside <form id='form'> (walletInForm=true). The wallet display is inside the form's wallet-group div, not a separate section."
+    },
+    "VAL-WALLET-002": {
+      "status": "pass",
+      "evidence": "Before connecting: disconnectWalletBtn is inside walletConnected div (hidden=true, display:none). getBoundingClientRect shows width:0, height:0 — effectively invisible. After connecting mock wallet: walletConnected.hidden=false, disconnectBtn getBoundingClientRect shows width>0, height>0 — visible. Connect button hidden=true. Summary: disconnect hidden when disconnected, visible when connected.",
+      "notes": "The disconnect button is a child of walletConnected div. Parent hidden=true makes it invisible. getComputedStyle on the button itself showed 'inline-block' but parent was display:none — getBoundingClientRect correctly showed 0 dimensions."
+    },
+    "VAL-WALLET-003": {
+      "status": "pass",
+      "evidence": "After connecting mock wallet (0xDeAd...0004), programmatically changed chain from Base to Ethereum (chainSelect.value='1', dispatched 'change' event). Wallet state after: walletStillConnected=true, connectedAddress='0xDeAd...0004', disconnectStillVisible=true. Chain changed to '1' but wallet remained connected.",
+      "notes": "Changing chain does not reset wallet state."
+    },
+    "VAL-WALLET-004": {
+      "status": "pass",
+      "evidence": "Evaluated document.getElementById('connectWalletBtn').type === 'button'. Result: 'button'. The button is inside <form id='form'> but has type='button' (not type='submit'), so clicking it does not trigger form submission.",
+      "notes": "Also confirmed disconnect button has type='button'. All wallet buttons in form correctly set to type='button'."
+    },
+    "VAL-WALLET-005": {
+      "status": "pass",
+      "evidence": "Queried all visible interactive elements inside form in DOM order. Disconnected state tab order: [1] SELECT#chainId, [2] BUTTON#connectWalletBtn (type=button), [3] INPUT#from, [4] INPUT#amount, [5] INPUT#to, [6] INPUT#slippageBps, [7] BUTTON#submit (type=submit). Connected state: [1] SELECT#chainId, [2] BUTTON#disconnectWalletBtn, [3] INPUT#from, [4] INPUT#amount, [5] INPUT#to, [6] INPUT#slippageBps, [7] BUTTON#submit. Both match visual layout order.",
+      "notes": "No tabindex attributes needed since DOM order matches visual layout order."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. Wallet connect works after relocation into form. Disconnect button hidden via parent div (walletConnected) when disconnected. Wallet state persists after chain changes. Connect button has type='button' to prevent form submission. Tab order matches visual layout."
+}

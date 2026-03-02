@@ -1,0 +1,65 @@
+{
+  "milestone": "form-flow",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test",
+      "exitCode": 0,
+      "note": "100 tests passed across 6 test files"
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0,
+      "note": "2 pre-existing complexity warnings (not errors); no new issues introduced"
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library/architecture.md",
+      "description": "Added CSS class documentation: .form-row-fixed is the non-collapsible flexbox class used for the From+Amount row (flex-wrap:nowrap by CSS default, not explicitly set). Wallet section now inside <form id='form'> as .wallet-group, not a separate .wallet-section. MEV Protection button is inside #result div (hidden until first compare).",
+      "sourceFeature": "reorder-form-layout"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Remove or update the stale 'Key Code Locations' and 'Sender Removal Checklist' sections in the mission AGENTS.md. After remove-sender-field and reorder-form-layout completed, the line numbers (914-916, ~988, etc.) and sender-related action items are historical artifacts. If line references are kept for future workers, they should be updated to reflect post-mission line numbers, or removed if the mission is complete.",
+      "evidence": "Reviewer for remove-sender-field noted that AGENTS.md still references 'Sender input: line 914-916 (must be removed entirely)' and 'senderInput declaration: ~line 988' which no longer correspond to reality after commit 705741f.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Update the class name suggestion in AGENTS.md: 'e.g., .form-row-inline' should be updated to reflect the actual class used: '.form-row-fixed'. Future workers referencing AGENTS.md to understand form layout CSS would look for the wrong class name.",
+      "evidence": "Reviewer for reorder-form-layout noted: AGENTS.md says 'e.g., .form-row-inline' but actual implementation in src/server.ts uses '.form-row-fixed'.",
+      "isSystemic": false
+    },
+    {
+      "target": "skill:fullstack-worker",
+      "suggestion": "Clarify the 'Write Tests First (Red Phase)' step to explicitly note two exception cases: (1) client-side-only HTML/CSS layout changes where no new JS logic is added — in this case, manual browser verification suffices and running the red phase is not applicable; (2) verification/audit features that write tests for already-implemented behavior — in this case, tests are expected to pass immediately and the red phase is intentionally skipped. The current skill guidance qualifies this somewhat but the exception clauses should be more prominent.",
+      "evidence": "Two separate features (reorder-form-layout and integration-verification) correctly deviated from the red phase. Both reviewers noted the skill's current qualification is buried and somewhat ambiguous. This is a systemic pattern across multiple workers on the same mission.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Nested .wallet-row divs (outer contains connect button + inner #walletConnected). Pre-existing complexity, not introduced by this change.",
+      "reason": "Pre-existing issue not introduced by this feature. Not actionable for this milestone."
+    }
+  ],
+  "previousRound": null
+}

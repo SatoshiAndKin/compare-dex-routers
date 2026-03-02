@@ -1,0 +1,51 @@
+{
+  "featureId": "token-autocomplete-ui",
+  "reviewedAt": "2026-03-01T23:05:00.000Z",
+  "commitId": "a53b307ac9f6ae159b342adedee9e8efc81a0e64",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation that correctly replaces the old built-in/localStorage-based token autocomplete with a /tokenlist-backed system. The diff touches 2 files (src/server.ts +185/-112 lines, src/__tests__/server.integration.test.ts +13 lines). Key improvements: fetches tokens from /tokenlist on page load, filters by chain+symbol+name+address (case-insensitive), renders logo+metadata rows with onerror fallback, supports keyboard navigation (ArrowUp/Down/Enter/Escape), outside-click dismissal, and uses DocumentFragment for efficient DOM rendering. All textContent-based rendering avoids XSS vectors. Legacy BUILTIN_TOKENS inlining and localStorage tokenlist UI fully removed. Tests verify the fetch wiring and absence of legacy inlined data.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 950,
+        "severity": "non_blocking",
+        "description": "Each setupAutocomplete call registers a 'change' listener on the chainId element (line 950), plus the main code registers another at line 1201. When chain changes, the autocomplete listeners fire first (refreshing with stale input values on the new chain), then the main listener calls applyDefaults() and hide(). The intermediate refresh calls are wasted DOM work. Consider moving the chain-change autocomplete logic into the main handler or having setupAutocomplete return a method to call on chain change instead of self-registering."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 940,
+        "severity": "non_blocking",
+        "description": "Each setupAutocomplete call adds a global document.addEventListener('mousedown', ...) listener. Two calls = two permanent global listeners. These could be consolidated into a single shared listener that checks both autocomplete instances, reducing event overhead."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 820,
+        "severity": "non_blocking",
+        "description": "No debounce on the input event handler. Each keystroke triggers getTokensForChain() filtering ~1400 tokens + DOM rebuild. With max 20 results this is fast enough in practice, but a simple requestAnimationFrame or 50ms debounce would be more robust on slower devices."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 851,
+        "severity": "non_blocking",
+        "description": "When no tokens match a query (VAL-TOKEN-010), the dropdown is hidden. The validation contract allows either hiding OR showing a 'No tokens found' message. Current behavior is acceptable but a brief message could improve UX when users type a valid-looking query that has zero results."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The heading in the INDEX_HTML template still read '<h1>CowSwap Trader</h1>' at the time of this commit (a53b307). While this was pre-existing and outside the scope of this token-autocomplete feature (it was fixed by a later commit 1f3e3d6), it means the worker shipped code with a known branding violation documented in AGENTS.md. Workers could be instructed to flag pre-existing branding issues as discoveredIssues in their handoff even if not fixing them.",
+      "evidence": "git show a53b307 shows h1 tag with 'CowSwap Trader', AGENTS.md Branding section says all CowSwap Trader references must be replaced."
+    },
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill's example handoff shows tokenlist endpoint tests (added), but the actual worker only added HTML-level integration assertions (checking for fetch string presence and absence of legacy variables), not the more granular tests shown in the example. The skill's test guidance says 'For client-side-only changes: Testing is done via manual verification' which the worker correctly followed, but the example may set misleading expectations about test depth for UI features.",
+      "evidence": "Skill example shows 4 tokenlist endpoint tests. Worker added 2 HTML-content integration tests. Worker's handoff correctly categorizes tests as 'updated' not 'added'. The tokenlist endpoint tests already existed from a prior feature."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The token-autocomplete-ui feature is well-implemented. It correctly replaces the legacy built-in/localStorage token system with a /tokenlist-fetched approach, covering all 11 validation criteria it fulfills (VAL-TOKEN-002 through VAL-TOKEN-011, VAL-CROSS-004). The code is clean and secure (textContent rendering, proper error handling, graceful logo fallback). Four non-blocking issues noted: redundant chain-change listeners, duplicate global mousedown handlers, missing input debounce, and no 'no results' message. None affect correctness. The worker followed the skill procedure, ran all verification commands (typecheck, lint, test), and performed thorough interactive browser testing covering autocomplete filtering, keyboard navigation, outside-click dismissal, address queries, chain switching, URL param restoration, and manual address entry."
+}

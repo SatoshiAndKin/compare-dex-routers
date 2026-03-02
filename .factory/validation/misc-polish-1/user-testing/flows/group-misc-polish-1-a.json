@@ -1,0 +1,85 @@
+{
+  "groupId": "misc-polish-1-a",
+  "testedAt": "2026-03-02T21:55:00.000Z",
+  "credentials": {
+    "account": "N/A",
+    "namespace": "misc-polish-1-flow-a"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-IO-006",
+      "title": "Import and export buttons have clear labels",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "App loads with form", "observed": "App loaded with chain selector, from/to token inputs, and settings gear" },
+        { "action": "Click settings gear icon to open settings panel", "expected": "Settings panel opens with tokenlist management", "observed": "Settings modal opened showing Tokenlist Sources and Local Tokens sections" },
+        { "action": "Check import button label", "expected": "Button reads 'Import Tokenlist'", "observed": "Button reads 'Import Tokenlist' (confirmed via snapshot: generic ref=e62 text 'Import Tokenlist')" },
+        { "action": "Check export button label", "expected": "Button reads 'Export Tokenlist'", "observed": "Button reads 'Export Tokenlist' (confirmed via snapshot: button ref=e61 text 'Export Tokenlist')" }
+      ],
+      "evidence": {
+        "screenshots": ["misc-polish-1-a-trust-warning-and-button-labels.png"],
+        "consoleErrors": "none (favicon.ico 404 only — cosmetic, ignored per guidance)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TRUST-001",
+      "title": "Trust warning visible in settings panel",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "App loads", "observed": "App loaded successfully" },
+        { "action": "Click settings gear icon", "expected": "Settings panel opens", "observed": "Settings modal opened" },
+        { "action": "Check for trust warning in Tokenlist Sources section", "expected": "Prominent warning about only using tokenlists from trusted sources, mentioning fake token addresses", "observed": "Warning visible near top of Tokenlist Sources: bold '⚠️ Only load tokenlists from trusted sources.' followed by 'Malicious tokenlists can contain fake token addresses (e.g., a fake USDC) that could trick you into sending funds to scammers.'" },
+        { "action": "Verify warning is always visible (not dismissable)", "expected": "Warning is always present when panel is open", "observed": "Warning is a static element in the panel, no dismiss button — always visible" }
+      ],
+      "evidence": {
+        "screenshots": ["misc-polish-1-a-trust-warning-and-button-labels.png"],
+        "consoleErrors": "none (favicon.ico 404 only — cosmetic, ignored per guidance)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SWAP-001",
+      "title": "Setting from token to same as to token triggers swap",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/ with clean state", "expected": "Form shows default tokens: From=USDC, To=WETH on Base chain", "observed": "From=USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), To=WETH (0x4200000000000000000000000000000000000006)" },
+        { "action": "Disable auto-refresh timer", "expected": "Timer cleared", "observed": "clearInterval(window._refreshTimer) returned successfully" },
+        { "action": "Take before screenshot", "expected": "From=USDC, To=WETH visible", "observed": "Screenshot captured: misc-polish-1-a-swap001-before.png" },
+        { "action": "Clear from field and type 'WETH' to trigger autocomplete", "expected": "WETH autocomplete option appears", "observed": "WETH autocomplete option appeared showing 'Wrapped Ether' and full address 0x4200000000000000000000000000000000000006" },
+        { "action": "Click WETH autocomplete option in from field", "expected": "From becomes WETH, To swaps to USDC (old from value)", "observed": "From=WETH (0x4200000000000000000000000000000000000006), To=USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) — tokens swapped correctly" },
+        { "action": "Verify data-address attributes after swap", "expected": "from data-address=0x4200...0006, to data-address=0x8335...2913", "observed": "fromAddress: 0x4200000000000000000000000000000000000006, toAddress: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 — correct" }
+      ],
+      "evidence": {
+        "screenshots": ["misc-polish-1-a-swap001-before.png", "misc-polish-1-a-swap001-after.png"],
+        "consoleErrors": "none (favicon.ico 404 only — cosmetic, ignored per guidance)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SWAP-002",
+      "title": "Setting to token to same as from token triggers swap",
+      "status": "pass",
+      "steps": [
+        { "action": "Starting state after VAL-SWAP-001: From=WETH, To=USDC", "expected": "From=WETH, To=USDC", "observed": "From=WETH (0x4200000000000000000000000000000000000006), To=USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)" },
+        { "action": "Take before screenshot", "expected": "From=WETH, To=USDC visible", "observed": "Screenshot captured: misc-polish-1-a-swap002-before.png" },
+        { "action": "Clear to field and type 'WETH' to trigger autocomplete", "expected": "WETH autocomplete option appears in to field", "observed": "WETH autocomplete option appeared showing 'Wrapped Ether' and full address" },
+        { "action": "Click WETH autocomplete option in to field", "expected": "To becomes WETH, From swaps to USDC (old to value)", "observed": "To=WETH (0x4200000000000000000000000000000000000006), From=USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) — tokens swapped correctly" },
+        { "action": "Verify data-address attributes after swap", "expected": "from data-address=0x8335...2913, to data-address=0x4200...0006", "observed": "fromAddress: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913, toAddress: 0x4200000000000000000000000000000000000006 — correct" }
+      ],
+      "evidence": {
+        "screenshots": ["misc-polish-1-a-swap002-before.png", "misc-polish-1-a-swap002-after.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 4 assertions: all 4 passed. VAL-IO-006: Import/Export buttons correctly labeled 'Import Tokenlist' and 'Export Tokenlist'. VAL-TRUST-001: Trust warning prominently displayed in settings panel with bold text and risk explanation. VAL-SWAP-001: Setting from token to match to token correctly swaps both tokens. VAL-SWAP-002: Setting to token to match from token correctly swaps both tokens."
+}

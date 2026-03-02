@@ -1,0 +1,25 @@
+{
+  "flowId": "cross",
+  "milestone": "form-flow",
+  "testedAt": "2026-03-02T05:25:00.000Z",
+  "credentials": {
+    "account": "none (stateless app)",
+    "namespace": "flow-cross"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": {
+    "VAL-CROSS-001": {
+      "status": "pass",
+      "evidence": "Walked through full swap flow: (1) Navigated to page with URL params (?chainId=1&from=USDC&to=WETH&amount=1000&slippageBps=50) — form auto-populated and auto-submitted. (2) Injected mock wallet and clicked 'Connect Wallet' — provider menu appeared. (3) Clicked 'Mock Wallet' — wallet connected, showing 'Mock Wallet' and '0xDeAd...0005'. (4) After connecting, auto-refresh triggered a new /compare request with sender=0xDeAdBeEf00000000000000000000000000000005 — 200 OK. (5) Results showed 'RECOMMENDED', '0.50674371243586592 WETH', Via Spandex/odos, with Approve/Swap buttons enabled. (6) Clicked 'MEV Protection' — modal opened with MEV explanation and Ethereum mainnet guidance. (7) Modal closed successfully. No JS errors throughout.",
+      "notes": "Network requests confirmed: GET /compare?...&sender=0xDeAdBeEf00000000000000000000000000000005 => 200 OK after wallet connection."
+    },
+    "VAL-CROSS-002": {
+      "status": "pass",
+      "evidence": "Navigated to http://localhost:3001/?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50. Page auto-submitted comparison. Form snapshot confirmed: Chain=Ethereum (1) selected, From Token='USDC (0xA0b86991...eB48)', Amount='1000', To Token='WETH (0xC02aaA39...6Cc2)', Slippage='50'. All 5 URL params restored correctly. No sender param in URL.",
+      "notes": "URL params matched expected values. Form auto-submitted on page load with params, consistent with existing behavior."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 2 assertions: both passed. Full swap flow works in new layout (chain → wallet → compare → results → MEV modal → swap buttons enabled). URL params restore form values correctly in new layout."
+}

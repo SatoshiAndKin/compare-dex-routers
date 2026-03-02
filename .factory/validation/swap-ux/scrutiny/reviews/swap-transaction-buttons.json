@@ -1,0 +1,44 @@
+{
+  "featureId": "swap-transaction-buttons",
+  "reviewedAt": "2026-03-01T23:45:00.000Z",
+  "commitId": "78f59b533f3562b80e9815a2da55b91e9a071a81",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The swap transaction buttons feature is well-implemented across both Spandex and Curve quote cards. The commit (78f59b5) hardened rejection detection to cover multiple EIP-1193 error shapes (top-level, nested data, originalError, error) and moved the 'Confirming...' status to display immediately on card pending state rather than after eth_sendTransaction resolves. All 10 expectedBehaviors are met for Spandex quotes. The approve calldata encoding (0x095ea7b3 + padded spender + maxUint256) is correct. Chain switching, receipt polling (120s timeout / 1.5s interval), auto-refresh pause/resume around transactions, and connect-wallet-first messaging all work properly. Two non-blocking issues identified.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 1373,
+        "severity": "non_blocking",
+        "description": "Curve quotes never show the Approve button. renderCurveQuote calls renderQuoteActions without approvalToken/approvalSpender (lines 1373-1378). Curve quotes use approval_target/approval_calldata fields (from curve.ts:152), but these are not mapped to the renderQuoteActions parameters. When a Curve swap needs token approval, users will see only a Swap button and the swap will fail on-chain. Fix: pass approvalToken: data.from (input token) and approvalSpender: data.approval_target to renderQuoteActions in the Curve renderer. Note: the feature description specifically mentions approval_token/approval_spender fields (Spandex-specific), so this may be an intentional scope limitation, but it creates a UX gap for Curve quotes."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 1228,
+        "severity": "non_blocking",
+        "description": "No HTML attribute escaping in renderQuoteActions. Values (routerCalldata, routerAddress, etc.) are concatenated directly into HTML data-attributes via string concatenation without escaping quotes or angle brackets. While these values originate from server-controlled API responses (hex addresses and calldata), a defense-in-depth approach would escape double-quotes in attribute values to prevent attribute injection if upstream API data is ever malformed. Low practical risk since the data is hex-encoded by nature."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md 'Key Technical Context' section documents browser-side wallet interaction using viem's createWalletClient + custom transport (client.writeContract, client.sendTransaction), but the actual implementation uses raw EIP-1193 provider.request() calls without any browser-side viem dependency. This is actually the better approach (avoids CDN imports for viem in vanilla JS), but AGENTS.md doesn't reflect the architectural decision.",
+      "evidence": "AGENTS.md lines under 'viem walletClient in browser:' show createWalletClient pattern. Actual implementation at src/server.ts:1689 uses provider.request({ method: 'eth_sendTransaction' }) directly. The fullstack-worker skill correctly notes both options but AGENTS.md only shows the viem approach."
+    },
+    {
+      "area": "conventions",
+      "observation": "The architecture.md library file states 'Browser-side viem: use createWalletClient + custom transport from ERC-6963/window.ethereum providers' but the implemented pattern is raw EIP-1193 provider.request() without viem on the client side. The library should be updated to document the actual approach.",
+      "evidence": ".factory/library/architecture.md says 'Browser-side viem: use createWalletClient + custom transport'. Implementation in src/server.ts uses provider.request() directly (lines 1689, 1639, 1651)."
+    },
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill description says 'CowSwap Trader app' but the project was rebranded to 'Compare DEX Routers' (per AGENTS.md Branding section and commit 1f3e3d6). The skill metadata description is stale.",
+      "evidence": "Skill YAML header: 'description: Implements server-side endpoints and inline HTML/JS UI features for the CowSwap Trader app'. AGENTS.md Branding section: 'Project name is Compare DEX Routers'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The swap transaction buttons implementation correctly covers all required behaviors: Swap and Approve buttons render on quote cards, approval encoding uses the correct ERC-20 approve selector (0x095ea7b3) with padded spender and maxUint256, chain switching via wallet_switchEthereumChain works, receipt polling confirms transactions, user rejection is detected across multiple error shapes (4001 code at various nesting levels), buttons are disabled without wallet with 'Connect wallet first' messaging, and auto-refresh pauses during transactions. The hardening commit improved UX by showing 'Confirming...' immediately and standardized rejection status to 'Failed'. Two non-blocking issues: (1) Curve quotes don't pass approval data to renderQuoteActions so Approve buttons never appear for Curve swaps, (2) no HTML attribute escaping on data attributes (low risk since values are hex). Three shared state observations about stale documentation."
+}

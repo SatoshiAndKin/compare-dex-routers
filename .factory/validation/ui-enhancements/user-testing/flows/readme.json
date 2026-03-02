@@ -1,0 +1,32 @@
+{
+  "groupId": "readme",
+  "testedAt": "2026-03-02T08:38:00Z",
+  "credentials": {
+    "account": "none",
+    "namespace": "readme"
+  },
+  "toolsUsed": ["file-inspection"],
+  "assertions": [
+    {
+      "id": "VAL-README-001",
+      "title": "README has updated screenshot",
+      "status": "pass",
+      "steps": [
+        { "action": "Grep README.md for image references", "expected": "At least one screenshot image reference found", "observed": "Found: '![Web UI screenshot](docs/screenshot.png)'" },
+        { "action": "Check file exists: /Users/bryan/code/compare-dex-routers/docs/screenshot.png", "expected": "PNG file exists", "observed": "File exists: 52287 bytes (52KB), PNG image data 2133x1455 pixels, created/modified Mar 1 23:25" }
+      ],
+      "evidence": {
+        "readmeImageReference": "![Web UI screenshot](docs/screenshot.png)",
+        "imageFile": "docs/screenshot.png",
+        "fileSize": 52287,
+        "imageDimensions": "2133x1455",
+        "fileExists": true,
+        "modifiedDate": "2026-03-01"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion: 1 passed. README.md contains a screenshot image reference pointing to docs/screenshot.png (52KB PNG, 2133x1455px), which was created as part of the readme-screenshot feature. The file exists and is a valid PNG image."
+}

@@ -1,0 +1,19 @@
+{
+  "milestone": "settings-multilist",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-MULTI-007",
+    "VAL-CROSS-007"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/settings-multilist/user-testing/synthesis.round1.json"
+}

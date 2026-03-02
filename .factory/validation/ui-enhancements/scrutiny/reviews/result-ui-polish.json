@@ -1,0 +1,28 @@
+{
+  "featureId": "result-ui-polish",
+  "reviewedAt": "2026-03-02T07:35:00.000Z",
+  "commitId": "8b95abd",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation correctly delivers both requested improvements: (1) flat recommendation badges restyled from button-like to flat labels with colored underlines, and (2) step-indicator pattern for Approve/Swap with numbered steps, disabled states, and checkmark on approval. All automated checks pass (typecheck, lint, 100 tests). One non-blocking bug identified: updateTransactionActionStates() can prematurely re-enable the disabled Swap button when a wallet connects, making it clickable before approval completes. The CSS `.disabled` class stays (visually greyed out) but the HTML `disabled` attribute is removed, and the click handler has no guard for the `.disabled` class. Impact is mitigated because the on-chain swap would revert without approval, but it wastes gas and creates confusing UX.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 1352,
+        "severity": "non_blocking",
+        "description": "updateTransactionActionStates() sets button.disabled=false for ALL .tx-btn elements when a wallet is connected (lines 1352-1354). This removes the HTML `disabled` attribute from the Swap button in the step indicator, which was intentionally rendered with `disabled` (line 2347). The `.disabled` CSS class remains (greyed-out appearance), but the button becomes technically clickable. The click handler (lines 2899-2932) only checks `dataset.pending` and `dataset.locked`, not `classList.contains('disabled')` or `button.disabled`. A user could click the greyed-out Swap button before approval, sending a transaction that would revert on-chain. Fix: either (a) skip buttons with `.disabled` class in updateTransactionActionStates, or (b) add a disabled-class guard in the click handler."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The updateTransactionActionStates() function broadly sets disabled=false for all .tx-btn elements when wallet is connected, which conflicts with the new step-indicator pattern that relies on the disabled attribute to prevent premature swap clicks. This interaction between wallet-state management and step-indicator disabled states is a non-obvious coupling that could trip up future workers modifying either system.",
+      "evidence": "src/server.ts:1340-1358 (updateTransactionActionStates) vs src/server.ts:2347 (swap button rendered with disabled attribute). The function was pre-existing; the new step-indicator code didn't account for its behavior."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. Both flat recommendation badges and step-indicator pattern are correctly implemented per the feature description and expectedBehavior. All 7 expectedBehavior items are met. One non-blocking bug exists where the wallet connection handler can prematurely re-enable the disabled Swap button, but it causes no data loss (on-chain revert) and the button still appears disabled via CSS. The worker followed the skill procedure, ran all required verification steps, and performed thorough interactive testing including wallet injection and approval flow."
+}

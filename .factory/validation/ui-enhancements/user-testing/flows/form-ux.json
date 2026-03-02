@@ -1,0 +1,111 @@
+{
+  "groupId": "form-ux",
+  "testedAt": "2026-03-02T07:42:00Z",
+  "credentials": {
+    "account": "none",
+    "namespace": "form-ux"
+  },
+  "toolsUsed": ["browser_navigate", "browser_snapshot", "browser_click", "browser_evaluate", "browser_select_option", "browser_type", "browser_network_requests", "browser_take_screenshot"],
+  "assertions": [
+    {
+      "id": "VAL-FORM-001",
+      "title": "Amount field is wider than 100px",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "Form displayed", "observed": "Form displayed with all fields" },
+        { "action": "Evaluate computed width of amount input (#amount)", "expected": "Width > 100px", "observed": "Computed width is 150px" }
+      ],
+      "evidence": {
+        "screenshots": ["val-form-001-form-area.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "N/A",
+        "measuredWidth": "150px"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FORM-002",
+      "title": "Slippage preset buttons visible (at least 3)",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "Slippage section visible with preset buttons", "observed": "Slippage section shows 4 buttons: 10, 50, 100, 300 bps" },
+        { "action": "Evaluate preset button count and labels", "expected": "At least 3 preset buttons", "observed": "4 buttons found with class 'slippage-preset-btn', values: 10, 50, 100, 300" }
+      ],
+      "evidence": {
+        "screenshots": ["val-form-001-form-area.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "N/A",
+        "presetButtons": [
+          { "text": "10", "className": "slippage-preset-btn" },
+          { "text": "50", "className": "slippage-preset-btn active" },
+          { "text": "100", "className": "slippage-preset-btn" },
+          { "text": "300", "className": "slippage-preset-btn" }
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FORM-003",
+      "title": "Slippage preset click updates value",
+      "status": "pass",
+      "steps": [
+        { "action": "Check initial slippage input value", "expected": "Value is 50 (default)", "observed": "Value was '50'" },
+        { "action": "Click '100' preset button", "expected": "Slippage input updates to 100", "observed": "Slippage input changed to '100', button '100' gained [active] state" }
+      ],
+      "evidence": {
+        "screenshots": ["val-form-001-form-area.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "N/A",
+        "snapshotBefore": "textbox 'Slippage (bps)': '50', button '50' active",
+        "snapshotAfter": "textbox 'Slippage (bps)': '100', button '100' active"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FORM-004",
+      "title": "Custom slippage input still works",
+      "status": "pass",
+      "steps": [
+        { "action": "Click slippage input field", "expected": "Field becomes active", "observed": "Field became active" },
+        { "action": "Clear field and type '75'", "expected": "Input accepts custom value 75", "observed": "Input value is '75'" },
+        { "action": "Check preset button states", "expected": "No preset button is active (custom value overrides)", "observed": "activePresets array is empty - no button has 'active' class" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "N/A",
+        "evaluateResult": { "value": "75", "activePresets": [] }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FORM-005",
+      "title": "Slippage preset propagates to form submission",
+      "status": "pass",
+      "steps": [
+        { "action": "Select Ethereum chain", "expected": "Chain changed to Ethereum (1)", "observed": "Chain changed, auto-filled USDC and WETH tokens" },
+        { "action": "Click '50' slippage preset", "expected": "Slippage set to 50 bps", "observed": "Slippage input shows '50', button '50' active" },
+        { "action": "Set amount to 1000000", "expected": "Amount field updated", "observed": "Amount set to 1000000" },
+        { "action": "Click 'Compare Quotes'", "expected": "Form submits with slippageBps=50 in URL", "observed": "Page URL: ...&slippageBps=50. Network: GET /compare?...&slippageBps=50 => 200 OK" },
+        { "action": "Check network requests", "expected": "/compare request includes slippageBps=50", "observed": "GET /compare?chainId=1&from=<USDC-eth>&to=<WETH-eth>&amount=1000000&slippageBps=50 => 200 OK" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "GET /compare?chainId=1&from=<USDC-eth-address>&to=<WETH-eth-address>&amount=1000000&slippageBps=50 => 200 OK",
+        "pageUrl": "http://localhost:3002/?chainId=1&from=<USDC-eth-address>&to=<WETH-eth-address>&amount=1000000&slippageBps=50"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Browser tab context occasionally switches to about:blank during screenshot/evaluate sequences, requiring re-navigation to the app URL",
+      "resolved": true,
+      "resolution": "Re-navigated to http://localhost:3002/ when tab context was lost",
+      "affectedAssertions": ["VAL-FORM-003"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. Amount input is 150px wide (>100px). 4 slippage preset buttons (10, 50, 100, 300 bps) are visible and clickable. Clicking a preset updates the slippage input value. Custom typing overrides presets and deactivates preset buttons. Form submission correctly propagates the slippageBps value in the /compare request query parameters."
+}

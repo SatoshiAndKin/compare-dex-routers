@@ -1,0 +1,47 @@
+{
+  "milestone": "ux-fixes",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "npm test", "exitCode": 0, "note": "100 tests passed" },
+    "typecheck": { "passed": true, "command": "npm run typecheck", "exitCode": 0 },
+    "lint": { "passed": true, "command": "npm run lint", "exitCode": 0, "note": "2 complexity warnings (pre-existing), 0 errors" }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": [],
+    "note": "Re-run review: only fix-color-contrast reviewed (fixing prior add-color-accents failures). Prior passing reviews (fix-dropdown-sizing) unchanged."
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "file": ".factory/library/color-system.md",
+      "description": "Updated color-system.md to replace old failing hex values (#FF3300, #00AA00) with corrected canonical values (#CC2900, #007700). Removed 'Known WCAG AA Failures' section (issues resolved). Added note about the old values being corrected in commit 4bbb562.",
+      "sourceFeature": "fix-color-contrast"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Update the Brutalist design rules color palette entry from 'black (#000) / white (#fff) + #0055FF accent' to list all four accent colors now in use: #0055FF (blue/primary), #CC2900 (orange/alternative), #007700 (green/success), #CC0000 (red/error). This prevents workers from treating #0055FF as the only valid accent and from introducing ad hoc colors or reverting to the old failing values.",
+      "evidence": "The palette was expanded to four colors in add-color-accents (commit 0fea9f1) and corrected in fix-color-contrast (commit 4bbb562). Without documentation update, future workers may add more colors or use the old uncorrected hex values. Flagged by both the add-color-accents and fix-color-contrast reviewers.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills/fullstack-worker",
+      "suggestion": "Make 'npm run lint' the first mandatory verification step, before typecheck and tests. Two workers (add-color-accents and fix-color-contrast) skipped lint during verification. The skill already requires it, but workers are consistently skipping it. Moving it to first position makes the omission more visible.",
+      "evidence": "Both add-color-accents handoff and fix-color-contrast handoff list commandsRun as: typecheck, test, curl health. Both omit lint. The fullstack-worker SKILL.md requires lint. This is a recurring deviation across two workers on the same milestone.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "CSS text-truncation pattern is repeated in multiple places and could be documented as a utility class convention.",
+      "reason": "Carried over from round 1 rejection — still not actionable without broader refactoring of the inline CSS architecture."
+    }
+  ],
+  "previousRound": ".factory/validation/ux-fixes/scrutiny/synthesis-round-1.json"
+}

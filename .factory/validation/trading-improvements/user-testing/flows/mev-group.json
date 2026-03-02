@@ -1,0 +1,76 @@
+{
+  "groupId": "mev-group",
+  "testedAt": "2026-03-02T01:59:00.000Z",
+  "credentials": {
+    "account": "N/A",
+    "namespace": "mev-group"
+  },
+  "toolsUsed": ["playwright-mcp", "source-inspection"],
+  "assertions": [
+    {
+      "id": "VAL-TRADE-002",
+      "title": "MEV Protection toggle visible",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3001/ (default chain: Base 8453)",
+          "expected": "MEV Protection toggle is disabled with tooltip",
+          "observed": "MEV Protection checkbox is disabled with tooltip 'MEV Protection only available on Ethereum mainnet'"
+        },
+        {
+          "action": "Switch chain to Ethereum (1)",
+          "expected": "MEV Protection toggle becomes enabled",
+          "observed": "MEV Protection checkbox is enabled (not disabled), shows 'Off' text, user can toggle it"
+        },
+        {
+          "action": "Switch chain to Arbitrum (42161)",
+          "expected": "MEV Protection toggle is disabled again with tooltip",
+          "observed": "MEV Protection checkbox is disabled with tooltip 'MEV Protection only available on Ethereum mainnet'"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["mev-toggle-ethereum.png", "mev-toggle-disabled-other-chain.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic, expected)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TRADE-003",
+      "title": "MEV Protection prompts Flashbots RPC",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Source inspection: Check FLASHBOTS_RPC_URL constant",
+          "expected": "Constant defined as 'https://rpc.flashbots.net'",
+          "observed": "Line ~952: const FLASHBOTS_RPC_URL = 'https://rpc.flashbots.net'"
+        },
+        {
+          "action": "Source inspection: Check enableFlashbotsProtection function",
+          "expected": "Function calls wallet_addEthereumChain with Flashbots RPC params",
+          "observed": "Lines ~2146-2177: enableFlashbotsProtection(provider) calls wallet_addEthereumChain with chainId '0x1', chainName 'Ethereum (Flashbots Protect)', rpcUrls ['https://rpc.flashbots.net'], then wallet_switchEthereumChain with chainId '0x1'"
+        },
+        {
+          "action": "Source inspection: Check swap handler invokes MEV protection",
+          "expected": "Swap handler checks isMevProtectionEnabled() and calls enableFlashbotsProtection",
+          "observed": "Line ~2218: useMevProtection checks isMevProtectionEnabled() && chainId === ETHEREUM_CHAIN_ID. Line ~2228-2240: if useMevProtection, calls enableFlashbotsProtection(provider). Line ~2348: swap handler passes { useMevProtection: isMevProtectionEnabled() }"
+        },
+        {
+          "action": "Source inspection: Check user decline handling",
+          "expected": "If user declines, swap proceeds with warning via normal provider",
+          "observed": "Lines ~2170-2177: catch block checks for code 4001 (user rejected), returns { success: false, reason: 'declined' }. Lines ~2232-2235: if !mevResult.success, shows warning 'MEV Protection could not be enabled. Transaction will be sent through your default RPC.' and continues with normal transaction flow"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (source inspection only)",
+        "network": "N/A (source inspection only)",
+        "sourceInspection": "src/server.ts lines 951-1018 (MEV state management), 2145-2177 (enableFlashbotsProtection with wallet_addEthereumChain), 2217-2240 (swap handler MEV integration), 2348 (useMevProtection passed to executeCardTransaction)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 2 assertions: 2 passed. VAL-TRADE-002 confirmed via browser that MEV toggle is enabled on Ethereum and disabled with tooltip on other chains. VAL-TRADE-003 confirmed via source inspection that swap handler checks MEV toggle, calls wallet_addEthereumChain with Flashbots RPC (https://rpc.flashbots.net), and handles user rejection with a warning while proceeding through normal provider."
+}

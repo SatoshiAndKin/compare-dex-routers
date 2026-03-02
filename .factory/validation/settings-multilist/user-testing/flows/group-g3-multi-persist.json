@@ -1,0 +1,129 @@
+{
+  "groupId": "group-g3-multi-persist",
+  "testedAt": "2026-03-02T18:51:00Z",
+  "credentials": {
+    "account": "validator_sm_g3",
+    "namespace": "sm_g3"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-MULTI-007",
+      "title": "Invalid or unreachable URL shows error",
+      "status": "fail",
+      "steps": [
+        { "action": "Open settings panel via gear icon", "expected": "Settings modal opens with tokenlist input", "observed": "Settings modal opens with tokenlist input and Load button" },
+        { "action": "Enter 'not-a-url' and click Load", "expected": "Error message shown, no list entry created", "observed": "Error message 'Invalid URL format' shown in red. No list entry created. PASS." },
+        { "action": "Enter 'http://tokens.uniswap.org' (non-HTTPS) and click Load", "expected": "Error message shown, no list entry created", "observed": "Error message 'URL must use HTTPS' shown in red. No list entry created. PASS." },
+        { "action": "Enter 'https://this-does-not-exist-at-all.example.com/tokenlist.json' (unreachable) and click Load", "expected": "Error message shown, no list entry created", "observed": "A list entry WAS created with error state: '0 tokens', 'Failed to fetch remote URL: fetch failed', Retry button. Entry should NOT have been created per contract." }
+      ],
+      "evidence": {
+        "screenshots": ["val-multi-007-invalid-url.png", "val-multi-007-non-https-url.png", "val-multi-007-unreachable-url.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic, ignored) and the expected fetch failure for unreachable URL",
+        "network": "GET /tokenlist/proxy?url=https://this-does-not-exist-at-all.example.com/tokenlist.json -> fetch failed"
+      },
+      "issues": "Invalid URL and non-HTTPS URL cases correctly show error without creating an entry. However, unreachable HTTPS URL creates a list entry with error state instead of just showing an error message without creating an entry. The validation contract states 'No list entry is created' for all three cases, but the unreachable URL case creates an entry with error/retry UI."
+    },
+    {
+      "id": "VAL-MULTI-008",
+      "title": "Custom lists persisted across page reload",
+      "status": "pass",
+      "steps": [
+        { "action": "Clear localStorage and reload to start fresh", "expected": "Clean state", "observed": "Clean state with only Default Tokenlist" },
+        { "action": "Add Uniswap Labs Default list (https://tokens.uniswap.org)", "expected": "List added with token count", "observed": "Uniswap Labs Default added, 87 tokens on Base" },
+        { "action": "Add CoinGecko list (https://tokens.coingecko.com/uniswap/all.json)", "expected": "Second list added", "observed": "CoinGecko added, 0 tokens for Base (with chain mismatch warning)" },
+        { "action": "Toggle Uniswap Labs Default OFF", "expected": "Toggle switch unchecked", "observed": "Switch unchecked, enabled:false in localStorage" },
+        { "action": "Verify localStorage contains both lists with correct toggle states", "expected": "customTokenlists array with 2 entries", "observed": "customTokenlists: [{url:'https://tokens.uniswap.org', enabled:false, name:'Uniswap Labs Default'}, {url:'https://tokens.coingecko.com/uniswap/all.json', enabled:true, name:'CoinGecko'}]" },
+        { "action": "Reload page and open settings", "expected": "Same lists with same toggle states", "observed": "Default Tokenlist ON, Uniswap Labs Default OFF (preserved), CoinGecko ON with '0 tokens for Base' warning (preserved). Token counts re-fetched correctly." }
+      ],
+      "evidence": {
+        "screenshots": ["val-multi-008-before-reload.png", "val-multi-008-after-reload.png"],
+        "consoleErrors": "none (ignoring favicon.ico 404)",
+        "network": "Lists re-fetched on reload via /tokenlist/proxy"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MULTI-009",
+      "title": "Migration from old single-URL format",
+      "status": "pass",
+      "steps": [
+        { "action": "Remove customTokenlists from localStorage and set old customTokenlistUrl='https://tokens.uniswap.org'", "expected": "Old format in localStorage", "observed": "customTokenlistUrl set, customTokenlists removed" },
+        { "action": "Reload page", "expected": "Migration should happen automatically", "observed": "Page loaded successfully" },
+        { "action": "Check localStorage after reload", "expected": "Old key removed, new key with migrated entry", "observed": "customTokenlistUrl: null (removed), customTokenlists: [{url:'https://tokens.uniswap.org', enabled:true, name:'https://tokens.uniswap.org'}]" },
+        { "action": "Open settings panel", "expected": "Migrated list appears as enabled custom list", "observed": "Uniswap Labs Default appears with 87 tokens, enabled toggle, remove button" }
+      ],
+      "evidence": {
+        "screenshots": ["val-multi-009-migrated.png"],
+        "consoleErrors": "none (no migration errors)",
+        "network": "Migrated list fetched via /tokenlist/proxy"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MULTI-010",
+      "title": "Token count is chain-specific",
+      "status": "pass",
+      "steps": [
+        { "action": "With Uniswap Labs Default loaded, open settings on Base chain", "expected": "Token count for Base", "observed": "Default Tokenlist: 87 tokens, Uniswap Labs Default: 87 tokens" },
+        { "action": "Close settings, switch chain to Ethereum, reopen settings", "expected": "Different token count for Ethereum", "observed": "Default Tokenlist: 357 tokens, Uniswap Labs Default: 357 tokens" },
+        { "action": "Compare counts", "expected": "Counts differ between chains", "observed": "Base: 87, Ethereum: 357 — counts are chain-specific" }
+      ],
+      "evidence": {
+        "screenshots": ["val-multi-010-base-chain.png", "val-multi-010-ethereum-chain.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MULTI-011",
+      "title": "Failed list on reload shows error state",
+      "status": "pass",
+      "steps": [
+        { "action": "Set localStorage with a custom list pointing to an unreachable URL (https://this-will-definitely-fail-404.example.com/tokenlist.json)", "expected": "Saved in localStorage", "observed": "customTokenlists saved with failing URL entry" },
+        { "action": "Reload page and wait for fetch attempts", "expected": "Fetch fails for the bad URL", "observed": "Console shows fetch failure for the unreachable URL" },
+        { "action": "Open settings panel", "expected": "Failed list shows with error indicator and retry option", "observed": "List entry 'Failing List' appears with: '0 tokens', red error text 'Failed to fetch remote URL: fetch failed', green 'Retry' button, toggle switch, and remove button. Not silently removed." }
+      ],
+      "evidence": {
+        "screenshots": ["val-multi-011-failed-list-error.png"],
+        "consoleErrors": "Expected fetch error for unreachable URL (not a bug)",
+        "network": "GET /tokenlist/proxy?url=https://this-will-definitely-fail-404.example.com/tokenlist.json -> failed"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-007",
+      "title": "All settings preserved across page reload",
+      "status": "fail",
+      "steps": [
+        { "action": "Set up state: Default Tokenlist OFF, Uniswap Labs Default ON", "expected": "Toggle states configured", "observed": "Default Tokenlist switch unchecked, Uniswap Labs Default switch checked" },
+        { "action": "Take before-reload screenshot", "expected": "State captured", "observed": "Screenshot shows Default Tokenlist OFF, Uniswap Labs Default ON" },
+        { "action": "Reload page and open settings", "expected": "All settings match pre-reload state", "observed": "Custom list URLs preserved (Uniswap Labs Default still present). Custom list toggle state preserved (Uniswap Labs Default still ON). BUT Default Tokenlist toggle state NOT preserved — was OFF, reverted to ON." },
+        { "action": "Check localStorage keys", "expected": "Default tokenlist toggle state saved", "observed": "Only 'customTokenlists' key exists in localStorage. No key for default tokenlist toggle state. Default tokenlist always resets to enabled on reload." }
+      ],
+      "evidence": {
+        "screenshots": ["val-cross-007-settings-before-reload.png", "val-cross-007-settings-after-reload.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": "Default Tokenlist toggle state is not persisted in localStorage. After reload, it always resets to ON regardless of the pre-reload state. Custom tokenlist URLs and their toggle states are correctly persisted (verified in VAL-MULTI-008). The assertion requires 'All settings preserved across page reload' which should include the Default Tokenlist toggle."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Auto-refresh timer (15s) can interfere with UI testing by reloading data. Need to call clearInterval(window._refreshTimer) via page.evaluate() after each page load.",
+      "resolved": true,
+      "resolution": "Called clearInterval(window._refreshTimer) after each navigation",
+      "affectedAssertions": ["VAL-MULTI-007", "VAL-MULTI-008", "VAL-MULTI-009", "VAL-MULTI-010", "VAL-MULTI-011", "VAL-CROSS-007"]
+    },
+    {
+      "description": "Direct DOM manipulation (setting input.value + dispatching input event) required for tokenlist URL input field, as Playwright fill/type sometimes interacts poorly with custom input handling.",
+      "resolved": true,
+      "resolution": "Used page.evaluate() to set input values and dispatch events programmatically",
+      "affectedAssertions": ["VAL-MULTI-007", "VAL-MULTI-008"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 6 assertions: 4 passed (VAL-MULTI-008, VAL-MULTI-009, VAL-MULTI-010, VAL-MULTI-011), 2 failed (VAL-MULTI-007: unreachable URL creates list entry instead of showing error only; VAL-CROSS-007: Default Tokenlist toggle state not persisted across reload)."
+}

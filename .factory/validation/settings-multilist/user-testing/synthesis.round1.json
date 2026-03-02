@@ -1,0 +1,56 @@
+{
+  "milestone": "settings-multilist",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 26,
+    "passed": 24,
+    "failed": 2,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-AUTO-001",
+    "VAL-AUTO-002",
+    "VAL-AUTO-003",
+    "VAL-AUTO-004",
+    "VAL-CHAIN-001",
+    "VAL-CHAIN-002",
+    "VAL-CHAIN-003",
+    "VAL-CROSS-004",
+    "VAL-CROSS-008",
+    "VAL-GEAR-001",
+    "VAL-GEAR-002",
+    "VAL-GEAR-003",
+    "VAL-GEAR-004",
+    "VAL-GEAR-005",
+    "VAL-MULTI-001",
+    "VAL-MULTI-002",
+    "VAL-MULTI-003",
+    "VAL-MULTI-004",
+    "VAL-MULTI-005",
+    "VAL-MULTI-006",
+    "VAL-MULTI-008",
+    "VAL-MULTI-009",
+    "VAL-MULTI-010",
+    "VAL-MULTI-011"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-MULTI-007",
+      "reason": "Unreachable HTTPS tokenlist URL creates a persisted error-state entry with Retry instead of showing an error without creating an entry."
+    },
+    {
+      "id": "VAL-CROSS-007",
+      "reason": "Default tokenlist toggle state is not persisted across reload; it resets to enabled after refresh."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added settings-multilist testing guidance for reliable settings overlay targeting and a stable duplicate-symbol fixture tokenlist URL.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}

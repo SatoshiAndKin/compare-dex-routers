@@ -4,3 +4,6 @@ coverage/
 docs/api/
 *.log
 .env
+
+# Validation screenshots in repo root (PNGs in subdirectories may be intentional)
+/*.png

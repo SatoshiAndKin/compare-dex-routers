@@ -1,0 +1,37 @@
+{
+  "milestone": "ux-polish",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-POLISH-001",
+    "VAL-POLISH-002",
+    "VAL-POLISH-003",
+    "VAL-POLISH-004",
+    "VAL-POLISH-005",
+    "VAL-POLISH-006",
+    "VAL-POLISH-007",
+    "VAL-POLISH-008",
+    "VAL-CROSS-008"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added note: Curve gas estimation requires sender with actual token balance. Use fetch mock injection to test gas_used display behavior.",
+      "source": "flow-report"
+    }
+  ],
+  "flowReports": [
+    ".factory/validation/ux-polish/user-testing/flows/groupA.json",
+    ".factory/validation/ux-polish/user-testing/flows/groupB.json"
+  ],
+  "previousRound": null,
+  "testedAt": "2026-03-02T02:50:00Z"
+}

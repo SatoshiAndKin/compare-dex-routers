@@ -1,0 +1,154 @@
+{
+  "groupId": "group-g4-chain-auto-cross",
+  "testedAt": "2026-03-02T19:02:00.000Z",
+  "credentials": {
+    "account": "validator_sm_g4",
+    "namespace": "sm_g4"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-CHAIN-001",
+      "title": "Warning when list has no tokens for current chain",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/, clear localStorage, reload", "expected": "Clean app state on Base chain", "observed": "App loads on Base chain with default tokens" },
+        { "action": "Open settings, add Compound tokenlist (https://raw.githubusercontent.com/compound-finance/token-list/master/compound.tokenlist.json)", "expected": "Compound list loads with Ethereum-only tokens", "observed": "Compound list added showing '0 tokens' and '0 tokens for Base' warning in amber text" },
+        { "action": "Verify chain mismatch warning text", "expected": "Warning text visible on Compound entry", "observed": "Compound entry shows '0 tokens' count and '0 tokens for Base' chain mismatch warning" }
+      ],
+      "evidence": {
+        "screenshots": ["val-chain-001-mismatch-warning.png"],
+        "consoleErrors": "none (favicon.ico 404 ignored per guidance)",
+        "network": "GET /tokenlist/proxy?url=...compound... -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CHAIN-002",
+      "title": "Warning updates on chain switch",
+      "status": "pass",
+      "steps": [
+        { "action": "With Compound list loaded on Base (showing '0 tokens for Base' warning), switch chain to Ethereum", "expected": "Warning disappears since Compound has 27 Ethereum tokens", "observed": "Compound entry now shows '27 tokens' with no chain mismatch warning" },
+        { "action": "Switch back to Base", "expected": "Warning reappears since Compound has 0 Base tokens", "observed": "Compound entry shows '0 tokens' and '0 tokens for Base' warning again" }
+      ],
+      "evidence": {
+        "screenshots": ["val-chain-002-ethereum-no-warning.png", "val-chain-002-base-warning-returns.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CHAIN-003",
+      "title": "No false warning when list has tokens for current chain",
+      "status": "pass",
+      "steps": [
+        { "action": "On Ethereum chain, check Default Tokenlist entry in settings", "expected": "No chain mismatch warning since default list has 357 Ethereum tokens", "observed": "Default Tokenlist shows '357 tokens' with no warning" },
+        { "action": "Check Compound list entry on Ethereum", "expected": "No chain mismatch warning since Compound has 27 Ethereum tokens", "observed": "Compound shows '27 tokens' with no warning" },
+        { "action": "Switch to Base, check Default Tokenlist", "expected": "No warning since default list has 87 Base tokens", "observed": "Default Tokenlist shows '87 tokens' with no warning" }
+      ],
+      "evidence": {
+        "screenshots": ["val-chain-002-ethereum-no-warning.png", "val-chain-002-base-warning-returns.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AUTO-001",
+      "title": "Source list name shown for duplicate symbols",
+      "status": "pass",
+      "steps": [
+        { "action": "Add CoinGecko tokenlist (https://tokens.coingecko.com/uniswap/all.json) as custom list on Ethereum", "expected": "CoinGecko list loads with 5098 tokens", "observed": "CoinGecko list added showing '5098 tokens'" },
+        { "action": "Search 'PEPE' in From Token autocomplete", "expected": "Multiple PEPE entries from different lists with source badges", "observed": "PEPE from Default Tokenlist shows 'Default Tokenlist' badge at 0x6982508145454Ce325dDbE47a25d4ec3d2311933. PEPE 'The Original Pepe' shows 'CoinGecko' badge at 0x4dfae3690b93c47470b03036a17b23c1be05127c. PEPE 'NEWPEPE' shows 'CoinGecko' badge at 0xa57ed6e54be8125bbe45d6ca330e45ebb71ef11e. PEPE 'Pepe King Prawn' shows 'CoinGecko' badge at 0x51a59a02ba906194285e81eb1f98ffa28e7cf4c9." },
+        { "action": "Verify full addresses visible per project convention", "expected": "Full 0x addresses shown, not truncated", "observed": "All addresses displayed in full (e.g., 0x6982508145454Ce325dDbE47a25d4ec3d2311933)" }
+      ],
+      "evidence": {
+        "screenshots": ["val-auto-001-disambiguation.png", "val-auto-001-disambiguation-scroll.png"],
+        "consoleErrors": "none",
+        "network": "GET /tokenlist/proxy?url=...coingecko... -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AUTO-002",
+      "title": "Correct address used after disambiguated selection",
+      "status": "pass",
+      "steps": [
+        { "action": "From disambiguated PEPE results, click 'PEPE Pepe Default Tokenlist' entry", "expected": "From Token field populated with correct PEPE address from Default Tokenlist", "observed": "Field shows 'PEPE (0x6982508145454Ce325dDbE47a25d4ec3d2311933)' and data-address attribute set to 0x6982508145454Ce325dDbE47a25d4ec3d2311933" },
+        { "action": "Click Compare Quotes to trigger /compare request", "expected": "Request uses the selected PEPE address", "observed": "URL updated to include from=0x6982508145454Ce325dDbE47a25d4ec3d2311933. Network shows GET /compare?chainId=1&from=0x6982508145454Ce325dDbE47a25d4ec3d2311933&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50 -> 200" }
+      ],
+      "evidence": {
+        "screenshots": ["val-auto-002-selected-token.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1&from=0x6982508145454Ce325dDbE47a25d4ec3d2311933&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AUTO-003",
+      "title": "Toggled-off list tokens excluded from autocomplete",
+      "status": "pass",
+      "steps": [
+        { "action": "Open settings and toggle CoinGecko list OFF", "expected": "CoinGecko toggle switch unchecked, list visually grayed out", "observed": "CoinGecko switch is unchecked (no [checked] attribute), list appears dimmed" },
+        { "action": "Close settings and search 'PEPE' in From Token", "expected": "Only Default Tokenlist PEPE shown, no CoinGecko PEPE variants", "observed": "Only one PEPE result: 'PEPE Pepe' at 0x6982508145454Ce325dDbE47a25d4ec3d2311933 from Default Tokenlist. No source badge shown (no disambiguation needed since only one PEPE). CoinGecko's 'The Original Pepe', 'NEWPEPE', and 'Pepe King Prawn' entries are gone." }
+      ],
+      "evidence": {
+        "screenshots": ["val-auto-003-coingecko-toggled-off.png", "val-auto-003-pepe-no-coingecko.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AUTO-004",
+      "title": "Same-address tokens deduplicated across lists",
+      "status": "pass",
+      "steps": [
+        { "action": "Re-enable CoinGecko list in settings", "expected": "All three lists (Default, Compound, CoinGecko) enabled", "observed": "All three lists enabled and checked" },
+        { "action": "Search 'USDC' in From Token autocomplete", "expected": "Only one USDC entry at the canonical address 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 despite USDC being in Default, Compound, and CoinGecko lists", "observed": "Exactly one 'USDC USDCoin' entry at 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48. No duplicate USDC entries. No disambiguation badge shown (single address). Compound's cUSDC at different address shows as separate entry (different symbol)." },
+        { "action": "Verify deduplication with shared tokens (COMP, DAI, WETH, etc.)", "expected": "Each shared token appears once", "observed": "Confirmed via accessibility snapshot: USDC appears exactly once at the canonical address. Other USDC-related tokens (cUSDC, AUSDC, IUSDC, etc.) appear separately since they have different symbols or addresses." }
+      ],
+      "evidence": {
+        "screenshots": ["val-auto-004-usdc-dedup.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-008",
+      "title": "Existing functionality preserved",
+      "status": "pass",
+      "steps": [
+        { "action": "Chain switching: switch from Ethereum to Base", "expected": "Default tokens update to Base addresses", "observed": "From Token changes to USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) and To Token changes to WETH (0x4200000000000000000000000000000000000006)" },
+        { "action": "Quote comparison: USDC→WETH on Ethereum with amount 1000", "expected": "Comparison results displayed", "observed": "Spandex (kyberswap/odos) returns 0.4917/0.4912 WETH with gas estimate 0.1756/0.1620 gwei. Results section shows Spandex and Curve tabs. Recommended quote displayed." },
+        { "action": "Slippage presets: click '100' preset then '50' preset", "expected": "Slippage input updates to match preset", "observed": "Clicking 100 sets slippage to 100, clicking 50 sets it to 50. Active button state updates correctly." },
+        { "action": "MEV Protection modal: click MEV Protection button", "expected": "Modal opens with MEV explanation and Flashbots Protect info", "observed": "Modal opens showing MEV explanation, Ethereum Mainnet section with sandwich attack warning, disabled 'Add Flashbots Protect to Wallet' button (no wallet connected). Flashbots Docs link present." },
+        { "action": "Close MEV modal via Escape key", "expected": "Modal closes", "observed": "Modal closes successfully, main UI restored" }
+      ],
+      "evidence": {
+        "screenshots": ["val-cross-008-comparison-results.png", "val-cross-008-mev-modal.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50 -> 200"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Auto-refresh timer (15s) interferes with testing by reloading results and changing page state during interactions. Must call clearInterval(window._refreshTimer) after every page navigation or chain switch.",
+      "resolved": true,
+      "resolution": "Used page.evaluate to clear auto-refresh timer at start of each test sequence",
+      "affectedAssertions": ["VAL-CHAIN-002", "VAL-AUTO-002", "VAL-CROSS-008"]
+    },
+    {
+      "description": "Finding public tokenlists with same-symbol-different-address tokens for disambiguation testing required trial and error. Standard lists (Compound, Aave) all share canonical addresses with the default Uniswap list. Only CoinGecko's 5098-token list contained enough variety (e.g., multiple PEPE tokens) to trigger disambiguation.",
+      "resolved": true,
+      "resolution": "Used CoinGecko list which has multiple PEPE tokens at different addresses vs Default Tokenlist",
+      "affectedAssertions": ["VAL-AUTO-001"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 8 assertions: 8 passed, 0 failed, 0 blocked. Chain mismatch warnings correctly appear/disappear based on token availability per chain (Compound list shows '0 tokens for Base' warning, no warning on Ethereum). Autocomplete disambiguation shows source list badges when same symbol has different addresses (PEPE from Default vs CoinGecko). Correct address is used in /compare requests after disambiguated selection. Toggled-off list tokens are excluded from autocomplete. Same-address tokens across lists are deduplicated (USDC appears once despite being in 3 lists). All existing functionality (chain switching, quote comparison, slippage presets, MEV modal) works correctly."
+}

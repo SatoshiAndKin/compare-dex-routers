@@ -1,0 +1,39 @@
+{
+  "featureId": "auto-refresh-quotes",
+  "reviewedAt": "2026-03-01T23:45:00.000Z",
+  "commitId": "7901a49",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation covering all 10 feature requirements. The auto-refresh architecture uses a well-structured state object (autoRefreshState) with clear lifecycle functions (beginAutoRefresh, startAutoRefreshCountdown, stopAutoRefresh, pauseAutoRefreshForTransaction, resumeAutoRefreshAfterTransaction). A stale-request sequencing guard (compareRequestSequence) correctly handles races between manual compares and auto-refreshes. The refactoring of result DOM references from short names (rec, alt, tabRec, tabAlt) to descriptive names (recommendedContent, alternativeContent, tabRecommended, tabAlternative) improves readability. Helper functions (cloneCompareParams, readCompareParamsFromForm, compareParamsToSearchParams, fetchComparePayload, requestAndRenderCompare) provide clean separation of concerns. The critical constraint of not touching form DOM during refresh is upheld — auto-refresh calls requestAndRenderCompare with showLoading:false so the submit button and form inputs are never modified during background refresh cycles. UI state preservation (active tab + scroll position) works via captureResultUiState/setActiveTab/scrollTo. Error handling keeps previous results visible and shows an error indicator. Tests are HTML content-existence checks appropriate for inline HTML UI.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 1545,
+        "severity": "non_blocking",
+        "description": "runAutoRefreshCycle calls requestAndRenderCompare without passing updateUrl:false, so the browser URL is updated on every 15-second refresh cycle. Since the params are unchanged this is invisible, but if the wallet connects between refreshes the sender param gets added to the URL silently. Consider passing updateUrl:false for auto-refresh cycles to avoid unexpected URL changes."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 1099,
+        "severity": "non_blocking",
+        "description": "The countdown uses setInterval(1000) which can accumulate drift over many cycles. For a 15-second countdown this is negligible, but a Date.now()-based approach would be more precise if longer intervals are ever considered."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker refactored several short DOM variable names (rec, alt, tabRec, tabAlt) to longer descriptive names (recommendedContent, alternativeContent, tabRecommended, tabAlternative) and cached them at the top of the script scope. This is a good pattern for the inline template but isn't documented in AGENTS.md or architecture.md. Future workers modifying the inline JS should follow this same pattern of caching DOM references at the top and using descriptive names.",
+      "evidence": "src/server.ts lines 967-971 — new cached DOM references; diff shows all short-name references replaced throughout showCompareResult and showError functions"
+    },
+    {
+      "area": "conventions",
+      "observation": "The worker introduced a request sequencing pattern (compareRequestSequence counter) to handle stale async responses when multiple compare requests overlap. This is a useful pattern for future features that make concurrent async requests, but it's not documented anywhere.",
+      "evidence": "src/server.ts line 481 (compareRequestSequence), lines 1486-1489 (requestId guard in requestAndRenderCompare), line 1507 (stale check after fetch)"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The auto-refresh-quotes feature is well-implemented and passes review. All 10 specified requirements are covered: 15-second countdown with visual indicator, in-place result updates preserving tab/scroll state, error recovery keeping previous results visible, transaction pause/resume, manual compare reset, no auto-refresh before first quote, chain-change stop/clear, and wallet sender propagation. The critical DOM isolation constraint is properly upheld — auto-refresh never touches form elements. Code quality is good with clean separation into helper functions and proper race condition handling via request sequencing. Two non-blocking observations noted: auto-refresh cycles unnecessarily update the browser URL, and setInterval-based countdown could theoretically drift (not meaningful at 15s intervals). Three new integration tests appropriately validate the presence of key auto-refresh mechanisms in the served HTML."
+}

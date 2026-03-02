@@ -1,6 +1,9 @@
 import "./env.js";
 import "./sentry.js";
 import http from "node:http";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { getQuote, serializeWithBigInt } from "@spandex/core";
 import type { Address } from "viem";
 import { parseUnits, formatUnits } from "viem";
@@ -9,11 +12,11 @@ import {
   getSpandexConfig,
   getTokenDecimals,
   getTokenSymbol,
+  getTokenName,
   getClient,
   SUPPORTED_CHAINS,
   DEFAULT_TOKENS,
 } from "./config.js";
-import { defaultTokens } from "./default-tokenlist.js";
 import { initCurve, findCurveQuote, isCurveSupported, type CurveQuoteResult } from "./curve.js";
 import { logger } from "./logger.js";
 import { captureException, captureMessage } from "./sentry.js";
@@ -59,7 +62,151 @@ interface QuoteResult {
   approval_spender?: string;
 }
 
+interface TokenListPayload {
+  tokens: Array<{
+    chainId: number;
+    address: string;
+    name: string;
+    symbol: string;
+    decimals: number;
+    logoURI?: string;
+  }>;
+  [key: string]: unknown;
+}
+
 const FALLBACK_ACCOUNT = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055" as Address;
+let cachedTokenList: TokenListPayload | null = null;
+let cachedTokenListPath: string | null = null;
+
+function getTokenListPath() {
+  return process.env.TOKENLIST_PATH || resolve(process.cwd(), "data", "tokenlist.json");
+}
+
+async function loadTokenList(): Promise<TokenListPayload> {
+  const tokenListPath = getTokenListPath();
+  if (cachedTokenList && cachedTokenListPath === tokenListPath) {
+    return cachedTokenList;
+  }
+
+  const fileContents = await readFile(tokenListPath, "utf8");
+  const parsed = JSON.parse(fileContents) as TokenListPayload;
+
+  cachedTokenList = parsed;
+  cachedTokenListPath = tokenListPath;
+  return parsed;
+}
+
+// Maximum response size for proxy endpoint (5MB)
+const TOKENLIST_PROXY_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Fetch and validate a remote tokenlist URL via server-side proxy.
+ * This avoids CORS issues when loading custom tokenlists.
+ *
+ * Validation:
+ * - URL must start with https://
+ * - Response must be valid JSON with a tokens array
+ * - Response body limited to 5MB
+ *
+ * Returns the parsed tokenlist on success.
+ * Throws Error with descriptive message on failure.
+ */
+async function fetchProxyTokenList(urlString: string): Promise<TokenListPayload> {
+  // Validate URL parameter exists and is a string
+  if (!urlString || typeof urlString !== "string") {
+    throw new Error("Missing url parameter");
+  }
+
+  // Parse and validate URL
+  let url: URL;
+  try {
+    url = new URL(urlString);
+  } catch {
+    throw new Error("Invalid URL format");
+  }
+
+  // Enforce HTTPS only
+  if (url.protocol !== "https:") {
+    throw new Error("URL must use HTTPS protocol");
+  }
+
+  // Fetch the remote URL
+  let response: Response;
+  try {
+    response = await fetch(urlString, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(30000), // 30 second timeout
+    });
+  } catch (err: unknown) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to fetch remote URL: ${detail}`, { cause: err });
+  }
+
+  if (!response.ok) {
+    throw new Error(`Remote server returned HTTP ${response.status}`);
+  }
+
+  // Check content-length header if present
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && parseInt(contentLength, 10) > TOKENLIST_PROXY_MAX_BYTES) {
+    throw new Error(`Response too large: ${contentLength} bytes exceeds 5MB limit`);
+  }
+
+  // Read response body with size limit
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Failed to read response body");
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      totalBytes += value.length;
+      if (totalBytes > TOKENLIST_PROXY_MAX_BYTES) {
+        throw new Error("Response body exceeds 5MB limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  // Combine chunks and parse JSON
+  const bodyBytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bodyBytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  const bodyText = new TextDecoder().decode(bodyBytes);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    throw new Error("Response is not valid JSON");
+  }
+
+  // Validate tokens array exists
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !Array.isArray((parsed as Record<string, unknown>).tokens)
+  ) {
+    throw new Error("Response must contain a tokens array");
+  }
+
+  return parsed as TokenListPayload;
+}
 
 async function findQuote(
   chainId: number,
@@ -158,6 +305,28 @@ interface CompareResult {
   gas_price_gwei: string | null;
 }
 
+// Known WETH addresses by chainId
+const WETH_ADDRESSES: Record<number, string> = {
+  1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // Ethereum mainnet
+  8453: "0x4200000000000000000000000000000000000006", // Base
+  42161: "0x82aF49447D8a07e3340369C42921F5baB03F7D1D", // Arbitrum
+  10: "0x4200000000000000000000000000000000000006", // Optimism
+  137: "0x7ceB23bD638e8c21a3e6f28A20c2eE60b7E34F54", // Polygon
+  56: "0xbb4CdB9CBd36B01bD1cBaEB2Fe939D64f10c92b3", // BSC (WBNB)
+  43114: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", // Avalanche (WAVAX)
+};
+
+// Check if output token is ETH/WETH
+function isEthOutput(symbol: string, address: string, chainId: number): boolean {
+  const normalizedSymbol = symbol.toUpperCase();
+  if (normalizedSymbol === "ETH" || normalizedSymbol === "WETH") return true;
+
+  const wethAddress = WETH_ADDRESSES[chainId];
+  if (wethAddress && address.toLowerCase() === wethAddress.toLowerCase()) return true;
+
+  return false;
+}
+
 async function compareQuotes(
   chainId: number,
   from: string,
@@ -196,33 +365,76 @@ async function compareQuotes(
     const curveOutput = Number(curveResult.result.output_amount);
     const spandexGas = Number(spandex.result.gas_used || "0");
     const curveGas = Number(curveResult.result.gas_used || "0");
-    const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
-    const spandexGasCostEth = gasPriceWei > 0 ? (spandexGas * gasPriceWei) / 1e18 : 0;
-    const curveGasCostEth = gasPriceWei > 0 ? (curveGas * gasPriceWei) / 1e18 : 0;
 
-    if (curveOutput > spandexOutput) {
-      recommendation = "curve";
-      const diff = curveOutput - spandexOutput;
-      const pct = ((diff / spandexOutput) * 100).toFixed(3);
-      reason = `Curve outputs ${diff.toFixed(6)} more (+${pct}%)`;
-      if (curveGasCostEth > 0 && spandexGasCostEth > 0) {
-        reason += `. Gas: Curve ${curveGas} units (~${curveGasCostEth.toFixed(6)} ETH) vs Spandex ${spandexGas} units (~${spandexGasCostEth.toFixed(6)} ETH)`;
-      } else if (curveGasCostEth > 0) {
-        reason += `. Curve gas: ${curveGas} units (~${curveGasCostEth.toFixed(6)} ETH)`;
+    // Determine gas availability
+    const spandexHasGas = spandexGas > 0 && gasPriceGwei !== null;
+    const curveHasGas = curveGas > 0 && gasPriceGwei !== null;
+    const bothHaveGas = spandexHasGas && curveHasGas;
+
+    // Compute gas costs in ETH
+    const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
+    const spandexGasCostEth = spandexHasGas ? (spandexGas * gasPriceWei) / 1e18 : 0;
+    const curveGasCostEth = curveHasGas ? (curveGas * gasPriceWei) / 1e18 : 0;
+
+    // Determine if output is ETH/WETH
+    const outputIsEth = isEthOutput(spandex.result.to_symbol, spandex.result.to, chainId);
+    const outputSymbol = spandex.result.to_symbol || "tokens";
+
+    if (bothHaveGas && outputIsEth) {
+      // Gas-adjusted comparison: subtract gas cost from output
+      const spandexAdjustedOutput = spandexOutput - spandexGasCostEth;
+      const curveAdjustedOutput = curveOutput - curveGasCostEth;
+
+      if (curveAdjustedOutput > spandexAdjustedOutput) {
+        recommendation = "curve";
+        reason = `Curve returns ${curveOutput.toFixed(6)} ETH (${curveAdjustedOutput.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ETH (${spandexAdjustedOutput.toFixed(6)} ETH after gas). Curve recommended.`;
+      } else if (spandexAdjustedOutput > curveAdjustedOutput) {
+        recommendation = "spandex";
+        reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ETH (${spandexAdjustedOutput.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ETH (${curveAdjustedOutput.toFixed(6)} ETH after gas). Spandex recommended.`;
+      } else {
+        recommendation = "spandex";
+        reason = `Equal gas-adjusted output: ${spandexAdjustedOutput.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
       }
-    } else if (spandexOutput > curveOutput) {
-      recommendation = "spandex";
-      const diff = spandexOutput - curveOutput;
-      const pct = ((diff / curveOutput) * 100).toFixed(3);
-      reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} more (+${pct}%)`;
-      if (curveGasCostEth > 0 && spandexGasCostEth > 0) {
-        reason += `. Gas: Spandex ${spandexGas} units (~${spandexGasCostEth.toFixed(6)} ETH) vs Curve ${curveGas} units (~${curveGasCostEth.toFixed(6)} ETH)`;
-      } else if (spandexGasCostEth > 0) {
-        reason += `. Spandex gas: ${spandexGas} units (~${spandexGasCostEth.toFixed(6)} ETH)`;
+    } else if (bothHaveGas && !outputIsEth) {
+      // Gas-aware comparison: note gas costs in reason but compare raw output
+      if (curveOutput > spandexOutput) {
+        recommendation = "curve";
+        const diff = curveOutput - spandexOutput;
+        const pct = ((diff / spandexOutput) * 100).toFixed(3);
+        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Curve ${curveGasCostEth.toFixed(6)} ETH vs Spandex ${spandexGasCostEth.toFixed(6)} ETH. Curve recommended (gas-aware).`;
+      } else if (spandexOutput > curveOutput) {
+        recommendation = "spandex";
+        const diff = spandexOutput - curveOutput;
+        const pct = ((diff / curveOutput) * 100).toFixed(3);
+        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Spandex ${spandexGasCostEth.toFixed(6)} ETH vs Curve ${curveGasCostEth.toFixed(6)} ETH. Spandex recommended (gas-aware).`;
+      } else {
+        recommendation = "spandex";
+        reason = `Equal output amounts. Gas costs: Spandex ${spandexGasCostEth.toFixed(6)} ETH vs Curve ${curveGasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
       }
     } else {
-      recommendation = "spandex";
-      reason = "Equal output amounts; defaulting to Spandex for multi-provider coverage";
+      // Fall back to raw output comparison with a note about missing gas
+      const missingGas: string[] = [];
+      if (!spandexHasGas) missingGas.push("Spandex");
+      if (!curveHasGas) missingGas.push("Curve");
+      const missingGasNote =
+        missingGas.length > 0
+          ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw output only.`
+          : "";
+
+      if (curveOutput > spandexOutput) {
+        recommendation = "curve";
+        const diff = curveOutput - spandexOutput;
+        const pct = ((diff / spandexOutput) * 100).toFixed(3);
+        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+      } else if (spandexOutput > curveOutput) {
+        recommendation = "spandex";
+        const diff = spandexOutput - curveOutput;
+        const pct = ((diff / curveOutput) * 100).toFixed(3);
+        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+      } else {
+        recommendation = "spandex";
+        reason = `Equal output amounts; defaulting to Spandex for multi-provider coverage.${missingGasNote}`;
+      }
     }
   } else if (spandex.result) {
     recommendation = "spandex";
@@ -264,80 +476,966 @@ const INDEX_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FlashProfits Quote Finder</title>
+  <title>Compare DEX Routers</title>
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
-    h1 { margin: 0 0 16px; color: #333; }
-    form { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    .form-group { margin-bottom: 16px; position: relative; }
-    label { display: block; font-weight: 600; margin-bottom: 6px; color: #555; }
-    input { width: 100%; padding: 10px; font-size: 14px; font-family: monospace; border: 1px solid #ddd; border-radius: 4px; }
-    input:focus { outline: none; border-color: #0066cc; }
-    .form-row { display: flex; gap: 16px; }
+    /* BRUTALIST DESIGN: High contrast, no border-radius, max 2 fonts */
+    /* Color Palette: Black/White + Blue accent (#0055FF) + Orange accent (#CC2900) + Green (#007700) + Red (#CC0000) */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    
+    /* Respect hidden attribute - critical for wallet state */
+    [hidden] { display: none !important; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #fff;
+      color: #000;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    
+    /* Typography */
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; letter-spacing: -0.02em; }
+    h2, h3, h4 { font-weight: 600; }
+    .mono { font-family: monospace; }
+    
+    /* Form Elements */
+    form { margin-bottom: 1rem; }
+    .form-group { margin-bottom: 0.75rem; position: relative; }
+    label { display: block; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; padding-left: 0.5rem; border-left: 4px solid #0055FF; }
+    input, select {
+      width: 100%;
+      padding: 0.5rem;
+      font-family: monospace;
+      font-size: 0.875rem;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+    }
+    input:focus, select:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    input::placeholder { color: #666; }
+    
+    /* MEV Protection Info Button */
+    .mev-info-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.375rem 0.5rem;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+      cursor: pointer;
+    }
+    .mev-info-btn:hover { background: #f0f0f0; }
+    .mev-info-btn:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    .mev-info-btn svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    /* Settings Gear Icon */
+    .settings-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .settings-btn:hover { background: #f0f0f0; }
+    .settings-btn:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    .settings-btn svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    /* Form Header Row with Chain Selector and Settings */
+    .form-header-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .form-header-row .form-group { flex: 1; margin-bottom: 0; }
+
+    /* Modal Overlay */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 2rem 1rem;
+      overflow-y: auto;
+      z-index: 1000;
+    }
+    .modal-overlay.show { display: flex; }
+
+    /* Modal Dialog - Brutalist Design */
+    .modal {
+      background: #fff;
+      border: 4px solid #000;
+      max-width: 500px;
+      width: 100%;
+      position: relative;
+      margin: auto;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem;
+      border-bottom: 2px solid #000;
+      background: #000;
+      color: #fff;
+    }
+    .modal-title {
+      font-size: 1rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 1.5rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 0.25rem;
+    }
+    .modal-close:hover { background: #333; }
+    .modal-close:focus { outline: 2px solid #0055FF; }
+    .modal-body {
+      padding: 1rem;
+    }
+    .modal-section {
+      margin-bottom: 1rem;
+    }
+    .modal-section:last-child { margin-bottom: 0; }
+    .modal-text {
+      font-size: 0.875rem;
+      line-height: 1.6;
+      margin-bottom: 0.75rem;
+    }
+    .modal-link {
+      color: #0055FF;
+      text-decoration: underline;
+      font-weight: 600;
+    }
+    .modal-link:hover { text-decoration: none; }
+
+    /* Chain-specific content */
+    .mev-chain-message {
+      border: 2px solid #000;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+      background: #f8f8f8;
+    }
+    .mev-chain-message.ethereum { border-color: #0055FF; }
+    .mev-chain-message.bsc { border-color: #F0B90B; }
+    .mev-chain-message.l2 { border-color: #666; }
+    .mev-chain-message.other { border-color: #999; }
+
+    .mev-chain-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+
+    /* Add to Wallet Button */
+    .add-to-wallet-btn {
+      display: block;
+      width: 100%;
+      margin-top: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.625rem 1rem;
+      background: #0055FF;
+      color: #fff;
+      border: 2px solid #000;
+      cursor: pointer;
+    }
+    .add-to-wallet-btn:hover { background: #0046CC; }
+    .add-to-wallet-btn:disabled {
+      background: #ccc;
+      color: #666;
+      cursor: not-allowed;
+    }
+    .add-to-wallet-btn:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+
+    .wallet-required-note {
+      font-size: 0.75rem;
+      color: #666;
+      font-style: italic;
+      margin-top: 0.25rem;
+    }
+
+    /* Settings Modal Section */
+    .settings-section {
+      margin-bottom: 1.25rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #e0e0e0;
+    }
+    .settings-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+    .settings-section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid #000;
+    }
+    .local-tokens-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid #000;
+    }
+    .local-tokens-header .settings-section-title {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .settings-placeholder {
+      font-size: 0.875rem;
+      color: #666;
+      font-style: italic;
+      padding: 0.5rem;
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
+    }
+
+    /* Tokenlist Sources */
+    .tokenlist-add-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .tokenlist-add-row input {
+      flex: 1;
+      min-width: 0;
+    }
+    .tokenlist-entry {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      border: 1px solid #e0e0e0;
+      margin-bottom: 0.5rem;
+      background: #fafafa;
+    }
+    .tokenlist-entry:last-child { margin-bottom: 0; }
+    .tokenlist-entry.disabled { opacity: 0.5; background: #f0f0f0; }
+    .tokenlist-entry.error { border-color: #CC0000; background: #fff0f0; }
+    .tokenlist-entry-name {
+      flex: 1;
+      min-width: 0;
+      font-weight: 600;
+      font-size: 0.875rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tokenlist-entry-count {
+      font-size: 0.75rem;
+      color: #666;
+      white-space: nowrap;
+    }
+    .tokenlist-entry-error {
+      font-size: 0.75rem;
+      color: #CC0000;
+      font-weight: 600;
+      margin-left: 0.25rem;
+    }
+    .tokenlist-chain-warning {
+      font-size: 0.75rem;
+      color: #CC7A00;
+      font-weight: 600;
+      margin-left: 0.25rem;
+    }
+    .tokenlist-trust-warning {
+      background: #FFF3CD;
+      border: 2px solid #CC7A00;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+    .tokenlist-trust-warning strong {
+      font-weight: 700;
+      color: #856404;
+    }
+    .tokenlist-toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background: #ccc;
+      border: 2px solid #000;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .tokenlist-toggle::after {
+      content: '';
+      position: absolute;
+      top: 1px;
+      left: 1px;
+      width: 14px;
+      height: 14px;
+      background: #fff;
+      border: 1px solid #000;
+      transition: transform 0.15s;
+    }
+    .tokenlist-toggle.on {
+      background: #0055FF;
+    }
+    .tokenlist-toggle.on::after {
+      transform: translateX(16px);
+    }
+    .tokenlist-remove-btn {
+      background: transparent;
+      border: none;
+      color: #666;
+      font-size: 1rem;
+      padding: 0 0.25rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .tokenlist-remove-btn:hover { color: #CC0000; }
+    .tokenlist-remove-btn:focus { outline: 2px solid #0055FF; }
+    .tokenlist-retry-btn {
+      font-size: 0.625rem;
+      padding: 0.125rem 0.25rem;
+      background: #0055FF;
+      color: #fff;
+      border-color: #0055FF;
+    }
+
+    /* Local Token Entry */
+    .local-token-entry {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      border: 1px solid #e0e0e0;
+      margin-bottom: 0.5rem;
+      background: #fafafa;
+    }
+    .local-token-entry:last-child { margin-bottom: 0; }
+    .local-token-symbol {
+      font-weight: 700;
+      font-size: 0.875rem;
+      min-width: 60px;
+    }
+    .local-token-address {
+      font-family: monospace;
+      font-size: 0.625rem;
+      color: #666;
+      flex: 1;
+      word-break: break-all;
+    }
+    .local-token-chain {
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.125rem 0.25rem;
+      background: #e0e0e0;
+      color: #666;
+      white-space: nowrap;
+    }
+    .local-token-remove-btn {
+      background: transparent;
+      border: none;
+      color: #666;
+      font-size: 1rem;
+      padding: 0 0.25rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .local-token-remove-btn:hover { color: #CC0000; }
+    .local-token-remove-btn:focus { outline: 2px solid #0055FF; }
+
+    /* Local Tokens Actions Row */
+    .local-tokens-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .btn-import-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      margin: 0;
+    }
+    .btn-import-label input[type="file"] {
+      display: none;
+    }
+
+    /* Unrecognized Token Popup */
+    .unrecognized-token-info {
+      border: 2px solid #CC7A00;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+      background: #fff8f0;
+    }
+    .unrecognized-token-address {
+      font-family: monospace;
+      font-size: 0.75rem;
+      word-break: break-all;
+      background: #f0f0f0;
+      padding: 0.375rem 0.5rem;
+      border: 1px solid #e0e0e0;
+      margin-top: 0.5rem;
+    }
+    .unrecognized-token-loading {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #666;
+      padding: 0.75rem;
+    }
+    .unrecognized-token-loading::before {
+      content: '';
+      width: 16px;
+      height: 16px;
+      border: 2px solid #e0e0e0;
+      border-top-color: #0055FF;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .unrecognized-token-metadata {
+      padding: 0.75rem;
+      border: 1px solid #e0e0e0;
+      background: #f8f8f8;
+    }
+    .unrecognized-token-field {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.375rem;
+    }
+    .unrecognized-token-field:last-child { margin-bottom: 0; }
+    .unrecognized-token-field-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #666;
+      min-width: 80px;
+    }
+    .unrecognized-token-field-value {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    .unrecognized-token-error {
+      font-size: 0.875rem;
+      color: #CC0000;
+      font-weight: 600;
+      padding: 0.75rem;
+      border: 2px solid #CC0000;
+      background: #fff0f0;
+    }
+    .unrecognized-token-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .unrecognized-token-actions .btn-primary {
+      flex: 1;
+    }
+    .unrecognized-token-actions .btn-secondary {
+      flex: 1;
+    }
+
+    /* Source badge in autocomplete */
+    .autocomplete-source {
+      font-size: 0.5rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.125rem 0.25rem;
+      background: #e0e0e0;
+      color: #666;
+      margin-left: 0.25rem;
+    }
+
+    /* Form Row Layout */
+    .form-row { display: flex; gap: 1rem; }
     .form-row .form-group { flex: 1; }
-    button { padding: 12px 24px; font-size: 16px; cursor: pointer; background: #0066cc; color: white; border: none; border-radius: 4px; }
-    button:hover { background: #0052a3; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .form-row .form-group.narrow { flex: 0 0 120px; }
+
+    /* Non-collapsible Form Row - stays horizontal even at 375px */
+    .form-row-fixed { display: flex; gap: 0.5rem; }
+    .form-row-fixed .form-group { flex: 1; min-width: 0; }
+    .form-row-fixed .form-group.amount-group { flex: 0 0 150px; }
+    
+    /* Buttons - Accent Color: Electric Blue #0055FF (color-blind safe) */
+    button {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.625rem 1rem;
+      cursor: pointer;
+      border: 2px solid #000;
+      background: #fff;
+      color: #000;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    button:hover { background: #f0f0f0; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    
+    .btn-primary {
+      background: #0055FF;
+      color: #fff;
+      border-color: #0055FF;
+    }
+    .btn-primary:hover { background: #0046CC; }
+    
+    .btn-secondary {
+      background: #000;
+      color: #fff;
+    }
+    .btn-secondary:hover { background: #333; }
+
+    /* Slippage Preset Buttons - Brutalist style */
+    .slippage-section { max-width: 300px; }
+    .slippage-label-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+    .slippage-label {
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding-left: 0.5rem;
+      border-left: 4px solid #0055FF;
+    }
+    .slippage-presets {
+      display: flex;
+      gap: 0.25rem;
+      flex-wrap: wrap;
+    }
+    .slippage-preset-btn {
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.5rem;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+      cursor: pointer;
+      min-width: 40px;
+    }
+    .slippage-preset-btn:hover { background: #f0f0f0; }
+    .slippage-preset-btn.active {
+      background: #000;
+      color: #fff;
+    }
+    .slippage-preset-btn:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    .slippage-input-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .slippage-input-row input {
+      width: 80px;
+      padding: 0.5rem;
+      font-family: monospace;
+      font-size: 0.875rem;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+    }
+    .slippage-input-row input:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    .slippage-hint {
+      font-size: 0.625rem;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Tokenlist URL Input */
+    .tokenlist-url-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .tokenlist-url-row input {
+      flex: 1;
+      min-width: 0;
+    }
+    .btn-small {
+      font-size: 0.75rem;
+      padding: 0.375rem 0.625rem;
+      white-space: nowrap;
+    }
+    .btn-small.btn-secondary {
+      background: #666;
+      color: #fff;
+      border-color: #666;
+    }
+    .btn-small.btn-secondary:hover { background: #555; }
+    .tokenlist-message {
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+      min-height: 1rem;
+    }
+    .tokenlist-message.error { color: #CC0000; font-weight: 600; }
+    .tokenlist-message.success { color: #007700; }
+    .tokenlist-message.loading { color: #666; font-style: italic; }
+
+    /* Wallet Section - Integrated into form flow (no extra border/section) */
+    .wallet-group {
+      margin-bottom: 0.75rem;
+    }
+    .wallet-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .wallet-status {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    .wallet-address { font-family: monospace; font-size: 0.75rem; padding-left: 0.375rem; border-left: 3px solid #0055FF; word-break: break-all; }
+    .wallet-message {
+      font-size: 0.75rem;
+      font-style: italic;
+      margin-top: 0.25rem;
+    }
+    .wallet-message.error { color: #000; font-weight: 600; }
+    .wallet-provider-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      min-width: 200px;
+      max-height: 300px;
+      overflow-y: auto;
+      background: #fff;
+      border: 2px solid #000;
+      z-index: 100;
+      margin-top: 0.25rem;
+    }
+    .wallet-provider-option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-align: left;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-bottom: 1px solid #000;
+      padding: 0.5rem;
+      font-size: 0.875rem;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+    .wallet-provider-option:last-child { border-bottom: none; }
+    .wallet-provider-option:hover { background: #f0f0f0; }
+    .wallet-provider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wallet-provider-icon, .wallet-connected-icon {
+      width: 18px;
+      height: 18px;
+      object-fit: cover;
+      background: #e0e0e0;
+      flex-shrink: 0;
+    }
+    
+    /* Autocomplete */
+    .autocomplete-list {
+      position: absolute;
+      z-index: 50;
+      background: #fff;
+      border: 2px solid #000;
+      border-top: none;
+      max-height: 240px;
+      overflow-y: auto;
+      min-width: 320px;
+      width: max-content;
+      max-width: 450px;
+      display: none;
+    }
+    .autocomplete-list.show { display: block; }
+    .autocomplete-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.375rem 0.5rem;
+      cursor: pointer;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover, .autocomplete-item.active { background: #f0f0f0; }
+    .autocomplete-logo {
+      width: 18px;
+      height: 18px;
+      object-fit: cover;
+      background: #e0e0e0;
+      flex-shrink: 0;
+    }
+    .autocomplete-meta { min-width: 0; flex: 1; }
+    .autocomplete-title { display: flex; align-items: baseline; gap: 0.25rem; }
+    .autocomplete-symbol { font-weight: 600; font-size: 0.875rem; }
+    .autocomplete-name { color: #666; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .autocomplete-addr { font-family: monospace; color: #666; font-size: 0.625rem; word-break: break-all; }
+    
+    /* Results Section - Inline below form */
     #result { display: none; }
     #result.show { display: block; }
-    .result-box { background: #1e1e1e; color: #d4d4d4; padding: 20px; border-radius: 0 0 8px 8px; }
-    .error { color: #e74c3c; }
-    .result-header { color: #888; margin-bottom: 12px; font-size: 14px; }
-    .field { margin-bottom: 12px; }
-    .field-label { color: #888; font-size: 12px; text-transform: uppercase; }
-    .field-value { color: #4ec9b0; word-break: break-all; }
-    .field-value.number { color: #b5cea8; }
-    .provider-tag { display: inline-block; background: #264f78; color: #9cdcfe; padding: 3px 10px; border-radius: 4px; font-size: 13px; margin-left: 8px; }
-    .recommendation-banner { padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; font-size: 13px; }
-    .recommendation-banner.winner { background: #1a3a1a; color: #4ec9b0; border: 1px solid #2d5a2d; }
-    .recommendation-banner.loser { background: #3a2a1a; color: #d4a054; border: 1px solid #5a3a1a; }
-    .recommendation-banner.error { background: #3a1a1a; color: #e74c3c; border: 1px solid #5a1a1a; }
-    .tabs { display: flex; gap: 0; }
-    .tab { padding: 10px 20px; cursor: pointer; background: #ccc; color: #555; border: none; border-radius: 8px 8px 0 0; font-size: 14px; font-weight: 600; }
-    .tab.active { background: #1e1e1e; color: #d4d4d4; }
+    
+    /* Primary Result - Output Amount + Actions Inline */
+    .result-primary {
+      border: 2px solid #000;
+      border-left-width: 6px;
+      padding: 1rem;
+      margin-bottom: 0.5rem;
+      background: #fff;
+    }
+    .result-primary.winner { border-left-color: #0055FF; }
+    .result-primary.alternative { border-left-color: #CC2900; }
+    .result-output {
+      font-size: 2rem;
+      font-weight: 700;
+      font-family: monospace;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .result-output-label {
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #666;
+      margin-bottom: 0.125rem;
+    }
+    /* Flat label style for recommendation badges - not button-like */
+    .result-recommendation {
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 0.5rem;
+      padding: 0;
+      display: inline-block;
+      border: none;
+      border-bottom: 2px solid;
+    }
+    .result-recommendation.winner { color: #0055FF; border-bottom-color: #0055FF; }
+    .result-recommendation.alternative { color: #CC2900; border-bottom-color: #CC2900; }
+    
+    /* Transaction Buttons - Step Indicator Pattern */
+    .tx-actions { margin-top: 1rem; padding-top: 0.75rem; border-top: 2px solid #000; }
+    .tx-steps { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+    .tx-step {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .tx-step-num {
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .tx-btn {
+      font-size: 0.875rem;
+      padding: 0.625rem 1rem;
+      border: 2px solid #000;
+      background: #fff;
+      color: #000;
+      cursor: pointer;
+    }
+    .tx-btn.swap-btn { background: #0055FF; color: #fff; border-color: #0055FF; }
+    .tx-btn.swap-btn:hover { background: #0046CC; }
+    .tx-btn.approve-btn { background: #0055FF; color: #fff; border-color: #0055FF; }
+    .tx-btn.approve-btn:hover { background: #0046CC; }
+    .tx-btn.approved { background: #007700; color: #fff; border-color: #007700; cursor: default; }
+    .tx-btn.approved:hover { background: #007700; }
+    .tx-btn.disabled, .tx-btn.wallet-required { 
+      opacity: 0.4; 
+      cursor: not-allowed; 
+      background: #e0e0e0;
+      color: #666;
+      border-color: #999;
+    }
+    .tx-btn.disabled:hover, .tx-btn.wallet-required:hover { background: #e0e0e0; }
+    .tx-checkmark {
+      font-size: 0.875rem;
+      color: #007700;
+      margin-left: 0.25rem;
+      font-weight: 700;
+    }
+    .tx-status {
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    /* Status uses text + weight, not just color */
+    .tx-status.pending::before { content: "PENDING: "; }
+    .tx-status.success::before { content: "SUCCESS: "; }
+    .tx-status.error::before { content: "FAILED: "; }
+    .tx-status.pending { color: #666; }
+    .tx-status.success { color: #007700; background: #e8e8e8; padding: 0.125rem 0.25rem; }
+    .tx-status.error { color: #CC0000; background: #f0f0f0; padding: 0.125rem 0.25rem; border: 1px solid #CC0000; }
+    
+    /* Tabs - Compact */
+    .tabs {
+      display: flex;
+      border: 2px solid #000;
+      border-bottom: none;
+    }
+    .tab {
+      flex: 1;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #fff;
+      color: #666;
+      border: none;
+      border-right: 2px solid #000;
+      cursor: pointer;
+    }
+    .tab:last-child { border-right: none; }
+    .tab.active { background: #000; color: #fff; border-bottom: 3px solid #0055FF; }
+    .tab.active[data-tab="alternative"] { border-bottom-color: #CC2900; }
+    .tab:hover:not(.active) { background: #f0f0f0; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
-    .route-step { background: #2d2d2d; padding: 10px; border-radius: 4px; margin: 8px 0; }
-    .route-step-header { color: #dcdcaa; margin-bottom: 6px; }
-    .autocomplete-list { position: absolute; z-index: 10; background: white; border: 1px solid #ddd; border-top: none; border-radius: 0 0 4px 4px; max-height: 200px; overflow-y: auto; width: 100%; display: none; }
-    .autocomplete-list.show { display: block; }
-    .autocomplete-item { padding: 8px 10px; cursor: pointer; font-size: 13px; font-family: monospace; }
-    .autocomplete-item:hover, .autocomplete-item.active { background: #e8f0fe; }
-    .autocomplete-item .symbol { font-weight: 600; color: #333; font-family: system-ui, sans-serif; }
-    .autocomplete-item .addr { color: #888; font-size: 11px; margin-left: 6px; }
-    .tokenlist-section { background: white; padding: 16px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    .tokenlist-section summary { cursor: pointer; font-weight: 600; color: #555; }
-    .tokenlist-section textarea { width: 100%; height: 120px; margin-top: 10px; font-family: monospace; font-size: 12px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-    .tokenlist-actions { margin-top: 8px; display: flex; gap: 8px; }
-    .tokenlist-actions button { padding: 6px 14px; font-size: 13px; }
-    .btn-secondary { background: #666; }
-    .btn-secondary:hover { background: #555; }
-    .btn-danger { background: #c0392b; }
-    .btn-danger:hover { background: #a93226; }
+    
+    /* Secondary Details - Collapsible */
+    .details-toggle {
+      width: 100%;
+      text-align: left;
+      padding: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #f0f0f0;
+      border: 2px solid #000;
+      border-top: none;
+      cursor: pointer;
+    }
+    .details-toggle:hover { background: #e0e0e0; }
+    .details-toggle::after { content: " [+]"; font-family: monospace; }
+    .details-toggle.open::after { content: " [-]"; }
+    .details-content {
+      display: none;
+      border: 2px solid #000;
+      border-top: none;
+      padding: 0.75rem;
+      background: #f8f8f8;
+    }
+    .details-content.open { display: block; }
+    
+    /* Field Display */
+    .field { margin-bottom: 0.5rem; }
+    .field-label {
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #666;
+      margin-bottom: 0.125rem;
+    }
+    .field-value {
+      font-family: monospace;
+      font-size: 0.75rem;
+      word-break: break-all;
+    }
+    .field-value.number { font-weight: 600; }
+    
+    /* Route Steps */
+    .route-step {
+      border: 1px solid #000;
+      padding: 0.5rem;
+      margin: 0.5rem 0;
+      background: #fff;
+    }
+    .route-step-header { font-weight: 600; font-size: 0.75rem; margin-bottom: 0.25rem; }
+    
+    /* Refresh Indicator - Subtle */
+    .refresh-indicator {
+      font-size: 0.625rem;
+      color: #666;
+      padding: 0.25rem 0.5rem;
+      border: 1px solid #e0e0e0;
+      border-left: 3px solid #0055FF;
+      background: #fafafa;
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .refresh-indicator-status { font-style: italic; }
+    .refresh-indicator-status.error { color: #CC0000; font-weight: 600; font-style: normal; }
+    
+    /* Error Display */
+    .error-message {
+      border: 2px solid #000;
+      padding: 0.75rem;
+      background: #f8f8f8;
+      font-weight: 600;
+    }
+    
+    /* Responsive */
+    @media (max-width: 600px) {
+      .form-row { flex-direction: column; }
+      .form-row .form-group.narrow { flex: 1; }
+      /* Note: .form-row-fixed does NOT collapse - stays horizontal at all widths */
+    }
   </style>
 </head>
 <body>
-  <h1>FlashProfits Quote Finder</h1>
-
-  <details class="tokenlist-section">
-    <summary>Token List (autocomplete)</summary>
-    <p style="color: #888; font-size: 13px; margin: 8px 0 4px;">
-      Paste a <a href="https://tokenlists.org" target="_blank">tokenlist.json</a> URL or raw JSON. Tokens for the selected chain will appear as autocomplete suggestions.
-    </p>
-    <textarea id="tokenlistInput" placeholder='https://tokens.uniswap.org or paste raw JSON...'></textarea>
-    <div class="tokenlist-actions">
-      <button type="button" id="loadTokenlist">Load</button>
-      <button type="button" id="clearTokenlist" class="btn-danger">Clear</button>
-    </div>
-    <div id="tokenlistStatus" style="font-size: 12px; color: #888; margin-top: 6px;"></div>
-  </details>
-
+  <h1>Compare DEX Routers</h1>
+  
+  <!-- Wallet Section - Inline with trading flow -->
   <form id="form">
-    <div class="form-row">
+    <!-- Row 1: Chain Selector + Settings Gear -->
+    <div class="form-header-row">
       <div class="form-group">
         <label for="chainId">Chain</label>
-        <select id="chainId" style="width: 200px; padding: 10px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px;">
+        <select id="chainId">
           <option value="1">Ethereum (1)</option>
           <option value="8453" selected>Base (8453)</option>
           <option value="42161">Arbitrum (42161)</option>
@@ -347,462 +1445,3016 @@ const INDEX_HTML = `<!DOCTYPE html>
           <option value="43114">Avalanche (43114)</option>
         </select>
       </div>
+      <button type="button" id="settingsBtn" class="settings-btn" aria-label="Open settings" aria-haspopup="dialog" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </div>
+    <!-- Row 2: Wallet (integrated into form flow) -->
+    <div class="form-group wallet-group">
+      <div class="wallet-row">
+        <button type="button" id="connectWalletBtn">Connect Wallet</button>
+        <div id="walletConnected" class="wallet-row" hidden style="gap: 0.5rem;">
+          <img id="walletConnectedIcon" class="wallet-connected-icon" alt="" hidden>
+          <span id="walletConnectedName" class="wallet-status"></span>
+          <span id="walletConnectedAddress" class="wallet-address"></span>
+          <button type="button" id="disconnectWalletBtn" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Disconnect</button>
+        </div>
+      </div>
+      <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
+      <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
+    </div>
+    <!-- Row 3: From Token + Amount (non-collapsible, stays horizontal at 375px) -->
+    <div class="form-row-fixed">
       <div class="form-group">
-        <label for="slippageBps">Slippage (bps)</label>
-        <input type="text" id="slippageBps" value="50" style="width: 120px;">
+        <label for="from">From Token</label>
+        <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+        <div class="autocomplete-list" id="fromAutocomplete"></div>
+      </div>
+      <div class="form-group amount-group">
+        <label for="amount">Amount</label>
+        <input type="text" id="amount" value="1000">
       </div>
     </div>
+    <!-- Row 4: To Token -->
     <div class="form-group">
-      <label for="from">From (token address)</label>
-      <input type="text" id="from" placeholder="0x... or search by symbol" autocomplete="off">
-      <div class="autocomplete-list" id="fromAutocomplete"></div>
-    </div>
-    <div class="form-group">
-      <label for="to">To (token address)</label>
-      <input type="text" id="to" placeholder="0x... or search by symbol" autocomplete="off">
+      <label for="to">To Token</label>
+      <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
     </div>
-    <div class="form-group">
-      <label for="amount">Input Amount (human-readable)</label>
-      <input type="text" id="amount" value="1000" style="width: 200px;">
+    <!-- Row 5: Slippage with presets -->
+    <div class="form-group slippage-section">
+      <div class="slippage-label-row">
+        <span class="slippage-label">Slippage</span>
+        <div class="slippage-presets">
+          <button type="button" class="slippage-preset-btn" data-bps="10">10</button>
+          <button type="button" class="slippage-preset-btn active" data-bps="50">50</button>
+          <button type="button" class="slippage-preset-btn" data-bps="100">100</button>
+          <button type="button" class="slippage-preset-btn" data-bps="300">300</button>
+        </div>
+      </div>
+      <div class="slippage-input-row">
+        <input type="text" id="slippageBps" value="50" aria-label="Slippage (bps)">
+        <span class="slippage-hint">bps (1 bps = 0.01%)</span>
+      </div>
     </div>
-    <div class="form-group">
-      <label for="sender">Sender (optional, for approval check)</label>
-      <input type="text" id="sender" placeholder="0x...">
-    </div>
-    <button type="submit" id="submit">Compare Quotes</button>
+    <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
   </form>
 
   <div id="result">
+    <div id="refreshIndicator" class="refresh-indicator" hidden>
+      <span id="refreshCountdown">Auto-refresh in 15s</span>
+      <span id="refreshStatus" class="refresh-indicator-status" aria-live="polite"></span>
+    </div>
     <div class="tabs">
       <button class="tab active" data-tab="recommended" id="tabRecommended">Recommended</button>
       <button class="tab" data-tab="alternative" id="tabAlternative">Alternative</button>
     </div>
-    <div class="result-box">
-      <div class="tab-content active" id="recommendedContent"></div>
-      <div class="tab-content" id="alternativeContent"></div>
+    <div class="tab-content active" id="recommendedContent"></div>
+    <div class="tab-content" id="alternativeContent"></div>
+    <!-- MEV Protection info button - positioned near swap action area -->
+    <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 2px solid #000;">
+      <button type="button" id="mevInfoBtn" class="mev-info-btn" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        MEV Protection
+      </button>
+    </div>
+  </div>
+
+  <!-- MEV Protection Modal -->
+  <div id="mevModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="mevModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="mevModalTitle" class="modal-title">MEV Protection</h2>
+        <button type="button" id="mevModalClose" class="modal-close" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <p class="modal-text">
+            <strong>MEV (Maximal Extractable Value)</strong> means bots can see your pending swap and front-run it, sandwiching your trade to profit at your expense. A protected RPC sends your transaction directly to block builders, bypassing the public mempool.
+          </p>
+          <p class="modal-text">
+            <a href="https://docs.flashbots.net/flashbots-protect/overview" target="_blank" rel="noopener noreferrer" class="modal-link">Learn more at Flashbots Docs →</a>
+          </p>
+        </div>
+        <div id="mevChainContent" class="modal-section">
+          <!-- Chain-specific content rendered by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="settingsModalTitle" class="modal-title">Settings</h2>
+        <button type="button" id="settingsModalClose" class="modal-close" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Tokenlist Sources Section -->
+        <div class="settings-section">
+          <div class="settings-section-title">Tokenlist Sources</div>
+          <div class="tokenlist-trust-warning">
+            <strong>⚠️ Only load tokenlists from trusted sources.</strong> Malicious tokenlists can contain fake token addresses (e.g., a fake USDC) that could trick you into sending funds to scammers.
+          </div>
+          <div class="tokenlist-add-row">
+            <input type="text" id="tokenlistUrlInput" placeholder="https://tokens.uniswap.org">
+            <button type="button" id="addTokenlistBtn" class="btn-small">Load</button>
+          </div>
+          <div id="tokenlistMessage" class="tokenlist-message" aria-live="polite"></div>
+          <div id="tokenlistSourcesList">
+            <!-- Tokenlist entries rendered by JS -->
+          </div>
+        </div>
+        </div>
+        <!-- Local Tokens Section -->
+        <div class="settings-section">
+          <div class="local-tokens-header">
+            <div class="settings-section-title" style="display: inline;">Local Tokens</div>
+            <div id="localTokensToggle" class="tokenlist-toggle on" role="switch" aria-checked="true" aria-label="Toggle local tokens" tabindex="0"></div>
+          </div>
+          <div class="local-tokens-actions">
+            <button type="button" id="exportLocalTokensBtn" class="btn-small" disabled>Export Tokenlist</button>
+            <label class="btn-small btn-import-label">
+              Import Tokenlist
+              <input type="file" id="importLocalTokensInput" accept=".json" hidden>
+            </label>
+          </div>
+          <div id="localTokensMessage" class="tokenlist-message" aria-live="polite"></div>
+          <div id="localTokensContent">
+            <!-- Local tokens rendered by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unrecognized Token Modal -->
+  <div id="unrecognizedTokenModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="unrecognizedTokenModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="unrecognizedTokenModalTitle" class="modal-title">Unrecognized Token</h2>
+        <button type="button" id="unrecognizedTokenModalClose" class="modal-close" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="unrecognized-token-info">
+          <p class="modal-text">This token address is not in any of your enabled tokenlists. Fetching metadata from the blockchain...</p>
+          <div id="unrecognizedTokenAddress" class="unrecognized-token-address"></div>
+        </div>
+        <div id="unrecognizedTokenLoading" class="unrecognized-token-loading">
+          Fetching token metadata...
+        </div>
+        <div id="unrecognizedTokenMetadata" class="unrecognized-token-metadata" hidden>
+          <div class="unrecognized-token-field">
+            <span class="unrecognized-token-field-label">Name</span>
+            <span id="unrecognizedTokenName" class="unrecognized-token-field-value"></span>
+          </div>
+          <div class="unrecognized-token-field">
+            <span class="unrecognized-token-field-label">Symbol</span>
+            <span id="unrecognizedTokenSymbol" class="unrecognized-token-field-value"></span>
+          </div>
+          <div class="unrecognized-token-field">
+            <span class="unrecognized-token-field-label">Decimals</span>
+            <span id="unrecognizedTokenDecimals" class="unrecognized-token-field-value"></span>
+          </div>
+        </div>
+        <div id="unrecognizedTokenError" class="unrecognized-token-error" hidden></div>
+        <div class="unrecognized-token-actions">
+          <button type="button" id="unrecognizedTokenCancelBtn" class="btn-secondary">Cancel</button>
+          <button type="button" id="unrecognizedTokenSaveBtn" class="btn-primary" disabled>Save to Local List</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <script>
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
-    const BUILTIN_TOKENS = ${JSON.stringify(defaultTokens)};
+    const DEFAULT_TOKENLIST_NAME = 'Default Tokenlist';
 
-    const TOKENLIST_STORAGE_KEY = 'spandex_tokenlist';
-    let userTokens = [];
+    // Multi-tokenlist data model:
+    // - tokenlistSources: array of {url, enabled, name, tokens, error?}
+    // - Each token in tokens array has _source field
+    let tokenlistSources = [];
+    // Legacy single-tokenlist URL key (for migration)
+    const OLD_CUSTOM_TOKENLIST_URL_KEY = 'customTokenlistUrl';
+    // New multi-tokenlist storage key
+    const CUSTOM_TOKENLISTS_KEY = 'customTokenlists';
+    // Default tokenlist enabled state (stored separately since default is not in customTokenlists)
+    const DEFAULT_TOKENLIST_ENABLED_KEY = 'defaultTokenlistEnabled';
+    // Local tokenlist key - stores user-saved tokens in Uniswap tokenlist format
+    const LOCAL_TOKEN_LIST_KEY = 'localTokenList';
+    const LOCAL_TOKENS_SOURCE_NAME = 'Local Tokens';
+    // Local tokens enabled state (toggle in settings panel)
+    const LOCAL_TOKENS_ENABLED_KEY = 'localTokensEnabled';
 
-    function loadStoredTokenlist() {
-      try {
-        const stored = localStorage.getItem(TOKENLIST_STORAGE_KEY);
-        if (stored) {
-          userTokens = JSON.parse(stored);
-          document.getElementById('tokenlistStatus').textContent =
-            userTokens.length + ' custom tokens loaded from storage';
-        }
-      } catch {}
-    }
+    const walletProvidersByUuid = new Map();
+    let fallbackWalletProvider = null;
+    let connectedWalletProvider = null;
+    let connectedWalletAddressValue = '';
+    let connectedWalletInfo = null;
+    let currentQuoteChainId = null;
+    const AUTO_REFRESH_SECONDS = 15;
+    const autoRefreshState = {
+      timerId: null,
+      secondsRemaining: AUTO_REFRESH_SECONDS,
+      lastParams: null,
+      paused: false,
+      inFlight: false,
+      errorMessage: '',
+    };
+    let compareRequestSequence = 0;
 
-    function saveTokenlist(tokens) {
-      userTokens = tokens;
-      localStorage.setItem(TOKENLIST_STORAGE_KEY, JSON.stringify(tokens));
-    }
+    const CHAIN_ID_HEX_MAP = Object.freeze({
+      '1': '0x1',
+      '10': '0xa',
+      '56': '0x38',
+      '137': '0x89',
+      '8453': '0x2105',
+      '42161': '0xa4b1',
+      '43114': '0xa86a',
+    });
+    const CHAIN_NAMES = Object.freeze({
+      '1': 'Ethereum',
+      '10': 'Optimism',
+      '56': 'BSC',
+      '137': 'Polygon',
+      '8453': 'Base',
+      '42161': 'Arbitrum',
+      '43114': 'Avalanche',
+    });
+    const MAX_UINT256_HEX = 'f'.repeat(64);
 
-    function getTokensForChain(chainId) {
-      const cid = Number(chainId);
-      const all = [...BUILTIN_TOKENS, ...userTokens];
-      const seen = new Set();
-      return all.filter(t => {
-        if (t.chainId !== cid) return false;
-        const addr = t.address.toLowerCase();
-        if (seen.has(addr)) return false;
-        seen.add(addr);
-        return true;
+    const connectWalletBtn = document.getElementById('connectWalletBtn');
+    const walletConnected = document.getElementById('walletConnected');
+    const walletConnectedIcon = document.getElementById('walletConnectedIcon');
+    const walletConnectedName = document.getElementById('walletConnectedName');
+    const walletConnectedAddress = document.getElementById('walletConnectedAddress');
+    const disconnectWalletBtn = document.getElementById('disconnectWalletBtn');
+    const walletProviderMenu = document.getElementById('walletProviderMenu');
+    const walletMessage = document.getElementById('walletMessage');
+    const chainIdInput = document.getElementById('chainId');
+    const fromInput = document.getElementById('from');
+    const toInput = document.getElementById('to');
+    const amountInput = document.getElementById('amount');
+    const slippageInput = document.getElementById('slippageBps');
+    const slippagePresetBtns = document.querySelectorAll('.slippage-preset-btn');
+
+    // Update active state on slippage preset buttons
+    function updateSlippagePresetActive(value) {
+      const bpsValue = String(value || '').trim();
+      slippagePresetBtns.forEach((btn) => {
+        const btnBps = btn.dataset.bps;
+        btn.classList.toggle('active', btnBps === bpsValue);
       });
     }
 
-    async function handleLoadTokenlist() {
-      const input = document.getElementById('tokenlistInput').value.trim();
-      const status = document.getElementById('tokenlistStatus');
-      if (!input) { status.textContent = 'Please enter a URL or JSON.'; return; }
-
-      status.textContent = 'Loading...';
-      try {
-        let data;
-        if (input.startsWith('http://') || input.startsWith('https://')) {
-          const res = await fetch(input);
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          data = await res.json();
-        } else {
-          data = JSON.parse(input);
+    // Slippage preset button click handler
+    slippagePresetBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const bps = btn.dataset.bps;
+        if (bps) {
+          slippageInput.value = bps;
+          updateSlippagePresetActive(bps);
         }
-        const tokens = data.tokens || data;
-        if (!Array.isArray(tokens)) throw new Error('Expected tokens array');
-        saveTokenlist(tokens);
-        status.textContent = tokens.length + ' custom tokens loaded and saved.';
-      } catch (err) {
-        status.textContent = 'Error: ' + err.message;
+      });
+    });
+
+    // On custom input, update preset active state
+    slippageInput.addEventListener('input', () => {
+      updateSlippagePresetActive(slippageInput.value);
+    });
+
+    const mevInfoBtn = document.getElementById('mevInfoBtn');
+    const mevModal = document.getElementById('mevModal');
+    const mevModalClose = document.getElementById('mevModalClose');
+    const mevChainContent = document.getElementById('mevChainContent');
+    const refreshIndicator = document.getElementById('refreshIndicator');
+    const refreshCountdown = document.getElementById('refreshCountdown');
+    const refreshStatus = document.getElementById('refreshStatus');
+
+    // Settings Modal Elements
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const settingsModalClose = document.getElementById('settingsModalClose');
+
+    function hasConnectedWallet() {
+      return Boolean(connectedWalletProvider && connectedWalletAddressValue);
+    }
+
+    function getChainIdHex(chainId) {
+      const id = String(chainId || '').trim();
+      if (!id) return '0x0';
+      if (CHAIN_ID_HEX_MAP[id]) return CHAIN_ID_HEX_MAP[id];
+      const parsed = Number(id);
+      if (!Number.isFinite(parsed) || parsed < 0) return '0x0';
+      return '0x' + parsed.toString(16);
+    }
+
+    function toHexQuantity(value) {
+      if (typeof value !== 'string') return '0x0';
+      const trimmed = value.trim().toLowerCase();
+      if (!trimmed) return '0x0';
+      if (trimmed.startsWith('0x')) return trimmed;
+      try {
+        return '0x' + BigInt(trimmed).toString(16);
+      } catch {
+        return '0x0';
       }
     }
 
-    function handleClearTokenlist() {
-      userTokens = [];
-      localStorage.removeItem(TOKENLIST_STORAGE_KEY);
-      document.getElementById('tokenlistStatus').textContent = 'Custom token list cleared. Built-in tokens still available.';
-      document.getElementById('tokenlistInput').value = '';
+    function isAddressLike(address) {
+      return /^0x[a-fA-F0-9]{40}$/.test(String(address || '').trim());
     }
 
-    document.getElementById('loadTokenlist').addEventListener('click', handleLoadTokenlist);
-    document.getElementById('clearTokenlist').addEventListener('click', handleClearTokenlist);
+    function encodeApproveCalldata(spender) {
+      const normalizedSpender = String(spender || '').trim();
+      if (!isAddressLike(normalizedSpender)) {
+        throw new Error('Invalid approval spender address');
+      }
+      const spenderWord = normalizedSpender.toLowerCase().replace(/^0x/, '').padStart(64, '0');
+      return '0x095ea7b3' + spenderWord + MAX_UINT256_HEX;
+    }
+
+    function updateTransactionActionStates() {
+      const walletConnectedValue = hasConnectedWallet();
+      document.querySelectorAll('.tx-btn').forEach((button) => {
+        // Skip buttons that are intentionally disabled by step indicator or transaction logic
+        // - data-locked: approval already completed, button locked in approved state
+        // - data-pending: transaction in flight
+        // - .disabled CSS class: step indicator marks swap disabled before approval
+        if (
+          button.dataset.locked === 'true' ||
+          button.dataset.pending === 'true' ||
+          button.classList.contains('disabled')
+        ) {
+          return;
+        }
+
+        if (!walletConnectedValue) {
+          button.classList.add('wallet-required');
+          button.setAttribute('aria-disabled', 'true');
+          button.disabled = false;
+        } else {
+          button.classList.remove('wallet-required');
+          button.removeAttribute('aria-disabled');
+          button.disabled = false;
+        }
+      });
+    }
+
+    // MEV Protection Modal
+    const FLASHBOTS_RPC_URL = 'https://rpc.flashbots.net';
+    const BLOXROUTE_BSC_RPC_URL = 'https://bsc.rpc.blxrbdn.com';
+    const ETHEREUM_CHAIN_ID = 1;
+    const BSC_CHAIN_ID = 56;
+    const BASE_CHAIN_ID = 8453;
+    const ARBITRUM_CHAIN_ID = 42161;
+    const OPTIMISM_CHAIN_ID = 10;
+    const POLYGON_CHAIN_ID = 137;
+    const AVALANCHE_CHAIN_ID = 43114;
+
+    // Modal scroll lock coordination with reference counting
+    // When multiple modals are open, closing one should not restore body overflow
+    // until all modals are closed.
+    let modalScrollLockCount = 0;
+
+    function lockBodyScroll() {
+      modalScrollLockCount++;
+      if (modalScrollLockCount === 1) {
+        document.body.style.overflow = 'hidden';
+      }
+    }
+
+    function unlockBodyScroll() {
+      modalScrollLockCount = Math.max(0, modalScrollLockCount - 1);
+      if (modalScrollLockCount === 0) {
+        document.body.style.overflow = '';
+      }
+    }
+
+    // Open modal
+    function openMevModal() {
+      renderMevChainContent();
+      mevModal.classList.add('show');
+      lockBodyScroll();
+      // Focus the close button for accessibility
+      mevModalClose.focus();
+    }
+
+    // Close modal
+    function closeMevModal() {
+      mevModal.classList.remove('show');
+      unlockBodyScroll();
+      // Return focus to the button that opened the modal
+      mevInfoBtn.focus();
+    }
+
+    // Settings Modal Functions
+    function openSettingsModal() {
+      renderLocalTokens();
+      settingsModal.classList.add('show');
+      settingsBtn.setAttribute('aria-expanded', 'true');
+      lockBodyScroll();
+      // Focus the close button for accessibility
+      settingsModalClose.focus();
+    }
+
+    function closeSettingsModal() {
+      settingsModal.classList.remove('show');
+      settingsBtn.setAttribute('aria-expanded', 'false');
+      unlockBodyScroll();
+      // Return focus to the button that opened the modal
+      settingsBtn.focus();
+    }
+
+    // Local Tokenlist Management
+    function loadLocalTokenList() {
+      try {
+        const data = localStorage.getItem(LOCAL_TOKEN_LIST_KEY);
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (parsed && Array.isArray(parsed.tokens)) {
+            return parsed.tokens.map(t => ({ ...t, _source: LOCAL_TOKENS_SOURCE_NAME }));
+          }
+        }
+      } catch {
+        // Corrupt data, treat as empty
+      }
+      return [];
+    }
+
+    function saveLocalTokenList(tokens) {
+      const payload = {
+        name: 'Local Tokens',
+        timestamp: new Date().toISOString(),
+        tokens: tokens.map(t => ({
+          chainId: t.chainId,
+          address: t.address,
+          name: t.name,
+          symbol: t.symbol,
+          decimals: t.decimals,
+        })),
+      };
+      try {
+        localStorage.setItem(LOCAL_TOKEN_LIST_KEY, JSON.stringify(payload));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
+    // Local tokens enabled/disabled state (toggle in settings panel)
+    function loadLocalTokensEnabled() {
+      try {
+        const data = localStorage.getItem(LOCAL_TOKENS_ENABLED_KEY);
+        if (data !== null) {
+          return data === 'true';
+        }
+      } catch {
+        // Ignore storage errors
+      }
+      // Default to enabled
+      return true;
+    }
+
+    function saveLocalTokensEnabled(enabled) {
+      try {
+        localStorage.setItem(LOCAL_TOKENS_ENABLED_KEY, String(enabled));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
+    function addTokenToLocalList(token) {
+      const existing = loadLocalTokenList();
+      // Check for duplicate by address+chainId
+      const isDuplicate = existing.some(t =>
+        String(t.address).toLowerCase() === String(token.address).toLowerCase() &&
+        Number(t.chainId) === Number(token.chainId)
+      );
+      if (!isDuplicate) {
+        existing.push({ ...token, _source: LOCAL_TOKENS_SOURCE_NAME });
+        saveLocalTokenList(existing);
+      }
+    }
+
+    function removeTokenFromLocalList(address, chainId) {
+      const existing = loadLocalTokenList();
+      const filtered = existing.filter(t =>
+        !(String(t.address).toLowerCase() === String(address).toLowerCase() &&
+          Number(t.chainId) === Number(chainId))
+      );
+      saveLocalTokenList(filtered);
+      renderLocalTokens();
+      refreshAutocomplete();
+    }
+
+    // Local Tokens Export/Import Elements
+    const exportLocalTokensBtn = document.getElementById('exportLocalTokensBtn');
+    const importLocalTokensInput = document.getElementById('importLocalTokensInput');
+    const localTokensMessage = document.getElementById('localTokensMessage');
+
+    function setLocalTokensMessage(text, kind) {
+      localTokensMessage.textContent = text || '';
+      localTokensMessage.className = 'tokenlist-message' + (kind ? ' ' + kind : '');
+    }
+
+    // Export local tokens as Uniswap tokenlist JSON format
+    function exportLocalTokenList() {
+      const localTokens = loadLocalTokenList();
+      if (localTokens.length === 0) {
+        setLocalTokensMessage('No tokens to export', 'error');
+        return;
+      }
+
+      const payload = {
+        name: 'Local Tokens',
+        version: { major: 1, minor: 0, patch: 0 },
+        timestamp: new Date().toISOString(),
+        tokens: localTokens.map(t => ({
+          chainId: t.chainId,
+          address: t.address,
+          name: t.name,
+          symbol: t.symbol,
+          decimals: t.decimals,
+        })),
+      };
+
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      // Create temporary download link
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'local-tokens.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setLocalTokensMessage('Exported ' + localTokens.length + ' token' + (localTokens.length === 1 ? '' : 's'), 'success');
+    }
+
+    // Import tokens from a Uniswap tokenlist JSON file
+    function importLocalTokenList(file) {
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        try {
+          const content = event.target.result;
+          if (typeof content !== 'string') {
+            throw new Error('File content is not text');
+          }
+
+          let parsed;
+          try {
+            parsed = JSON.parse(content);
+          } catch {
+            throw new Error('File is not valid JSON');
+          }
+
+          // Validate Uniswap tokenlist structure
+          if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.tokens)) {
+            throw new Error('File must contain a tokens array');
+          }
+
+          const importedTokens = parsed.tokens;
+          if (importedTokens.length === 0) {
+            throw new Error('Tokenlist contains no tokens');
+          }
+
+          // Validate each token has required fields
+          const validTokens = [];
+          for (const token of importedTokens) {
+            if (
+              typeof token.chainId === 'number' &&
+              typeof token.address === 'string' &&
+              /^0x[a-fA-F0-9]{40}$/.test(token.address) &&
+              typeof token.symbol === 'string' &&
+              typeof token.decimals === 'number'
+            ) {
+              validTokens.push({
+                chainId: token.chainId,
+                address: token.address,
+                name: token.name || token.symbol || 'Unknown',
+                symbol: token.symbol,
+                decimals: token.decimals,
+              });
+            }
+          }
+
+          if (validTokens.length === 0) {
+            throw new Error('No valid tokens found in file');
+          }
+
+          // Merge with existing tokens (dedup by address+chainId)
+          const existing = loadLocalTokenList();
+          let addedCount = 0;
+
+          for (const token of validTokens) {
+            const isDuplicate = existing.some(t =>
+              String(t.address).toLowerCase() === String(token.address).toLowerCase() &&
+              Number(t.chainId) === Number(token.chainId)
+            );
+            if (!isDuplicate) {
+              existing.push({ ...token, _source: LOCAL_TOKENS_SOURCE_NAME });
+              addedCount++;
+            }
+          }
+
+          saveLocalTokenList(existing);
+          renderLocalTokens();
+          refreshAutocomplete();
+
+          if (addedCount === 0) {
+            setLocalTokensMessage('All tokens already exist in your list', 'success');
+          } else {
+            setLocalTokensMessage('Imported ' + addedCount + ' new token' + (addedCount === 1 ? '' : 's'), 'success');
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setLocalTokensMessage('Import error: ' + msg, 'error');
+        }
+      };
+
+      reader.onerror = () => {
+        setLocalTokensMessage('Failed to read file', 'error');
+      };
+
+      reader.readAsText(file);
+    }
+
+    // Wire up export button
+    if (exportLocalTokensBtn) {
+      exportLocalTokensBtn.addEventListener('click', exportLocalTokenList);
+    }
+
+    // Wire up import input
+    if (importLocalTokensInput) {
+      importLocalTokensInput.addEventListener('change', (e) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+          importLocalTokenList(files[0]);
+          // Reset input so same file can be selected again
+          e.target.value = '';
+        }
+      });
+    }
+
+    function renderLocalTokens() {
+      const container = document.getElementById('localTokensContent');
+      if (!container) return;
+
+      const localTokens = loadLocalTokenList();
+      const localTokensEnabled = loadLocalTokensEnabled();
+
+      // Update toggle state
+      const toggle = document.getElementById('localTokensToggle');
+      if (toggle) {
+        toggle.classList.toggle('on', localTokensEnabled);
+        toggle.setAttribute('aria-checked', String(localTokensEnabled));
+      }
+
+      // Update export button disabled state
+      if (exportLocalTokensBtn) {
+        exportLocalTokensBtn.disabled = localTokens.length === 0;
+      }
+
+      if (localTokens.length === 0) {
+        container.innerHTML = '<div class="settings-placeholder">No custom tokens saved</div>';
+        return;
+      }
+
+      let html = '';
+      for (const token of localTokens) {
+        const chainName = CHAIN_NAMES[String(token.chainId)] || 'Chain ' + token.chainId;
+        html += '<div class="local-token-entry' + (localTokensEnabled ? '' : ' disabled') + '" data-address="' + escapeHtml(token.address) + '" data-chain-id="' + token.chainId + '">';
+        html += '<span class="local-token-symbol">' + escapeHtml(token.symbol || '???') + '</span>';
+        html += '<span class="local-token-address">' + escapeHtml(token.address) + '</span>';
+        html += '<span class="local-token-chain">' + escapeHtml(chainName) + '</span>';
+        html += '<button type="button" class="local-token-remove-btn" data-action="remove-local-token" data-address="' + escapeHtml(token.address) + '" data-chain-id="' + token.chainId + '" aria-label="Remove token">&times;</button>';
+        html += '</div>';
+      }
+
+      container.innerHTML = html;
+
+      // Wire up event handlers
+      container.querySelectorAll('[data-action="remove-local-token"]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const btn = e.currentTarget;
+          const address = btn.dataset.address;
+          const chainId = Number(btn.dataset.chainId);
+          if (address && chainId) {
+            removeTokenFromLocalList(address, chainId);
+          }
+        });
+      });
+    }
+
+    // Handle local tokens toggle
+    function handleLocalTokensToggle() {
+      const currentState = loadLocalTokensEnabled();
+      const newState = !currentState;
+      saveLocalTokensEnabled(newState);
+      renderLocalTokens();
+      refreshAutocomplete();
+    }
+
+    // Wire up local tokens toggle
+    const localTokensToggle = document.getElementById('localTokensToggle');
+    if (localTokensToggle) {
+      localTokensToggle.addEventListener('click', handleLocalTokensToggle);
+      localTokensToggle.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleLocalTokensToggle();
+        }
+      });
+    }
+
+    // Unrecognized Token Modal Elements
+    const unrecognizedTokenModal = document.getElementById('unrecognizedTokenModal');
+    const unrecognizedTokenModalClose = document.getElementById('unrecognizedTokenModalClose');
+    const unrecognizedTokenAddress = document.getElementById('unrecognizedTokenAddress');
+    const unrecognizedTokenLoading = document.getElementById('unrecognizedTokenLoading');
+    const unrecognizedTokenMetadata = document.getElementById('unrecognizedTokenMetadata');
+    const unrecognizedTokenName = document.getElementById('unrecognizedTokenName');
+    const unrecognizedTokenSymbol = document.getElementById('unrecognizedTokenSymbol');
+    const unrecognizedTokenDecimals = document.getElementById('unrecognizedTokenDecimals');
+    const unrecognizedTokenError = document.getElementById('unrecognizedTokenError');
+    const unrecognizedTokenCancelBtn = document.getElementById('unrecognizedTokenCancelBtn');
+    const unrecognizedTokenSaveBtn = document.getElementById('unrecognizedTokenSaveBtn');
+
+    // State for the unrecognized token modal
+    let unrecognizedTokenState = {
+      address: '',
+      chainId: 0,
+      metadata: null,
+      targetInput: null, // 'from' or 'to'
+    };
+
+    function openUnrecognizedTokenModal(address, chainId, targetInput) {
+      unrecognizedTokenState = {
+        address: address,
+        chainId: chainId,
+        metadata: null,
+        targetInput: targetInput,
+      };
+
+      // Reset UI
+      unrecognizedTokenAddress.textContent = address;
+      unrecognizedTokenLoading.hidden = false;
+      unrecognizedTokenMetadata.hidden = true;
+      unrecognizedTokenError.hidden = true;
+      unrecognizedTokenSaveBtn.disabled = true;
+      unrecognizedTokenSaveBtn.textContent = 'Save to Local List';
+
+      // Show modal
+      unrecognizedTokenModal.classList.add('show');
+      lockBodyScroll();
+      unrecognizedTokenModalClose.focus();
+
+      // Fetch metadata
+      fetchTokenMetadata(address, chainId);
+    }
+
+    function closeUnrecognizedTokenModal() {
+      unrecognizedTokenModal.classList.remove('show');
+      unlockBodyScroll();
+      // Return focus to the input that triggered the modal
+      if (unrecognizedTokenState.targetInput === 'from') {
+        fromInput.focus();
+      } else if (unrecognizedTokenState.targetInput === 'to') {
+        toInput.focus();
+      }
+      unrecognizedTokenState = {
+        address: '',
+        chainId: 0,
+        metadata: null,
+        targetInput: null,
+      };
+    }
+
+    async function fetchTokenMetadata(address, chainId) {
+      try {
+        const url = '/token-metadata?chainId=' + encodeURIComponent(chainId) + '&address=' + encodeURIComponent(address);
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+          // Show error
+          unrecognizedTokenLoading.hidden = true;
+          unrecognizedTokenMetadata.hidden = true;
+          unrecognizedTokenError.hidden = false;
+          unrecognizedTokenError.textContent = data.error || ('Failed to fetch metadata (HTTP ' + response.status + ')');
+          unrecognizedTokenSaveBtn.disabled = true;
+          return;
+        }
+
+        // Success - show metadata
+        unrecognizedTokenState.metadata = data;
+        unrecognizedTokenLoading.hidden = true;
+        unrecognizedTokenError.hidden = true;
+        unrecognizedTokenMetadata.hidden = false;
+        unrecognizedTokenName.textContent = data.name || '';
+        unrecognizedTokenSymbol.textContent = data.symbol || '';
+        unrecognizedTokenDecimals.textContent = String(data.decimals || 0);
+        unrecognizedTokenSaveBtn.disabled = false;
+      } catch (err) {
+        // Network or other error
+        unrecognizedTokenLoading.hidden = true;
+        unrecognizedTokenMetadata.hidden = true;
+        unrecognizedTokenError.hidden = false;
+        const msg = err instanceof Error ? err.message : String(err);
+        unrecognizedTokenError.textContent = 'Failed to fetch metadata: ' + msg;
+        unrecognizedTokenSaveBtn.disabled = true;
+      }
+    }
+
+    function handleUnrecognizedTokenSave() {
+      if (!unrecognizedTokenState.metadata || !unrecognizedTokenState.address) {
+        return;
+      }
+
+      const token = {
+        chainId: unrecognizedTokenState.chainId,
+        address: unrecognizedTokenState.address,
+        name: unrecognizedTokenState.metadata.name || '',
+        symbol: unrecognizedTokenState.metadata.symbol || '',
+        decimals: unrecognizedTokenState.metadata.decimals || 18,
+        _source: LOCAL_TOKENS_SOURCE_NAME,
+      };
+
+      // Add to local list
+      addTokenToLocalList(token);
+      renderLocalTokens();
+
+      // Update input field with formatted display
+      const input = unrecognizedTokenState.targetInput === 'from' ? fromInput : toInput;
+      const newDisplay = formatTokenDisplay(token.symbol, token.address);
+      // Handle token swap if setting to same value as other field
+      handleTokenSwapIfNeeded(input, token.address, newDisplay);
+      input.value = newDisplay;
+      input.dataset.address = token.address;
+
+      // Close modal
+      closeUnrecognizedTokenModal();
+
+      // Refresh autocomplete to include the new token
+      refreshAutocomplete();
+    }
+
+    // Event listeners for unrecognized token modal
+    unrecognizedTokenModalClose.addEventListener('click', closeUnrecognizedTokenModal);
+    unrecognizedTokenCancelBtn.addEventListener('click', closeUnrecognizedTokenModal);
+    unrecognizedTokenSaveBtn.addEventListener('click', handleUnrecognizedTokenSave);
+
+    // Close modal on overlay click
+    unrecognizedTokenModal.addEventListener('click', (event) => {
+      if (event.target === unrecognizedTokenModal) {
+        closeUnrecognizedTokenModal();
+      }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && unrecognizedTokenModal.classList.contains('show')) {
+        closeUnrecognizedTokenModal();
+      }
+    });
+
+    // Check if address is in any enabled tokenlist (including local tokens)
+    function isAddressInTokenlists(address, chainId) {
+      const addr = String(address || '').toLowerCase();
+      const cid = Number(chainId);
+
+      // Check tokenlist sources
+      for (const source of tokenlistSources) {
+        if (!source.enabled || !source.tokens) continue;
+        const found = source.tokens.find(t =>
+          Number(t.chainId) === cid &&
+          String(t.address || '').toLowerCase() === addr
+        );
+        if (found) return true;
+      }
+
+      // Check local tokens (if enabled)
+      if (loadLocalTokensEnabled()) {
+        const localTokens = loadLocalTokenList();
+        const foundLocal = localTokens.find(t =>
+          Number(t.chainId) === cid &&
+          String(t.address || '').toLowerCase() === addr
+        );
+        if (foundLocal) return true;
+      }
+
+      return false;
+    }
+
+    // Handle blur event on token inputs - check for unrecognized addresses
+    function handleTokenInputBlur(input, targetInput) {
+      const value = String(input.value || '').trim();
+
+      // Check if it's a valid address
+      if (!isAddressLike(value)) {
+        return;
+      }
+
+      const chainId = getCurrentChainId();
+
+      // Handle token swap if setting to same value as other field
+      // This needs to happen before we update the data-address
+      handleTokenSwapIfNeeded(input, value, value);
+
+      // Check if address is already in tokenlists
+      if (isAddressInTokenlists(value, chainId)) {
+        // Update data-address
+        input.dataset.address = value;
+        // Try to find the token to get a nicer display format
+        const token = findTokenByAddress(value, chainId);
+        if (token) {
+          input.value = formatTokenDisplay(token.symbol, token.address);
+        }
+        return;
+      }
+
+      // Address is not recognized - show popup
+      input.dataset.address = value;
+      openUnrecognizedTokenModal(value, chainId, targetInput);
+    }
+
+    // Add blur listeners to token inputs
+    fromInput.addEventListener('blur', () => handleTokenInputBlur(fromInput, 'from'));
+    toInput.addEventListener('blur', () => handleTokenInputBlur(toInput, 'to'));
+
+    // Also check when a full 42-char address is typed (immediate detection)
+    fromInput.addEventListener('input', () => {
+      const value = String(fromInput.value || '').trim();
+      if (isAddressLike(value) && !isAddressInTokenlists(value, getCurrentChainId())) {
+        // Delay slightly to allow for paste/autocomplete to settle
+        setTimeout(() => {
+          const currentValue = String(fromInput.value || '').trim();
+          if (isAddressLike(currentValue)) {
+            handleTokenInputBlur(fromInput, 'from');
+          }
+        }, 100);
+      }
+    });
+
+    toInput.addEventListener('input', () => {
+      const value = String(toInput.value || '').trim();
+      if (isAddressLike(value) && !isAddressInTokenlists(value, getCurrentChainId())) {
+        setTimeout(() => {
+          const currentValue = String(toInput.value || '').trim();
+          if (isAddressLike(currentValue)) {
+            handleTokenInputBlur(toInput, 'to');
+          }
+        }, 100);
+      }
+    });
+
+    // Render chain-specific content in modal
+    function renderMevChainContent() {
+      const chainId = Number(chainIdInput.value);
+      const walletConnectedValue = hasConnectedWallet();
+      const walletDisabled = !walletConnectedValue;
+      const walletNote = walletDisabled ? '<p class="wallet-required-note">Connect wallet first</p>' : '';
+
+      let html = '';
+
+      if (chainId === ETHEREUM_CHAIN_ID) {
+        html =
+          '<div class="mev-chain-message ethereum">' +
+            '<div class="mev-chain-title">Ethereum Mainnet</div>' +
+            '<p>Your swap is vulnerable to sandwich attacks. Add Flashbots Protect to send transactions privately.</p>' +
+            '<button type="button" class="add-to-wallet-btn" id="addFlashbotsBtn" ' + (walletDisabled ? 'disabled' : '') + '>' +
+              'Add Flashbots Protect to Wallet' +
+            '</button>' +
+            walletNote +
+          '</div>';
+      } else if (chainId === BSC_CHAIN_ID) {
+        html =
+          '<div class="mev-chain-message bsc">' +
+            '<div class="mev-chain-title">BSC (BNB Chain)</div>' +
+            '<p>BSC has active MEV bots. Add bloXroute BSC Protect for private transaction submission.</p>' +
+            '<button type="button" class="add-to-wallet-btn" id="addBloXrouteBtn" ' + (walletDisabled ? 'disabled' : '') + '>' +
+              'Add bloXroute Protect to Wallet' +
+            '</button>' +
+            walletNote +
+          '</div>';
+      } else if (chainId === BASE_CHAIN_ID || chainId === ARBITRUM_CHAIN_ID || chainId === OPTIMISM_CHAIN_ID) {
+        const chainName = chainId === BASE_CHAIN_ID ? 'Base' : (chainId === ARBITRUM_CHAIN_ID ? 'Arbitrum' : 'Optimism');
+        html =
+          '<div class="mev-chain-message l2">' +
+            '<div class="mev-chain-title">' + chainName + ' (L2)</div>' +
+            '<p>This chain uses a centralized sequencer that processes transactions in order received. Sandwich attacks are significantly harder. No additional protection needed.</p>' +
+          '</div>';
+      } else if (chainId === POLYGON_CHAIN_ID || chainId === AVALANCHE_CHAIN_ID) {
+        const chainName = chainId === POLYGON_CHAIN_ID ? 'Polygon' : 'Avalanche';
+        html =
+          '<div class="mev-chain-message other">' +
+            '<div class="mev-chain-title">' + chainName + '</div>' +
+            '<p>MEV protection is useful on this chain but no free public protection RPC is currently available.</p>' +
+          '</div>';
+      } else {
+        html =
+          '<div class="mev-chain-message other">' +
+            '<div class="mev-chain-title">Unknown Chain</div>' +
+            '<p>MEV protection availability varies by chain. Check if your wallet supports private transaction submission.</p>' +
+          '</div>';
+      }
+
+      mevChainContent.innerHTML = html;
+
+      // Add click handlers for Add to Wallet buttons
+      const addFlashbotsBtn = document.getElementById('addFlashbotsBtn');
+      if (addFlashbotsBtn) {
+        addFlashbotsBtn.addEventListener('click', () => addMevRpcToWallet('ethereum'));
+      }
+
+      const addBloXrouteBtn = document.getElementById('addBloXrouteBtn');
+      if (addBloXrouteBtn) {
+        addBloXrouteBtn.addEventListener('click', () => addMevRpcToWallet('bsc'));
+      }
+    }
+
+    // Add MEV protection RPC to wallet via wallet_addEthereumChain
+    async function addMevRpcToWallet(type) {
+      if (!hasConnectedWallet()) {
+        setWalletMessage('Connect wallet first', true);
+        return;
+      }
+
+      const provider = connectedWalletProvider;
+      if (!provider || typeof provider.request !== 'function') {
+        setWalletMessage('Wallet provider is not available.', true);
+        return;
+      }
+
+      let chainParams;
+      if (type === 'ethereum') {
+        chainParams = {
+          chainId: '0x1',
+          chainName: 'Ethereum (Flashbots Protect)',
+          rpcUrls: [FLASHBOTS_RPC_URL],
+          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+          blockExplorerUrls: ['https://etherscan.io'],
+        };
+      } else if (type === 'bsc') {
+        chainParams = {
+          chainId: '0x38',
+          chainName: 'BSC (bloXroute Protect)',
+          rpcUrls: [BLOXROUTE_BSC_RPC_URL],
+          nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+          blockExplorerUrls: ['https://bscscan.com'],
+        };
+      } else {
+        return;
+      }
+
+      try {
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [chainParams],
+        });
+        setWalletMessage('MEV protection RPC added to your wallet. Switch to it for protected transactions.');
+      } catch (err) {
+        if (isUserRejectedError(err)) {
+          setWalletMessage('Request canceled.', true);
+          return;
+        }
+        const detail = err instanceof Error ? err.message : String(err);
+        setWalletMessage('Failed to add RPC: ' + detail, true);
+      }
+    }
+
+    function setWalletGlobals() {
+      window.__selectedWalletProvider = connectedWalletProvider;
+      window.__selectedWalletAddress = connectedWalletAddressValue;
+      window.__selectedWalletInfo = connectedWalletInfo;
+    }
+
+    // Never truncate addresses - always show full 0x... address
+    // This is a project convention in AGENTS.md
+    function truncateAddress(address) {
+      if (typeof address !== 'string') return address || '';
+      return address; // Return full address, no truncation
+    }
+
+    function walletName(info) {
+      if (!info || typeof info.name !== 'string' || !info.name.trim()) {
+        return 'Wallet';
+      }
+      return info.name.trim();
+    }
+
+    function setWalletMessage(message, isError = false) {
+      walletMessage.textContent = message;
+      walletMessage.classList.toggle('error', isError);
+    }
+
+    function updateWalletStateUi() {
+      if (connectedWalletProvider && connectedWalletAddressValue) {
+        connectWalletBtn.hidden = true;
+        walletConnected.hidden = false;
+        walletConnectedName.textContent = walletName(connectedWalletInfo);
+        walletConnectedAddress.textContent = truncateAddress(connectedWalletAddressValue);
+
+        const icon = connectedWalletInfo && typeof connectedWalletInfo.icon === 'string' ? connectedWalletInfo.icon : '';
+        if (icon) {
+          walletConnectedIcon.hidden = false;
+          walletConnectedIcon.src = icon;
+        } else {
+          walletConnectedIcon.hidden = true;
+          walletConnectedIcon.removeAttribute('src');
+        }
+      } else {
+        connectWalletBtn.hidden = false;
+        walletConnected.hidden = true;
+        walletConnectedName.textContent = '';
+        walletConnectedAddress.textContent = '';
+        walletConnectedIcon.hidden = true;
+        walletConnectedIcon.removeAttribute('src');
+      }
+    }
+
+    function closeWalletProviderMenu() {
+      walletProviderMenu.hidden = true;
+      walletProviderMenu.innerHTML = '';
+    }
+
+    function createWalletIcon(iconUri, altText, className) {
+      const icon = document.createElement('img');
+      icon.className = className;
+      icon.alt = altText;
+      if (typeof iconUri === 'string' && iconUri) {
+        icon.src = iconUri;
+      } else {
+        icon.style.display = 'none';
+      }
+      icon.onerror = () => {
+        icon.style.display = 'none';
+      };
+      return icon;
+    }
+
+    async function connectToWalletProvider(provider, info) {
+      if (!provider || typeof provider.request !== 'function') {
+        setWalletMessage('Wallet provider is not available.', true);
+        return;
+      }
+
+      try {
+        const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        const account = Array.isArray(accounts) ? accounts[0] : null;
+        if (typeof account !== 'string' || !account) {
+          throw new Error('No account returned by wallet');
+        }
+
+        connectedWalletProvider = provider;
+        connectedWalletAddressValue = account;
+        connectedWalletInfo = info || { name: 'Wallet', icon: '' };
+
+        setWalletGlobals();
+        closeWalletProviderMenu();
+        updateWalletStateUi();
+        updateTransactionActionStates();
+        setWalletMessage('');
+      } catch (err) {
+        const code = err && typeof err === 'object' ? err.code : undefined;
+        if (code === 4001) {
+          setWalletMessage('Wallet connection was canceled.', true);
+          return;
+        }
+        const detail = err instanceof Error ? err.message : String(err);
+        setWalletMessage('Wallet connection failed: ' + detail, true);
+      }
+    }
+
+    function disconnectWallet() {
+      connectedWalletProvider = null;
+      connectedWalletAddressValue = '';
+      connectedWalletInfo = null;
+      setWalletGlobals();
+      closeWalletProviderMenu();
+      updateWalletStateUi();
+      updateTransactionActionStates();
+      setWalletMessage('Wallet disconnected.');
+    }
+
+    function openWalletProviderMenu(providers) {
+      walletProviderMenu.innerHTML = '';
+
+      providers.forEach((detail) => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'wallet-provider-option';
+
+        const providerInfo = detail.info || {};
+        const providerName = walletName(providerInfo);
+        const icon = createWalletIcon(providerInfo.icon, providerName + ' icon', 'wallet-provider-icon');
+        const name = document.createElement('span');
+        name.className = 'wallet-provider-name';
+        name.textContent = providerName;
+
+        option.appendChild(icon);
+        option.appendChild(name);
+
+        option.addEventListener('click', () => {
+          void connectToWalletProvider(detail.provider, providerInfo);
+        });
+
+        walletProviderMenu.appendChild(option);
+      });
+
+      walletProviderMenu.hidden = providers.length === 0;
+    }
+
+    function getAnnouncedWalletProviders() {
+      return Array.from(walletProvidersByUuid.values());
+    }
+
+    function onAnnounceProvider(event) {
+      const detail = event.detail;
+      if (!detail || !detail.provider || !detail.info || typeof detail.info.uuid !== 'string') {
+        return;
+      }
+
+      if (walletProvidersByUuid.has(detail.info.uuid)) {
+        return;
+      }
+
+      walletProvidersByUuid.set(detail.info.uuid, detail);
+    }
+
+    window.addEventListener('eip6963:announceProvider', onAnnounceProvider);
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+    if (typeof window.ethereum !== 'undefined') {
+      fallbackWalletProvider = window.ethereum;
+    }
+
+    connectWalletBtn.addEventListener('click', () => {
+      setWalletMessage('');
+      window.dispatchEvent(new Event('eip6963:requestProvider'));
+      const announcedProviders = getAnnouncedWalletProviders();
+      if (announcedProviders.length > 0) {
+        openWalletProviderMenu(announcedProviders);
+        return;
+      }
+
+      if (fallbackWalletProvider) {
+        void connectToWalletProvider(fallbackWalletProvider, {
+          uuid: 'window.ethereum',
+          name: 'Injected Wallet',
+          icon: '',
+          rdns: 'window.ethereum',
+        });
+        return;
+      }
+
+      closeWalletProviderMenu();
+      setWalletMessage('No wallet detected. Install a wallet extension and try again.', true);
+    });
+
+    disconnectWalletBtn.addEventListener('click', disconnectWallet);
+
+    document.addEventListener('mousedown', (event) => {
+      if (event.target === connectWalletBtn || walletProviderMenu.contains(event.target)) {
+        return;
+      }
+      closeWalletProviderMenu();
+    });
+
+    updateWalletStateUi();
+    setWalletGlobals();
+    updateTransactionActionStates();
+
+    function normalizeAddress(value) {
+      const lower = value.toLowerCase();
+      return lower.startsWith('0x') ? lower.slice(2) : lower;
+    }
+
+    // Normalize URL for duplicate detection (lowercase host, strip trailing slash)
+    function normalizeTokenlistUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.origin.toLowerCase() + parsed.pathname.replace(/\\/+$/, '');
+      } catch {
+        return url.toLowerCase().replace(/\\/+$/, '');
+      }
+    }
+
+    // Load default tokenlist from server
+    async function loadDefaultTokenlist() {
+      try {
+        const res = await fetch('/tokenlist');
+        if (!res.ok) {
+          throw new Error('HTTP ' + res.status);
+        }
+        const data = await res.json();
+        const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+        // Tag tokens with source
+        return tokens.map(t => ({ ...t, _source: DEFAULT_TOKENLIST_NAME }));
+      } catch {
+        return [];
+      }
+    }
+
+    // Load custom tokenlist from URL via proxy endpoint
+    async function loadTokenlistFromUrl(url) {
+      const res = await fetch('/tokenlist/proxy?url=' + encodeURIComponent(url));
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || ('HTTP ' + res.status));
+      }
+      const data = await res.json();
+      const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+      // Name from the tokenlist, or URL fallback
+      const name = data.name || url;
+      return { tokens, name };
+    }
+
+    // Tokenlist Sources UI Elements
+    const tokenlistUrlInput = document.getElementById('tokenlistUrlInput');
+    const addTokenlistBtn = document.getElementById('addTokenlistBtn');
+    const tokenlistMessage = document.getElementById('tokenlistMessage');
+    const tokenlistSourcesList = document.getElementById('tokenlistSourcesList');
+
+    function setTokenlistMessage(text, kind) {
+      tokenlistMessage.textContent = text || '';
+      tokenlistMessage.className = 'tokenlist-message' + (kind ? ' ' + kind : '');
+    }
+
+    // Count tokens for a specific chain
+    function countTokensForChain(tokens, chainId) {
+      const cid = Number(chainId);
+      return tokens.filter(t => Number(t.chainId) === cid).length;
+    }
+
+    // Get all tokens from enabled sources for a chain
+    function getTokensForChain(chainId) {
+      const cid = Number(chainId);
+      const seen = new Set();
+      const result = [];
+
+      // Get tokens from all enabled sources
+      for (const source of tokenlistSources) {
+        if (!source.enabled || !source.tokens) continue;
+
+        for (const token of source.tokens) {
+          if (Number(token.chainId) !== cid || typeof token.address !== 'string') continue;
+          const addr = token.address.toLowerCase();
+          if (seen.has(addr)) continue;
+          seen.add(addr);
+          result.push(token);
+        }
+      }
+
+      // Add local tokens (if enabled)
+      if (loadLocalTokensEnabled()) {
+        const localTokens = loadLocalTokenList();
+        for (const token of localTokens) {
+          if (Number(token.chainId) !== cid || typeof token.address !== 'string') continue;
+          const addr = token.address.toLowerCase();
+          if (seen.has(addr)) continue;
+          seen.add(addr);
+          result.push(token);
+        }
+      }
+
+      return result;
+    }
+
+    // Get current chain ID
+    function getCurrentChainId() {
+      return Number(chainIdInput.value);
+    }
+
+    // Render tokenlist sources in settings modal
+    function renderTokenlistSources() {
+      const chainId = getCurrentChainId();
+      const chainName = CHAIN_NAMES[String(chainId)] || 'this chain';
+
+      if (tokenlistSources.length === 0) {
+        tokenlistSourcesList.innerHTML = '<div class="settings-placeholder">No tokenlists loaded</div>';
+        return;
+      }
+
+      let html = '';
+      for (let i = 0; i < tokenlistSources.length; i++) {
+        const source = tokenlistSources[i];
+        const isDefault = source.url === null;
+        const tokenCount = source.tokens ? countTokensForChain(source.tokens, chainId) : 0;
+        const displayName = source.name || (isDefault ? DEFAULT_TOKENLIST_NAME : source.url);
+        const hasError = Boolean(source.error);
+        const hasChainMismatch = !hasError && tokenCount === 0;
+
+        html += '<div class="tokenlist-entry' + (source.enabled ? '' : ' disabled') + (hasError ? ' error' : '') + '" data-index="' + i + '">';
+        html += '<span class="tokenlist-entry-name">' + escapeHtml(displayName) + '</span>';
+        html += '<span class="tokenlist-entry-count">' + tokenCount + ' tokens</span>';
+
+        if (hasError) {
+          html += '<span class="tokenlist-entry-error">' + escapeHtml(source.error) + '</span>';
+          html += '<button type="button" class="btn-small tokenlist-retry-btn" data-action="retry" data-index="' + i + '">Retry</button>';
+        } else if (hasChainMismatch) {
+          html += '<span class="tokenlist-chain-warning">0 tokens for ' + escapeHtml(chainName) + '</span>';
+        }
+
+        // Toggle switch
+        html += '<div class="tokenlist-toggle' + (source.enabled ? ' on' : '') + '" data-action="toggle" data-index="' + i + '" role="switch" aria-checked="' + source.enabled + '" tabindex="0"></div>';
+
+        // Remove button (not for default)
+        if (!isDefault) {
+          html += '<button type="button" class="tokenlist-remove-btn" data-action="remove" data-index="' + i + '" aria-label="Remove tokenlist">&times;</button>';
+        }
+
+        html += '</div>';
+      }
+
+      tokenlistSourcesList.innerHTML = html;
+
+      // Wire up event handlers
+      tokenlistSourcesList.querySelectorAll('[data-action]').forEach(el => {
+        el.addEventListener('click', handleTokenlistSourceAction);
+        if (el.getAttribute('role') === 'switch') {
+          el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleTokenlistSourceAction(e);
+            }
+          });
+        }
+      });
+    }
+
+    // Escape HTML for safe display
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Handle tokenlist source actions (toggle, remove, retry)
+    function handleTokenlistSourceAction(e) {
+      const el = e.currentTarget;
+      const action = el.dataset.action;
+      const index = Number(el.dataset.index);
+
+      if (action === 'toggle') {
+        tokenlistSources[index].enabled = !tokenlistSources[index].enabled;
+        saveTokenlistSources();
+        renderTokenlistSources();
+        refreshAutocomplete();
+      } else if (action === 'remove') {
+        tokenlistSources.splice(index, 1);
+        saveTokenlistSources();
+        renderTokenlistSources();
+        refreshAutocomplete();
+      } else if (action === 'retry') {
+        const source = tokenlistSources[index];
+        source.error = null;
+        renderTokenlistSources();
+        // Re-fetch the tokenlist
+        loadTokenlistSource(source.url, index);
+      }
+    }
+
+    // Refresh autocomplete dropdowns
+    function refreshAutocomplete() {
+      if (fromInput.value.trim()) fromAutocomplete.refresh();
+      if (toInput.value.trim()) toAutocomplete.refresh();
+    }
+
+    // Save tokenlist sources to localStorage
+    function saveTokenlistSources() {
+      // Save custom tokenlists (excluding default which has url === null)
+      const data = tokenlistSources
+        .filter(s => s.url !== null)
+        .map(s => ({
+          url: s.url,
+          enabled: s.enabled,
+          name: s.name
+        }));
+
+      // Save default tokenlist enabled state separately
+      const defaultSource = tokenlistSources.find(s => s.url === null);
+      const defaultEnabled = defaultSource ? defaultSource.enabled : true;
+
+      try {
+        localStorage.setItem(CUSTOM_TOKENLISTS_KEY, JSON.stringify(data));
+        localStorage.setItem(DEFAULT_TOKENLIST_ENABLED_KEY, String(defaultEnabled));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
+    // Load tokenlist sources from localStorage
+    function loadTokenlistSourcesFromStorage() {
+      try {
+        const data = localStorage.getItem(CUSTOM_TOKENLISTS_KEY);
+        if (data) {
+          return JSON.parse(data);
+        }
+      } catch {
+        // Corrupt data, treat as empty
+      }
+      return null;
+    }
+
+    // Migrate old single-URL format to new multi-list format
+    function migrateOldTokenlistUrl() {
+      try {
+        const oldUrl = localStorage.getItem(OLD_CUSTOM_TOKENLIST_URL_KEY);
+        if (oldUrl) {
+          // Migrate to new format
+          const newList = [{ url: oldUrl, enabled: true, name: oldUrl }];
+          localStorage.setItem(CUSTOM_TOKENLISTS_KEY, JSON.stringify(newList));
+          localStorage.removeItem(OLD_CUSTOM_TOKENLIST_URL_KEY);
+          return newList;
+        }
+      } catch {
+        // Ignore migration errors
+      }
+      return null;
+    }
+
+    // Load a tokenlist source and update state
+    async function loadTokenlistSource(url, index) {
+      try {
+        const { tokens, name } = await loadTokenlistFromUrl(url);
+        const taggedTokens = tokens.map(t => ({ ...t, _source: name }));
+        tokenlistSources[index].tokens = taggedTokens;
+        tokenlistSources[index].name = name;
+        tokenlistSources[index].error = null;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        tokenlistSources[index].error = msg;
+        tokenlistSources[index].tokens = [];
+      }
+      renderTokenlistSources();
+      refreshAutocomplete();
+    }
+
+    // Add a new tokenlist
+    // NOTE: If the initial fetch fails, we do NOT add an entry to tokenlistSources.
+    // The error is shown only in the status message area. This is per VAL-MULTI-007.
+    // Error-state entries with retry UI only exist for lists that were previously
+    // loaded successfully but fail on page reload (VAL-MULTI-011).
+    async function handleAddTokenlist() {
+      const url = String(tokenlistUrlInput.value || '').trim();
+      if (!url) {
+        setTokenlistMessage('Enter a tokenlist URL', 'error');
+        return;
+      }
+
+      // Validate URL format
+      try {
+        new URL(url);
+      } catch {
+        setTokenlistMessage('Invalid URL format', 'error');
+        return;
+      }
+
+      // Check for HTTPS
+      if (!url.toLowerCase().startsWith('https://')) {
+        setTokenlistMessage('URL must use HTTPS', 'error');
+        return;
+      }
+
+      // Check for duplicate
+      const normalizedUrl = normalizeTokenlistUrl(url);
+      const isDuplicate = tokenlistSources.some(s =>
+        s.url && normalizeTokenlistUrl(s.url) === normalizedUrl
+      );
+      if (isDuplicate) {
+        setTokenlistMessage('This tokenlist is already added', 'error');
+        return;
+      }
+
+      addTokenlistBtn.disabled = true;
+      addTokenlistBtn.textContent = 'Loading...';
+      setTokenlistMessage('Fetching tokenlist...', 'loading');
+
+      try {
+        // Fetch the tokenlist BEFORE adding to tokenlistSources
+        const { tokens, name } = await loadTokenlistFromUrl(url);
+        const taggedTokens = tokens.map(t => ({ ...t, _source: name }));
+
+        // Only add to tokenlistSources after successful fetch
+        tokenlistSources.push({ url, enabled: true, name, tokens: taggedTokens, error: null });
+        saveTokenlistSources();
+        setTokenlistMessage('Added "' + escapeHtml(name) + '"', 'success');
+        tokenlistUrlInput.value = '';
+        renderTokenlistSources();
+        refreshAutocomplete();
+      } catch (err) {
+        // On failure, do NOT add to tokenlistSources - just show error message
+        const msg = err instanceof Error ? err.message : String(err);
+        setTokenlistMessage('Error: ' + msg, 'error');
+      } finally {
+        addTokenlistBtn.disabled = false;
+        addTokenlistBtn.textContent = 'Load';
+      }
+    }
+
+    // Wire up button handlers
+    addTokenlistBtn.addEventListener('click', handleAddTokenlist);
+
+    // Load on Enter in URL input
+    tokenlistUrlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void handleAddTokenlist();
+      }
+    });
+
+    // Find token matches for autocomplete
+    function findTokenMatches(value, chainId) {
+      const query = value.trim().toLowerCase();
+      if (!query) return [];
+
+      const normalizedQuery = normalizeAddress(query);
+      const tokens = getTokensForChain(chainId);
+
+      // Track which symbols are duplicated across sources
+      const symbolCounts = new Map();
+      for (const token of tokens) {
+        const symbol = String(token.symbol || '').toLowerCase();
+        symbolCounts.set(symbol, (symbolCounts.get(symbol) || 0) + 1);
+      }
+
+      return tokens
+        .filter((token) => {
+          const symbol = String(token.symbol || '').toLowerCase();
+          const name = String(token.name || '').toLowerCase();
+          const address = String(token.address || '').toLowerCase();
+          const normalizedAddress = normalizeAddress(address);
+
+          return (
+            symbol.includes(query) ||
+            name.includes(query) ||
+            address.includes(query) ||
+            normalizedAddress.includes(normalizedQuery)
+          );
+        })
+        .map(token => {
+          const symbol = String(token.symbol || '').toLowerCase();
+          const needsDisambiguation = (symbolCounts.get(symbol) || 0) > 1;
+          return { ...token, _needsDisambiguation: needsDisambiguation };
+        })
+        .slice(0, 20);
+    }
+
+    // Format token for display: 'SYMBOL (0xFullAddress)' - NEVER truncate
+    // This is a project convention in AGENTS.md
+    function formatTokenDisplay(symbol, address) {
+      const sym = String(symbol || '').trim();
+      const addr = String(address || '').trim();
+      if (!addr) return sym || '';
+      // Show full address - no truncation
+      return sym ? sym + ' (' + addr + ')' : addr;
+    }
+
+    // Extract address from display format or data-address attribute
+    function extractAddressFromInput(input) {
+      // First check data-address attribute
+      const dataAddr = input.dataset.address;
+      if (dataAddr && /^0x[a-fA-F0-9]{40}$/.test(dataAddr)) {
+        return dataAddr;
+      }
+      
+      const value = String(input.value || '').trim();
+      
+      // Check if it's already a plain address
+      if (/^0x[a-fA-F0-9]{40}$/.test(value)) {
+        return value;
+      }
+      
+      // Try to extract from 'SYMBOL (0xABCD...1234)' format
+      // The pattern is: (0xHEX...HEX)
+      if (value.includes('...') && value.includes('(') && value.includes(')')) {
+        // We only have partial address in display, need full from data-address
+        return dataAddr || value;
+      }
+      
+      // Check for partial address pattern that might be a real address
+      if (value.startsWith('0x') && value.length >= 6) {
+        // Could be a partial or full address - if we have data-address use it
+        if (dataAddr) return dataAddr;
+      }
+      
+      return value; // Return as-is, validation will catch issues
+    }
+
+    // Handle token swap when setting a token to the same value as the other field
+    // If user sets from=A when to=A: swap (to becomes old-from, from becomes A)
+    // If user sets to=A when from=A: swap (from becomes old-to, to becomes A)
+    // If the other field was empty: just set the new value (no swap needed)
+    function handleTokenSwapIfNeeded(currentInput, newAddress, newDisplay) {
+      const isFromInput = currentInput === fromInput;
+      const otherInput = isFromInput ? toInput : fromInput;
+      const otherAddress = extractAddressFromInput(otherInput);
+
+      // Only proceed if the other field has a valid address (not just typed text or empty)
+      if (!isAddressLike(otherAddress)) {
+        return;
+      }
+
+      // Normalize addresses for comparison
+      const normalizedNew = String(newAddress || '').toLowerCase().trim();
+      const normalizedOther = String(otherAddress || '').toLowerCase().trim();
+
+      // Check if we're setting the same token as the other field
+      if (normalizedNew && normalizedOther && normalizedNew === normalizedOther) {
+        // Get current address before it changes (from data-address attribute)
+        const currentAddress = extractAddressFromInput(currentInput);
+
+        // Only swap if the current field also has a valid different address
+        if (isAddressLike(currentAddress) && currentAddress.toLowerCase() !== normalizedNew) {
+          // There was a different valid value in the current field - swap it to the other field
+          // Reconstruct the display value using the token's symbol
+          const chainId = getCurrentChainId();
+          const token = findTokenByAddress(currentAddress, chainId);
+          const swappedDisplay = token
+            ? formatTokenDisplay(token.symbol, token.address)
+            : currentAddress;
+          otherInput.value = swappedDisplay;
+          otherInput.dataset.address = currentAddress;
+        }
+        // If current field was empty or had non-address content, leave the other field unchanged
+        // (no swap needed - just let the new value be set in the current field)
+      }
+    }
 
     function setupAutocomplete(inputId, listId) {
       const input = document.getElementById(inputId);
       const list = document.getElementById(listId);
+      let matches = [];
       let activeIdx = -1;
 
-      function render(matches) {
+      function hide() {
+        list.classList.remove('show');
         list.innerHTML = '';
+        matches = [];
         activeIdx = -1;
-        if (!matches.length) { list.classList.remove('show'); return; }
-        list.classList.add('show');
-        matches.slice(0, 20).forEach((token, i) => {
-          const div = document.createElement('div');
-          div.className = 'autocomplete-item';
-          div.innerHTML = '<span class="symbol">' + token.symbol + '</span>' +
-            '<span class="addr">' + token.address + '</span>';
-          div.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            input.value = token.address;
-            list.classList.remove('show');
-          });
-          list.appendChild(div);
-        });
       }
 
-      input.addEventListener('input', () => {
-        const val = input.value.trim().toLowerCase();
-        if (!val || val.startsWith('0x')) { list.classList.remove('show'); return; }
-        const chainId = document.getElementById('chainId').value;
-        const chainTokens = getTokensForChain(chainId);
-        const matches = chainTokens.filter(t =>
-          t.symbol.toLowerCase().includes(val) || t.name?.toLowerCase().includes(val)
-        );
-        render(matches);
-      });
+      function selectToken(token) {
+        // Handle token swap if setting to same value as other field
+        const newDisplay = formatTokenDisplay(token.symbol, token.address);
+        handleTokenSwapIfNeeded(input, token.address, newDisplay);
+        // Show 'SYMBOL (0xABCD...1234)' format in input
+        input.value = newDisplay;
+        // Store full address in data-address attribute
+        input.dataset.address = token.address;
+        hide();
+      }
 
-      input.addEventListener('keydown', (e) => {
+      function setActive(index) {
         const items = list.querySelectorAll('.autocomplete-item');
-        if (!items.length) return;
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          activeIdx = Math.min(activeIdx + 1, items.length - 1);
-          items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          activeIdx = Math.max(activeIdx - 1, 0);
-          items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
-        } else if (e.key === 'Enter' && activeIdx >= 0) {
-          e.preventDefault();
-          items[activeIdx].dispatchEvent(new Event('mousedown'));
-        } else if (e.key === 'Escape') {
+        items.forEach((el, i) => el.classList.toggle('active', i === index));
+      }
+
+      function render() {
+        list.innerHTML = '';
+        activeIdx = -1;
+        if (!matches.length) {
           list.classList.remove('show');
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        matches.forEach((token) => {
+          const item = document.createElement('div');
+          item.className = 'autocomplete-item';
+
+          const logo = document.createElement('img');
+          logo.className = 'autocomplete-logo';
+          logo.alt = token.symbol ? token.symbol + ' logo' : 'token logo';
+          logo.loading = 'lazy';
+          if (typeof token.logoURI === 'string' && token.logoURI) {
+            logo.src = token.logoURI;
+          }
+          logo.onerror = () => {
+            logo.style.display = 'none';
+          };
+
+          const meta = document.createElement('div');
+          meta.className = 'autocomplete-meta';
+
+          const title = document.createElement('div');
+          title.className = 'autocomplete-title';
+
+          const symbol = document.createElement('span');
+          symbol.className = 'autocomplete-symbol';
+          symbol.textContent = token.symbol || '';
+
+          const name = document.createElement('span');
+          name.className = 'autocomplete-name';
+          name.textContent = token.name || '';
+
+          title.appendChild(symbol);
+          title.appendChild(name);
+
+          // Add source badge if disambiguation is needed
+          if (token._needsDisambiguation && token._source) {
+            const sourceBadge = document.createElement('span');
+            sourceBadge.className = 'autocomplete-source';
+            sourceBadge.textContent = token._source;
+            title.appendChild(sourceBadge);
+          }
+
+          const address = document.createElement('div');
+          address.className = 'autocomplete-addr';
+          address.textContent = token.address || '';
+
+          meta.appendChild(title);
+          meta.appendChild(address);
+
+          item.appendChild(logo);
+          item.appendChild(meta);
+
+          item.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            selectToken(token);
+          });
+
+          fragment.appendChild(item);
+        });
+
+        list.appendChild(fragment);
+        list.classList.add('show');
+      }
+
+      function refresh() {
+        const chainId = document.getElementById('chainId').value;
+        matches = findTokenMatches(input.value, chainId);
+        render();
+      }
+
+      input.addEventListener('input', refresh);
+      input.addEventListener('focus', () => {
+        if (input.value.trim()) {
+          refresh();
         }
       });
 
-      input.addEventListener('blur', () => { setTimeout(() => list.classList.remove('show'), 150); });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          if (!matches.length) return;
+          e.preventDefault();
+          activeIdx = Math.min(activeIdx + 1, matches.length - 1);
+          setActive(activeIdx);
+        } else if (e.key === 'ArrowUp') {
+          if (!matches.length) return;
+          e.preventDefault();
+          activeIdx = Math.max(activeIdx - 1, 0);
+          setActive(activeIdx);
+        } else if (e.key === 'Enter' && list.classList.contains('show')) {
+          if (!matches.length) return;
+          e.preventDefault();
+          const selectedIndex = activeIdx >= 0 ? activeIdx : 0;
+          selectToken(matches[selectedIndex]);
+        } else if (e.key === 'Escape') {
+          hide();
+        }
+      });
+
+      document.addEventListener('mousedown', (event) => {
+        if (event.target === input || list.contains(event.target)) {
+          return;
+        }
+        hide();
+      });
+
+      document.getElementById('chainId').addEventListener('change', () => {
+        if (input.value.trim()) {
+          refresh();
+        } else {
+          hide();
+        }
+      });
+
+      return {
+        refresh,
+        hide,
+      };
     }
 
-    setupAutocomplete('from', 'fromAutocomplete');
-    setupAutocomplete('to', 'toAutocomplete');
+    const fromAutocomplete = setupAutocomplete('from', 'fromAutocomplete');
+    const toAutocomplete = setupAutocomplete('to', 'toAutocomplete');
+
+    const form = document.getElementById('form');
+    const result = document.getElementById('result');
+    const submit = document.getElementById('submit');
+    const recommendedContent = document.getElementById('recommendedContent');
+    const alternativeContent = document.getElementById('alternativeContent');
+    const tabRecommended = document.getElementById('tabRecommended');
+    const tabAlternative = document.getElementById('tabAlternative');
+
+    function cloneCompareParams(params) {
+      return {
+        chainId: String(params.chainId || '').trim(),
+        from: String(params.from || '').trim(),
+        to: String(params.to || '').trim(),
+        amount: String(params.amount || '').trim(),
+        slippageBps: String(params.slippageBps || '').trim(),
+        sender: String(params.sender || '').trim(),
+      };
+    }
+
+    function readCompareParamsFromForm() {
+      return cloneCompareParams({
+        chainId: chainIdInput.value,
+        from: extractAddressFromInput(fromInput),
+        to: extractAddressFromInput(toInput),
+        amount: amountInput.value,
+        slippageBps: slippageInput.value,
+        sender: hasConnectedWallet() ? connectedWalletAddressValue : '',
+      });
+    }
+
+    function compareParamsToSearchParams(params) {
+      const normalized = cloneCompareParams(params);
+      const query = new URLSearchParams({
+        chainId: normalized.chainId,
+        from: normalized.from,
+        to: normalized.to,
+        amount: normalized.amount,
+        slippageBps: normalized.slippageBps,
+      });
+
+      if (normalized.sender) {
+        query.set('sender', normalized.sender);
+      }
+
+      return query;
+    }
+
+    function updateUrlFromCompareParams(params) {
+      const normalized = cloneCompareParams(params);
+      const url = new URL(window.location.href);
+      url.searchParams.set('chainId', normalized.chainId);
+      url.searchParams.set('from', normalized.from);
+      url.searchParams.set('to', normalized.to);
+      url.searchParams.set('amount', normalized.amount);
+      url.searchParams.set('slippageBps', normalized.slippageBps);
+      // Sender is never written to URL - it comes from wallet connection state
+      url.searchParams.delete('sender');
+      // Remove MEV protection param if it exists (no longer used)
+      url.searchParams.delete('mevProtection');
+      window.history.replaceState({}, '', url.toString());
+    }
+
+    function clearAutoRefreshTimer() {
+      if (autoRefreshState.timerId !== null) {
+        clearInterval(autoRefreshState.timerId);
+        autoRefreshState.timerId = null;
+      }
+    }
+
+    function updateRefreshIndicator() {
+      const shouldShow = result.classList.contains('show') && Boolean(autoRefreshState.lastParams);
+      refreshIndicator.hidden = !shouldShow;
+      if (!shouldShow) {
+        return;
+      }
+
+      if (autoRefreshState.paused) {
+        refreshCountdown.textContent = 'Auto-refresh paused';
+      } else if (autoRefreshState.inFlight) {
+        refreshCountdown.textContent = 'Refreshing...';
+      } else {
+        refreshCountdown.textContent = 'Auto-refresh in ' + autoRefreshState.secondsRemaining + 's';
+      }
+
+      refreshStatus.classList.remove('error');
+      if (autoRefreshState.errorMessage) {
+        refreshStatus.textContent = autoRefreshState.errorMessage;
+        refreshStatus.classList.add('error');
+      } else if (autoRefreshState.paused) {
+        refreshStatus.textContent = 'Waiting for transaction.';
+      } else {
+        refreshStatus.textContent = '';
+      }
+    }
+
+    function stopAutoRefresh(options = {}) {
+      const shouldClearLastParams = options.clearLastParams !== false;
+      clearAutoRefreshTimer();
+      autoRefreshState.paused = false;
+      autoRefreshState.inFlight = false;
+      autoRefreshState.secondsRemaining = AUTO_REFRESH_SECONDS;
+      autoRefreshState.errorMessage = '';
+      if (shouldClearLastParams) {
+        autoRefreshState.lastParams = null;
+      }
+      updateRefreshIndicator();
+    }
+
+    function startAutoRefreshCountdown(options = {}) {
+      const clearErrorMessage = options.clearErrorMessage !== false;
+      if (!autoRefreshState.lastParams || autoRefreshState.paused) {
+        updateRefreshIndicator();
+        return;
+      }
+
+      clearAutoRefreshTimer();
+      autoRefreshState.secondsRemaining = AUTO_REFRESH_SECONDS;
+      if (clearErrorMessage) {
+        autoRefreshState.errorMessage = '';
+      }
+
+      autoRefreshState.timerId = setInterval(() => {
+        if (autoRefreshState.paused || autoRefreshState.inFlight || !autoRefreshState.lastParams) {
+          updateRefreshIndicator();
+          return;
+        }
+
+        autoRefreshState.secondsRemaining -= 1;
+        if (autoRefreshState.secondsRemaining <= 0) {
+          clearAutoRefreshTimer();
+          void runAutoRefreshCycle();
+          return;
+        }
+
+        updateRefreshIndicator();
+      }, 1000);
+
+      updateRefreshIndicator();
+    }
+
+    function beginAutoRefresh(params) {
+      autoRefreshState.lastParams = cloneCompareParams(params);
+      autoRefreshState.paused = false;
+      autoRefreshState.inFlight = false;
+      startAutoRefreshCountdown();
+    }
+
+    function pauseAutoRefreshForTransaction() {
+      if (!autoRefreshState.lastParams) {
+        return;
+      }
+
+      autoRefreshState.paused = true;
+      clearAutoRefreshTimer();
+      updateRefreshIndicator();
+    }
+
+    function resumeAutoRefreshAfterTransaction() {
+      if (!autoRefreshState.lastParams) {
+        return;
+      }
+
+      autoRefreshState.paused = false;
+      autoRefreshState.inFlight = false;
+      startAutoRefreshCountdown();
+    }
+
+    function getRefreshParams() {
+      if (!autoRefreshState.lastParams) {
+        return null;
+      }
+
+      const params = cloneCompareParams(autoRefreshState.lastParams);
+      if (hasConnectedWallet()) {
+        params.sender = connectedWalletAddressValue;
+      }
+
+      return params;
+    }
+
+    function getActiveTab() {
+      const active = document.querySelector('.tab.active');
+      if (!(active instanceof HTMLElement)) {
+        return 'recommended';
+      }
+
+      return active.dataset.tab === 'alternative' ? 'alternative' : 'recommended';
+    }
+
+    function setActiveTab(tabName) {
+      const target = tabName === 'alternative' && tabAlternative.style.display !== 'none' ? 'alternative' : 'recommended';
+      tabRecommended.classList.toggle('active', target === 'recommended');
+      tabAlternative.classList.toggle('active', target === 'alternative');
+      recommendedContent.classList.toggle('active', target === 'recommended');
+      alternativeContent.classList.toggle('active', target === 'alternative');
+    }
+
+    function captureResultUiState() {
+      return {
+        activeTab: getActiveTab(),
+        scrollY: window.scrollY,
+      };
+    }
+
+    function clearResultDisplay() {
+      result.classList.remove('show');
+      tabRecommended.textContent = 'Recommended';
+      tabAlternative.textContent = 'Alternative';
+      tabAlternative.style.display = '';
+      recommendedContent.innerHTML = '';
+      alternativeContent.innerHTML = '';
+      setActiveTab('recommended');
+      updateRefreshIndicator();
+    }
+
+    function findTokenByAddress(address, chainId) {
+      const addr = String(address || '').toLowerCase();
+      const cid = Number(chainId);
+      // Search through enabled sources only
+      for (const source of tokenlistSources) {
+        if (!source.enabled || !source.tokens) continue;
+        const found = source.tokens.find((t) =>
+          Number(t.chainId) === cid &&
+          String(t.address || '').toLowerCase() === addr
+        );
+        if (found) return found;
+      }
+      // Search local tokens
+      const localTokens = loadLocalTokenList();
+      const foundLocal = localTokens.find((t) =>
+        Number(t.chainId) === cid &&
+        String(t.address || '').toLowerCase() === addr
+      );
+      if (foundLocal) return foundLocal;
+      return undefined;
+    }
 
     function applyDefaults(chainId) {
       const defaults = DEFAULT_TOKENS[chainId];
       if (defaults) {
-        document.getElementById('from').value = defaults.from;
-        document.getElementById('to').value = defaults.to;
+        const fromToken = findTokenByAddress(defaults.from, chainId);
+        const toToken = findTokenByAddress(defaults.to, chainId);
+        
+        // Set from input with display format and data-address
+        if (fromToken) {
+          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
+          fromInput.dataset.address = fromToken.address;
+        } else {
+          fromInput.value = defaults.from;
+          fromInput.dataset.address = defaults.from;
+        }
+        
+        // Set to input with display format and data-address
+        if (toToken) {
+          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
+          toInput.dataset.address = toToken.address;
+        } else {
+          toInput.value = defaults.to;
+          toInput.dataset.address = defaults.to;
+        }
       }
     }
 
-    document.getElementById('chainId').addEventListener('change', function() {
+    chainIdInput.addEventListener('change', function() {
+      stopAutoRefresh();
+      clearResultDisplay();
+      currentQuoteChainId = null;
       applyDefaults(Number(this.value));
+      fromAutocomplete.hide();
+      toAutocomplete.hide();
+      // Update modal content if modal is open
+      if (mevModal.classList.contains('show')) {
+        renderMevChainContent();
+      }
+    });
+
+    // MEV Modal event listeners
+    mevInfoBtn.addEventListener('click', openMevModal);
+
+    mevModalClose.addEventListener('click', closeMevModal);
+
+    // Close modal on overlay click (outside the modal)
+    mevModal.addEventListener('click', (event) => {
+      if (event.target === mevModal) {
+        closeMevModal();
+      }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && mevModal.classList.contains('show')) {
+        closeMevModal();
+      }
+      if (event.key === 'Escape' && settingsModal.classList.contains('show')) {
+        closeSettingsModal();
+      }
+    });
+
+    // Settings Modal event listeners
+    settingsBtn.addEventListener('click', openSettingsModal);
+
+    settingsModalClose.addEventListener('click', closeSettingsModal);
+
+    // Close settings modal on overlay click (outside the modal)
+    settingsModal.addEventListener('click', (event) => {
+      if (event.target === settingsModal) {
+        closeSettingsModal();
+      }
     });
 
     // Tab switching
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.tab + 'Content').classList.add('active');
+        setActiveTab(tab.dataset.tab);
       });
     });
 
-    const form = document.getElementById('form');
-    const result = document.getElementById('result');
-    const submit = document.getElementById('submit');
+    function renderQuoteActions(options) {
+      const quoteChainId = String(options.quoteChainId || '');
+      const routerAddress = String(options.routerAddress || '');
+      const routerCalldata = String(options.routerCalldata || '');
+      const routerValue = String(options.routerValue || '0x0');
+      const approvalToken = String(options.approvalToken || '');
+      const approvalSpender = String(options.approvalSpender || '');
+      const approvalRequired = Boolean(approvalToken && approvalSpender);
+      const walletRequiredClass = hasConnectedWallet() ? '' : ' wallet-required';
 
-    function renderSpandexQuote(data, isWinner) {
-      const banner = isWinner
-        ? '<div class="recommendation-banner winner">RECOMMENDED</div>'
-        : '<div class="recommendation-banner loser">Alternative quote</div>';
-      return banner + \`
-        <div class="result-header">Spandex Quote <span class="provider-tag">\${data.provider}</span></div>
-        <div class="field">
-          <div class="field-label">Output Amount</div>
-          <div class="field-value number">\${data.output_amount}\${data.to_symbol ? ' ' + data.to_symbol : ''}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Gas Used</div>
-          <div class="field-value number">\${data.gas_used}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">From</div>
-          <div class="field-value">\${data.from_symbol ? data.from_symbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${data.from}</span></div>
-        </div>
-        <div class="field">
-          <div class="field-label">To</div>
-          <div class="field-value">\${data.to_symbol ? data.to_symbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${data.to}</span></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Input Amount</div>
-          <div class="field-value number">\${data.amount}\${data.from_symbol ? ' ' + data.from_symbol : ''}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Slippage</div>
-          <div class="field-value number">\${data.slippage_bps} bps</div>
-        </div>
-        \${data.approval_token ? \`
-        <div class="field">
-          <div class="field-label">Approval Token</div>
-          <div class="field-value">\${data.approval_token}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Approval Spender</div>
-          <div class="field-value">\${data.approval_spender}</div>
-        </div>
-        \` : ''}
-        <div class="field">
-          <div class="field-label">Router Address</div>
-          <div class="field-value">\${data.router_address}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Router Calldata</div>
-          <div class="field-value" style="font-size: 11px;">\${data.router_calldata}</div>
-        </div>
-        \${data.router_value ? \`
-        <div class="field">
-          <div class="field-label">Router Value (wei)</div>
-          <div class="field-value number">\${data.router_value}</div>
-        </div>
-        \` : ''}
-      \`;
+      // Step indicator pattern: show numbered steps when approval is required
+      // When no approval needed, show only the Swap button
+      if (approvalRequired) {
+        return (
+          '<div class="tx-actions" data-quote-chain-id="' + quoteChainId + '" data-router-address="' + routerAddress +
+          '" data-router-calldata="' + routerCalldata + '" data-router-value="' + routerValue +
+          '" data-approval-token="' + approvalToken + '" data-approval-spender="' + approvalSpender + '">' +
+            '<div class="tx-steps">' +
+              '<div class="tx-step">' +
+                '<span class="tx-step-num">1.</span>' +
+                '<button type="button" class="tx-btn approve-btn' + walletRequiredClass + '" data-action="approve">Approve</button>' +
+              '</div>' +
+              '<div class="tx-step">' +
+                '<span class="tx-step-num">2.</span>' +
+                '<button type="button" class="tx-btn swap-btn disabled' + walletRequiredClass + '" data-action="swap" disabled>Swap</button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="tx-status" aria-live="polite"></div>' +
+          '</div>'
+        );
+      } else {
+        // No approval needed - show only Swap button, no step indicators
+        return (
+          '<div class="tx-actions" data-quote-chain-id="' + quoteChainId + '" data-router-address="' + routerAddress +
+          '" data-router-calldata="' + routerCalldata + '" data-router-value="' + routerValue +
+          '" data-approval-token="" data-approval-spender="">' +
+            '<div class="tx-steps">' +
+              '<button type="button" class="tx-btn swap-btn' + walletRequiredClass + '" data-action="swap">Swap</button>' +
+            '</div>' +
+            '<div class="tx-status" aria-live="polite"></div>' +
+          '</div>'
+        );
+      }
+    }
+
+    // Render secondary details (collapsible)
+    function renderSecondaryDetails(data, type) {
+      const details = [];
+      
+      details.push('<div class="field"><div class="field-label">Router Address</div><div class="field-value">' + data.router_address + '</div></div>');
+      details.push('<div class="field"><div class="field-label">Router Calldata</div><div class="field-value" style="font-size: 0.625rem; word-break: break-all;">' + data.router_calldata.slice(0, 100) + (data.router_calldata.length > 100 ? '...' : '') + '</div></div>');
+      
+      if (data.router_value) {
+        details.push('<div class="field"><div class="field-label">Router Value (wei)</div><div class="field-value number">' + data.router_value + '</div></div>');
+      }
+      
+      if (data.approval_token) {
+        details.push('<div class="field"><div class="field-label">Approval Token</div><div class="field-value">' + data.approval_token + '</div></div>');
+        details.push('<div class="field"><div class="field-label">Approval Spender</div><div class="field-value">' + data.approval_spender + '</div></div>');
+      }
+      
+      // Always show Gas Used field - "N/A" if missing or zero
+      const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null;
+      details.push('<div class="field"><div class="field-label">Gas Used</div><div class="field-value number">' + (gasUsed || 'N/A') + '</div></div>');
+      
+      if (type === 'spandex' && data.slippage_bps) {
+        details.push('<div class="field"><div class="field-label">Slippage</div><div class="field-value number">' + data.slippage_bps + ' bps</div></div>');
+      }
+      
+      return details.join('');
+    }
+
+    function renderSpandexQuote(data, isWinner, quoteChainId) {
+      const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
+      const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
+      const providerLabel = 'Spandex' + (data.provider ? ' / ' + data.provider : '');
+      
+      // Primary section: output + buttons inline
+      const primary = 
+        '<div class="' + primaryClass + '">' +
+          recommendationLabel +
+          '<div class="result-output-label">You receive (estimated)</div>' +
+          '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
+          '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via ' + providerLabel + '</div></div>' +
+          renderQuoteActions({
+            quoteChainId,
+            routerAddress: data.router_address,
+            routerCalldata: data.router_calldata,
+            routerValue: data.router_value || '0x0',
+            approvalToken: data.approval_token || '',
+            approvalSpender: data.approval_spender || '',
+          }) +
+        '</div>';
+      
+      // Secondary details (collapsible)
+      const secondary = 
+        '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
+        '<div class="details-content">' +
+          '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
+          '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
+          '<div class="field"><div class="field-label">Input Amount</div><div class="field-value number">' + data.amount + (data.from_symbol ? ' ' + data.from_symbol : '') + '</div></div>' +
+          renderSecondaryDetails(data, 'spandex') +
+        '</div>';
+      
+      return primary + secondary;
     }
 
     function formatCurveRoute(route, symbols) {
       if (!route || route.length === 0) return '';
       return route.map((step, i) => {
         const poolName = step.poolName || step.poolId || 'Unknown Pool';
-        const showPoolId = step.poolName && step.poolId && step.poolName !== step.poolId;
         const inputSymbol = symbols[step.inputCoinAddress?.toLowerCase()] || '';
         const outputSymbol = symbols[step.outputCoinAddress?.toLowerCase()] || '';
-        return \`
-        <div class="route-step">
-          <div class="route-step-header">Step \${i + 1}: \${poolName}\${showPoolId ? ' <span style="color: #888; font-size: 11px;">' + step.poolId + '</span>' : ''}</div>
-          <div class="field-label">Pool</div>
-          <div class="field-value"><span style="color: #888; font-size: 11px;">\${step.poolAddress || ''}</span></div>
-          <div class="field-label">Input</div>
-          <div class="field-value">\${inputSymbol ? inputSymbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${step.inputCoinAddress || ''}</span></div>
-          <div class="field-label">Output</div>
-          <div class="field-value">\${outputSymbol ? outputSymbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${step.outputCoinAddress || ''}</span></div>
-        </div>
-      \`}).join('');
+        return '<div class="route-step">' +
+          '<div class="route-step-header">Step ' + (i + 1) + ': ' + poolName + '</div>' +
+          '<div class="field"><div class="field-label">Input</div><div class="field-value">' + (inputSymbol ? inputSymbol + ' ' : '') + (step.inputCoinAddress || '') + '</div></div>' +
+          '<div class="field"><div class="field-label">Output</div><div class="field-value">' + (outputSymbol ? outputSymbol + ' ' : '') + (step.outputCoinAddress || '') + '</div></div>' +
+        '</div>';
+      }).join('');
     }
 
-    function renderCurveQuote(data, isWinner) {
+    function renderCurveQuote(data, isWinner, quoteChainId) {
       const symbols = {};
       symbols[data.from.toLowerCase()] = data.from_symbol;
       symbols[data.to.toLowerCase()] = data.to_symbol;
       if (data.route_symbols) {
         Object.entries(data.route_symbols).forEach(([k, v]) => { symbols[k.toLowerCase()] = v; });
       }
-      const banner = isWinner
-        ? '<div class="recommendation-banner winner">RECOMMENDED</div>'
-        : '<div class="recommendation-banner loser">Alternative quote</div>';
-      return banner + \`
-        <div class="result-header">Curve Quote</div>
-        <div class="field">
-          <div class="field-label">Output Amount</div>
-          <div class="field-value number">\${data.output_amount}\${data.to_symbol ? ' ' + data.to_symbol : ''}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">From</div>
-          <div class="field-value">\${data.from_symbol ? data.from_symbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${data.from}</span></div>
-        </div>
-        <div class="field">
-          <div class="field-label">To</div>
-          <div class="field-value">\${data.to_symbol ? data.to_symbol + ' ' : ''}<span style="color: #888; font-size: 11px;">\${data.to}</span></div>
-        </div>
-        <div class="field">
-          <div class="field-label">Input Amount</div>
-          <div class="field-value number">\${data.amount}\${data.from_symbol ? ' ' + data.from_symbol : ''}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Route (\${data.route.length} steps)</div>
-          \${formatCurveRoute(data.route, symbols)}
-        </div>
-        \${data.approval_target ? \`
-        <div class="field">
-          <div class="field-label">Approval Target</div>
-          <div class="field-value">\${data.approval_target}</div>
-        </div>
-        \` : ''}
-        <div class="field">
-          <div class="field-label">Router Address</div>
-          <div class="field-value">\${data.router_address}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Router Calldata</div>
-          <div class="field-value" style="font-size: 11px;">\${data.router_calldata}</div>
-        </div>
-      \`;
+      
+      const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
+      const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
+      
+      // Primary section: output + buttons inline
+      const primary = 
+        '<div class="' + primaryClass + '">' +
+          recommendationLabel +
+          '<div class="result-output-label">You receive (estimated)</div>' +
+          '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
+          '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via Curve</div></div>' +
+          renderQuoteActions({
+            quoteChainId,
+            routerAddress: data.router_address,
+            routerCalldata: data.router_calldata,
+            routerValue: '0x0',
+            approvalToken: data.from || '',
+            approvalSpender: data.approval_target || '',
+          }) +
+        '</div>';
+      
+      // Secondary details (collapsible)
+      const secondary = 
+        '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
+        '<div class="details-content">' +
+          '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
+          '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
+          '<div class="field"><div class="field-label">Input Amount</div><div class="field-value number">' + data.amount + (data.from_symbol ? ' ' + data.from_symbol : '') + '</div></div>' +
+          (data.route && data.route.length > 0 ? '<div class="field"><div class="field-label">Route (' + data.route.length + ' steps)</div>' + formatCurveRoute(data.route, symbols) + '</div>' : '') +
+          (data.approval_target ? '<div class="field"><div class="field-label">Approval Target</div><div class="field-value">' + data.approval_target + '</div></div>' : '') +
+          renderSecondaryDetails(data, 'curve') +
+        '</div>';
+      
+      return primary + secondary;
     }
 
-    function showCompareResult(data) {
+    function showCompareResult(data, options = {}) {
+      const preserveUiState = options.preserveUiState === true;
+      const priorUiState = preserveUiState ? captureResultUiState() : null;
       result.className = 'show';
-      const rec = document.getElementById('recommendedContent');
-      const alt = document.getElementById('alternativeContent');
-      const tabRec = document.getElementById('tabRecommended');
-      const tabAlt = document.getElementById('tabAlternative');
 
-      // Reset to recommended tab
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      tabRec.classList.add('active');
-      rec.classList.add('active');
+      if (!preserveUiState) {
+        setActiveTab('recommended');
+      }
 
-      let reasonHtml = '<div class="field" style="margin-bottom: 16px;">' +
-        '<div class="field-label">Comparison</div>' +
-        '<div class="field-value">' + data.recommendation_reason + '</div>';
+      const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || Number(chainIdInput.value);
+
+      // Build comparison reason text with typography, not color
+      let reasonHtml = '<div style="padding: 0.5rem; border: 2px solid #000; margin-bottom: 0.5rem; background: #f8f8f8;">';
+      reasonHtml += '<div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Reason</div>';
+      reasonHtml += '<div style="font-size: 0.875rem;">' + data.recommendation_reason + '</div>';
       if (data.gas_price_gwei) {
-        reasonHtml += '<div class="field-value number" style="font-size: 12px; margin-top: 4px;">Gas price: ' + data.gas_price_gwei + ' gwei</div>';
+        reasonHtml += '<div class="field-value number" style="font-size: 0.75rem; margin-top: 0.25rem;">Gas: ' + data.gas_price_gwei + ' gwei</div>';
       }
       reasonHtml += '</div>';
 
       if (data.recommendation === 'spandex' && data.spandex) {
-        tabRec.textContent = 'Spandex (Recommended)';
-        rec.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true);
+        tabRecommended.textContent = 'Spandex';
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true, quoteChainId);
         if (data.curve) {
-          tabAlt.textContent = 'Curve';
-          tabAlt.style.display = '';
-          alt.innerHTML = renderCurveQuote(data.curve, false);
+          tabAlternative.textContent = 'Curve';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = renderCurveQuote(data.curve, false, quoteChainId);
         } else {
-          tabAlt.textContent = 'Curve';
-          tabAlt.style.display = '';
-          alt.innerHTML = '<div class="recommendation-banner error">' + (data.curve_error || 'No quote available') + '</div>';
+          tabAlternative.textContent = 'Curve';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = '<div class="error-message">' + (data.curve_error || 'No quote available') + '</div>';
         }
       } else if (data.recommendation === 'curve' && data.curve) {
-        tabRec.textContent = 'Curve (Recommended)';
-        rec.innerHTML = reasonHtml + renderCurveQuote(data.curve, true);
+        tabRecommended.textContent = 'Curve';
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, true, quoteChainId);
         if (data.spandex) {
-          tabAlt.textContent = 'Spandex';
-          tabAlt.style.display = '';
-          alt.innerHTML = renderSpandexQuote(data.spandex, false);
+          tabAlternative.textContent = 'Spandex';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = renderSpandexQuote(data.spandex, false, quoteChainId);
         } else {
-          tabAlt.textContent = 'Spandex';
-          tabAlt.style.display = '';
-          alt.innerHTML = '<div class="recommendation-banner error">' + (data.spandex_error || 'No quote available') + '</div>';
+          tabAlternative.textContent = 'Spandex';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = '<div class="error-message">' + (data.spandex_error || 'No quote available') + '</div>';
         }
       } else if (data.spandex) {
-        tabRec.textContent = 'Spandex';
-        rec.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false);
-        tabAlt.style.display = 'none';
-        alt.innerHTML = '';
+        tabRecommended.textContent = 'Spandex';
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false, quoteChainId);
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
       } else if (data.curve) {
-        tabRec.textContent = 'Curve';
-        rec.innerHTML = reasonHtml + renderCurveQuote(data.curve, false);
-        tabAlt.style.display = 'none';
-        alt.innerHTML = '';
+        tabRecommended.textContent = 'Curve';
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, false, quoteChainId);
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
       } else {
-        tabRec.textContent = 'Results';
-        rec.innerHTML = '<div class="error">No quotes available. ' +
+        tabRecommended.textContent = 'Results';
+        recommendedContent.innerHTML = '<div class="error-message">No quotes available. ' +
           (data.spandex_error ? 'Spandex: ' + data.spandex_error + '. ' : '') +
           (data.curve_error ? 'Curve: ' + data.curve_error : '') + '</div>';
-        tabAlt.style.display = 'none';
-        alt.innerHTML = '';
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
       }
+
+      if (preserveUiState && priorUiState) {
+        setActiveTab(priorUiState.activeTab);
+        window.scrollTo(0, priorUiState.scrollY);
+      } else {
+        setActiveTab('recommended');
+      }
+
+      updateTransactionActionStates();
+      updateRefreshIndicator();
     }
 
     function showError(msg) {
       result.className = 'show';
-      const rec = document.getElementById('recommendedContent');
-      rec.innerHTML = '<div class="error">' + msg + '</div>';
-      document.getElementById('tabRecommended').textContent = 'Results';
-      document.getElementById('tabAlternative').style.display = 'none';
+      recommendedContent.innerHTML = '<div class="error-message">' + msg + '</div>';
+      tabRecommended.textContent = 'Results';
+      tabAlternative.style.display = 'none';
+      alternativeContent.innerHTML = '';
+      setActiveTab('recommended');
+      updateRefreshIndicator();
+    }
+
+    function hasQuoteResults(data) {
+      return Boolean(data && (data.spandex || data.curve));
+    }
+
+    async function fetchComparePayload(compareParams) {
+      const query = compareParamsToSearchParams(compareParams);
+      const response = await fetch('/compare?' + query.toString());
+      const payload = await response.json();
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error || ('Request failed with status ' + response.status));
+      }
+      return payload;
+    }
+
+    async function requestAndRenderCompare(compareParams, options = {}) {
+      const normalizedParams = cloneCompareParams(compareParams);
+      const showLoading = options.showLoading === true;
+      const preserveUiState = options.preserveUiState === true;
+      const keepExistingResultsOnError = options.keepExistingResultsOnError === true;
+      const updateUrl = options.updateUrl !== false;
+      const requestId = Number.isFinite(options.requestId) ? Number(options.requestId) : ++compareRequestSequence;
+
+      if (requestId > compareRequestSequence) {
+        compareRequestSequence = requestId;
+      }
+
+      currentQuoteChainId = Number(normalizedParams.chainId);
+
+      if (showLoading) {
+        submit.disabled = true;
+        submit.textContent = 'Comparing...';
+        result.className = 'show';
+        recommendedContent.innerHTML = '<div class="result-header">Querying Spandex + Curve for best price...</div>';
+        tabRecommended.textContent = 'Loading...';
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
+        setActiveTab('recommended');
+      }
+
+      try {
+        const payload = await fetchComparePayload(normalizedParams);
+        if (requestId !== compareRequestSequence) {
+          return { ok: false, stale: true, params: normalizedParams };
+        }
+
+        showCompareResult(payload, { preserveUiState });
+        if (updateUrl) {
+          updateUrlFromCompareParams(normalizedParams);
+        }
+        return { ok: true, payload, params: normalizedParams };
+      } catch (err) {
+        if (requestId !== compareRequestSequence) {
+          return { ok: false, stale: true, params: normalizedParams };
+        }
+
+        const message = err instanceof Error ? err.message : String(err);
+        if (!keepExistingResultsOnError) {
+          showError(message);
+        }
+        return { ok: false, error: message, params: normalizedParams };
+      } finally {
+        if (showLoading) {
+          submit.disabled = false;
+          submit.textContent = 'Compare Quotes';
+        }
+      }
+    }
+
+    async function runAutoRefreshCycle() {
+      const refreshParams = getRefreshParams();
+      if (!refreshParams || autoRefreshState.paused || autoRefreshState.inFlight) {
+        return;
+      }
+
+      const requestId = ++compareRequestSequence;
+
+      autoRefreshState.inFlight = true;
+      updateRefreshIndicator();
+
+      const comparison = await requestAndRenderCompare(refreshParams, {
+        preserveUiState: true,
+        keepExistingResultsOnError: true,
+        requestId,
+      });
+
+      autoRefreshState.inFlight = false;
+      if (comparison.stale) {
+        updateRefreshIndicator();
+        return;
+      }
+
+      if (!autoRefreshState.lastParams || autoRefreshState.paused) {
+        updateRefreshIndicator();
+        return;
+      }
+
+      if (comparison.ok) {
+        autoRefreshState.lastParams = comparison.params;
+        startAutoRefreshCountdown();
+      } else {
+        autoRefreshState.errorMessage = 'Refresh failed. Keeping previous quotes.';
+        startAutoRefreshCountdown({ clearErrorMessage: false });
+      }
+    }
+
+    function isRejectionCode(code) {
+      return Number(code) === 4001;
+    }
+
+    function isUserRejectedError(err) {
+      if (!err || typeof err !== 'object') return false;
+
+      if (isRejectionCode(err.code)) {
+        return true;
+      }
+
+      if (err.data && typeof err.data === 'object') {
+        if (isRejectionCode(err.data.code)) {
+          return true;
+        }
+
+        if (err.data.originalError && typeof err.data.originalError === 'object' && isRejectionCode(err.data.originalError.code)) {
+          return true;
+        }
+      }
+
+      if (err.error && typeof err.error === 'object' && isRejectionCode(err.error.code)) {
+        return true;
+      }
+
+      return false;
+    }
+
+    function setTxStatus(card, text, kind) {
+      const status = card.querySelector('.tx-status');
+      if (!status) return;
+      status.textContent = text || '';
+      status.classList.remove('pending', 'success', 'error');
+      if (kind) {
+        status.classList.add(kind);
+      }
+    }
+
+    function setTxCardPending(card, pending) {
+      card.querySelectorAll('.tx-btn').forEach((button) => {
+        button.dataset.pending = pending ? 'true' : 'false';
+        if (pending) {
+          button.classList.remove('wallet-required');
+          button.disabled = true;
+        } else if (button.dataset.locked === 'true') {
+          button.disabled = true;
+        } else {
+          button.disabled = false;
+        }
+      });
+
+      if (!pending) {
+        updateTransactionActionStates();
+      }
+    }
+
+    async function ensureWalletOnChain(provider, chainId) {
+      const targetChainIdHex = getChainIdHex(chainId).toLowerCase();
+      if (targetChainIdHex === '0x0') {
+        throw new Error('Invalid chain ID');
+      }
+
+      const activeChainId = await provider.request({ method: 'eth_chainId' });
+      if (String(activeChainId || '').toLowerCase() === targetChainIdHex) {
+        return;
+      }
+
+      await provider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: targetChainIdHex }],
+      });
+    }
+
+    async function waitForTransactionReceipt(provider, txHash) {
+      const timeoutMs = 120000;
+      const pollIntervalMs = 1500;
+      const startedAt = Date.now();
+
+      while (Date.now() - startedAt < timeoutMs) {
+        const receipt = await provider.request({
+          method: 'eth_getTransactionReceipt',
+          params: [txHash],
+        });
+
+        if (receipt) {
+          return receipt;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+
+      throw new Error('Timed out waiting for transaction confirmation');
+    }
+
+    async function executeCardTransaction(card, txParams, onSuccess) {
+      if (!hasConnectedWallet()) {
+        setWalletMessage('Connect wallet first', true);
+        setTxStatus(card, 'Connect wallet first', 'error');
+        updateTransactionActionStates();
+        return;
+      }
+
+      const provider = connectedWalletProvider;
+      if (!provider || typeof provider.request !== 'function') {
+        setWalletMessage('Wallet provider is not available.', true);
+        setTxStatus(card, 'Failed', 'error');
+        updateTransactionActionStates();
+        return;
+      }
+
+      const chainId = card.dataset.quoteChainId || currentQuoteChainId || chainIdInput.value;
+
+      setTxCardPending(card, true);
+      setTxStatus(card, 'Confirming...', 'pending');
+      pauseAutoRefreshForTransaction();
+
+      try {
+        await ensureWalletOnChain(provider, chainId);
+        setTxStatus(card, 'Confirming...', 'pending');
+
+        const txHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [txParams],
+        });
+        const receipt = await waitForTransactionReceipt(provider, txHash);
+        const statusValue = String(receipt && receipt.status ? receipt.status : '').toLowerCase();
+
+        if (statusValue === '0x1' || statusValue === '1') {
+          if (typeof onSuccess === 'function') {
+            onSuccess();
+          }
+          setWalletMessage('');
+          setTxStatus(card, 'Success', 'success');
+          return;
+        }
+
+        throw new Error('Transaction failed');
+      } catch (err) {
+        if (isUserRejectedError(err)) {
+          setWalletMessage('Transaction canceled in wallet.', true);
+          setTxStatus(card, 'Failed', 'error');
+          return;
+        }
+
+        setWalletMessage('Transaction failed. Please try again.', true);
+        setTxStatus(card, 'Failed', 'error');
+      } finally {
+        setTxCardPending(card, false);
+        resumeAutoRefreshAfterTransaction();
+      }
+    }
+
+    async function onApproveClick(card, button) {
+      if (!hasConnectedWallet()) {
+        setWalletMessage('Connect wallet first', true);
+        setTxStatus(card, 'Connect wallet first', 'error');
+        updateTransactionActionStates();
+        return;
+      }
+
+      const approvalToken = String(card.dataset.approvalToken || '').trim();
+      const approvalSpender = String(card.dataset.approvalSpender || '').trim();
+      if (!isAddressLike(approvalToken) || !isAddressLike(approvalSpender)) {
+        setTxStatus(card, 'Failed', 'error');
+        return;
+      }
+
+      let calldata;
+      try {
+        calldata = encodeApproveCalldata(approvalSpender);
+      } catch {
+        setTxStatus(card, 'Failed', 'error');
+        return;
+      }
+
+      await executeCardTransaction(
+        card,
+        {
+          to: approvalToken,
+          data: calldata,
+          value: '0x0',
+          from: connectedWalletAddressValue,
+        },
+        () => {
+          // Show checkmark and mark as approved
+          button.innerHTML = 'Approved<span class="tx-checkmark"> ✓</span>';
+          button.dataset.locked = 'true';
+          button.classList.add('approved');
+          button.disabled = true;
+
+          // Enable the Swap button (remove disabled state)
+          const swapButton = card.querySelector('.swap-btn');
+          if (swapButton) {
+            swapButton.classList.remove('disabled');
+            swapButton.disabled = false;
+          }
+        }
+      );
+    }
+
+    async function onSwapClick(card) {
+      if (!hasConnectedWallet()) {
+        setWalletMessage('Connect wallet first', true);
+        setTxStatus(card, 'Connect wallet first', 'error');
+        updateTransactionActionStates();
+        return;
+      }
+
+      const routerAddress = String(card.dataset.routerAddress || '').trim();
+      const routerCalldata = String(card.dataset.routerCalldata || '').trim();
+      const routerValue = String(card.dataset.routerValue || '0x0');
+      if (!isAddressLike(routerAddress) || !routerCalldata) {
+        setTxStatus(card, 'Failed', 'error');
+        return;
+      }
+
+      await executeCardTransaction(card, {
+        to: routerAddress,
+        data: routerCalldata,
+        value: toHexQuantity(routerValue || '0x0'),
+        from: connectedWalletAddressValue,
+      });
+    }
+
+    result.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const button = target.closest('.tx-btn');
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+
+      const card = button.closest('.tx-actions');
+      if (!(card instanceof HTMLElement)) {
+        return;
+      }
+
+      if (button.dataset.pending === 'true' || button.dataset.locked === 'true') {
+        return;
+      }
+
+      if (button.dataset.action === 'approve') {
+        void onApproveClick(card, button);
+        return;
+      }
+
+      if (button.dataset.action === 'swap') {
+        void onSwapClick(card);
+      }
+    });
+
+    async function runCompareAndMaybeStartAutoRefresh(compareParams, options = {}) {
+      const requestId = ++compareRequestSequence;
+      const comparison = await requestAndRenderCompare(compareParams, {
+        showLoading: options.showLoading === true,
+        preserveUiState: options.preserveUiState === true,
+        keepExistingResultsOnError: options.keepExistingResultsOnError === true,
+        updateUrl: options.updateUrl !== false,
+        requestId,
+      });
+
+      if (comparison.stale) {
+        return comparison;
+      }
+
+      if (comparison.ok && hasQuoteResults(comparison.payload)) {
+        beginAutoRefresh(comparison.params);
+      } else {
+        stopAutoRefresh();
+      }
+
+      return comparison;
     }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-
-      const chainId = document.getElementById('chainId').value.trim();
-      const from = document.getElementById('from').value.trim();
-      const to = document.getElementById('to').value.trim();
-      const amount = document.getElementById('amount').value.trim();
-      const slippageBps = document.getElementById('slippageBps').value.trim();
-      const sender = document.getElementById('sender').value.trim();
-
-      submit.disabled = true;
-      submit.textContent = 'Comparing...';
-      result.className = 'show';
-      const rec = document.getElementById('recommendedContent');
-      rec.innerHTML = '<div class="result-header">Querying Spandex + Curve for best price...</div>';
-      document.getElementById('tabRecommended').textContent = 'Loading...';
-      document.getElementById('tabAlternative').style.display = 'none';
-
-      try {
-        const params = new URLSearchParams({ chainId, from, to, amount, slippageBps });
-        if (sender) params.set('sender', sender);
-
-        const res = await fetch('/compare?' + params.toString());
-        const data = await res.json();
-
-        if (data.error) {
-          showError(data.error);
-        } else {
-          showCompareResult(data);
-          const url = new URL(window.location.href);
-          url.searchParams.set('chainId', chainId);
-          url.searchParams.set('from', from);
-          url.searchParams.set('to', to);
-          url.searchParams.set('amount', amount);
-          url.searchParams.set('slippageBps', slippageBps);
-          if (sender) url.searchParams.set('sender', sender);
-          else url.searchParams.delete('sender');
-          window.history.replaceState({}, '', url.toString());
-        }
-      } catch (err) {
-        showError('Request failed: ' + err.message);
-      } finally {
-        submit.disabled = false;
-        submit.textContent = 'Compare Quotes';
-      }
+      const compareParams = readCompareParamsFromForm();
+      await runCompareAndMaybeStartAutoRefresh(compareParams, { showLoading: true });
     });
 
     // Restore from URL params or apply chain defaults
     const params = new URLSearchParams(window.location.search);
-    if (params.get('chainId')) document.getElementById('chainId').value = params.get('chainId');
-    if (params.get('from')) document.getElementById('from').value = params.get('from');
-    else applyDefaults(Number(document.getElementById('chainId').value));
-    if (params.get('to')) document.getElementById('to').value = params.get('to');
-    if (params.get('amount')) document.getElementById('amount').value = params.get('amount');
-    if (params.get('slippageBps')) document.getElementById('slippageBps').value = params.get('slippageBps');
-    if (params.get('sender')) document.getElementById('sender').value = params.get('sender');
-    if (!params.get('from') && !params.get('to')) applyDefaults(Number(document.getElementById('chainId').value));
+    if (params.get('chainId')) chainIdInput.value = params.get('chainId');
+    if (params.get('from')) {
+      const fromAddr = params.get('from');
+      fromInput.dataset.address = fromAddr;
+      // Will format with symbol after tokenlist loads
+    } else {
+      // Will apply defaults after tokenlist loads
+    }
+    if (params.get('to')) {
+      const toAddr = params.get('to');
+      toInput.dataset.address = toAddr;
+      // Will format with symbol after tokenlist loads
+    }
+    if (params.get('amount')) amountInput.value = params.get('amount');
+    if (params.get('slippageBps')) slippageInput.value = params.get('slippageBps');
+    // Sender param from URL is silently ignored - sender comes from wallet connection state
 
-    loadStoredTokenlist();
+    // Remove any stale mevProtection param from URL
+    if (params.has('mevProtection')) {
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('mevProtection');
+      window.history.replaceState({}, '', cleanUrl.toString());
+    }
+
+    const shouldLoadFromUrlParams = Boolean(
+      params.get('chainId') && params.get('from') && params.get('to') && params.get('amount')
+    );
+
+    // Initialize tokenlist sources on page load
+    async function initializeTokenlistSources() {
+      // Step 1: Load default tokenlist first
+      const defaultTokens = await loadDefaultTokenlist();
+      
+      // Read default tokenlist enabled state from localStorage (default: true for new visitors)
+      let defaultEnabled = true;
+      try {
+        const stored = localStorage.getItem(DEFAULT_TOKENLIST_ENABLED_KEY);
+        if (stored !== null) {
+          defaultEnabled = stored === 'true';
+        }
+      } catch {
+        // Ignore storage errors, use default
+      }
+      
+      tokenlistSources = [{
+        url: null, // null indicates default
+        enabled: defaultEnabled,
+        name: DEFAULT_TOKENLIST_NAME,
+        tokens: defaultTokens,
+        error: null
+      }];
+
+      // Step 2: Check for migration from old single-URL format
+      const migrated = migrateOldTokenlistUrl();
+      let savedLists = migrated || loadTokenlistSourcesFromStorage();
+
+      // Step 3: Load saved custom tokenlists
+      if (savedLists && savedLists.length > 0) {
+        const loadPromises = savedLists.map(async (saved) => {
+          const index = tokenlistSources.length;
+          tokenlistSources.push({
+            url: saved.url,
+            enabled: saved.enabled !== false, // default to true
+            name: saved.name || saved.url,
+            tokens: [],
+            error: null
+          });
+
+          try {
+            const { tokens, name } = await loadTokenlistFromUrl(saved.url);
+            tokenlistSources[index].tokens = tokens.map(t => ({ ...t, _source: name }));
+            tokenlistSources[index].name = name;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            tokenlistSources[index].error = msg;
+            tokenlistSources[index].tokens = [];
+          }
+        });
+
+        await Promise.all(loadPromises);
+      }
+
+      // Step 4: Render the sources list
+      renderTokenlistSources();
+    }
+
+    // Load tokenlists and then initialize the UI
+    initializeTokenlistSources().then(() => {
+      // Now we can format tokens with symbols from the loaded tokenlist
+      const chainId = Number(chainIdInput.value);
+
+      if (params.get('from')) {
+        const fromAddr = params.get('from');
+        const fromToken = findTokenByAddress(fromAddr, chainId);
+        if (fromToken) {
+          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
+          fromInput.dataset.address = fromToken.address;
+        } else {
+          fromInput.value = fromAddr;
+          fromInput.dataset.address = fromAddr;
+        }
+      }
+
+      if (params.get('to')) {
+        const toAddr = params.get('to');
+        const toToken = findTokenByAddress(toAddr, chainId);
+        if (toToken) {
+          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
+          toInput.dataset.address = toToken.address;
+        } else {
+          toInput.value = toAddr;
+          toInput.dataset.address = toAddr;
+        }
+      }
+
+      // Apply defaults if no URL params for from/to
+      if (!params.get('from') && !params.get('to')) {
+        applyDefaults(chainId);
+      }
+
+      const activeElement = document.activeElement;
+      if (activeElement === fromInput) {
+        fromAutocomplete.refresh();
+      }
+      if (activeElement === toInput) {
+        toAutocomplete.refresh();
+      }
+
+      if (shouldLoadFromUrlParams) {
+        void runCompareAndMaybeStartAutoRefresh(readCompareParamsFromForm(), {
+          showLoading: true,
+          updateUrl: false,
+        });
+      }
+
+      // Render local tokens on page load
+      renderLocalTokens();
+    });
+
+    // Update token counts when chain changes
+    chainIdInput.addEventListener('change', () => {
+      renderTokenlistSources();
+    });
   </script>
 </body>
 </html>`;
 
-async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+export async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
   const requestStart = Date.now();
   const requestId = getRequestId(req);
   setTraceHeaders(res, requestId);
@@ -848,6 +4500,119 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
   if (url.pathname === "/chains" && req.method === "GET") {
     sendJson(res, 200, SUPPORTED_CHAINS);
+    return;
+  }
+
+  if (url.pathname === "/tokenlist" && req.method === "GET") {
+    try {
+      const tokenList = await loadTokenList();
+      sendJson(res, 200, tokenList);
+    } catch (err) {
+      logError("Failed to load tokenlist", err);
+      const details = err instanceof Error ? err.message : String(err);
+      sendError(res, 500, `Failed to load tokenlist: ${details}`);
+    }
+    return;
+  }
+
+  // Proxy endpoint for custom tokenlist URLs (avoids CORS issues)
+  if (url.pathname === "/tokenlist/proxy" && req.method === "GET") {
+    const remoteUrl = url.searchParams.get("url");
+
+    if (!remoteUrl) {
+      sendError(res, 400, "Missing url parameter");
+      return;
+    }
+
+    try {
+      const tokenList = await fetchProxyTokenList(remoteUrl);
+      sendJson(res, 200, tokenList);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+
+      // Determine appropriate status code
+      if (
+        message.includes("Missing url") ||
+        message.includes("Invalid URL") ||
+        message.includes("HTTPS")
+      ) {
+        sendError(res, 400, message);
+      } else {
+        // Fetch failures, parse errors, size limits - all 502
+        sendError(res, 502, message);
+      }
+    }
+    return;
+  }
+
+  // Token metadata endpoint - fetches ERC-20 name, symbol, decimals from chain
+  if (url.pathname === "/token-metadata" && req.method === "GET") {
+    const chainIdParam = url.searchParams.get("chainId");
+    const addressParam = url.searchParams.get("address");
+
+    // Validate chainId
+    const chainId = parseInt(chainIdParam || "", 10);
+    if (isNaN(chainId) || chainId <= 0) {
+      sendError(res, 400, "Missing or invalid chainId parameter");
+      return;
+    }
+
+    if (!SUPPORTED_CHAINS[chainId]) {
+      sendError(res, 400, `Unsupported chain: ${chainId}`);
+      return;
+    }
+
+    // Validate address format
+    if (!addressParam) {
+      sendError(res, 400, "Missing or invalid address parameter");
+      return;
+    }
+
+    const addressRegex = /^0x[a-fA-F0-9]{40}$/;
+    if (!addressRegex.test(addressParam)) {
+      sendError(res, 400, "Invalid address format");
+      return;
+    }
+
+    try {
+      const [name, symbol, decimals] = await Promise.all([
+        getTokenName(chainId, addressParam),
+        getTokenSymbol(chainId, addressParam),
+        getTokenDecimals(chainId, addressParam),
+      ]);
+
+      // Check if this is a valid ERC-20 token (at least one metadata field should be present)
+      if (!name && !symbol && decimals === 0) {
+        sendError(res, 404, "Not a valid ERC-20 token");
+        return;
+      }
+
+      sendJson(res, 200, { name, symbol, decimals });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logError(`Token metadata fetch failed: chain=${chainId} address=${addressParam}`, err);
+
+      // Check for specific error types
+      if (message.includes("Unsupported chain")) {
+        sendError(res, 400, message);
+      } else if (
+        message.includes("revert") ||
+        message.includes("call revert") ||
+        message.includes("execution reverted") ||
+        message.includes("returned no data") ||
+        message.includes("not a contract")
+      ) {
+        sendError(res, 404, "Not a valid ERC-20 token");
+      } else if (
+        message.includes("timeout") ||
+        message.includes("network") ||
+        message.includes("ECONNREFUSED")
+      ) {
+        sendError(res, 500, `RPC error: ${message}`);
+      } else {
+        sendError(res, 500, message);
+      }
+    }
     return;
   }
 
@@ -964,7 +4729,14 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  logError("Failed to start server", err);
-  process.exit(1);
-});
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  return import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+if (isMainModule()) {
+  main().catch((err) => {
+    logError("Failed to start server", err);
+    process.exit(1);
+  });
+}

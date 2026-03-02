@@ -1,0 +1,87 @@
+{
+  "milestone": "swap-ux",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test",
+      "exitCode": 0,
+      "summary": "82 tests passed across 6 test files"
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0,
+      "note": "2 warnings (complexity) in server.ts — no errors"
+    }
+  },
+  "reviewsSummary": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library/environment.md",
+      "description": "Documented TOKENLIST_PATH env var override (defaults to data/tokenlist.json) and clarified that viem is server-side only; browser-side uses raw EIP-1193 provider.request()",
+      "sourceFeature": "tokenlist-endpoint, swap-transaction-buttons"
+    },
+    {
+      "target": "library/architecture.md",
+      "description": "Replaced stale 'Browser-side viem: createWalletClient' note with correct pattern: raw EIP-1193 provider.request() calls. Also documented the handleRequest export + isMainModule() guard pattern for integration testing.",
+      "sourceFeature": "wallet-connection, swap-transaction-buttons"
+    },
+    {
+      "target": "library/user-testing.md",
+      "description": "Updated to reflect that ERC-6963 detection CAN be automated via mock provider injection with page.evaluate(), correcting the previously incorrect 'cannot be automated' limitation.",
+      "sourceFeature": "integration-verification"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/fullstack-worker/SKILL.md",
+      "suggestion": "Update the skill description from 'Implements server-side endpoints and inline HTML/JS UI features for the CowSwap Trader app' to 'Implements server-side endpoints and inline HTML/JS UI features for the Compare DEX Routers app'.",
+      "evidence": "Three separate reviewers (rebrand-cowswap-trader, fix-rebrand-to-compare-dex-routers, swap-transaction-buttons) independently flagged that the fullstack-worker SKILL.md header still references 'CowSwap Trader app' — the incorrect brand that was explicitly reverted.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a convention: commits should be atomic and focused on a single feature. The fix-rebrand-to-compare-dex-routers worker bundled ~380 lines of unrelated swap transaction UI code into what was labeled as a branding-only commit, making the commit message misleading.",
+      "evidence": "git show 1f3e3d6 --stat shows 394 insertions, 12 deletions. Only ~12 lines relate to branding; the rest is new swap transaction handlers. The commit message 'Revert branding to Compare DEX Routers' is misleading.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills/fullstack-worker/SKILL.md",
+      "suggestion": "For API-only features with no UI rendering, allow workers to skip Playwright verification and use curl + integration tests instead. The skill currently implies Playwright is always required for verification.",
+      "evidence": "tokenlist-endpoint worker deviated from skill step 4 (Playwright) and correctly used curl + integration tests for the API-only /tokenlist endpoint. The deviation was justified but required a documented exception.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Two setupAutocomplete calls each self-register a chain-change listener and a global mousedown listener, creating redundant listeners.",
+      "reason": "Implementation-level code quality issue (non-blocking). Not shared state — no convention needed, just a local refactor opportunity."
+    },
+    {
+      "observation": "window.__selectedWallet* globals are set but never consumed by downstream features.",
+      "reason": "Dead code, non-blocking. Future cleanup task but not a shared state or convention issue."
+    },
+    {
+      "observation": "Workers should flag pre-existing violations (e.g., stale branding in h1 at time of their commit) as discoveredIssues even if not fixing them.",
+      "reason": "Ambiguous — the branding violation was from a prior feature and was already being fixed in the pipeline. Adding a convention to flag pre-existing issues could generate noise. Rejecting to avoid churn."
+    },
+    {
+      "observation": "cross-feature state-sharing via module-scoped variables (connectedWalletProvider, etc.) is undocumented.",
+      "reason": "The variables are scoped within the INDEX_HTML template string — they are not shared module state. All features contribute to the same inline script block. This is inherent to the inline template architecture and already covered by the architecture.md pattern note."
+    }
+  ],
+  "previousRound": null
+}

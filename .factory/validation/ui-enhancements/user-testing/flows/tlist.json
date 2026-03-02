@@ -1,0 +1,138 @@
+{
+  "groupId": "tlist",
+  "testedAt": "2026-03-02T08:07:00Z",
+  "credentials": {
+    "account": "none",
+    "namespace": "tlist"
+  },
+  "toolsUsed": ["playwright-mcp", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-TLIST-001",
+      "title": "Tokenlist URL input visible in form UI",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "Page loads with form UI", "observed": "Page loaded with Compare DEX Routers heading and form" },
+        { "action": "Look for tokenlist URL input field", "expected": "Text input for custom tokenlist URL visible", "observed": "Text input labeled 'Tokenlist URL (optional)' visible with placeholder 'https://tokens.uniswap.org', Load button, and Reset button" }
+      ],
+      "evidence": {
+        "screenshots": ["val-tlist-001-url-input.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored per guidance)",
+        "network": "GET / -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TLIST-002",
+      "title": "Custom tokenlist loads and updates autocomplete",
+      "status": "pass",
+      "steps": [
+        { "action": "Reset to default tokenlist first", "expected": "Default tokenlist restored", "observed": "Reset to default (1367 tokens) shown" },
+        { "action": "Enter https://tokens.uniswap.org in URL input", "expected": "URL entered in input field", "observed": "URL filled in tokenlist URL input" },
+        { "action": "Click Load button", "expected": "Tokenlist loads from URL", "observed": "Status shows 'Loaded 1367 tokens'" },
+        { "action": "Type 'USDC' in From Token field", "expected": "Autocomplete dropdown appears with USDC from custom list", "observed": "Autocomplete dropdown shows USDC (USD Coin) with full 42-char contract address and logo" }
+      ],
+      "evidence": {
+        "screenshots": ["val-tlist-002-loaded-autocomplete.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic)",
+        "network": "GET /tokenlist/proxy?url=https://tokens.uniswap.org -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TLIST-003",
+      "title": "Custom URL persists in localStorage",
+      "status": "pass",
+      "steps": [
+        { "action": "Check localStorage after loading custom URL", "expected": "customTokenlistUrl key set to https://tokens.uniswap.org", "observed": "localStorage.getItem('customTokenlistUrl') returned 'https://tokens.uniswap.org'" },
+        { "action": "Reload page (navigate to http://localhost:3002/ again)", "expected": "Page reloads and restores custom URL", "observed": "Page reloaded, URL input shows 'https://tokens.uniswap.org', status shows 'Loaded 1367 tokens from saved URL'" },
+        { "action": "Verify localStorage after reload", "expected": "customTokenlistUrl still set", "observed": "localStorage.getItem('customTokenlistUrl') returned 'https://tokens.uniswap.org'" }
+      ],
+      "evidence": {
+        "screenshots": ["val-tlist-003-persisted-after-reload.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic)",
+        "network": "GET /tokenlist/proxy?url=https://tokens.uniswap.org -> 200 on reload",
+        "localStorage": "customTokenlistUrl = 'https://tokens.uniswap.org' before and after reload"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TLIST-004",
+      "title": "Invalid URL shows error message",
+      "status": "pass",
+      "steps": [
+        { "action": "Clear URL input and enter https://not-a-real-tokenlist-xyz123456.example.com/fake.json", "expected": "Invalid URL entered in input", "observed": "URL filled in tokenlist URL input" },
+        { "action": "Click Load button", "expected": "Error message displayed to user", "observed": "Status message shows 'Error: Failed to fetch remote URL: fetch failed' in red text" }
+      ],
+      "evidence": {
+        "screenshots": ["val-tlist-004-invalid-url-error.png"],
+        "consoleErrors": "502 Bad Gateway for proxy request to invalid URL (expected behavior), plus favicon.ico 404 (cosmetic)",
+        "network": "GET /tokenlist/proxy?url=https://not-a-real-tokenlist-xyz123456.example.com/fake.json -> 502"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TLIST-005",
+      "title": "Server proxy endpoint works",
+      "status": "pass",
+      "steps": [
+        { "action": "curl -s http://localhost:3002/tokenlist/proxy?url=https://tokens.uniswap.org", "expected": "HTTP 200 with valid tokenlist JSON", "observed": "HTTP 200, Content-Type: application/json, 426623 bytes, parsed as JSON with name='Uniswap Labs Default' and 1367 tokens" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": "GET /tokenlist/proxy?url=https://tokens.uniswap.org -> 200, 426KB, application/json",
+        "curlOutput": "HTTP_STATUS:200, CONTENT_TYPE:application/json, SIZE:426623, name: Uniswap Labs Default, tokens count: 1367"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TLIST-008",
+      "title": "Reset to default tokenlist",
+      "status": "pass",
+      "steps": [
+        { "action": "Verify custom tokenlist URL is loaded (https://tokens.uniswap.org)", "expected": "Custom URL visible in input with loaded status", "observed": "URL input shows 'https://tokens.uniswap.org', status shows 'Loaded 1367 tokens from saved URL'" },
+        { "action": "Click Reset button", "expected": "Custom URL cleared, default tokenlist restored", "observed": "URL input cleared (empty), status shows 'Reset to default (1367 tokens)', Reset button hidden" },
+        { "action": "Check localStorage after reset", "expected": "customTokenlistUrl key cleared/null", "observed": "localStorage.getItem('customTokenlistUrl') returned null" }
+      ],
+      "evidence": {
+        "screenshots": ["val-tlist-008-after-reset.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic)",
+        "network": "N/A (client-side reset)",
+        "localStorage": "customTokenlistUrl = null after reset"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Custom tokenlist then autocomplete",
+      "status": "pass",
+      "steps": [
+        { "action": "Load custom tokenlist URL https://tokens.uniswap.org", "expected": "Custom tokenlist loaded", "observed": "Status shows 'Loaded 1367 tokens from saved URL'" },
+        { "action": "Clear From Token field and type 'USDC'", "expected": "Autocomplete dropdown shows tokens from custom list", "observed": "Autocomplete dropdown appears with USDC (USD Coin) showing full 42-char contract address and USDC logo icon" }
+      ],
+      "evidence": {
+        "screenshots": ["val-cross-002-autocomplete-custom-list.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic)",
+        "network": "GET /tokenlist/proxy?url=https://tokens.uniswap.org -> 200"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Page auto-populates From/To token fields after tokenlist loads (USDC and WETH for Base chain), requiring triple-click+Backspace to clear before testing autocomplete. Not mentioned in user-testing.md.",
+      "resolved": true,
+      "resolution": "Used clickCount:3 + Backspace to select-all and clear the From Token field before typing test input",
+      "affectedAssertions": ["VAL-TLIST-002", "VAL-CROSS-002"]
+    },
+    {
+      "description": "Previously saved localStorage state from prior test runs persisted the custom tokenlist URL on page load. Had to account for pre-existing state.",
+      "resolved": true,
+      "resolution": "Leveraged existing state for VAL-TLIST-003 test (persistence verification), then used Reset for fresh VAL-TLIST-002 test",
+      "affectedAssertions": ["VAL-TLIST-002", "VAL-TLIST-003"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 7 assertions: all 7 passed. Custom tokenlist URL input is visible (VAL-TLIST-001), loads and updates autocomplete from https://tokens.uniswap.org (VAL-TLIST-002), persists in localStorage across page reloads (VAL-TLIST-003), shows clear error message for invalid URLs (VAL-TLIST-004), server proxy endpoint returns valid JSON (VAL-TLIST-005), reset clears localStorage and restores default tokenlist (VAL-TLIST-008), and autocomplete works with custom tokenlist tokens (VAL-CROSS-002)."
+}

@@ -1,0 +1,28 @@
+{
+  "featureId": "tokenlist-trust-warning-and-button-labels",
+  "reviewedAt": "2026-03-02T22:10:00.000Z",
+  "commitId": "41387cf",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, minimal 17-line addition (CSS + HTML) that fully implements both requirements: a prominent trust warning in the Tokenlist Sources section and renamed Import/Export button labels. The CSS follows the existing brutalist style (no border-radius, no box-shadow). Color contrast passes WCAG AA: #856404 on #FFF3CD is ~5.35:1, and inherited #000 body text on #FFF3CD is >15:1. The warning is static HTML (not dismissable), placed immediately after the section title and before the URL input row, making it the first thing users see. Button labels changed from 'Export'/'Import' to 'Export Tokenlist'/'Import Tokenlist'. No test breakage — existing tests don't reference button label text. Typecheck, lint, and all 123 tests passed. Screenshot confirms correct visual rendering.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 782,
+        "severity": "non_blocking",
+        "description": "The warning colors (#FFF3CD background, #856404 strong text) are not documented in .factory/library/color-system.md. The mission AGENTS.md states 'New UI colors must come from the documented palette or be added with WCAG AA contrast evidence.' The colors do pass WCAG AA (#856404 on #FFF3CD ≈ 5.35:1), but they should be added to the color system doc for consistency. The #CC7A00 border was already in use by .tokenlist-chain-warning but also undocumented as a palette color."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker introduced warning colors (#FFF3CD, #856404) without adding them to .factory/library/color-system.md. The mission AGENTS.md says new colors should be added with WCAG AA contrast evidence. The colors are valid (WCAG AA compliant) but undocumented.",
+      "evidence": "src/server.ts:782 uses background: #FFF3CD and src/server.ts:791 uses color: #856404. Neither appears in .factory/library/color-system.md. The existing #CC7A00 (used at line 777 for tokenlist-chain-warning) is also absent from the color system doc despite being in use before this feature."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. Both requirements are fully implemented: (1) a prominent, non-dismissable trust warning with strong/bold text appears at the top of the Tokenlist Sources section, warning about malicious token addresses, and (2) buttons are correctly renamed to 'Import Tokenlist' and 'Export Tokenlist'. The only observation is that the warning color palette (#FFF3CD, #856404) was not added to the color system documentation, though the colors pass WCAG AA contrast requirements."
+}

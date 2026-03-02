@@ -1,0 +1,132 @@
+{
+  "groupId": "groupB",
+  "testedAt": "2026-03-02T02:45:00Z",
+  "assertions": [
+    {
+      "id": "VAL-POLISH-002",
+      "title": "Curve quotes display gas estimates",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect renderSecondaryDetails source code in src/server.ts",
+          "expected": "Gas Used field is rendered for Curve quotes",
+          "observed": "renderSecondaryDetails uses data.gas_used for both Spandex and Curve. Shows value when present, 'N/A' when not."
+        },
+        {
+          "action": "Submit compare with sender=0xd8dA6BF..., Curve shows Gas Used: N/A in details",
+          "expected": "Gas Used field visible in Curve details",
+          "observed": "Curve Details section shows 'Gas Used: N/A' confirming the field is always present"
+        },
+        {
+          "action": "Mock /compare response with curve.gas_used='187500' and click Compare Quotes",
+          "expected": "Curve quote UI shows '187500' in Gas Used field",
+          "observed": "Details section shows 'Gas Used: 187500' - gas value correctly displayed when available"
+        }
+      ],
+      "evidence": {
+        "sourceInspection": "renderSecondaryDetails renders gas_used for all quote types: `const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null; details.push('<div>Gas Used: ' + (gasUsed || 'N/A') + '</div>')`",
+        "mockVerification": "With gas_used='187500' injected via fetch mock, Curve Details shows 'Gas Used: 187500'",
+        "normalCase": "Without gas estimation (no matching sender balance), Curve Details shows 'Gas Used: N/A'"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-POLISH-004",
+      "title": "Amount out and swap buttons inline with form",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Submit compare on Ethereum chain (USDC->WETH), wait for results",
+          "expected": "Output amount and Approve/Swap buttons visible without scrolling",
+          "observed": "Results section appears immediately below form. Output amount '5063.751... WETH' is visible. Approve/Swap buttons visible inline."
+        },
+        {
+          "action": "Check element positions via getBoundingClientRect",
+          "expected": "Key elements within viewport (height=818px)",
+          "observed": "Result section top=547px (within viewport). Output amount visibleInViewport=true. Approve/Swap buttons visible at top=786px. Full page screenshot confirms compact inline layout with no separate scrolled results section."
+        }
+      ],
+      "evidence": {
+        "layout": "Form ends ~547px from top, results start immediately below with output amount and action buttons within the 818px viewport",
+        "screenshot": "Full page screenshot shows complete layout: heading -> connect wallet -> form -> compare button -> auto-refresh -> tabs -> reason -> RECOMMENDED label -> big output amount -> via text -> APPROVE/SWAP buttons -> DETAILS [+]"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-POLISH-005",
+      "title": "High-contrast two-tone design",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect CSS and computed styles for all elements",
+          "expected": "Black/white base with one blue accent, no border-radius, max 2 fonts",
+          "observed": "Body: bg=white, color=black. Accent: rgb(0,85,255) = #0055FF for Compare Quotes and Swap buttons only. No border-radius found anywhere. Font families: system-ui (body), monospace (addresses). Brutalist sharp edges throughout."
+        }
+      ],
+      "evidence": {
+        "colors": "bg: [white, #f8f8f8, #e0e0e0, #0055FF, #fafafa, black, rgba(0,0,0,0.7)] - all grays + one blue accent",
+        "fonts": "system-ui and monospace (2 families)",
+        "borderRadius": "No border-radius found on any elements",
+        "accentUsage": "Blue #0055FF used ONLY for: Compare Quotes (primary action) and Swap (primary trading action)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-POLISH-006",
+      "title": "Color-blind-safe UI",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check all status indicators and recommendation labels for text labels",
+          "expected": "All status info conveyed via text, not just color",
+          "observed": "RECOMMENDED label uses text (black badge, white text). ALTERNATIVE label uses text. Tab labels 'SPANDEX' and 'CURVE'. Reason box shows textual explanation. No empty colored status badges found. Provider identification via 'Via Spandex / kyberswap' text."
+        },
+        {
+          "action": "Inspect domInspection for any color-only indicators",
+          "expected": "No empty colored elements acting as status indicators",
+          "observed": "emptyColoredElements only found wallet-provider-menu and autocomplete-list (hidden dropdowns, not status indicators). No color-only status badges."
+        }
+      ],
+      "evidence": {
+        "recommendLabel": "RECOMMENDED text badge (class='result-recommendation winner'), bg=black, color=white",
+        "alternativeLabel": "ALTERNATIVE text badge (class='result-recommendation alternative') - also text-based",
+        "reasonBox": "Text description: 'Spandex (kyberswap) outputs 887.239636 WETH more (+21.244%). Gas estimates unavailable for Curve...'",
+        "noColorOnlyIndicators": "Zero empty colored elements found acting as status indicators"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-008",
+      "title": "Clean repo root (no stale screenshots)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check .gitignore for /*.png rule",
+          "expected": "/*.png in .gitignore prevents root PNG files from being committed",
+          "observed": ".gitignore contains '/*.png' with comment 'Validation screenshots in repo root (PNGs in subdirectories may be intentional)'"
+        },
+        {
+          "action": "Run git ls-files '*.png' to check tracked PNG files",
+          "expected": "No PNG files tracked in repo root",
+          "observed": "git ls-files shows PNGs only in .factory/validation/swap-ux/... and docs/screenshot.png. No root PNG files tracked."
+        },
+        {
+          "action": "Check git log for implementation commit",
+          "expected": "ux-polish implementation addressed VAL-CROSS-008",
+          "observed": "Commit cc3bded 'Clean up validation screenshots from repo root and add gitignore rule' added /*.png to .gitignore. Commit explicitly notes 'Fulfills: VAL-CROSS-008'."
+        }
+      ],
+      "evidence": {
+        "gitignore": "/.gitignore contains '/*.png' (3 insertions in commit cc3bded)",
+        "gitLsFiles": "No PNG files in repo root are tracked by git",
+        "implementationCommit": "cc3bded explicitly fulfills VAL-CROSS-008 by adding gitignore rule"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    "Curve gas estimation fails when sender doesn't hold tokens - requires a funded account to test live gas estimates. Mock injection was needed to verify the UI behavior."
+  ],
+  "blockers": [],
+  "toolsUsed": ["Playwright MCP", "curl", "git ls-files", "source inspection"]
+}

@@ -1,0 +1,33 @@
+{
+  "featureId": "rebrand-cowswap-trader",
+  "reviewedAt": "2026-03-01T23:50:00.000Z",
+  "commitId": "bcf8df5fdc326bc956e2d99e2578e71ff9e7b206",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "This feature is SUPERSEDED — it incorrectly rebranded the app from FlashProfits to CowSwap Trader, and was subsequently reverted by fix-rebrand-to-compare-dex-routers (commit 1f3e3d6). The commit itself (bcf8df5) was a clean, minimal text substitution across 4 files (openapi.yaml, package.json, src/config.ts, src/server.ts), replacing 'FlashProfits' and 'compare-dex-routers' with 'CowSwap Trader' and 'cowswap-trader'. The code changes were mechanically correct — no bugs, no structural changes, no logic modifications. The worker verified typecheck/lint/tests all passed and confirmed the new branding rendered in the UI. The fundamental issue was that the feature's goal was wrong (wrong brand name), not that the implementation was faulty. The revert feature (fix-rebrand-to-compare-dex-routers) properly corrected branding to 'Compare DEX Routers'.",
+    "issues": [
+      {
+        "file": "openapi.yaml",
+        "line": 3,
+        "severity": "non_blocking",
+        "description": "SUPERSEDED: Title changed to 'CowSwap Trader Spandex Router' — this was reverted by the fix feature. Not a code bug, but an incorrect requirement."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill description still says 'Implements server-side endpoints and inline HTML/JS UI features for the CowSwap Trader app' — this references the incorrect branding that was reverted. Should say 'Compare DEX Routers'.",
+      "evidence": ".factory/skills/fullstack-worker/SKILL.md line 3: 'description: Implements server-side endpoints and inline HTML/JS UI features for the CowSwap Trader app'"
+    },
+    {
+      "area": "conventions",
+      "observation": "The mission AGENTS.md Branding section was updated to document that the CowSwap Trader rebrand was a mistake, which is good. However, the fullstack-worker skill was not updated in sync, leaving stale branding in the skill description.",
+      "evidence": "Mission AGENTS.md Branding section says 'All FlashProfits AND CowSwap Trader/cowswap-trader references must be replaced with Compare DEX Routers', but .factory/skills/fullstack-worker/SKILL.md still references 'CowSwap Trader app'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "SUPERSEDED feature that incorrectly rebranded the app to CowSwap Trader. The implementation was technically clean (4-file text substitution, all validators passed), but the feature requirement itself was wrong. It was fully reverted by fix-rebrand-to-compare-dex-routers (commit 1f3e3d6). Passing this review since the code changes were correct for what was asked, and the mistake was in the feature specification, not the implementation. One shared-state observation: the fullstack-worker skill description still references the incorrect 'CowSwap Trader' branding."
+}

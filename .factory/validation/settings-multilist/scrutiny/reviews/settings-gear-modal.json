@@ -1,0 +1,50 @@
+{
+  "featureId": "settings-gear-modal",
+  "reviewedAt": "2026-03-02T16:45:00.000Z",
+  "commitId": "39e28a0",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean implementation that correctly follows the existing MEV modal pattern. The inline tokenlist URL input was relocated into a new settings modal triggered by a gear icon with proper ARIA attributes. All element IDs preserved so existing tokenlist JS handlers continue working. CSS additions are well-structured and consistent with the brutalist design. JavaScript open/close functions properly manage aria-expanded, body scroll lock, and focus return. The gear button uses a native <button> element ensuring Enter/Space activation without extra JS. The diff is +148/-21 lines, entirely in src/server.ts, with no regressions to existing functionality.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 2780,
+        "severity": "non_blocking",
+        "description": "Escape key handler uses two independent if-statements for MEV and settings modals rather than if/else. If both modals were somehow open simultaneously, a single Escape press would close both. Not practically reachable through normal UI interaction, but a defensive if/else or early-return pattern would be cleaner."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 1495,
+        "severity": "non_blocking",
+        "description": "Both openSettingsModal() and openMevModal() set document.body.style.overflow = 'hidden', and both close functions set it to ''. If both modals were open, closing one would unlock scroll while the other remains visible. This is consistent with the existing MEV modal pattern but is a latent bug in the shared pattern. Not blocking since dual-modal state is unreachable."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 1497,
+        "severity": "non_blocking",
+        "description": "No focus trap implemented — Tab can escape the settings modal into background content. The MEV modal has the same limitation, so this is pattern-consistent. The expectedBehavior only requires 'focus moves to close button on open, returns to gear on close' which is satisfied. A full focus trap would improve accessibility but is not required by the feature spec."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The modal pattern (used by both MEV and settings modals) lacks focus trapping — Tab can leave the modal into background content. This is a known accessibility gap but is not documented in AGENTS.md or the skill as a limitation. Future modal features may perpetuate this gap unless it's acknowledged as a known-accepted tradeoff or a TODO.",
+      "evidence": "src/server.ts openSettingsModal() (line ~1495) and openMevModal() (line ~1478) both focus the close button but don't implement focus cycling. WAI-ARIA dialog pattern recommends focus trap."
+    },
+    {
+      "area": "conventions",
+      "observation": "The body scroll lock pattern (document.body.style.overflow = 'hidden'/'') is shared between modals but not coordinated — each modal independently sets/unsets overflow. If the project adds more modals, a reference-counted or centralized scroll lock mechanism would prevent bugs.",
+      "evidence": "src/server.ts lines 1478, 1486, 1495, 1503 — four independent overflow assignments across two modal open/close functions."
+    },
+    {
+      "area": "skills",
+      "observation": "The skill's example handoff in SKILL.md appears to be a near-exact copy of this feature's actual handoff output. This is fine for documentation accuracy but should be noted — the example was likely updated after or during this feature's implementation.",
+      "evidence": "Compare .factory/skills/fullstack-worker/SKILL.md 'Example Handoff' section with the actual handoff at handoffs/2026-03-02T16-33-31-504Z__settings-gear-modal__a9298145-2a6b-4d09-8a92-c346caf2b0dd.json — salientSummary and structure match closely."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The settings-gear-modal feature passes review. The implementation cleanly relocates the inline tokenlist URL input into a settings modal following the established MEV modal pattern. All 10 expectedBehavior items are credibly satisfied: gear icon visible (44x44px touch target), modal opens/closes via click/Escape/backdrop, ARIA attributes properly managed, keyboard accessible via native button semantics, state preserved through DOM persistence, placeholder sections present, and first-visit behavior maintained. Three non-blocking issues noted: independent Escape handlers, uncoordinated body scroll lock, and missing focus trap — all consistent with the existing MEV modal pattern and not practically problematic. The worker followed the skill procedure correctly, ran all validators (typecheck, lint, test), and performed thorough interactive verification via Playwright."
+}

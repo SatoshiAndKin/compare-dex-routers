@@ -1,0 +1,61 @@
+{
+  "milestone": "trading-improvements",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test",
+      "exitCode": 0,
+      "notes": "90/90 tests passed across 6 test files"
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "notes": "No type errors"
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0,
+      "notes": "2 complexity warnings (compareQuotes at 30, handleRequest at 29; max 20). These are pre-existing and non-blocking."
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "file": ".factory/library/architecture.md",
+      "description": "Documented the three-way branching logic for gas-adjusted comparison (ETH/WETH output subtracts gas, non-ETH shows gas informationally, fallback when gas unavailable). Also documented Gas Used: N/A display when gas data is absent.",
+      "sourceFeature": "gas-adjusted-comparison"
+    },
+    {
+      "target": "library",
+      "file": ".factory/library/environment.md",
+      "description": "Documented the hardcoded Flashbots Protect RPC URL (https://rpc.flashbots.net) and its location in src/server.ts, used for MEV Protection swap flow on Ethereum mainnet.",
+      "sourceFeature": "mev-protection-toggle"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md + .factory/library/architecture.md",
+      "suggestion": "Clarify the 'All existing API endpoints must remain unchanged' boundary. Both .factory/library/architecture.md and the mission AGENTS.md state /compare is off-limits or unchanged, yet the orchestrator explicitly assigned gas-adjusted-comparison to modify /compare's recommendation_reason format and add gas_price_gwei to the response. The language should distinguish 'backward-compatible enhancements to response content' (allowed) from 'breaking changes to endpoint contract' (not allowed). Current wording causes unnecessary confusion for workers.",
+      "evidence": "Feature gas-adjusted-comparison (commit 7816504) was orchestrator-assigned to modify /compare's comparison logic and response; .factory/library/architecture.md line 'All existing API endpoints must remain unchanged: /health, /chains, /compare, /quote, /metrics' and mission AGENTS.md Off-Limits section both list /compare as unchanged.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "mev-protection-toggle: The new URL param 'mevProtection' and other URL params (chainId, from, to, amount, slippageBps, sender) are not documented in AGENTS.md or the architecture library.",
+      "reason": "Consistent with existing practice — no URL params are currently documented. Adding documentation for one param in isolation would be incomplete; this is a broader documentation initiative. Not a new gap introduced by this feature."
+    }
+  ],
+  "previousRound": null
+}

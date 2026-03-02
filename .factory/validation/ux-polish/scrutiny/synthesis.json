@@ -1,0 +1,78 @@
+{
+  "milestone": "ux-polish",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test",
+      "exitCode": 0,
+      "summary": "84 tests passed across 6 test files (curve, observability, config, quote, server.quote-compare, server.integration)"
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "summary": "tsc --noEmit completed with no errors"
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0,
+      "summary": "2 warnings (complexity in compareQuotes and handleRequest), 0 errors — these are pre-existing and non-blocking"
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library/architecture.md",
+      "description": "Documented token input display format ('SYMBOL (0xABCD...1234)') with data-address attribute and extractAddressFromInput() behavior. Also documented the asymmetric gas_used data model: Spandex always provides gas_used (defaults to '0'), Curve only provides it when a sender is given and estimation succeeds.",
+      "sourceFeature": "fix-disconnect-and-curve-gas + brutalist-layout-redesign"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/fullstack-worker/SKILL.md",
+      "suggestion": "Update the skill description from 'Implements server-side endpoints and inline HTML/JS UI features for the CowSwap Trader app' to 'Implements server-side endpoints and inline HTML/JS UI features for the Compare DEX Routers app'.",
+      "evidence": "The brutalist-layout-redesign reviewer found that the fullstack-worker skill description still references 'CowSwap Trader'. The project was rebranded to 'Compare DEX Routers' via the fix-rebrand-to-compare-dex-routers feature. AGENTS.md mandates that all CowSwap Trader references be replaced.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Worker correctly interpreted 'any other *.png files' to remove 19 files rather than the 7 listed explicitly in the feature description.",
+      "reason": "no-action-needed — the worker behaved correctly and no convention gap exists; the feature description was clear."
+    },
+    {
+      "observation": "Convention observation about design guidelines thoroughness in mission AGENTS.md.",
+      "reason": "already-documented — the design guidelines are in the mission AGENTS.md and were followed correctly; no gap to fill."
+    }
+  ],
+  "nonBlockingIssues": [
+    {
+      "featureId": "brutalist-layout-redesign",
+      "severity": "non_blocking",
+      "description": "extractAddressFromInput fallback: when data-address is empty and display string 'SYMBOL (0x1234...5678)' is present, the function returns a truncated non-address string. Harmless because selectToken always sets data-address and the server validates addresses, but the edge case is worth awareness.",
+      "suggestedFix": "Optionally add a validation check in extractAddressFromInput to return empty string if neither data-address nor valid address pattern found, rather than returning the truncated display string."
+    },
+    {
+      "featureId": "brutalist-layout-redesign",
+      "severity": "non_blocking",
+      "description": "Pre-existing innerHTML XSS surface: renderSecondaryDetails and quote renderers use innerHTML with API response data (router_calldata, router_address). Not a regression from this feature — same pattern used before the redesign.",
+      "suggestedFix": "Future hardening: sanitize API response strings before innerHTML insertion, or use textContent/createTextNode for data fields."
+    },
+    {
+      "featureId": "brutalist-layout-redesign",
+      "severity": "non_blocking",
+      "description": "Details toggle button uses inline onclick handler instead of addEventListener, inconsistent with codebase pattern.",
+      "suggestedFix": "Minor: convert to addEventListener on DOMContentLoaded binding for consistency."
+    }
+  ],
+  "previousRound": null
+}

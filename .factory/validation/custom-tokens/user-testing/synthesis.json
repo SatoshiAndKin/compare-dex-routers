@@ -1,0 +1,18 @@
+{
+  "milestone": "custom-tokens",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CROSS-003"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/custom-tokens/user-testing/synthesis.round1.json"
+}

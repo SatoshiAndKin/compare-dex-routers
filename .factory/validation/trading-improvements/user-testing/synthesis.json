@@ -1,0 +1,21 @@
+{
+  "milestone": "trading-improvements",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-TRADE-001",
+    "VAL-TRADE-002",
+    "VAL-TRADE-003",
+    "VAL-TRADE-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
