@@ -1,0 +1,60 @@
+{
+  "groupId": "group-r2-fixes",
+  "testedAt": "2026-03-02T19:31:00Z",
+  "credentials": {
+    "account": "validator_sm_r2",
+    "namespace": "sm_r2"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-MULTI-007",
+      "title": "Invalid or unreachable URL shows error",
+      "status": "pass",
+      "steps": [
+        { "action": "Clear localStorage and reload to start fresh", "expected": "Clean state with only Default Tokenlist", "observed": "Clean state with only Default Tokenlist (87 tokens on Base)" },
+        { "action": "Open settings panel via gear icon", "expected": "Settings modal opens with tokenlist input", "observed": "Settings modal opens with tokenlist input and Load button" },
+        { "action": "Enter 'not-a-url' and click Load", "expected": "Error message shown, no list entry created", "observed": "Error message 'Invalid URL format' shown in red. Only Default Tokenlist present — no new entry created." },
+        { "action": "Enter 'http://tokens.uniswap.org' (non-HTTPS) and click Load", "expected": "Error message shown, no list entry created", "observed": "Error message 'URL must use HTTPS' shown in red. Only Default Tokenlist present — no new entry created." },
+        { "action": "Enter 'https://this-does-not-exist-at-all.example.com/tokenlist.json' (unreachable) and click Load", "expected": "Error message shown, no list entry created", "observed": "Error message 'Error: Failed to fetch remote URL: fetch failed' shown in red. Only Default Tokenlist present — NO list entry created. Fix confirmed." },
+        { "action": "Verify localStorage has no entries from failed attempts", "expected": "customTokenlists is null, no keys stored", "observed": "localStorage is empty — no customTokenlists key, no entries persisted from any failed add attempt." }
+      ],
+      "evidence": {
+        "screenshots": ["val-multi-007-invalid-url-r2.png", "val-multi-007-non-https-r2.png", "val-multi-007-unreachable-r2.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic, ignored) and expected fetch failure for unreachable URL",
+        "network": "GET /tokenlist/proxy?url=https://this-does-not-exist-at-all.example.com/tokenlist.json -> fetch failed (expected)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-007",
+      "title": "All settings preserved across page reload",
+      "status": "pass",
+      "steps": [
+        { "action": "Clear localStorage and reload to start fresh", "expected": "Clean state", "observed": "Clean state with only Default Tokenlist" },
+        { "action": "Open settings and add Uniswap Labs Default list (https://tokens.uniswap.org)", "expected": "Custom list added with token count", "observed": "Uniswap Labs Default added, 87 tokens on Base" },
+        { "action": "Toggle Default Tokenlist OFF", "expected": "Default Tokenlist switch unchecked", "observed": "Default Tokenlist switch unchecked (grayed out), Uniswap Labs Default remains checked (ON)" },
+        { "action": "Verify localStorage before reload", "expected": "Both customTokenlists and defaultTokenlistEnabled keys present", "observed": "customTokenlists: [{url:'https://tokens.uniswap.org', enabled:true, name:'Uniswap Labs Default'}], defaultTokenlistEnabled: 'false'. Both keys persisted." },
+        { "action": "Take before-reload screenshot", "expected": "State captured showing Default OFF, custom ON", "observed": "Screenshot shows Default Tokenlist OFF (grayed, unchecked toggle), Uniswap Labs Default ON (blue toggle)" },
+        { "action": "Reload page and open settings", "expected": "All settings match pre-reload state", "observed": "Default Tokenlist: OFF (switch unchecked, grayed out). Uniswap Labs Default: ON (switch checked, blue toggle), 87 tokens. Custom list URL preserved. All toggle states preserved. Fix confirmed." },
+        { "action": "Verify localStorage after reload", "expected": "Same keys and values as before reload", "observed": "customTokenlists and defaultTokenlistEnabled both present with same values as before reload." }
+      ],
+      "evidence": {
+        "screenshots": ["val-cross-007-before-reload-r2.png", "val-cross-007-after-reload-r2.png"],
+        "consoleErrors": "none (ignoring favicon.ico 404)",
+        "network": "Custom list re-fetched on reload via /tokenlist/proxy"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Auto-refresh timer (15s) can interfere with UI testing. Cleared via clearInterval(window._refreshTimer) after each page load.",
+      "resolved": true,
+      "resolution": "Called clearInterval(window._refreshTimer) after each navigation",
+      "affectedAssertions": ["VAL-MULTI-007", "VAL-CROSS-007"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 2 previously failed assertions after fixes: both now pass. VAL-MULTI-007: all three error cases (invalid URL, non-HTTPS, unreachable HTTPS) show descriptive errors and create NO list entry — the unreachable URL case that previously created an error-state entry is now fixed. VAL-CROSS-007: default tokenlist toggle state is now persisted via 'defaultTokenlistEnabled' localStorage key and survives page reload — previously it was resetting to ON."
+}
