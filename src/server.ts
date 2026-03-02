@@ -366,6 +366,7 @@ const INDEX_HTML = `<!DOCTYPE html>
   <title>Compare DEX Routers</title>
   <style>
     /* BRUTALIST DESIGN: High contrast, no border-radius, max 2 fonts */
+    /* Color Palette: Black/White + Blue accent (#0055FF) + Orange accent (#FF3300) + Green (#00AA00) + Red (#CC0000) */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { font-size: 16px; }
     
@@ -389,7 +390,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     /* Form Elements */
     form { margin-bottom: 1rem; }
     .form-group { margin-bottom: 0.75rem; position: relative; }
-    label { display: block; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+    label { display: block; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; padding-left: 0.5rem; border-left: 4px solid #0055FF; }
     input, select {
       width: 100%;
       padding: 0.5rem;
@@ -600,7 +601,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-size: 0.875rem;
       font-weight: 600;
     }
-    .wallet-address { font-family: monospace; font-size: 0.75rem; }
+    .wallet-address { font-family: monospace; font-size: 0.75rem; padding-left: 0.375rem; border-left: 3px solid #0055FF; }
     .wallet-message {
       font-size: 0.75rem;
       font-style: italic;
@@ -690,10 +691,13 @@ const INDEX_HTML = `<!DOCTYPE html>
     /* Primary Result - Output Amount + Actions Inline */
     .result-primary {
       border: 2px solid #000;
+      border-left-width: 6px;
       padding: 1rem;
       margin-bottom: 0.5rem;
       background: #fff;
     }
+    .result-primary.winner { border-left-color: #0055FF; }
+    .result-primary.alternative { border-left-color: #FF3300; }
     .result-output {
       font-size: 2rem;
       font-weight: 700;
@@ -718,8 +722,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       display: inline-block;
       border: 2px solid #000;
     }
-    .result-recommendation.winner { background: #000; color: #fff; }
-    .result-recommendation.alternative { background: #fff; color: #000; }
+    .result-recommendation.winner { background: #0055FF; color: #fff; border-color: #0055FF; }
+    .result-recommendation.alternative { background: #FF3300; color: #fff; border-color: #FF3300; }
     
     /* Transaction Buttons */
     .tx-actions { margin-top: 1rem; padding-top: 0.75rem; border-top: 2px solid #000; }
@@ -749,8 +753,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     .tx-status.success::before { content: "SUCCESS: "; }
     .tx-status.error::before { content: "FAILED: "; }
     .tx-status.pending { color: #666; }
-    .tx-status.success { color: #000; background: #e8e8e8; padding: 0.125rem 0.25rem; }
-    .tx-status.error { color: #000; background: #f0f0f0; padding: 0.125rem 0.25rem; border: 1px solid #000; }
+    .tx-status.success { color: #00AA00; background: #e8e8e8; padding: 0.125rem 0.25rem; }
+    .tx-status.error { color: #CC0000; background: #f0f0f0; padding: 0.125rem 0.25rem; border: 1px solid #CC0000; }
     
     /* Tabs - Compact */
     .tabs {
@@ -772,7 +776,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       cursor: pointer;
     }
     .tab:last-child { border-right: none; }
-    .tab.active { background: #000; color: #fff; }
+    .tab.active { background: #000; color: #fff; border-bottom: 3px solid #0055FF; }
+    .tab.active[data-tab="alternative"] { border-bottom-color: #FF3300; }
     .tab:hover:not(.active) { background: #f0f0f0; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
@@ -834,6 +839,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       color: #666;
       padding: 0.25rem 0.5rem;
       border: 1px solid #e0e0e0;
+      border-left: 3px solid #0055FF;
       background: #fafafa;
       margin-bottom: 0.5rem;
       display: flex;
@@ -841,7 +847,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       align-items: center;
     }
     .refresh-indicator-status { font-style: italic; }
-    .refresh-indicator-status.error { color: #000; font-weight: 600; font-style: normal; }
+    .refresh-indicator-status.error { color: #CC0000; font-weight: 600; font-style: normal; }
     
     /* Error Display */
     .error-message {
@@ -1995,11 +2001,12 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     function renderSpandexQuote(data, isWinner, quoteChainId) {
       const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
+      const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
       const providerLabel = 'Spandex' + (data.provider ? ' / ' + data.provider : '');
       
       // Primary section: output + buttons inline
       const primary = 
-        '<div class="result-primary">' +
+        '<div class="' + primaryClass + '">' +
           recommendationLabel +
           '<div class="result-output-label">You receive (estimated)</div>' +
           '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
@@ -2050,10 +2057,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
       
       const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
+      const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
       
       // Primary section: output + buttons inline
       const primary = 
-        '<div class="result-primary">' +
+        '<div class="' + primaryClass + '">' +
           recommendationLabel +
           '<div class="result-output-label">You receive (estimated)</div>' +
           '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
