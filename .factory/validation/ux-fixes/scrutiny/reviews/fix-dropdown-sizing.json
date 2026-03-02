@@ -1,0 +1,28 @@
+{
+  "featureId": "fix-dropdown-sizing",
+  "reviewedAt": "2026-03-02T04:15:00.000Z",
+  "commitId": "47b89fa",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean CSS-only implementation that correctly addresses all four dropdown sizing issues. The diff is minimal (7 lines added, 2 modified in src/server.ts) and uses standard, well-understood CSS patterns. The autocomplete dropdown now uses min-width/max-content/max-width to extend beyond its narrow parent column. Token addresses and provider names truncate with ellipsis via the standard overflow/text-overflow/white-space triple. The wallet provider menu gains max-height with scroll. All changes are consistent with existing CSS patterns in the codebase.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 660,
+        "severity": "non_blocking",
+        "description": "The max-width: 450px on .autocomplete-list could cause the dropdown to extend beyond the right edge of the viewport on narrow screens (375px), since the dropdown starts at the left edge of the From Token form-group (not the viewport). The content is still accessible via scroll on the dropdown itself, and since the element is position:absolute it won't cause a page-level horizontal scrollbar. This is standard behavior for absolutely positioned dropdowns on mobile and not a functional bug."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The CSS text-truncation pattern (overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0 for flex items) is used in multiple places now (.autocomplete-name, .autocomplete-addr, .wallet-provider-name). This is a recurring UI pattern that could be documented as a reusable utility class convention in the brutalist design rules, but is low priority given the inline CSS architecture.",
+      "evidence": "src/server.ts lines 684-685 (.autocomplete-name, .autocomplete-addr) and line 640 (.wallet-provider-name) all repeat the same 3-4 property pattern"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. All four dropdown sizing issues are correctly fixed with clean, minimal CSS changes. (1) Autocomplete dropdowns use min-width:320px/width:max-content/max-width:450px to extend beyond the narrow From Token parent column — correct approach for absolutely positioned elements. (2) Token addresses truncate with ellipsis when the dropdown is constrained. (3) Wallet provider menu has max-height:300px with overflow-y:auto for scrollability. (4) To Token autocomplete inherits the same .autocomplete-list styles. The worker verified at 375px width with no horizontal scrollbar, and all tests/typecheck/lint pass. One non-blocking observation: the dropdown could visually extend past the viewport edge on very narrow screens, but this is standard behavior for absolute dropdowns and doesn't cause functional issues."
+}
