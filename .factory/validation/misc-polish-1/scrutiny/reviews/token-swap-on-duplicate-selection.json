@@ -1,0 +1,45 @@
+{
+  "featureId": "token-swap-on-duplicate-selection",
+  "reviewedAt": "2026-03-02T21:55:00.000Z",
+  "commitId": "b6a4eca",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation adds a well-structured `handleTokenSwapIfNeeded()` function that detects duplicate token selection and swaps the two fields. It is correctly integrated into all three token-setting paths: autocomplete selection (`selectToken`), direct address input on blur (`handleTokenInputBlur`), and the unrecognized token save flow (`handleUnrecognizedTokenSave`). The core swap logic is sound — it normalizes addresses for case-insensitive comparison, validates both sides have real 0x addresses before swapping, and reconstructs the display format using `findTokenByAddress` + `formatTokenDisplay`. All primary use cases (both fields populated, user sets one to match the other → swap occurs) work correctly as verified by the worker's Playwright checks. No blocking issues found.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 3161,
+        "severity": "non_blocking",
+        "description": "Dead parameter: `newDisplay` in `handleTokenSwapIfNeeded(currentInput, newAddress, newDisplay)` is never referenced inside the function body. It is passed from all three call sites but has no effect. Should be removed for clarity, or the function signature should be cleaned up to only accept `(currentInput, newAddress)`."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 3181,
+        "severity": "non_blocking",
+        "description": "Edge case allows duplicate: When from=WETH and to is empty, setting to=WETH results in both fields showing WETH (duplicate). The check `isAddressLike(currentAddress)` prevents swap when the current field (to) was empty, so the other field (from) is never cleared. The feature description says 'automatically swap the two tokens instead of allowing a duplicate' — this edge case still allows a duplicate. Worker's interactive check #5 acknowledged this and interpreted 'If the other field was empty, just clear it' as meaning no swap is needed, which is a defensible reading of the ambiguous description. However, per the description's rule (2): 'If from=A and user sets to=A, then from becomes what to previously was' — to previously was empty, so from should arguably become empty (cleared). Consider adding logic: when currentAddress is not valid but the addresses match, clear the other field's value and data-address."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2376,
+        "severity": "non_blocking",
+        "description": "Behavioral change beyond swap scope: `handleTokenInputBlur` now unconditionally sets `input.dataset.address = value` and formats the display for addresses found in tokenlists. Previously it only set data-address when it wasn't already set (`if (!input.dataset.address)`). This is actually an improvement (ensures data-address is always correct after blur, and shows formatted display for pasted addresses), but it extends slightly beyond the swap feature's scope."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "No guidance exists in AGENTS.md or the library about expected behavior when both token fields would end up with the same token. The feature description's 'If the other field was empty, just clear it (no swap needed)' clause is ambiguous — it's unclear whether 'the other field' refers to the field being edited or the field receiving the swap. This led the worker to allow duplicates in an edge case. A convention about duplicate token handling would prevent future ambiguity.",
+      "evidence": "Feature description says 'automatically swap the two tokens instead of allowing a duplicate' but also 'If the other field was empty, just clear it (no swap needed).' Worker interactive check #5 shows from=WETH, to=WETH allowed when one field was previously empty."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed the fullstack-worker skill procedure correctly: read feature context, skipped red-phase tests (client-side-only JS), implemented, ran typecheck/lint/test, then verified via Playwright. No deviations from the skill procedure.",
+      "evidence": "Transcript shows skill read → feature context read → implementation → typecheck+lint+test → Playwright verification, matching SKILL.md steps 1-4."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The token swap on duplicate selection feature is correctly implemented for all primary use cases — autocomplete selection, direct address paste, and unrecognized token save all properly detect duplicates and swap the tokens. The core `handleTokenSwapIfNeeded` function is well-structured with proper address validation and case-insensitive comparison. Three non-blocking issues identified: (1) dead `newDisplay` parameter, (2) edge case allowing duplicates when one field was previously empty, (3) minor behavioral change to `handleTokenInputBlur` beyond swap scope. The worker ran typecheck, lint, and tests (all passing) and verified 5 interactive scenarios via Playwright. No new unit tests were added, which is appropriate for client-side-only inline JS per the skill guidance."
+}
