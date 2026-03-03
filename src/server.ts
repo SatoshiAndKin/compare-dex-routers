@@ -1597,32 +1597,37 @@ const INDEX_HTML = `<!DOCTYPE html>
     .slippage-box {
       display: flex;
       align-items: center;
-      gap: 0.25rem;
-      padding: 0.25rem 0.5rem;
+      gap: 0.5rem;
+      padding: 0.375rem 0.5rem;
       border: 2px solid #000;
       background: #fff;
+      flex-wrap: wrap;
     }
     .slippage-box-label {
-      font-size: 0.5rem;
+      font-size: 0.75rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: #666;
       margin-right: 0.25rem;
     }
+    /* Preset buttons - pill/toggle style */
     .slippage-box-presets {
       display: flex;
-      gap: 0.125rem;
+      gap: 0.25rem;
     }
     .slippage-preset-compact {
-      font-size: 0.5rem;
+      font-size: 0.75rem;
       font-weight: 600;
-      padding: 0.125rem 0.375rem;
+      padding: 0.375rem 0.5rem;
       background: #fff;
       color: #000;
-      border: 1px solid #000;
+      border: 2px solid #000;
+      border-radius: 4px;
       cursor: pointer;
-      min-width: 20px;
+      min-width: 28px;
+      min-height: 32px;
+      text-align: center;
     }
     .slippage-preset-compact:hover { background: #f0f0f0; }
     .slippage-preset-compact.active {
@@ -1630,19 +1635,22 @@ const INDEX_HTML = `<!DOCTYPE html>
       color: #fff;
     }
     .slippage-preset-compact:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    /* Custom input - standard text field appearance */
     .slippage-box-input {
-      width: 40px;
-      padding: 0.125rem 0.25rem;
+      width: 52px;
+      padding: 0.375rem 0.5rem;
       font-family: monospace;
-      font-size: 0.625rem;
+      font-size: 0.75rem;
       background: #fff;
       color: #000;
-      border: 1px solid #000;
+      border: 2px solid #000;
+      border-radius: 0;
       margin-left: 0.25rem;
+      min-height: 32px;
     }
     .slippage-box-input:focus { outline: 3px solid #0055FF; outline-offset: 0; }
     .slippage-box-hint {
-      font-size: 0.5rem;
+      font-size: 0.75rem;
       color: #666;
       margin-left: 0.125rem;
     }
@@ -2121,6 +2129,22 @@ const INDEX_HTML = `<!DOCTYPE html>
       .form-row { flex-direction: column; }
       .form-row .form-group.narrow { flex: 1; }
       /* Note: .form-row-fixed does NOT collapse - stays horizontal at all widths */
+    }
+    @media (max-width: 375px) {
+      /* Slippage area mobile - ensure no overflow */
+      .slippage-box {
+        gap: 0.375rem;
+        padding: 0.25rem 0.375rem;
+      }
+      .slippage-preset-compact {
+        min-width: 32px;
+        min-height: 36px;
+        padding: 0.375rem 0.375rem;
+      }
+      .slippage-box-input {
+        width: 48px;
+        min-height: 36px;
+      }
     }
   </style>
 </head>
