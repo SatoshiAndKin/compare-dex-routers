@@ -2340,6 +2340,9 @@ const INDEX_HTML = `<!DOCTYPE html>
     let connectedWalletProvider = null;
     let connectedWalletAddressValue = '';
     let connectedWalletInfo = null;
+    // Post-connect callback for auto-approve/auto-swap flow
+    let pendingPostConnectAction = null; // null | { type: 'approve' | 'swap', card: HTMLElement, button?: HTMLButtonElement }
+    let isConnectingProvider = false; // flag to distinguish menu close vs cancel
     let currentQuoteChainId = null;
     const AUTO_REFRESH_SECONDS = 15;
     const autoRefreshState = {
@@ -2718,8 +2721,10 @@ const INDEX_HTML = `<!DOCTYPE html>
         }
 
         if (!walletConnectedValue) {
+          // Show wallet-required visual state but keep button clickable
+          // so clicking triggers auto-connect flow
           button.classList.add('wallet-required');
-          button.setAttribute('aria-disabled', 'true');
+          // Do NOT set aria-disabled - button should be clickable to trigger wallet connect
           button.disabled = false;
         } else {
           button.classList.remove('wallet-required');
@@ -3533,6 +3538,10 @@ const INDEX_HTML = `<!DOCTYPE html>
     function closeWalletProviderMenu() {
       walletProviderMenu.hidden = true;
       walletProviderMenu.innerHTML = '';
+      // If closing without a provider connection in progress, cancel any pending action
+      if (!isConnectingProvider && pendingPostConnectAction) {
+        pendingPostConnectAction = null;
+      }
     }
 
     function createWalletIcon(iconUri, altText, className) {
@@ -3556,6 +3565,9 @@ const INDEX_HTML = `<!DOCTYPE html>
         return;
       }
 
+      // Mark that we're actively trying to connect (not just dismissing menu)
+      isConnectingProvider = true;
+
       try {
         const accounts = await provider.request({ method: 'eth_requestAccounts' });
         const account = Array.isArray(accounts) ? accounts[0] : null;
@@ -3573,10 +3585,25 @@ const INDEX_HTML = `<!DOCTYPE html>
         updateTransactionActionStates();
         setWalletMessage('');
         updateTokenBalances(); // Fetch balances for selected tokens
+
+        // Execute pending post-connect action (auto-approve/auto-swap)
+        const action = pendingPostConnectAction;
+        pendingPostConnectAction = null; // Clear before executing to prevent re-trigger
+        isConnectingProvider = false; // Reset flag before action execution
+        if (action) {
+          if (action.type === 'approve' && action.card && action.button) {
+            void onApproveClick(action.card, action.button);
+          } else if (action.type === 'swap' && action.card) {
+            void onSwapClick(action.card);
+          }
+        }
       } catch (err) {
+        isConnectingProvider = false; // Reset flag on error
         const code = err && typeof err === 'object' ? err.code : undefined;
         if (code === 4001) {
           setWalletMessage('Wallet connection was canceled.', true);
+          // Clear pending action on user cancel
+          pendingPostConnectAction = null;
           return;
         }
         const detail = err instanceof Error ? err.message : String(err);
@@ -3648,7 +3675,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       fallbackWalletProvider = window.ethereum;
     }
 
-    connectWalletBtn.addEventListener('click', () => {
+    // Trigger wallet connection flow programmatically (used by auto-approve/auto-swap)
+    function triggerWalletConnectionFlow() {
       setWalletMessage('');
       window.dispatchEvent(new Event('eip6963:requestProvider'));
       const announcedProviders = getAnnouncedWalletProviders();
@@ -3669,7 +3697,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       closeWalletProviderMenu();
       setWalletMessage('No wallet detected. Install a wallet extension and try again.', true);
-    });
+    }
+
+    connectWalletBtn.addEventListener('click', triggerWalletConnectionFlow);
 
     disconnectWalletBtn.addEventListener('click', disconnectWallet);
 
@@ -5432,9 +5462,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     async function onApproveClick(card, button) {
       if (!hasConnectedWallet()) {
-        setWalletMessage('Connect wallet first', true);
-        setTxStatus(card, 'Connect wallet first', 'error');
-        updateTransactionActionStates();
+        // Store pending action and trigger wallet connection flow
+        pendingPostConnectAction = { type: 'approve', card, button };
+        triggerWalletConnectionFlow();
         return;
       }
 
@@ -5480,9 +5510,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     async function onSwapClick(card) {
       if (!hasConnectedWallet()) {
-        setWalletMessage('Connect wallet first', true);
-        setTxStatus(card, 'Connect wallet first', 'error');
-        updateTransactionActionStates();
+        // Store pending action and trigger wallet connection flow
+        pendingPostConnectAction = { type: 'swap', card };
+        triggerWalletConnectionFlow();
         return;
       }
 
