@@ -26,6 +26,25 @@ Use for features that modify:
 - The `/tokenlist/proxy?url=` endpoint proxies remote tokenlist URLs (HTTPS-only, 5MB limit, 30s timeout).
 - Curve library: use `createCurve()` from `@curvefi/api` for per-chain instances (NOT the default singleton). Each instance needs separate init() with chainId and RPC URL.
 
+### Client-Side CDN Libraries (No npm install needed)
+- **WalletConnect**: `@walletconnect/ethereum-provider` loaded via `https://esm.sh/@walletconnect/ethereum-provider@2` in a `<script type="module">`. Returns EIP-1193 provider that drops into existing `connectToWalletProvider()` flow. Uses `showQrModal: true` for built-in QR. Needs `WALLETCONNECT_PROJECT_ID` env var injected into template.
+- **Farcaster SDK**: `@farcaster/miniapp-sdk` loaded via `https://esm.sh/@farcaster/miniapp-sdk` conditionally (only when in miniapp context). Use `sdk.isInMiniApp()` for detection. Call `sdk.actions.ready()` to dismiss splash. Use `sdk.wallet.getEthereumProvider()` for wallet inside Farcaster.
+
+### SSE (Server-Sent Events) Pattern
+For progressive quotes, use Node.js native response streaming:
+```typescript
+res.writeHead(200, {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  'Connection': 'keep-alive'
+});
+res.write(`data: ${JSON.stringify(payload)}\n\n`);
+// ... more events ...
+res.write('event: done\ndata: {}\n\n');
+res.end();
+```
+On the client, use `EventSource` or `fetch` with `ReadableStream`.
+
 ## Conventions (ALWAYS FOLLOW)
 
 - **Node.js LTS**: Always use the latest Node.js LTS release. Currently Node 24 (Krypton). Dockerfile must use `node:24-slim`. Never downgrade to an older version.
