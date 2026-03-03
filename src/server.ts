@@ -1533,6 +1533,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       <div class="slippage-label-row">
         <span class="slippage-label">Slippage</span>
         <div class="slippage-presets">
+          <button type="button" class="slippage-preset-btn" data-bps="3">3</button>
           <button type="button" class="slippage-preset-btn" data-bps="10">10</button>
           <button type="button" class="slippage-preset-btn active" data-bps="50">50</button>
           <button type="button" class="slippage-preset-btn" data-bps="100">100</button>
