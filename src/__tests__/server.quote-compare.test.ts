@@ -573,4 +573,238 @@ describe("server /quote and /compare", () => {
     // Verify the reason shows both raw and adjusted values
     expect(body.recommendation_reason).toMatch(/1\.50.*ETH.*1\.485.*ETH.*after gas/i);
   });
+
+  // === TARGET_OUT MODE TESTS ===
+
+  it("GET /compare targetOut mode compares input amounts (lower = better)", async () => {
+    // In targetOut mode, user specifies desired output amount.
+    // Quotes return required INPUT amount. Lower input = better deal.
+    //
+    // Spandex: requires 1050 USDC input for 1 WETH output
+    // Curve: requires 1000 USDC input for 1 WETH output
+    // Curve should win (requires less input)
+    getQuoteMock.mockResolvedValue({
+      simulation: {
+        outputAmount: 1_000_000_000_000_000_000n, // 1 WETH (the desired output)
+        gasUsed: 20000n,
+      },
+      inputAmount: 1_050_000_000n, // 1050 USDC (6 decimals)
+      provider: "fabric",
+      txData: { to: ADDR_ROUTER, data: "0xdeadbeef" },
+    });
+    findCurveQuoteMock.mockResolvedValue({
+      source: "curve",
+      from: ADDR_FROM,
+      from_symbol: "USDC",
+      to: ADDR_TO,
+      to_symbol: "WETH",
+      amount: "1",
+      input_amount: "1000", // Curve requires 1000 USDC (less input = better)
+      output_amount: "1.0", // The desired output (same for both)
+      route: [],
+      route_symbols: {},
+      router_address: makeAddress("7"),
+      router_calldata: "0xbeef",
+      gas_used: "30000",
+    });
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50&mode=targetOut`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.recommendation).toBe("curve");
+    // Should say "requires less" not "outputs more"
+    expect(body.recommendation_reason).toContain("requires");
+    expect(body.recommendation_reason).toContain("less");
+    expect(body.recommendation_reason).not.toContain("outputs more");
+    expect(body.mode).toBe("targetOut");
+  });
+
+  it("GET /compare targetOut gas-adjusted: lower total cost wins", async () => {
+    // TargetOut gas-adjusted: total cost = input_in_ETH + gas_cost_in_ETH (lower = better)
+    //
+    // Spandex: requires 1.0 ETH input, 15M gas (expensive route)
+    // Curve: requires 1.01 ETH input, 10k gas (efficient direct route)
+    // Gas price: 1 gwei
+    //
+    // Spandex gas cost: 15,000,000 * 1e9 / 1e18 = 0.015 ETH
+    // Curve gas cost: 10,000 * 1e9 / 1e18 = 0.00001 ETH
+    //
+    // Spandex total: 1.0 + 0.015 = 1.015 ETH
+    // Curve total: 1.01 + 0.00001 = 1.01001 ETH
+    //
+    // Curve wins (lower total cost) even though Spandex requires less raw input!
+    getQuoteMock.mockResolvedValue({
+      simulation: {
+        outputAmount: 1_000_000_000_000_000_000n, // 1 ETH desired output
+        gasUsed: 15_000_000n,
+      },
+      inputAmount: 1_000_000_000_000_000_000n, // 1.0 ETH input
+      provider: "fabric",
+      txData: { to: ADDR_ROUTER, data: "0xdeadbeef" },
+    });
+    findCurveQuoteMock.mockResolvedValue({
+      source: "curve",
+      from: ADDR_FROM,
+      from_symbol: "USDC",
+      to: ADDR_TO,
+      to_symbol: "WETH",
+      amount: "1",
+      input_amount: "1.01", // 1.01 ETH input (more raw input)
+      output_amount: "1.0",
+      route: [],
+      route_symbols: {},
+      router_address: makeAddress("7"),
+      router_calldata: "0xbeef",
+      gas_used: "10000", // Much less gas
+    });
+
+    // For ETH input, no rate fetch needed
+    getTokenSymbolMock.mockImplementation(async (_chainId: number, token: string) =>
+      token.toLowerCase() === ADDR_FROM.toLowerCase() ? "WETH" : "WETH"
+    );
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50&mode=targetOut`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.recommendation).toBe("curve");
+    expect(body.recommendation_reason).toContain("total");
+    expect(body.recommendation_reason).toContain("gas");
+    expect(body.recommendation_reason).toContain("Curve");
+  });
+
+  it("GET /compare targetOut recommendation uses 'requires less' wording", async () => {
+    // Verify the recommendation reason wording for targetOut mode
+    getQuoteMock.mockResolvedValue({
+      simulation: {
+        outputAmount: 1_000_000_000_000_000_000n,
+        gasUsed: 20000n,
+      },
+      inputAmount: 1_100_000_000n, // 1100 USDC (higher input = worse)
+      provider: "fabric",
+      txData: { to: ADDR_ROUTER, data: "0xdeadbeef" },
+    });
+    findCurveQuoteMock.mockResolvedValue({
+      source: "curve",
+      from: ADDR_FROM,
+      from_symbol: "USDC",
+      to: ADDR_TO,
+      to_symbol: "WETH",
+      amount: "1",
+      input_amount: "1000", // 1000 USDC (lower input = better)
+      output_amount: "1.0",
+      route: [],
+      route_symbols: {},
+      router_address: makeAddress("7"),
+      router_calldata: "0xbeef",
+      gas_used: "30000",
+    });
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50&mode=targetOut`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.recommendation).toBe("curve");
+    // Wording should say "requires X less" not "outputs X more"
+    expect(body.recommendation_reason).toMatch(/requires.*less/i);
+    expect(body.recommendation_reason).not.toMatch(/outputs.*more/i);
+  });
+
+  it("GET /compare targetOut with non-ETH input fetches input->ETH rate", async () => {
+    // For targetOut with non-ETH input (e.g., USDC), need to fetch USDC->ETH rate
+    // to compute total cost in ETH for gas-adjusted comparison
+    const WETH_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+
+    getTokenSymbolMock.mockImplementation(async (_chainId: number, token: string) =>
+      token.toLowerCase() === ADDR_FROM.toLowerCase() ? "USDC" : "WETH"
+    );
+
+    // Mock getQuote for rate fetch (USDC -> WETH) and regular quote
+    getQuoteMock.mockImplementation(
+      async (params: {
+        swap: { inputToken: string; outputToken: string; inputAmount: bigint };
+      }) => {
+        const isRateFetch = params.swap.outputToken.toLowerCase() === WETH_ADDRESS.toLowerCase();
+
+        if (isRateFetch) {
+          // Rate fetch: 1 USDC -> 0.0004 ETH
+          return {
+            simulation: {
+              outputAmount: 400_000_000_000_000n, // 0.0004 ETH
+              gasUsed: 50000n,
+            },
+            inputAmount: params.swap.inputAmount,
+            provider: "fabric",
+            txData: { to: ADDR_ROUTER, data: "0xdeadbeef" },
+          };
+        }
+
+        // Regular quote: targetOut mode
+        return {
+          simulation: {
+            outputAmount: 1_000_000_000_000_000_000n, // 1 WETH output
+            gasUsed: 20000n,
+          },
+          inputAmount: 2_500_000_000n, // 2500 USDC input
+          provider: "fabric",
+          txData: { to: ADDR_ROUTER, data: "0xdeadbeef" },
+        };
+      }
+    );
+
+    findCurveQuoteMock.mockResolvedValue({
+      source: "curve",
+      from: ADDR_FROM,
+      from_symbol: "USDC",
+      to: ADDR_TO,
+      to_symbol: "WETH",
+      amount: "1",
+      input_amount: "2400", // 2400 USDC (less input = better)
+      output_amount: "1.0",
+      route: [],
+      route_symbols: {},
+      router_address: makeAddress("7"),
+      router_calldata: "0xbeef",
+      gas_used: "30000",
+    });
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50&mode=targetOut`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.recommendation).toBe("curve");
+    // Should include input->ETH rate
+    expect(body.input_to_eth_rate).toBeDefined();
+    // Should show ETH conversion in reason
+    expect(body.recommendation_reason).toContain("ETH");
+  });
+
+  it("GET /compare exactIn mode unchanged (baseline verification)", async () => {
+    // Verify exactIn mode still works correctly (unchanged behavior)
+    getQuoteMock.mockResolvedValue(
+      makeQuote({ outputAmount: 2_000_000_000_000_000_000n, gasUsed: 20000n })
+    );
+    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "2.5", gas: "30000" }));
+
+    const res = await request(
+      `${baseUrl}/compare?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50&mode=exactIn`
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.recommendation).toBe("curve");
+    // exactIn mode uses "returns ... more" wording
+    expect(body.recommendation_reason).toContain("returns");
+    expect(body.recommendation_reason).toContain("ETH");
+    expect(body.mode).toBe("exactIn");
+  });
 });

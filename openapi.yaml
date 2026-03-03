@@ -73,7 +73,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Human-readable input amount
+          description: "Human-readable amount. For exactIn mode: input amount. For targetOut mode: desired output amount."
         - name: slippageBps
           in: query
           schema:
@@ -88,6 +88,13 @@ paths:
             type: string
             pattern: "^0x[a-fA-F0-9]{40}$"
           description: Sender address for approval checks
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [exactIn, targetOut]
+            default: exactIn
+          description: "Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount."
       responses:
         "200":
           description: Best quote found
@@ -135,6 +142,7 @@ paths:
           required: true
           schema:
             type: string
+          description: "Human-readable amount. For exactIn mode: input amount. For targetOut mode: desired output amount."
         - name: slippageBps
           in: query
           schema:
@@ -145,6 +153,13 @@ paths:
           schema:
             type: string
             pattern: "^0x[a-fA-F0-9]{40}$"
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [exactIn, targetOut]
+            default: exactIn
+          description: "Quote mode. exactIn: specify input amount, compare output amounts (higher = better). targetOut: specify desired output amount, compare required input amounts (lower = better)."
       responses:
         "200":
           description: Comparison result with recommendation
@@ -226,18 +241,34 @@ components:
           type: string
         amount:
           type: string
+        input_amount:
+          type: string
+          description: Human-readable input amount (relevant for targetOut mode)
         output_amount:
+          type: string
+          description: Human-readable output amount
+        input_amount_raw:
           type: string
         output_amount_raw:
           type: string
-        input_amount_raw:
+        mode:
           type: string
+          enum: [exactIn, targetOut]
         provider:
           type: string
         slippage_bps:
           type: integer
         gas_used:
           type: string
+        gas_cost_eth:
+          type: string
+          description: Gas cost in ETH (gas_used * gas_price / 1e18)
+        output_value_eth:
+          type: string
+          description: Output value converted to ETH (or input value for targetOut mode)
+        net_value_eth:
+          type: string
+          description: "Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost)."
         router_address:
           type: string
         router_calldata:
@@ -265,8 +296,14 @@ components:
           type: string
         amount:
           type: string
+        input_amount:
+          type: string
+          description: Human-readable input amount (relevant for targetOut mode)
         output_amount:
           type: string
+        mode:
+          type: string
+          enum: [exactIn, targetOut]
         route:
           type: array
           items:
@@ -290,6 +327,17 @@ components:
           type: string
         router_calldata:
           type: string
+        gas_used:
+          type: string
+        gas_cost_eth:
+          type: string
+          description: Gas cost in ETH
+        output_value_eth:
+          type: string
+          description: Output value converted to ETH (or input value for targetOut mode)
+        net_value_eth:
+          type: string
+          description: "Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost)."
 
     CompareResult:
       type: object
@@ -315,6 +363,18 @@ components:
         gas_price_gwei:
           type: string
           nullable: true
+        output_to_eth_rate:
+          type: string
+          nullable: true
+          description: Rate used to convert output to ETH for gas-adjusted comparison (exactIn mode, null if output is ETH)
+        input_to_eth_rate:
+          type: string
+          nullable: true
+          description: Rate used to convert input to ETH for gas-adjusted comparison (targetOut mode, null if input is ETH)
+        mode:
+          type: string
+          enum: [exactIn, targetOut]
+          description: The quote mode used for this comparison
 
     TokenMetadata:
       type: object

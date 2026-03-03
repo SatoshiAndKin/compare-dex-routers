@@ -371,6 +371,8 @@ interface CompareResult {
   gas_price_gwei: string | null;
   // Gas-adjusted comparison fields
   output_to_eth_rate: string | null; // Rate used to convert output to ETH (null if output is ETH)
+  input_to_eth_rate: string | null; // Rate used to convert input to ETH (null if input is ETH, used for targetOut mode)
+  mode: QuoteMode; // The quote mode used for this comparison
 }
 
 // Known WETH addresses by chainId
@@ -387,6 +389,10 @@ const WETH_ADDRESSES: Record<number, string> = {
 // Rate cache for output->ETH conversions (60s TTL)
 const OUTPUT_TO_ETH_RATE_CACHE_TTL_MS = 60 * 1000;
 const outputToEthRateCache = new Map<string, { rate: number; timestamp: number }>();
+
+// Rate cache for input->ETH conversions (60s TTL) - used for targetOut mode
+const INPUT_TO_ETH_RATE_CACHE_TTL_MS = 60 * 1000;
+const inputToEthRateCache = new Map<string, { rate: number; timestamp: number }>();
 
 // Check if output token is ETH/WETH
 function isEthOutput(symbol: string, address: string, chainId: number): boolean {
@@ -455,6 +461,62 @@ async function fetchOutputToEthRate(
   }
 }
 
+// Fetch input->ETH rate via Spandex quote (for targetOut mode gas-adjusted comparison)
+// Uses a small amount (1 unit of input token) to get the exchange rate
+// Caches the rate for 60 seconds since both quotes in a comparison use the same input token
+async function fetchInputToEthRate(
+  chainId: number,
+  inputToken: string,
+  inputDecimals: number
+): Promise<number | null> {
+  const cacheKey = `${chainId}:${inputToken.toLowerCase()}`;
+  const cached = inputToEthRateCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < INPUT_TO_ETH_RATE_CACHE_TTL_MS) {
+    return cached.rate;
+  }
+
+  const wethAddress = WETH_ADDRESSES[chainId];
+  if (!wethAddress) {
+    // No WETH address for this chain, can't fetch rate
+    return null;
+  }
+
+  try {
+    // Use 1 unit of the input token to get the rate
+    const oneUnit = parseUnits("1", inputDecimals);
+
+    const quote = await getQuote({
+      config,
+      swap: {
+        chainId,
+        inputToken: inputToken as Address,
+        outputToken: wethAddress as Address,
+        mode: "exactIn",
+        inputAmount: oneUnit,
+        slippageBps: 1000, // 10% slippage for rate fetch (we just need an approximate rate)
+        swapperAccount: FALLBACK_ACCOUNT,
+      },
+      strategy: "bestPrice",
+    });
+
+    if (!quote) {
+      return null;
+    }
+
+    // Rate = outputAmount (in ETH) / 1 unit of input
+    // Since we used 1 unit, the output amount IS the rate
+    const rate = Number(formatUnits(quote.simulation.outputAmount, 18));
+
+    // Cache the rate
+    inputToEthRateCache.set(cacheKey, { rate, timestamp: Date.now() });
+
+    return rate;
+  } catch {
+    // Rate fetch failed
+    return null;
+  }
+}
+
 // Helper to format ETH values with appropriate precision
 function formatEthValue(value: number): string {
   if (value === 0) return "0";
@@ -497,6 +559,8 @@ async function compareQuotes(
   let reason: string;
   let outputToEthRate: number | null = null;
   let outputToEthRateStr: string | null = null;
+  let inputToEthRate: number | null = null;
+  let inputToEthRateStr: string | null = null;
 
   // Determine if output is ETH/WETH
   const outputIsEth = spandex.result
@@ -505,10 +569,18 @@ async function compareQuotes(
       ? isEthOutput(curveResult.result.to_symbol, curveResult.result.to, chainId)
       : false;
 
-  const outputSymbol = spandex.result?.to_symbol || curveResult.result?.to_symbol || "tokens";
+  // Determine if input is ETH/WETH (relevant for targetOut mode)
+  const inputIsEth = spandex.result
+    ? isEthOutput(spandex.result.from_symbol, spandex.result.from, chainId)
+    : curveResult.result
+      ? isEthOutput(curveResult.result.from_symbol, curveResult.result.from, chainId)
+      : false;
 
-  // Fetch output->ETH rate for non-ETH outputs (if we have at least one quote)
-  if (!outputIsEth && (spandex.result || curveResult.result)) {
+  const outputSymbol = spandex.result?.to_symbol || curveResult.result?.to_symbol || "tokens";
+  const inputSymbol = spandex.result?.from_symbol || curveResult.result?.from_symbol || "tokens";
+
+  // Fetch output->ETH rate for non-ETH outputs (needed for exactIn gas-adjusted comparison)
+  if (mode === "exactIn" && !outputIsEth && (spandex.result || curveResult.result)) {
     const outputToken = spandex.result?.to || curveResult.result?.to;
     const outputDecimals = await getTokenDecimals(chainId, outputToken || "");
     outputToEthRate = await fetchOutputToEthRate(chainId, outputToken || "", outputDecimals);
@@ -517,8 +589,19 @@ async function compareQuotes(
     }
   }
 
-  // Helper to compute gas-adjusted values for a quote
-  function computeGasAdjustedValues(
+  // Fetch input->ETH rate for non-ETH inputs (needed for targetOut gas-adjusted comparison)
+  if (mode === "targetOut" && !inputIsEth && (spandex.result || curveResult.result)) {
+    const inputToken = spandex.result?.from || curveResult.result?.from;
+    const inputDecimals = await getTokenDecimals(chainId, inputToken || "");
+    inputToEthRate = await fetchInputToEthRate(chainId, inputToken || "", inputDecimals);
+    if (inputToEthRate !== null) {
+      inputToEthRateStr = inputToEthRate.toFixed(6);
+    }
+  }
+
+  // Helper to compute gas-adjusted values for a quote (exactIn mode)
+  // Returns: gas cost in ETH, output value in ETH, net value (output - gas)
+  function computeGasAdjustedValuesExactIn(
     outputAmount: number,
     gasUsed: number,
     gasPriceWei: number
@@ -536,6 +619,28 @@ async function compareQuotes(
         : 0;
     const netValueEth = outputValueEth - gasCostEth;
     return { gasCostEth, outputValueEth, netValueEth };
+  }
+
+  // Helper to compute gas-adjusted values for a quote (targetOut mode)
+  // Returns: gas cost in ETH, input value in ETH, total cost (input + gas) - LOWER is better
+  function computeGasAdjustedValuesTargetOut(
+    inputAmount: number,
+    gasUsed: number,
+    gasPriceWei: number
+  ): {
+    gasCostEth: number;
+    inputValueEth: number;
+    totalCostEth: number;
+  } {
+    const gasCostEth = gasUsed > 0 && gasPriceWei > 0 ? (gasUsed * gasPriceWei) / 1e18 : 0;
+    // Convert input to ETH (input is what we're paying, so we need its ETH value)
+    const inputValueEth = inputIsEth
+      ? inputAmount
+      : inputToEthRate !== null
+        ? inputAmount * inputToEthRate
+        : 0;
+    const totalCostEth = inputValueEth + gasCostEth;
+    return { gasCostEth, inputValueEth, totalCostEth };
   }
 
   // Helper to enrich quote with gas-adjusted fields
@@ -567,92 +672,202 @@ async function compareQuotes(
   const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
 
   if (spandex.result && curveResult.result) {
-    const spandexOutput = Number(spandex.result.output_amount);
-    const curveOutput = Number(curveResult.result.output_amount);
     const spandexGas = Number(spandex.result.gas_used || "0");
     const curveGas = Number(curveResult.result.gas_used || "0");
-
-    // Compute gas-adjusted values
-    const spandexValues = computeGasAdjustedValues(spandexOutput, spandexGas, gasPriceWei);
-    const curveValues = computeGasAdjustedValues(curveOutput, curveGas, gasPriceWei);
-
-    // Enrich quotes with gas fields
-    enrichQuoteWithGasFields(
-      spandex.result,
-      spandexValues.gasCostEth,
-      spandexValues.outputValueEth,
-      spandexValues.netValueEth
-    );
-    enrichCurveQuoteWithGasFields(
-      curveResult.result,
-      curveValues.gasCostEth,
-      curveValues.outputValueEth,
-      curveValues.netValueEth
-    );
-
-    // Determine if we can do gas-adjusted comparison
-    const canDoGasAdjusted = outputIsEth || outputToEthRate !== null;
     const bothHaveGas = spandexGas > 0 && curveGas > 0 && gasPriceGwei !== null;
 
-    if (canDoGasAdjusted && bothHaveGas) {
-      // Gas-adjusted comparison for ALL pairs using net ETH value
-      if (curveValues.netValueEth > spandexValues.netValueEth) {
-        recommendation = "curve";
-        if (outputIsEth) {
-          reason = `Curve returns ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas). Curve recommended.`;
+    if (mode === "targetOut") {
+      // === TARGET_OUT MODE ===
+      // Compare by required INPUT amount (lower = better)
+      // User specifies desired output, quotes return required input
+      const spandexInput = Number(spandex.result.input_amount);
+      const curveInput = Number(curveResult.result.input_amount);
+
+      // Compute gas-adjusted values for targetOut
+      const spandexValues = computeGasAdjustedValuesTargetOut(
+        spandexInput,
+        spandexGas,
+        gasPriceWei
+      );
+      const curveValues = computeGasAdjustedValuesTargetOut(curveInput, curveGas, gasPriceWei);
+
+      // Enrich quotes with gas fields (for targetOut, net_value_eth represents total cost)
+      enrichQuoteWithGasFields(
+        spandex.result,
+        spandexValues.gasCostEth,
+        spandexValues.inputValueEth,
+        spandexValues.totalCostEth
+      );
+      enrichCurveQuoteWithGasFields(
+        curveResult.result,
+        curveValues.gasCostEth,
+        curveValues.inputValueEth,
+        curveValues.totalCostEth
+      );
+
+      // Determine if we can do gas-adjusted comparison
+      const canDoGasAdjusted = inputIsEth || inputToEthRate !== null;
+
+      if (canDoGasAdjusted && bothHaveGas) {
+        // Gas-adjusted comparison: lower total cost wins
+        if (curveValues.totalCostEth < spandexValues.totalCostEth) {
+          recommendation = "curve";
+          // Show input difference if amounts differ
+          const inputDiff = spandexInput - curveInput;
+          const inputDiffNote =
+            inputDiff > 0.000001
+              ? ` Curve requires ${inputDiff.toFixed(6)} ${inputSymbol} less input.`
+              : "";
+          if (inputIsEth) {
+            reason = `Curve requires ${curveInput.toFixed(6)} ETH (${curveValues.totalCostEth.toFixed(6)} ETH total with gas) vs Spandex ${spandexInput.toFixed(6)} ETH (${spandexValues.totalCostEth.toFixed(6)} ETH total).${inputDiffNote} Curve recommended.`;
+          } else {
+            reason = `Curve requires ${curveInput.toFixed(6)} ${inputSymbol} (~${curveValues.inputValueEth.toFixed(6)} ETH, ${curveValues.totalCostEth.toFixed(6)} ETH total with gas) vs Spandex ${spandexInput.toFixed(6)} ${inputSymbol} (~${spandexValues.inputValueEth.toFixed(6)} ETH, ${spandexValues.totalCostEth.toFixed(6)} ETH total). Rate: 1 ${inputSymbol} = ${inputToEthRateStr} ETH.${inputDiffNote} Curve recommended.`;
+          }
+        } else if (spandexValues.totalCostEth < curveValues.totalCostEth) {
+          recommendation = "spandex";
+          // Show input difference if amounts differ
+          const inputDiff = curveInput - spandexInput;
+          const inputDiffNote =
+            inputDiff > 0.000001
+              ? ` Spandex requires ${inputDiff.toFixed(6)} ${inputSymbol} less input.`
+              : "";
+          if (inputIsEth) {
+            reason = `Spandex (${spandex.result.provider}) requires ${spandexInput.toFixed(6)} ETH (${spandexValues.totalCostEth.toFixed(6)} ETH total with gas) vs Curve ${curveInput.toFixed(6)} ETH (${curveValues.totalCostEth.toFixed(6)} ETH total).${inputDiffNote} Spandex recommended.`;
+          } else {
+            reason = `Spandex (${spandex.result.provider}) requires ${spandexInput.toFixed(6)} ${inputSymbol} (~${spandexValues.inputValueEth.toFixed(6)} ETH, ${spandexValues.totalCostEth.toFixed(6)} ETH total with gas) vs Curve ${curveInput.toFixed(6)} ${inputSymbol} (~${curveValues.inputValueEth.toFixed(6)} ETH, ${curveValues.totalCostEth.toFixed(6)} ETH total). Rate: 1 ${inputSymbol} = ${inputToEthRateStr} ETH.${inputDiffNote} Spandex recommended.`;
+          }
         } else {
-          reason = `Curve returns ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Curve recommended.`;
+          recommendation = "spandex";
+          reason = `Equal total cost: ${spandexValues.totalCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
         }
-      } else if (spandexValues.netValueEth > curveValues.netValueEth) {
-        recommendation = "spandex";
-        if (outputIsEth) {
-          reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas). Spandex recommended.`;
+      } else if (!canDoGasAdjusted && bothHaveGas) {
+        // Rate fetch failed but we have gas - show gas costs in ETH for info, compare raw input
+        if (curveInput < spandexInput) {
+          recommendation = "curve";
+          const diff = spandexInput - curveInput;
+          const pct = ((diff / spandexInput) * 100).toFixed(3);
+          reason = `Curve requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%). Gas costs: Curve ${curveValues.gasCostEth.toFixed(6)} ETH vs Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH. Curve recommended (gas cost shown for info, rate unavailable).`;
+        } else if (spandexInput < curveInput) {
+          recommendation = "spandex";
+          const diff = curveInput - spandexInput;
+          const pct = ((diff / curveInput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%). Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Spandex recommended (gas cost shown for info, rate unavailable).`;
         } else {
-          reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Spandex recommended.`;
+          recommendation = "spandex";
+          reason = `Equal input amounts. Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
         }
       } else {
-        recommendation = "spandex";
-        reason = `Equal gas-adjusted net value: ${spandexValues.netValueEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
-      }
-    } else if (!canDoGasAdjusted && bothHaveGas) {
-      // Rate fetch failed but we have gas - show gas costs in ETH for info, compare raw output
-      if (curveOutput > spandexOutput) {
-        recommendation = "curve";
-        const diff = curveOutput - spandexOutput;
-        const pct = ((diff / spandexOutput) * 100).toFixed(3);
-        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Curve ${curveValues.gasCostEth.toFixed(6)} ETH vs Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH. Curve recommended (gas cost shown for info, rate unavailable).`;
-      } else if (spandexOutput > curveOutput) {
-        recommendation = "spandex";
-        const diff = spandexOutput - curveOutput;
-        const pct = ((diff / curveOutput) * 100).toFixed(3);
-        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Spandex recommended (gas cost shown for info, rate unavailable).`;
-      } else {
-        recommendation = "spandex";
-        reason = `Equal output amounts. Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        // Fall back to raw input comparison with a note about missing gas
+        const missingGas: string[] = [];
+        if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
+        if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
+        const missingGasNote =
+          missingGas.length > 0
+            ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw input only.`
+            : "";
+
+        if (curveInput < spandexInput) {
+          recommendation = "curve";
+          const diff = spandexInput - curveInput;
+          const pct = ((diff / spandexInput) * 100).toFixed(3);
+          reason = `Curve requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%).${missingGasNote}`;
+        } else if (spandexInput < curveInput) {
+          recommendation = "spandex";
+          const diff = curveInput - spandexInput;
+          const pct = ((diff / curveInput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%).${missingGasNote}`;
+        } else {
+          recommendation = "spandex";
+          reason = `Equal input amounts; defaulting to Spandex for multi-provider coverage.${missingGasNote}`;
+        }
       }
     } else {
-      // Fall back to raw output comparison with a note about missing gas
-      const missingGas: string[] = [];
-      if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
-      if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
-      const missingGasNote =
-        missingGas.length > 0
-          ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw output only.`
-          : "";
+      // === EXACT_IN MODE (default) ===
+      // Compare by OUTPUT amount (higher = better)
+      const spandexOutput = Number(spandex.result.output_amount);
+      const curveOutput = Number(curveResult.result.output_amount);
 
-      if (curveOutput > spandexOutput) {
-        recommendation = "curve";
-        const diff = curveOutput - spandexOutput;
-        const pct = ((diff / spandexOutput) * 100).toFixed(3);
-        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
-      } else if (spandexOutput > curveOutput) {
-        recommendation = "spandex";
-        const diff = spandexOutput - curveOutput;
-        const pct = ((diff / curveOutput) * 100).toFixed(3);
-        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+      // Compute gas-adjusted values for exactIn
+      const spandexValues = computeGasAdjustedValuesExactIn(spandexOutput, spandexGas, gasPriceWei);
+      const curveValues = computeGasAdjustedValuesExactIn(curveOutput, curveGas, gasPriceWei);
+
+      // Enrich quotes with gas fields
+      enrichQuoteWithGasFields(
+        spandex.result,
+        spandexValues.gasCostEth,
+        spandexValues.outputValueEth,
+        spandexValues.netValueEth
+      );
+      enrichCurveQuoteWithGasFields(
+        curveResult.result,
+        curveValues.gasCostEth,
+        curveValues.outputValueEth,
+        curveValues.netValueEth
+      );
+
+      // Determine if we can do gas-adjusted comparison
+      const canDoGasAdjusted = outputIsEth || outputToEthRate !== null;
+
+      if (canDoGasAdjusted && bothHaveGas) {
+        // Gas-adjusted comparison for ALL pairs using net ETH value
+        if (curveValues.netValueEth > spandexValues.netValueEth) {
+          recommendation = "curve";
+          if (outputIsEth) {
+            reason = `Curve returns ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas). Curve recommended.`;
+          } else {
+            reason = `Curve returns ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Curve recommended.`;
+          }
+        } else if (spandexValues.netValueEth > curveValues.netValueEth) {
+          recommendation = "spandex";
+          if (outputIsEth) {
+            reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas). Spandex recommended.`;
+          } else {
+            reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Spandex recommended.`;
+          }
+        } else {
+          recommendation = "spandex";
+          reason = `Equal gas-adjusted net value: ${spandexValues.netValueEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        }
+      } else if (!canDoGasAdjusted && bothHaveGas) {
+        // Rate fetch failed but we have gas - show gas costs in ETH for info, compare raw output
+        if (curveOutput > spandexOutput) {
+          recommendation = "curve";
+          const diff = curveOutput - spandexOutput;
+          const pct = ((diff / spandexOutput) * 100).toFixed(3);
+          reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Curve ${curveValues.gasCostEth.toFixed(6)} ETH vs Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH. Curve recommended (gas cost shown for info, rate unavailable).`;
+        } else if (spandexOutput > curveOutput) {
+          recommendation = "spandex";
+          const diff = spandexOutput - curveOutput;
+          const pct = ((diff / curveOutput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Spandex recommended (gas cost shown for info, rate unavailable).`;
+        } else {
+          recommendation = "spandex";
+          reason = `Equal output amounts. Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        }
       } else {
-        recommendation = "spandex";
-        reason = `Equal output amounts; defaulting to Spandex for multi-provider coverage.${missingGasNote}`;
+        // Fall back to raw output comparison with a note about missing gas
+        const missingGas: string[] = [];
+        if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
+        if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
+        const missingGasNote =
+          missingGas.length > 0
+            ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw output only.`
+            : "";
+
+        if (curveOutput > spandexOutput) {
+          recommendation = "curve";
+          const diff = curveOutput - spandexOutput;
+          const pct = ((diff / spandexOutput) * 100).toFixed(3);
+          reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+        } else if (spandexOutput > curveOutput) {
+          recommendation = "spandex";
+          const diff = spandexOutput - curveOutput;
+          const pct = ((diff / curveOutput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+        } else {
+          recommendation = "spandex";
+          reason = `Equal output amounts; defaulting to Spandex for multi-provider coverage.${missingGasNote}`;
+        }
       }
     }
   } else if (spandex.result) {
@@ -660,29 +875,51 @@ async function compareQuotes(
     reason = "Only Spandex returned a quote";
 
     // Enrich with gas fields
-    const spandexOutput = Number(spandex.result.output_amount);
     const spandexGas = Number(spandex.result.gas_used || "0");
-    const values = computeGasAdjustedValues(spandexOutput, spandexGas, gasPriceWei);
-    enrichQuoteWithGasFields(
-      spandex.result,
-      values.gasCostEth,
-      values.outputValueEth,
-      values.netValueEth
-    );
+    if (mode === "targetOut") {
+      const spandexInput = Number(spandex.result.input_amount);
+      const values = computeGasAdjustedValuesTargetOut(spandexInput, spandexGas, gasPriceWei);
+      enrichQuoteWithGasFields(
+        spandex.result,
+        values.gasCostEth,
+        values.inputValueEth,
+        values.totalCostEth
+      );
+    } else {
+      const spandexOutput = Number(spandex.result.output_amount);
+      const values = computeGasAdjustedValuesExactIn(spandexOutput, spandexGas, gasPriceWei);
+      enrichQuoteWithGasFields(
+        spandex.result,
+        values.gasCostEth,
+        values.outputValueEth,
+        values.netValueEth
+      );
+    }
   } else if (curveResult.result) {
     recommendation = "curve";
     reason = "Only Curve returned a quote";
 
     // Enrich with gas fields
-    const curveOutput = Number(curveResult.result.output_amount);
     const curveGas = Number(curveResult.result.gas_used || "0");
-    const values = computeGasAdjustedValues(curveOutput, curveGas, gasPriceWei);
-    enrichCurveQuoteWithGasFields(
-      curveResult.result,
-      values.gasCostEth,
-      values.outputValueEth,
-      values.netValueEth
-    );
+    if (mode === "targetOut") {
+      const curveInput = Number(curveResult.result.input_amount);
+      const values = computeGasAdjustedValuesTargetOut(curveInput, curveGas, gasPriceWei);
+      enrichCurveQuoteWithGasFields(
+        curveResult.result,
+        values.gasCostEth,
+        values.inputValueEth,
+        values.totalCostEth
+      );
+    } else {
+      const curveOutput = Number(curveResult.result.output_amount);
+      const values = computeGasAdjustedValuesExactIn(curveOutput, curveGas, gasPriceWei);
+      enrichCurveQuoteWithGasFields(
+        curveResult.result,
+        values.gasCostEth,
+        values.outputValueEth,
+        values.netValueEth
+      );
+    }
   } else {
     reason = "Neither source returned a quote";
   }
@@ -696,6 +933,8 @@ async function compareQuotes(
     recommendation_reason: reason,
     gas_price_gwei: gasPriceGwei,
     output_to_eth_rate: outputToEthRateStr,
+    input_to_eth_rate: inputToEthRateStr,
+    mode,
   };
 }
 
