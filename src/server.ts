@@ -1786,6 +1786,12 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .chain-item:last-child { border-bottom: none; }
     .chain-item:hover, .chain-item.active { background: #f0f0f0; }
+    .chain-item.current-selection {
+      background: #e8f4e8;
+      border-left: 4px solid #22c55e;
+      font-weight: 700;
+    }
+    .chain-item.current-selection .chain-item-name { font-weight: 700; }
     .chain-item-name { font-weight: 600; font-size: 0.875rem; }
     .chain-item-id { font-family: monospace; color: #666; font-size: 0.75rem; }
     .chain-item-empty {
@@ -2486,6 +2492,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       { id: '43114', name: 'Avalanche' },
     ];
     let chainDropdownActiveIdx = -1;
+    let chainDropdownPreviousChainId = null; // Track chain to restore on cancel
+    let chainDropdownPinnedChainId = null; // Chain to pin at top when dropdown opens
 
     function formatChainDisplay(chainId, chainName) {
       const name = chainName || CHAIN_NAMES[chainId] || 'Unknown';
@@ -2502,11 +2510,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       });
     }
 
-    function renderChainDropdown(chains) {
+    function renderChainDropdown(chains, pinnedChainId) {
       chainDropdown.innerHTML = '';
       chainDropdownActiveIdx = -1;
 
-      if (!chains.length) {
+      if (!chains.length && !pinnedChainId) {
         const empty = document.createElement('div');
         empty.className = 'chain-item-empty';
         empty.textContent = 'No chains match';
@@ -2517,7 +2525,41 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
 
       const fragment = document.createDocumentFragment();
+
+      // Render pinned chain first if specified
+      if (pinnedChainId) {
+        const pinnedChain = ALL_CHAINS.find(c => c.id === pinnedChainId);
+        if (pinnedChain) {
+          const item = document.createElement('div');
+          item.className = 'chain-item current-selection';
+          item.dataset.chainId = pinnedChain.id;
+          item.setAttribute('role', 'option');
+          item.setAttribute('id', 'chain-option-' + pinnedChain.id);
+
+          const nameEl = document.createElement('span');
+          nameEl.className = 'chain-item-name';
+          nameEl.textContent = pinnedChain.name;
+
+          const idEl = document.createElement('span');
+          idEl.className = 'chain-item-id';
+          idEl.textContent = '(' + pinnedChain.id + ')';
+
+          item.appendChild(nameEl);
+          item.appendChild(idEl);
+
+          item.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            selectChain(pinnedChain.id, pinnedChain.name);
+          });
+
+          fragment.appendChild(item);
+        }
+      }
+
+      // Render remaining chains (excluding pinned if present)
       chains.forEach((chain, idx) => {
+        if (pinnedChainId && chain.id === pinnedChainId) return; // Skip pinned chain in main list
+
         const item = document.createElement('div');
         item.className = 'chain-item';
         item.dataset.chainId = chain.id;
@@ -2565,6 +2607,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       const display = formatChainDisplay(chainId, chainName);
       chainIdInput.value = display;
       chainIdInput.dataset.chainId = chainId;
+      // Clear previous/pinned state since we made a valid selection
+      chainDropdownPreviousChainId = null;
+      chainDropdownPinnedChainId = null;
       hideChainDropdown();
       // Trigger change event for other listeners
       chainIdInput.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2574,6 +2619,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       chainDropdown.classList.remove('show');
       chainDropdown.innerHTML = '';
       chainDropdownActiveIdx = -1;
+      chainDropdownPinnedChainId = null;
       chainIdInput.setAttribute('aria-expanded', 'false');
       chainIdInput.removeAttribute('aria-activedescendant');
     }
@@ -2581,22 +2627,26 @@ const INDEX_HTML = `<!DOCTYPE html>
     function refreshChainDropdown() {
       const query = chainIdInput.value;
       const chains = filterChains(query);
-      renderChainDropdown(chains);
+      // When user is typing/filtering, don't pin - just show filtered results
+      renderChainDropdown(chains, null);
     }
 
     // Chain input event handlers
     chainIdInput.addEventListener('focus', () => {
-      // Show all chains on focus if empty or just showing current selection
+      // Store current chain as the one to restore if user cancels
       const currentChainId = getCurrentChainId();
-      const currentDisplay = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
-      if (chainIdInput.value === currentDisplay || !chainIdInput.value.trim()) {
-        renderChainDropdown(ALL_CHAINS);
-      } else {
-        refreshChainDropdown();
-      }
+      chainDropdownPreviousChainId = String(currentChainId);
+      // Set current chain as pinned (appears first, highlighted)
+      chainDropdownPinnedChainId = String(currentChainId);
+      // Clear input for typing
+      chainIdInput.value = '';
+      // Show all chains with current selection pinned at top
+      renderChainDropdown(ALL_CHAINS, chainDropdownPinnedChainId);
     });
 
     chainIdInput.addEventListener('input', () => {
+      // User is typing - clear pinned since we're filtering
+      chainDropdownPinnedChainId = null;
       refreshChainDropdown();
     });
 
@@ -2606,7 +2656,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       if (e.key === 'ArrowDown') {
         if (!isOpen) {
-          renderChainDropdown(ALL_CHAINS);
+          // Set pinned and show dropdown with current selection at top
+          chainDropdownPinnedChainId = String(getCurrentChainId());
+          renderChainDropdown(ALL_CHAINS, chainDropdownPinnedChainId);
           return;
         }
         e.preventDefault();
@@ -2618,19 +2670,31 @@ const INDEX_HTML = `<!DOCTYPE html>
         chainDropdownActiveIdx = Math.max(chainDropdownActiveIdx - 1, 0);
         setActiveChainItem(chainDropdownActiveIdx);
       } else if (e.key === 'Enter' && isOpen) {
-        const chains = filterChains(chainIdInput.value);
-        if (chains.length > 0) {
-          e.preventDefault();
-          const idx = chainDropdownActiveIdx >= 0 ? chainDropdownActiveIdx : 0;
-          const chain = chains[idx];
-          if (chain) {
-            selectChain(chain.id, chain.name);
+        e.preventDefault();
+        // If user navigated to an item, select it
+        if (chainDropdownActiveIdx >= 0 && items[chainDropdownActiveIdx]) {
+          const item = items[chainDropdownActiveIdx];
+          const chainId = item.dataset.chainId;
+          const chainName = item.querySelector('.chain-item-name').textContent;
+          selectChain(chainId, chainName);
+        } else if (chainDropdownPinnedChainId) {
+          // No navigation but have pinned chain - select it
+          const pinnedChain = ALL_CHAINS.find(c => c.id === chainDropdownPinnedChainId);
+          if (pinnedChain) {
+            selectChain(pinnedChain.id, pinnedChain.name);
+          }
+        } else {
+          // No pinned, no navigation - select first from filtered
+          const chains = filterChains(chainIdInput.value);
+          if (chains.length > 0) {
+            selectChain(chains[0].id, chains[0].name);
           }
         }
       } else if (e.key === 'Escape') {
-        // Restore current selection on Escape
-        const currentChainId = getCurrentChainId();
-        chainIdInput.value = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+        // Restore previous selection on Escape
+        const restoreChainId = chainDropdownPreviousChainId || String(getCurrentChainId());
+        chainIdInput.value = formatChainDisplay(restoreChainId, CHAIN_NAMES[restoreChainId]);
+        chainDropdownPreviousChainId = null;
         hideChainDropdown();
       } else if (e.key === 'Tab') {
         // On Tab, if typing a partial match, select first match or restore
@@ -2640,10 +2704,16 @@ const INDEX_HTML = `<!DOCTYPE html>
           if (chains.length === 1) {
             selectChain(chains[0].id, chains[0].name);
           } else if (chains.length > 1) {
-            // Ambiguous - restore current
-            const currentChainId = getCurrentChainId();
-            chainIdInput.value = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+            // Ambiguous - restore previous
+            const restoreChainId = chainDropdownPreviousChainId || String(getCurrentChainId());
+            chainIdInput.value = formatChainDisplay(restoreChainId, CHAIN_NAMES[restoreChainId]);
+            chainDropdownPreviousChainId = null;
           }
+        } else {
+          // No input - restore previous
+          const restoreChainId = chainDropdownPreviousChainId || String(getCurrentChainId());
+          chainIdInput.value = formatChainDisplay(restoreChainId, CHAIN_NAMES[restoreChainId]);
+          chainDropdownPreviousChainId = null;
         }
         hideChainDropdown();
       }
@@ -2654,16 +2724,17 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (e.target === chainIdInput || chainDropdown.contains(e.target)) {
         return;
       }
-      // On blur, restore current selection if input doesn't match a valid chain
+      // On blur, restore previous selection if input doesn't match a valid chain
       const query = chainIdInput.value.trim().toLowerCase();
       const matchingChains = filterChains(query);
       if (matchingChains.length === 1) {
         // Auto-select if only one match
         selectChain(matchingChains[0].id, matchingChains[0].name);
       } else {
-        // Restore current selection
-        const currentChainId = getCurrentChainId();
-        chainIdInput.value = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+        // Restore previous selection
+        const restoreChainId = chainDropdownPreviousChainId || String(getCurrentChainId());
+        chainIdInput.value = formatChainDisplay(restoreChainId, CHAIN_NAMES[restoreChainId]);
+        chainDropdownPreviousChainId = null;
       }
       hideChainDropdown();
     });
