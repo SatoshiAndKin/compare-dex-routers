@@ -1761,6 +1761,40 @@ const INDEX_HTML = `<!DOCTYPE html>
       flex-shrink: 0;
     }
     
+    /* Chain Selector Dropdown (searchable) */
+    .chain-dropdown {
+      position: absolute;
+      z-index: 60;
+      background: #fff;
+      border: 2px solid #000;
+      border-top: none;
+      max-height: 240px;
+      overflow-y: auto;
+      min-width: 200px;
+      width: max-content;
+      max-width: 350px;
+      display: none;
+    }
+    .chain-dropdown.show { display: block; }
+    .chain-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      cursor: pointer;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .chain-item:last-child { border-bottom: none; }
+    .chain-item:hover, .chain-item.active { background: #f0f0f0; }
+    .chain-item-name { font-weight: 600; font-size: 0.875rem; }
+    .chain-item-id { font-family: monospace; color: #666; font-size: 0.75rem; }
+    .chain-item-empty {
+      padding: 0.5rem;
+      color: #666;
+      font-style: italic;
+      font-size: 0.875rem;
+    }
+
     /* Autocomplete */
     .autocomplete-list {
       position: absolute;
@@ -2033,19 +2067,12 @@ const INDEX_HTML = `<!DOCTYPE html>
   
   <!-- Wallet Section - Inline with trading flow -->
   <form id="form">
-    <!-- Row 1: Chain Selector -->
+    <!-- Row 1: Chain Selector (searchable dropdown) -->
     <div class="form-header-row">
       <div class="form-group">
         <label for="chainId">Chain</label>
-        <select id="chainId">
-          <option value="1">Ethereum (1)</option>
-          <option value="8453" selected>Base (8453)</option>
-          <option value="42161">Arbitrum (42161)</option>
-          <option value="10">Optimism (10)</option>
-          <option value="137">Polygon (137)</option>
-          <option value="56">BSC (56)</option>
-          <option value="43114">Avalanche (43114)</option>
-        </select>
+        <input type="text" id="chainId" placeholder="Search chain name or ID..." autocomplete="off" data-chain-id="8453" value="Base (8453)">
+        <div class="chain-dropdown" id="chainDropdown"></div>
       </div>
     </div>
     <!-- Row 2: Wallet (integrated into form flow) -->
@@ -2062,12 +2089,21 @@ const INDEX_HTML = `<!DOCTYPE html>
       <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
       <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
     </div>
-    <!-- Row 3: Amount (full-width for 20+ digit numbers) -->
+    <!-- Row 3: From Token -->
     <div class="form-group">
-      <label for="amount">Amount</label>
-      <input type="text" id="amount" value="1000">
+      <label for="from">From Token</label>
+      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="autocomplete-list" id="fromAutocomplete"></div>
+      <div id="fromBalance" class="token-balance" hidden></div>
     </div>
-    <!-- Row 3b: Direction Toggle -->
+    <!-- Row 4: To Token -->
+    <div class="form-group">
+      <label for="to">To Token</label>
+      <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="autocomplete-list" id="toAutocomplete"></div>
+      <div id="toBalance" class="token-balance" hidden></div>
+    </div>
+    <!-- Row 5: Direction Toggle -->
     <div class="direction-toggle-row">
       <button type="button" id="directionExactIn" class="direction-btn active" aria-pressed="true">
         Sell exact
@@ -2080,21 +2116,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       <span class="target-out-note-icon">⚠️</span>
       <span>Fewer providers support reverse quotes (3/7 Spandex providers)</span>
     </div>
-    <!-- Row 4: From Token -->
+    <!-- Row 6: Amount (full-width for 20+ digit numbers) -->
     <div class="form-group">
-      <label for="from">From Token</label>
-      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
-      <div class="autocomplete-list" id="fromAutocomplete"></div>
-      <div id="fromBalance" class="token-balance" hidden></div>
+      <label for="amount">Amount</label>
+      <input type="text" id="amount" value="1000">
     </div>
-    <!-- Row 5: To Token -->
-    <div class="form-group">
-      <label for="to">To Token</label>
-      <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
-      <div class="autocomplete-list" id="toAutocomplete"></div>
-      <div id="toBalance" class="token-balance" hidden></div>
-    </div>
-    <!-- Row 6: Action Row with Submit + Compact Slippage -->
+    <!-- Row 7: Action Row with Submit + Compact Slippage -->
     <div class="action-row">
       <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
       <div class="slippage-box">
@@ -2366,6 +2393,186 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     directionTargetOutBtn.addEventListener('click', () => {
       setDirectionMode('targetOut');
+    });
+
+    // Chain Selector Dropdown (searchable)
+    const chainDropdown = document.getElementById('chainDropdown');
+    const ALL_CHAINS = [
+      { id: '1', name: 'Ethereum' },
+      { id: '8453', name: 'Base' },
+      { id: '42161', name: 'Arbitrum' },
+      { id: '10', name: 'Optimism' },
+      { id: '137', name: 'Polygon' },
+      { id: '56', name: 'BSC' },
+      { id: '43114', name: 'Avalanche' },
+    ];
+    let chainDropdownActiveIdx = -1;
+
+    function formatChainDisplay(chainId, chainName) {
+      const name = chainName || CHAIN_NAMES[chainId] || 'Unknown';
+      return name + ' (' + chainId + ')';
+    }
+
+    function filterChains(query) {
+      const q = String(query || '').toLowerCase().trim();
+      if (!q) return ALL_CHAINS;
+      return ALL_CHAINS.filter(chain => {
+        const nameLower = chain.name.toLowerCase();
+        const idStr = chain.id;
+        return nameLower.includes(q) || idStr.includes(q);
+      });
+    }
+
+    function renderChainDropdown(chains) {
+      chainDropdown.innerHTML = '';
+      chainDropdownActiveIdx = -1;
+
+      if (!chains.length) {
+        const empty = document.createElement('div');
+        empty.className = 'chain-item-empty';
+        empty.textContent = 'No chains match';
+        chainDropdown.appendChild(empty);
+        chainDropdown.classList.add('show');
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      chains.forEach((chain, idx) => {
+        const item = document.createElement('div');
+        item.className = 'chain-item';
+        item.dataset.chainId = chain.id;
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'chain-item-name';
+        nameEl.textContent = chain.name;
+
+        const idEl = document.createElement('span');
+        idEl.className = 'chain-item-id';
+        idEl.textContent = '(' + chain.id + ')';
+
+        item.appendChild(nameEl);
+        item.appendChild(idEl);
+
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          selectChain(chain.id, chain.name);
+        });
+
+        fragment.appendChild(item);
+      });
+
+      chainDropdown.appendChild(fragment);
+      chainDropdown.classList.add('show');
+    }
+
+    function setActiveChainItem(index) {
+      const items = chainDropdown.querySelectorAll('.chain-item');
+      items.forEach((el, i) => el.classList.toggle('active', i === index));
+    }
+
+    function selectChain(chainId, chainName) {
+      const display = formatChainDisplay(chainId, chainName);
+      chainIdInput.value = display;
+      chainIdInput.dataset.chainId = chainId;
+      hideChainDropdown();
+      // Trigger change event for other listeners
+      chainIdInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function hideChainDropdown() {
+      chainDropdown.classList.remove('show');
+      chainDropdown.innerHTML = '';
+      chainDropdownActiveIdx = -1;
+    }
+
+    function refreshChainDropdown() {
+      const query = chainIdInput.value;
+      const chains = filterChains(query);
+      renderChainDropdown(chains);
+    }
+
+    // Chain input event handlers
+    chainIdInput.addEventListener('focus', () => {
+      // Show all chains on focus if empty or just showing current selection
+      const currentChainId = getCurrentChainId();
+      const currentDisplay = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+      if (chainIdInput.value === currentDisplay || !chainIdInput.value.trim()) {
+        renderChainDropdown(ALL_CHAINS);
+      } else {
+        refreshChainDropdown();
+      }
+    });
+
+    chainIdInput.addEventListener('input', () => {
+      refreshChainDropdown();
+    });
+
+    chainIdInput.addEventListener('keydown', (e) => {
+      const items = chainDropdown.querySelectorAll('.chain-item');
+      const isOpen = chainDropdown.classList.contains('show');
+
+      if (e.key === 'ArrowDown') {
+        if (!isOpen) {
+          renderChainDropdown(ALL_CHAINS);
+          return;
+        }
+        e.preventDefault();
+        chainDropdownActiveIdx = Math.min(chainDropdownActiveIdx + 1, items.length - 1);
+        setActiveChainItem(chainDropdownActiveIdx);
+      } else if (e.key === 'ArrowUp') {
+        if (!isOpen) return;
+        e.preventDefault();
+        chainDropdownActiveIdx = Math.max(chainDropdownActiveIdx - 1, 0);
+        setActiveChainItem(chainDropdownActiveIdx);
+      } else if (e.key === 'Enter' && isOpen) {
+        const chains = filterChains(chainIdInput.value);
+        if (chains.length > 0) {
+          e.preventDefault();
+          const idx = chainDropdownActiveIdx >= 0 ? chainDropdownActiveIdx : 0;
+          const chain = chains[idx];
+          if (chain) {
+            selectChain(chain.id, chain.name);
+          }
+        }
+      } else if (e.key === 'Escape') {
+        // Restore current selection on Escape
+        const currentChainId = getCurrentChainId();
+        chainIdInput.value = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+        hideChainDropdown();
+      } else if (e.key === 'Tab') {
+        // On Tab, if typing a partial match, select first match or restore
+        const query = chainIdInput.value.trim();
+        if (query) {
+          const chains = filterChains(query);
+          if (chains.length === 1) {
+            selectChain(chains[0].id, chains[0].name);
+          } else if (chains.length > 1) {
+            // Ambiguous - restore current
+            const currentChainId = getCurrentChainId();
+            chainIdInput.value = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+          }
+        }
+        hideChainDropdown();
+      }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('mousedown', (e) => {
+      if (e.target === chainIdInput || chainDropdown.contains(e.target)) {
+        return;
+      }
+      // On blur, restore current selection if input doesn't match a valid chain
+      const query = chainIdInput.value.trim().toLowerCase();
+      const matchingChains = filterChains(query);
+      if (matchingChains.length === 1) {
+        // Auto-select if only one match
+        selectChain(matchingChains[0].id, matchingChains[0].name);
+      } else {
+        // Restore current selection
+        const currentChainId = getCurrentChainId();
+        chainIdInput.value = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+      }
+      hideChainDropdown();
     });
 
     const mevInfoBtn = document.getElementById('mevInfoBtn');
@@ -3072,7 +3279,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     // Render chain-specific content in modal
     function renderMevChainContent() {
-      const chainId = Number(chainIdInput.value);
+      const chainId = getCurrentChainId();
       const walletConnectedValue = hasConnectedWallet();
       const walletDisabled = !walletConnectedValue;
       const walletNote = walletDisabled ? '<p class="wallet-required-note">Connect wallet first</p>' : '';
@@ -3500,7 +3707,23 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     // Get current chain ID
     function getCurrentChainId() {
-      return Number(chainIdInput.value);
+      // First check data attribute (set by dropdown selection)
+      const dataChainId = chainIdInput.dataset.chainId;
+      if (dataChainId) return Number(dataChainId);
+
+      // Fall back to input value (could be numeric ID or display format)
+      const val = chainIdInput.value.trim();
+      if (/^[0-9]+$/.test(val)) {
+        // Plain numeric ID
+        return Number(val);
+      }
+      // Try to extract from display format "Name (ID)"
+      const match = val.match(/\\(([0-9]+)\\)$/);
+      if (match) {
+        return Number(match[1]);
+      }
+      // Default to Base
+      return 8453;
     }
 
     // Render tokenlist sources in settings modal
@@ -4053,7 +4276,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     function readCompareParamsFromForm() {
       return cloneCompareParams({
-        chainId: chainIdInput.value,
+        chainId: String(getCurrentChainId()),
         from: extractAddressFromInput(fromInput),
         to: extractAddressFromInput(toInput),
         amount: amountInput.value,
@@ -4457,11 +4680,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
     }
 
-    chainIdInput.addEventListener('change', function() {
+    chainIdInput.addEventListener('change', () => {
       stopAutoRefresh();
       clearResultDisplay();
       currentQuoteChainId = null;
-      applyDefaults(Number(this.value));
+      applyDefaults(Number(getCurrentChainId()));
       fromAutocomplete.hide();
       toAutocomplete.hide();
       // Update modal content if modal is open
@@ -4732,7 +4955,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         setActiveTab('recommended');
       }
 
-      const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || Number(chainIdInput.value);
+      const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || getCurrentChainId();
 
       // Build comparison reason text with typography, not color
       let reasonHtml = '<div class="reason-box">';
@@ -5027,7 +5250,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         return;
       }
 
-      const chainId = card.dataset.quoteChainId || currentQuoteChainId || chainIdInput.value;
+      const chainId = card.dataset.quoteChainId || currentQuoteChainId || String(getCurrentChainId());
 
       setTxCardPending(card, true);
       setTxStatus(card, 'Confirming...', 'pending');
@@ -5202,7 +5425,12 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     // Restore from URL params or apply chain defaults
     const params = new URLSearchParams(window.location.search);
-    if (params.get('chainId')) chainIdInput.value = params.get('chainId');
+    if (params.get('chainId')) {
+      const chainId = params.get('chainId');
+      const chainName = CHAIN_NAMES[chainId] || '';
+      chainIdInput.dataset.chainId = chainId;
+      chainIdInput.value = formatChainDisplay(chainId, chainName);
+    }
     if (params.get('from')) {
       const fromAddr = params.get('from');
       fromInput.dataset.address = fromAddr;
@@ -5298,7 +5526,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Load tokenlists and then initialize the UI
     initializeTokenlistSources().then(() => {
       // Now we can format tokens with symbols from the loaded tokenlist
-      const chainId = Number(chainIdInput.value);
+      const chainId = getCurrentChainId();
 
       if (params.get('from')) {
         const fromAddr = params.get('from');

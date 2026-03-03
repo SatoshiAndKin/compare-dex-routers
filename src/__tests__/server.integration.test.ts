@@ -343,9 +343,9 @@ describe("server integration", () => {
   });
 
   // VAL-FLOW-001 through VAL-FLOW-006: Form element order
-  // VAL-AMT-001: Amount field on its own full-width row (above from/to tokens)
+  // VAL-UI-001: Form field visual order - Chain → Wallet → From Token → To Token → Direction Toggle → Amount → Action Row
   // VAL-SLIP-003: Submit button first in action row, slippage box after
-  it("GET / has form elements in correct order (chain → wallet → amount → from → to → submit → slippage)", async () => {
+  it("GET / has form elements in correct order (chain → wallet → from → to → direction → amount → submit → slippage)", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
     const html = res.body;
@@ -353,21 +353,24 @@ describe("server integration", () => {
     // Find positions of key elements
     const chainPos = html.indexOf('id="chainId"');
     const walletPos = html.indexOf('id="connectWalletBtn"');
-    const amountPos = html.indexOf('id="amount"');
     const fromPos = html.indexOf('id="from"');
     const toPos = html.indexOf('id="to"');
+    const directionPos = html.indexOf('id="directionExactIn"');
+    const amountPos = html.indexOf('id="amount"');
     const submitPos = html.indexOf('id="submit"');
     const slippagePos = html.indexOf('id="slippageBps"');
 
-    // Verify order: chain < wallet < amount < from < to < submit < slippage
-    // Amount is on its own row ABOVE from token (VAL-AMT-001)
+    // Verify order: chain < wallet < from < to < direction < amount < submit < slippage
+    // From/To tokens are BEFORE direction toggle and amount (VAL-UI-001)
+    // Amount is AFTER direction toggle (VAL-UI-001)
     // Submit is FIRST in action row, slippage box after (VAL-SLIP-003)
     expect(chainPos).toBeGreaterThan(-1);
     expect(walletPos).toBeGreaterThan(chainPos);
-    expect(amountPos).toBeGreaterThan(walletPos);
-    expect(fromPos).toBeGreaterThan(amountPos);
+    expect(fromPos).toBeGreaterThan(walletPos);
     expect(toPos).toBeGreaterThan(fromPos);
-    expect(submitPos).toBeGreaterThan(toPos);
+    expect(directionPos).toBeGreaterThan(toPos);
+    expect(amountPos).toBeGreaterThan(directionPos);
+    expect(submitPos).toBeGreaterThan(amountPos);
     expect(slippagePos).toBeGreaterThan(submitPos);
   });
 
@@ -381,6 +384,45 @@ describe("server integration", () => {
     expect(html).toContain('type="button" id="connectWalletBtn"');
     // Disconnect button must be type="button"
     expect(html).toContain('type="button" id="disconnectWalletBtn"');
+  });
+
+  // VAL-UI-050: Chain selector accepts text input
+  // VAL-UI-051: Filter by chain name
+  // VAL-UI-052: Filter by chain ID
+  it("GET / has searchable chain dropdown with input and dropdown list", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // Chain selector is now an input (not select)
+    expect(html).toContain('id="chainId"');
+    expect(html).toContain('placeholder="Search chain name or ID..."');
+    expect(html).toContain("data-chain-id=");
+
+    // Chain dropdown list element exists
+    expect(html).toContain('id="chainDropdown"');
+    expect(html).toContain('class="chain-dropdown"');
+
+    // Chain dropdown CSS styles are present
+    expect(html).toContain(".chain-item");
+    expect(html).toContain(".chain-item-name");
+    expect(html).toContain(".chain-item-id");
+
+    // Chain dropdown JavaScript functions are present
+    expect(html).toContain("filterChains");
+    expect(html).toContain("selectChain");
+    expect(html).toContain("formatChainDisplay");
+    expect(html).toContain("ALL_CHAINS");
+  });
+
+  // VAL-UI-055: No match shows empty/message
+  it("GET / has chain-dropdown-empty CSS class for no-match state", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // Chain dropdown empty state class is defined
+    expect(html).toContain(".chain-item-empty");
   });
 
   // VAL-FLOW-008: MEV info button in results area
@@ -400,19 +442,26 @@ describe("server integration", () => {
     expect(mevBtnPos).toBeGreaterThan(resultStartPos);
   });
 
-  // VAL-AMT-001: Amount field on its own full-width row
-  it("GET / has amount field on its own full-width row (above from token)", async () => {
+  // VAL-UI-001: Amount field on its own full-width row (after direction toggle)
+  it("GET / has amount field on its own full-width row (after from/to tokens and direction toggle)", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
     const html = res.body;
 
     // Amount should be in its own form-group (not in a row with from token)
-    const amountPos = html.indexOf('id="amount"');
     const fromPos = html.indexOf('id="from"');
+    const toPos = html.indexOf('id="to"');
+    const directionPos = html.indexOf('id="directionExactIn"');
+    const amountPos = html.indexOf('id="amount"');
 
-    // Amount should appear BEFORE from token
+    // Amount should appear AFTER from, to, and direction toggle
     expect(amountPos).toBeGreaterThan(-1);
-    expect(fromPos).toBeGreaterThan(amountPos);
+    expect(fromPos).toBeGreaterThan(-1);
+    expect(toPos).toBeGreaterThan(-1);
+    expect(directionPos).toBeGreaterThan(-1);
+    expect(amountPos).toBeGreaterThan(fromPos);
+    expect(amountPos).toBeGreaterThan(toPos);
+    expect(amountPos).toBeGreaterThan(directionPos);
 
     // Amount should be in a standalone form-group div with a label
     // Check that amount label exists (indicating its own form-group)

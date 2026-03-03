@@ -2,7 +2,7 @@ commands:
   install: npm install
   typecheck: npm run typecheck
   build: echo "No build step - uses tsx"
-  test: npm test
+  test: npm test -- --maxWorkers=7
   test_coverage: npm run test:coverage
   lint: npm run lint
   lint_fix: npm run lint:fix
