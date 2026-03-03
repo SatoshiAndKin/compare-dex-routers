@@ -1865,6 +1865,18 @@ const INDEX_HTML = `<!DOCTYPE html>
       display: none;
     }
 
+    /* Result Token Icon - small icon next to token symbols in results */
+    .result-token-icon {
+      width: 16px;
+      height: 16px;
+      object-fit: cover;
+      background: #e0e0e0;
+      border-radius: 50%;
+      vertical-align: middle;
+      margin-right: 0.25rem;
+      flex-shrink: 0;
+    }
+
     .autocomplete-meta { min-width: 0; flex: 1; }
     .autocomplete-title { display: flex; align-items: baseline; gap: 0.25rem; }
     .autocomplete-symbol { font-weight: 600; font-size: 0.875rem; }
@@ -4089,6 +4101,19 @@ const INDEX_HTML = `<!DOCTYPE html>
       return sym ? sym + ' (' + addr + ')' : addr;
     }
 
+    // Render a small token icon for result display (16px)
+    // Returns empty string if token not found or has no logoURI
+    // Uses onerror to hide broken images gracefully
+    function renderResultTokenIcon(address, chainId) {
+      const token = findTokenByAddress(address, chainId);
+      if (!token || typeof token.logoURI !== 'string' || !token.logoURI) {
+        return '';
+      }
+      const alt = (token.symbol || 'token') + ' logo';
+      // Use onerror to hide broken images gracefully
+      return '<img class="result-token-icon" src="' + token.logoURI + '" alt="' + alt + '" onerror="this.style.display=\\'none\\'">';
+    }
+
     // Extract address from display format or data-address attribute
     function extractAddressFromInput(input) {
       // First check data-address attribute
@@ -4937,6 +4962,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       const primaryAmount = isTargetOut ? data.input_amount : data.output_amount;
       const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
       const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
+      const primaryTokenAddress = isTargetOut ? data.from : data.to;
+
+      // Get token icons for result display
+      const primaryIcon = renderResultTokenIcon(primaryTokenAddress, quoteChainId);
+      const fromIcon = renderResultTokenIcon(data.from, quoteChainId);
+      const toIcon = renderResultTokenIcon(data.to, quoteChainId);
 
       // Build gas info line for primary display
       let gasInfoLine = '';
@@ -4949,7 +4980,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         '<div class="' + primaryClass + '">' +
           recommendationLabel +
           '<div class="result-output-label">' + primaryLabel + '</div>' +
-          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
+          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primaryIcon + primarySymbol : '') + '</div>' +
           '<div class="field field-spaced"><div class="field-label">Via ' + providerLabel + '</div></div>' +
           gasInfoLine +
           renderQuoteActions({
@@ -4966,10 +4997,10 @@ const INDEX_HTML = `<!DOCTYPE html>
       const secondary =
         '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
         '<div class="details-content">' +
-          '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
-          '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
-          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + data.from_symbol : '')) + '</div></div>' +
-          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">From</div><div class="field-value">' + fromIcon + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
+          '<div class="field"><div class="field-label">To</div><div class="field-value">' + toIcon + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + toIcon + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + fromIcon + data.from_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + fromIcon + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + toIcon + data.to_symbol : '')) + '</div></div>' +
           renderSecondaryDetails(data, 'spandex') +
         '</div>';
 
@@ -5006,6 +5037,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       const primaryAmount = isTargetOut ? data.input_amount : data.output_amount;
       const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
       const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
+      const primaryTokenAddress = isTargetOut ? data.from : data.to;
+
+      // Get token icons for result display
+      const primaryIcon = renderResultTokenIcon(primaryTokenAddress, quoteChainId);
+      const fromIcon = renderResultTokenIcon(data.from, quoteChainId);
+      const toIcon = renderResultTokenIcon(data.to, quoteChainId);
 
       // Build gas info line for primary display
       let gasInfoLine = '';
@@ -5018,7 +5055,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         '<div class="' + primaryClass + '">' +
           recommendationLabel +
           '<div class="result-output-label">' + primaryLabel + '</div>' +
-          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
+          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primaryIcon + primarySymbol : '') + '</div>' +
           '<div class="field field-spaced"><div class="field-label">Via Curve</div></div>' +
           gasInfoLine +
           renderQuoteActions({
@@ -5035,10 +5072,10 @@ const INDEX_HTML = `<!DOCTYPE html>
       const secondary =
         '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
         '<div class="details-content">' +
-          '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
-          '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
-          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + data.from_symbol : '')) + '</div></div>' +
-          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">From</div><div class="field-value">' + fromIcon + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
+          '<div class="field"><div class="field-label">To</div><div class="field-value">' + toIcon + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + toIcon + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + fromIcon + data.from_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + fromIcon + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + toIcon + data.to_symbol : '')) + '</div></div>' +
           (data.route && data.route.length > 0 ? '<div class="field"><div class="field-label">Route (' + data.route.length + ' steps)</div>' + formatCurveRoute(data.route, symbols) + '</div>' : '') +
           (data.approval_target ? '<div class="field"><div class="field-label">Approval Target</div><div class="field-value">' + data.approval_target + '</div></div>' : '') +
           renderSecondaryDetails(data, 'curve') +
