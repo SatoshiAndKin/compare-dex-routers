@@ -3606,9 +3606,14 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (icon) {
           walletConnectedIcon.hidden = false;
           walletConnectedIcon.src = icon;
+          walletConnectedIcon.onerror = () => {
+            walletConnectedIcon.src = ''; // Clear src to prevent broken icon from rendering
+            walletConnectedIcon.hidden = true;
+          };
         } else {
           walletConnectedIcon.hidden = true;
           walletConnectedIcon.removeAttribute('src');
+          walletConnectedIcon.onerror = null;
         }
       } else {
         connectWalletBtn.hidden = false;
@@ -3617,6 +3622,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         walletConnectedAddress.textContent = '';
         walletConnectedIcon.hidden = true;
         walletConnectedIcon.removeAttribute('src');
+        walletConnectedIcon.onerror = null;
       }
     }
 
@@ -3639,6 +3645,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         icon.style.display = 'none';
       }
       icon.onerror = () => {
+        icon.src = ''; // Clear src to prevent broken icon from rendering
         icon.style.display = 'none';
       };
       return icon;
