@@ -1,0 +1,67 @@
+{
+  "groupId": "group-curve-l2-rerun",
+  "testedAt": "2026-03-03T08:45:00.000Z",
+  "credentials": {
+    "account": "api_curve_l2_rerun_01@example.test",
+    "namespace": "curve-multichain-l2-rerun"
+  },
+  "toolsUsed": ["curl"],
+  "assertions": [
+    {
+      "id": "VAL-CURVE-002",
+      "title": "Curve on Base (chainId 8453) returns descriptive response",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0x4200000000000000000000000000000000000006&amount=1000&slippageBps=50",
+          "expected": "Curve quote or descriptive error message (not a cryptic library error)",
+          "observed": "curve: null, curve_error: \"No Curve route found for 0x833589fC...→0x42000000... on chain 8453. The pair may not be supported by Curve pools on this chain.\" — descriptive, user-friendly error. Spandex returned valid quote (provider: odos, output: 0.5106 WETH)."
+        },
+        {
+          "action": "GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA&amount=1000&slippageBps=50 (alt pair USDC→USDbC)",
+          "expected": "Curve quote or descriptive error message",
+          "observed": "curve: null, curve_error: \"No Curve route found for 0x833589fC...→0xd9aAEc86... on chain 8453. The pair may not be supported by Curve pools on this chain.\" — same descriptive pattern. No cryptic library errors."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API test)",
+        "network": "GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0x4200000000000000000000000000000000000006&amount=1000&slippageBps=50 -> 200; GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA&amount=1000&slippageBps=50 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CURVE-004",
+      "title": "Curve on Optimism (chainId 10) returns descriptive response",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /compare?chainId=10&from=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85&to=0x4200000000000000000000000000000000000006&amount=1000&slippageBps=50",
+          "expected": "Curve quote or descriptive error message (not a cryptic library error)",
+          "observed": "curve: null, curve_error: \"No Curve route found for 0x0b2C639c...→0x42000000... on chain 10. The pair may not be supported by Curve pools on this chain.\" — descriptive, user-friendly error. Spandex returned valid quote (provider: odos, output: 0.5106 WETH)."
+        },
+        {
+          "action": "GET /compare?chainId=10&from=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85&to=0x94b008aA00579c1307B0EF2c499aD98a8ce58e58&amount=1000&slippageBps=50 (alt pair USDC→USDT)",
+          "expected": "Curve quote or descriptive error message",
+          "observed": "curve: null, curve_error: \"No Curve route found for 0x0b2C639c...→0x94b008aA... on chain 10. The pair may not be supported by Curve pools on this chain.\" — same descriptive pattern. No cryptic library errors."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API test)",
+        "network": "GET /compare?chainId=10&from=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85&to=0x4200000000000000000000000000000000000006&amount=1000&slippageBps=50 -> 200; GET /compare?chainId=10&from=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85&to=0x94b008aA00579c1307B0EF2c499aD98a8ce58e58&amount=1000&slippageBps=50 -> 200"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Dev server was not running when tests started; had to start it via 'PORT=3002 npm run dev' before API calls could proceed.",
+      "resolved": true,
+      "resolution": "Started dev server in background, verified via /health endpoint.",
+      "affectedAssertions": ["VAL-CURVE-002", "VAL-CURVE-004"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 2 assertions: both passed. VAL-CURVE-002 (Base 8453) and VAL-CURVE-004 (Optimism 10) now return descriptive 'No Curve route found' messages instead of the cryptic 'This method exists only for L2 networks' and 'You must call getBestRouteAndOutput first' errors seen in round 1. Each assertion tested with 2 token pairs (default + alternative stablecoin pair). The fix in commit 626353a successfully improved Curve L2 error handling."
+}

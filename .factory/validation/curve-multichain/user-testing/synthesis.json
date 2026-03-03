@@ -1,0 +1,19 @@
+{
+  "milestone": "curve-multichain",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CURVE-002",
+    "VAL-CURVE-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/curve-multichain/user-testing/synthesis.round1.json"
+}

@@ -1,0 +1,82 @@
+{
+  "groupId": "group-curve-init",
+  "testedAt": "2026-03-03T00:32:00.000Z",
+  "credentials": {
+    "account": "api_curve_init_validator_01@example.test",
+    "namespace": "curve-multichain-api-init"
+  },
+  "toolsUsed": ["curl", "shell"],
+  "assertions": [
+    {
+      "id": "VAL-CURVE-010",
+      "title": "Curve initializes all chains at startup",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Stop existing dev server on port 3002",
+          "expected": "Port 3002 freed",
+          "observed": "Port 3002 freed after kill"
+        },
+        {
+          "action": "Start dev server with PORT=3002 npm run dev and capture startup logs",
+          "expected": "Startup logs show Curve initialization for all 7 supported chains (1, 8453, 42161, 10, 137, 56, 43114)",
+          "observed": "Logs show: 'Initializing Curve API for all supported chains...' followed by CURVE-JS IS CONNECTED TO NETWORK for all 7 chains (MAINNET/1, BASE/8453, ARBITRUM/42161, OPTIMISM/10, MATIC/137, BNB/56, UNKNOWN/43114), then 'Curve initialized for chain X' for each chain, then 'Curve API initialization complete'"
+        },
+        {
+          "action": "Verify all 7 chains reported successful initialization",
+          "expected": "Log lines: 'Curve initialized for chain 1', 'Curve initialized for chain 8453', 'Curve initialized for chain 42161', 'Curve initialized for chain 10', 'Curve initialized for chain 137', 'Curve initialized for chain 56', 'Curve initialized for chain 43114'",
+          "observed": "All 7 'Curve initialized for chain X' log lines present. No ERROR lines. All chains initialized in parallel via Promise.allSettled."
+        },
+        {
+          "action": "Verify server starts successfully after Curve init",
+          "expected": "Server listening message and /health returns ok",
+          "observed": "'Server listening on http://0.0.0.0:3002' logged. curl /health returned {\"status\":\"ok\"}"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "GET /health -> 200 {\"status\":\"ok\"}",
+        "startupLog": "INFO: Initializing Curve API for all supported chains...\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'MAINNET', chainId: 1 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'BASE', chainId: 8453 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'ARBITRUM', chainId: 42161 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'OPTIMISM', chainId: 10 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'MATIC', chainId: 137 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'UNKNOWN', chainId: 43114 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'BNB', chainId: 56 }\nINFO: Curve initialized for chain 1\nINFO: Curve initialized for chain 8453\nINFO: Curve initialized for chain 42161\nINFO: Curve initialized for chain 10\nINFO: Curve initialized for chain 137\nINFO: Curve initialized for chain 56\nINFO: Curve initialized for chain 43114\nINFO: Curve API initialization complete\nINFO: Server listening on http://0.0.0.0:3002"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CURVE-011",
+      "title": "Curve init failure on one chain doesn't block others",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Stop dev server and restart with RPC_URL_8453=https://invalid-rpc-url-for-testing.example.com PORT=3002",
+          "expected": "Server starts; chain 8453 (Base) fails to initialize; other 6 chains succeed",
+          "observed": "Server started. Logs show ERROR: 'Curve failed to initialize for chain 8453: getaddrinfo ENOTFOUND invalid-rpc-url-for-testing.example.com'. All other 6 chains (1, 42161, 10, 137, 56, 43114) show 'Curve initialized for chain X'. Server reached 'Curve API initialization complete' and 'Server listening'."
+        },
+        {
+          "action": "Query /compare on Ethereum (chain 1) — an unaffected chain",
+          "expected": "Curve quote returned successfully with non-zero output",
+          "observed": "GET /compare?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50 returned Curve quote with output_amount=0.505007540913830596. curve_error: None."
+        },
+        {
+          "action": "Query /compare on Base (chain 8453) — the failed chain",
+          "expected": "curve_error indicates initialization failure for chain 8453",
+          "observed": "GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0x4200000000000000000000000000000000000006&amount=100&slippageBps=50 returned curve_error: 'Curve initialization failed for chain 8453: getaddrinfo ENOTFOUND invalid-rpc-url-for-testing.example.com'. No crash, other data intact."
+        },
+        {
+          "action": "Restore normal dev server (no bad RPC override) on port 3002",
+          "expected": "Server restarts normally with all 7 chains initialized",
+          "observed": "Server restarted with PORT=3002 npm run dev. curl /health returned {\"status\":\"ok\"}."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1... -> 200 (Curve quote with output_amount=0.505007540913830596)\nGET /compare?chainId=8453... -> 200 (curve_error: 'Curve initialization failed for chain 8453: getaddrinfo ENOTFOUND invalid-rpc-url-for-testing.example.com')\nGET /health -> 200 (after normal restart)",
+        "startupLog": "INFO: Initializing Curve API for all supported chains...\nJsonRpcProvider failed to detect network and cannot start up; retry in 1s (perhaps the URL is wrong or the node is not started)\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'MAINNET', chainId: 1 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'ARBITRUM', chainId: 42161 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'OPTIMISM', chainId: 10 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'MATIC', chainId: 137 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'BNB', chainId: 56 }\nCURVE-JS IS CONNECTED TO NETWORK: { name: 'UNKNOWN', chainId: 43114 }\nINFO: Curve initialized for chain 1\nERROR: Curve failed to initialize for chain 8453: getaddrinfo ENOTFOUND invalid-rpc-url-for-testing.example.com\nINFO: Curve initialized for chain 42161\nINFO: Curve initialized for chain 10\nINFO: Curve initialized for chain 137\nINFO: Curve initialized for chain 56\nINFO: Curve initialized for chain 43114\nINFO: Curve API initialization complete\nINFO: Server listening on http://0.0.0.0:3002"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 2 assertions: 2 passed. VAL-CURVE-010: All 7 Curve chains (1, 8453, 42161, 10, 137, 56, 43114) initialize in parallel at startup with success logs for each. VAL-CURVE-011: With an intentionally bad RPC for chain 8453, that chain fails gracefully (logged ERROR, reports init failure in API response) while all other 6 chains initialize successfully and return valid Curve quotes."
+}
