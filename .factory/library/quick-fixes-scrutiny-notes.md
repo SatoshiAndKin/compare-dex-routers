@@ -5,3 +5,4 @@
 - The default tokenlist is expected in `static/tokenlist.json` (committed). `.factory/init.sh` only fetches a fallback list when needed.
 - `/quote` and `/compare` now accept `mode` with `exactIn` (default) and `targetOut`.
 - Curve reverse-quote integration uses `curve.router.required(...)` (not `swapRequired(...)`).
+- Comparison semantics are mode-dependent: `exactIn` prefers higher output (or higher gas-adjusted net value), while `targetOut` prefers lower required input (or lower gas-adjusted total cost = input value in ETH + gas cost in ETH).
