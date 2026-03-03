@@ -1,0 +1,63 @@
+{
+  "milestone": "docker-swarm",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test -- --maxWorkers=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "services.yaml",
+      "description": "Added Docker validation commands to .factory/services.yaml: docker_build_local and docker_validate_stack for consistent Docker milestone verification.",
+      "sourceFeature": "docker-improvements"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "fullstack-worker skill",
+      "suggestion": "Include docker-stack.yml explicitly in Docker/infrastructure scope examples so workers know Swarm stack files are covered.",
+      "evidence": "docker-swarm-stack review noted the skill currently lists Dockerfile/docker-compose/.dockerignore but not docker-stack.yml.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a brief convention note that Docker Swarm deployment config lives in docker-stack.yml and should be validated with docker compose -f docker-stack.yml config.",
+      "evidence": "docker-swarm-stack review found no mention of docker-stack.yml in project AGENTS guidance.",
+      "isSystemic": false
+    },
+    {
+      "target": "fullstack-worker skill",
+      "suggestion": "For regression/smoke validation tasks, require explicit expected-behavior-to-check mapping (including whether evidence must be visual/browser snapshot vs indirect grep).",
+      "evidence": "regression-ui-smoke review found one assertion only indirectly checked via grep, and another observed as likely no-route without explicit confirmation framing.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Dockerfile EXPOSE 3000 vs local .env PORT=3001 mismatch could confuse workers.",
+      "reason": "ambiguous"
+    }
+  ],
+  "previousRound": null
+}

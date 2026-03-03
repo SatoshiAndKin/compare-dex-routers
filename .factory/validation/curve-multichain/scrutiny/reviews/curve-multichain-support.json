@@ -1,0 +1,39 @@
+{
+  "featureId": "curve-multichain-support",
+  "reviewedAt": "2026-03-03T08:30:00.000Z",
+  "commitId": "aa3fa4e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of multi-chain Curve Finance support. The worker replaced the singleton Curve import with createCurve() factory instances stored in a Map<number, CurveInstance>, added eager parallel initialization via Promise.allSettled at server startup, and properly isolated per-chain init failures. All 7 chains (1, 8453, 42161, 10, 137, 56, 43114) are supported. The 'Curve only supports Ethereum' message was removed and replaced with proper per-chain error messages. findCurveQuote() now accepts chainId and routes to the correct instance. A new getRpcUrl() helper was added to config.ts. Tests were rewritten comprehensively for multi-chain scenarios. typecheck, lint, and all 141 tests pass. Two non-blocking issues identified.",
+    "issues": [
+      {
+        "file": "src/curve.ts",
+        "line": 152,
+        "severity": "non_blocking",
+        "description": "symbolCache is keyed only by lowercase address, not by chainId. With multi-chain support, the same address could theoretically represent different tokens on different chains. config.ts correctly uses `${chainId}:${address.toLowerCase()}` as the cache key (line 148/170). This could cause incorrect symbol display in rare edge cases where the same address exists on multiple chains with different symbols. Should be keyed as `${chainId}:${lower}` for correctness."
+      },
+      {
+        "file": "src/__tests__/curve.test.ts",
+        "line": 318,
+        "severity": "non_blocking",
+        "description": "The 'findCurveQuote routes to correct chain instance' test doesn't truly verify per-chain isolation because the createCurve mock always returns the same mockCurveInstance object. Both initCurveInstance(1, ...) and initCurveInstance(8453, ...) store the same reference in the Map. The test only verifies init was called with the right chainId, not that separate instances serve separate chains. A more robust test would use different mock instances per createCurve() call."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The skill file and AGENTS.md were already updated with the createCurve() convention before this feature ran, which helped the worker implement correctly on the first attempt. Good example of shared state enabling smooth execution.",
+      "evidence": "SKILL.md contains 'Curve library: use createCurve() from @curvefi/api for per-chain instances (NOT the default singleton)'. AGENTS.md mirrors this."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The symbolCache cross-chain keying pattern (address-only vs chainId:address) is a subtle correctness issue that could recur. config.ts uses the correct `${chainId}:${address}` pattern for its symbolCache, decimalsCache, and nameCache. curve.ts's symbolCache should follow the same pattern. This could be documented as a convention: 'All per-token caches must be keyed by chainId:address, not address alone.'",
+      "evidence": "src/config.ts:148 uses `${chainId}:${address.toLowerCase()}` for symbolCache. src/curve.ts:154 uses only `address.toLowerCase()` for its symbolCache."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The implementation fully covers all feature requirements: per-chain Curve instances via createCurve(), eager parallel initialization, error isolation, multi-chain isCurveSupported(), chainId-aware findCurveQuote(), removal of Ethereum-only error message, and comprehensive tests. Two non-blocking issues found: (1) symbolCache in curve.ts isn't chain-aware, which could cause wrong symbols in edge cases where the same address maps to different tokens on different chains, and (2) the test mock doesn't fully verify per-chain instance isolation. Neither blocks the feature from working correctly in practice."
+}

@@ -1,0 +1,72 @@
+{
+  "groupId": "group-tab-order-r2",
+  "testedAt": "2026-03-03T07:56:00.000Z",
+  "credentials": {
+    "account": "ui_polish_taborder_r2@example.test",
+    "namespace": "ui-polish-tab-order-r2"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-UI-002",
+      "title": "Tab order matches visual order",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/ and click Chain combobox to focus it",
+          "expected": "Chain combobox receives focus",
+          "observed": "Chain combobox shows [active] in accessibility snapshot, blue focus ring visible in screenshot val-ui-002-focus-chain.png"
+        },
+        {
+          "action": "Press Escape to close dropdown, then press Tab",
+          "expected": "Focus moves to Connect Wallet button",
+          "observed": "Connect Wallet button shows [active] in accessibility snapshot, focus ring visible in screenshot val-ui-002-focus-wallet.png"
+        },
+        {
+          "action": "Press Tab",
+          "expected": "Focus moves to From Token textbox",
+          "observed": "From Token textbox shows [active] in accessibility snapshot"
+        },
+        {
+          "action": "Press Tab",
+          "expected": "Focus moves to To Token textbox",
+          "observed": "To Token textbox shows [active] in accessibility snapshot"
+        },
+        {
+          "action": "Press Tab",
+          "expected": "Focus moves to Sell exact button",
+          "observed": "Sell exact button shows [active] [pressed] in accessibility snapshot"
+        },
+        {
+          "action": "Press Tab",
+          "expected": "Focus moves to Buy exact button",
+          "observed": "Buy exact button shows [active] in accessibility snapshot"
+        },
+        {
+          "action": "Press Tab",
+          "expected": "Focus moves to Amount textbox",
+          "observed": "Amount textbox shows [active] in accessibility snapshot"
+        },
+        {
+          "action": "Press Tab",
+          "expected": "Focus moves to Compare Quotes (Submit) button",
+          "observed": "Compare Quotes button shows [active] in accessibility snapshot"
+        },
+        {
+          "action": "Press Tab",
+          "expected": "Focus moves to first Slippage preset button",
+          "observed": "Slippage preset button '3' shows [active] in accessibility snapshot, focus ring visible in screenshot val-ui-002-focus-slippage.png"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-002-focus-chain.png", "val-ui-002-focus-wallet.png", "val-ui-002-focus-slippage.png"],
+        "consoleErrors": "favicon.ico 404 only (known cosmetic issue, ignored per mission guidance)",
+        "network": "GET / -> 200"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion: 1 passed. VAL-UI-002 tab order confirmed correct: Chain → Wallet → From Token → To Token → Sell exact → Buy exact → Amount → Submit → Slippage presets. The prior round incorrectly failed this assertion due to misreading the spec order (claimed spec required Slippage before Submit, but spec actually states Submit before Slippage)."
+}

@@ -1,0 +1,100 @@
+{
+  "groupId": "group-gas-ui",
+  "testedAt": "2026-03-03T01:47:00Z",
+  "credentials": {
+    "account": "gas_ui_validator_01@example.test",
+    "namespace": "gas-price-fallback-ui-01"
+  },
+  "toolsUsed": ["playwright-mcp", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-GAS-001",
+      "title": "Gas price displays when Spandex provides it",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/ (default Base chain, USDC→WETH, amount 1000)",
+          "expected": "Form loads with default tokens",
+          "observed": "Form loaded with Base (8453), USDC, WETH, amount 1000"
+        },
+        {
+          "action": "Click Compare Quotes",
+          "expected": "Comparison results appear with gas info",
+          "observed": "Spandex quote returned as recommended. Reason box shows 'Gas Price: 0.0067 gwei'. Result card shows 'Gas Cost: 0.000015 ETH' and 'Gas Price: 0.0067 gwei' with proper labels."
+        },
+        {
+          "action": "Verify API response structure via curl",
+          "expected": "API response includes gas_price_gwei and spandex.gas_cost_eth",
+          "observed": "API returned gas_price_gwei: '0.0060', spandex.gas_cost_eth: '0.000007', recommendation: 'spandex'. Gas price in gwei and gas cost in ETH both present."
+        },
+        {
+          "action": "Scroll down to verify gas labels in result card",
+          "expected": "Gas Cost and Gas Price displayed with proper formatting",
+          "observed": "Result card shows 'GAS COST: 0.000015 ETH' and 'GAS PRICE: 0.0067 gwei' as separate labeled fields, positioned together below the 'Via Spandex / odos' line."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-gas-ui-001-base-comparison-gas-display.png",
+          "val-gas-ui-001-gas-cost-and-price-labels.png"
+        ],
+        "consoleErrors": "favicon.ico 404 only (known cosmetic, ignored per guidance)",
+        "network": "GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0x4200000000000000000000000000000000000006&amount=1000&slippageBps=50 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-GAS-004",
+      "title": "UI displays gas seamlessly regardless of source",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Compare quotes on Base (8453) — Spandex provides gas_cost_eth, gas_price_gwei from RPC fallback",
+          "expected": "Gas Price and Gas Cost displayed in result card",
+          "observed": "Result card shows 'GAS COST: 0.000004 ETH' and 'GAS PRICE: 0.0060 gwei'. Reason box shows 'Gas Price: 0.0060 gwei'."
+        },
+        {
+          "action": "Compare quotes on Ethereum (1) — Spandex returns null, gas_price_gwei exclusively from RPC fallback",
+          "expected": "Gas Price displayed with same formatting as Base case",
+          "observed": "Curve recommended result shows 'GAS PRICE: 0.1138 gwei' in the result card. Reason box shows 'Gas Price: 0.1138 gwei'. Same label ('Gas Price'), same format (X.XXXX gwei), same visual styling."
+        },
+        {
+          "action": "Verify source code uses same rendering path regardless of gas data origin",
+          "expected": "Single gas_price_gwei field passed to UI, no source indicator",
+          "observed": "Server code at line 580: effectiveGasPriceGwei = spandex.result?.gas_price_gwei ?? gasPriceGwei (prefers Spandex, falls back to RPC). UI code at line 5258-5259 renders 'Gas Price: X gwei' from data.gas_price_gwei. Both renderSpandexQuote() and renderCurveQuote() use identical HTML structure for gas display. No visual indicator of gas data source anywhere in the UI."
+        },
+        {
+          "action": "Compare screenshots of Base (Spandex + RPC fallback) vs Ethereum (RPC fallback only)",
+          "expected": "Same labels, same formatting, no visual difference in gas display",
+          "observed": "Both show 'GAS PRICE' label in uppercase, value in 'X.XXXX gwei' format. Base additionally shows 'GAS COST' because Spandex provided gas_cost_eth; Ethereum Curve result shows only 'GAS PRICE' because gas_cost_eth was 0 (Curve can't estimate gas without funded sender — known limitation per user-testing.md). The gas price formatting is identical across both."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-gas-ui-004-base-spandex-gas-display.png",
+          "val-gas-ui-004-ethereum-rpc-fallback-gas.png"
+        ],
+        "consoleErrors": "none (after fresh navigation)",
+        "network": "GET /compare?chainId=8453... -> 200; GET /compare?chainId=1... -> 200",
+        "sourceInspection": "src/server.ts lines 578-580 (effectiveGasPriceGwei), lines 5118-5127 (renderSpandexQuote gas), lines 5198-5207 (renderCurveQuote gas), lines 5257-5259 (reason box gas)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Chrome profile lock (SingletonLock) prevented browser launch on first attempt — required clearing stale lock files in /Users/bryan/Library/Caches/ms-playwright/mcp-chrome/",
+      "resolved": true,
+      "resolution": "Killed stale Chrome processes and removed SingletonLock/SingletonSocket/SingletonCookie files",
+      "affectedAssertions": ["VAL-GAS-001", "VAL-GAS-004"]
+    },
+    {
+      "description": "Browser context crash after chain switch caused 'Another browser context is being closed' error, and dev server went down (connection refused). Required restarting dev server.",
+      "resolved": true,
+      "resolution": "Restarted dev server with PORT=3002 npm run dev, cleared lock files, relaunched browser",
+      "affectedAssertions": ["VAL-GAS-004"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 2 assertions: 2 passed. VAL-GAS-001 confirmed gas price in gwei and gas cost in ETH display correctly in comparison results (Base chain, Spandex quote). VAL-GAS-004 confirmed the UI renders gas data identically regardless of whether it originates from Spandex or RPC fallback — same 'Gas Price' label, same gwei formatting, same HTML structure in both renderSpandexQuote() and renderCurveQuote() functions."
+}

@@ -14,10 +14,18 @@ import {
   getTokenSymbol,
   getTokenName,
   getClient,
+  getRpcUrl,
   SUPPORTED_CHAINS,
   DEFAULT_TOKENS,
 } from "./config.js";
-import { initCurve, findCurveQuote, isCurveSupported, type CurveQuoteResult } from "./curve.js";
+import {
+  initAllCurveInstances,
+  findCurveQuote,
+  isCurveSupported,
+  isCurveInitialized,
+  getCurveInitError,
+  type CurveQuoteResult,
+} from "./curve.js";
 import { logger } from "./logger.js";
 import { captureException, captureMessage } from "./sentry.js";
 import { getRequestId, setTraceHeaders } from "./tracing.js";
@@ -25,6 +33,7 @@ import { recordRequest, getMetrics } from "./metrics.js";
 import { isEnabled, getAllFlags } from "./feature-flags.js";
 import { trackQuote, getAnalyticsSummary } from "./analytics.js";
 import { trackError, getErrorInsights } from "./error-insights.js";
+import { getGasPriceWithCache } from "./gas-price.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -62,6 +71,8 @@ interface QuoteResult {
   router_value?: string;
   approval_token?: string;
   approval_spender?: string;
+  // Gas price field - may be provided by Spandex or fetched from RPC
+  gas_price_gwei?: string;
   // Gas-adjusted comparison fields
   gas_cost_eth?: string; // Gas cost in ETH (gas_used * gas_price / 1e18)
   output_value_eth?: string; // Output converted to ETH
@@ -537,23 +548,36 @@ async function compareQuotes(
     .then((r) => ({ result: r, error: null }))
     .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }));
 
-  const curveAvailable = CURVE_ENABLED && isCurveSupported(chainId);
+  const curveAvailable = CURVE_ENABLED && isCurveSupported(chainId) && isCurveInitialized(chainId);
   const curvePromise = curveAvailable
-    ? findCurveQuote(from, to, amount, sender, getClient(chainId), mode)
+    ? findCurveQuote(chainId, from, to, amount, sender, getClient(chainId), mode)
         .then((r) => ({ result: r, error: null }))
         .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }))
-    : Promise.resolve({ result: null, error: "Curve only supports Ethereum (chainId 1)" });
+    : Promise.resolve({
+        result: null,
+        error:
+          isCurveSupported(chainId) && !isCurveInitialized(chainId)
+            ? `Curve initialization failed for chain ${chainId}: ${getCurveInitError(chainId) || "Unknown error"}`
+            : isCurveSupported(chainId)
+              ? "Curve is disabled"
+              : `Curve does not support chain ${chainId}`,
+      });
 
-  let gasPriceGwei: string | null = null;
-  try {
-    const client = getClient(chainId);
-    const gasPrice = await client.getGasPrice();
-    gasPriceGwei = (Number(gasPrice) / 1e9).toFixed(4);
-  } catch {
-    // Gas price fetch failed, skip
-  }
+  // Fetch gas price with per-block caching via RPC fallback
+  // This runs in parallel with the Spandex/Curve quote fetches
+  const gasPricePromise = getGasPriceWithCache(chainId, getClient(chainId))
+    .then((result) => result.gasPriceGwei)
+    .catch(() => null);
 
-  const [spandex, curveResult] = await Promise.all([spandexPromise, curvePromise]);
+  const [spandex, curveResult, gasPriceGwei] = await Promise.all([
+    spandexPromise,
+    curvePromise,
+    gasPricePromise,
+  ]);
+
+  // Prefer Spandex's gas_price_gwei if provided (future-proofing)
+  // Otherwise use the RPC fallback value
+  const effectiveGasPriceGwei = spandex.result?.gas_price_gwei ?? gasPriceGwei;
 
   let recommendation: "spandex" | "curve" | null = null;
   let reason: string;
@@ -669,12 +693,12 @@ async function compareQuotes(
     quote.net_value_eth = formatEthValue(netValueEth);
   }
 
-  const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
+  const gasPriceWei = effectiveGasPriceGwei ? Number(effectiveGasPriceGwei) * 1e9 : 0;
 
   if (spandex.result && curveResult.result) {
     const spandexGas = Number(spandex.result.gas_used || "0");
     const curveGas = Number(curveResult.result.gas_used || "0");
-    const bothHaveGas = spandexGas > 0 && curveGas > 0 && gasPriceGwei !== null;
+    const bothHaveGas = spandexGas > 0 && curveGas > 0 && effectiveGasPriceGwei !== null;
 
     if (mode === "targetOut") {
       // === TARGET_OUT MODE ===
@@ -759,8 +783,8 @@ async function compareQuotes(
       } else {
         // Fall back to raw input comparison with a note about missing gas
         const missingGas: string[] = [];
-        if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
-        if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
+        if (spandexGas === 0 || effectiveGasPriceGwei === null) missingGas.push("Spandex");
+        if (curveGas === 0 || effectiveGasPriceGwei === null) missingGas.push("Curve");
         const missingGasNote =
           missingGas.length > 0
             ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw input only.`
@@ -847,8 +871,8 @@ async function compareQuotes(
       } else {
         // Fall back to raw output comparison with a note about missing gas
         const missingGas: string[] = [];
-        if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
-        if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
+        if (spandexGas === 0 || effectiveGasPriceGwei === null) missingGas.push("Spandex");
+        if (curveGas === 0 || effectiveGasPriceGwei === null) missingGas.push("Curve");
         const missingGasNote =
           missingGas.length > 0
             ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw output only.`
@@ -931,7 +955,7 @@ async function compareQuotes(
     curve_error: curveResult.error,
     recommendation,
     recommendation_reason: reason,
-    gas_price_gwei: gasPriceGwei,
+    gas_price_gwei: effectiveGasPriceGwei,
     output_to_eth_rate: outputToEthRateStr,
     input_to_eth_rate: inputToEthRateStr,
     mode,
@@ -1786,6 +1810,12 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .chain-item:last-child { border-bottom: none; }
     .chain-item:hover, .chain-item.active { background: #f0f0f0; }
+    .chain-item.current-selection {
+      background: #e8f4e8;
+      border-left: 4px solid #22c55e;
+      font-weight: 700;
+    }
+    .chain-item.current-selection .chain-item-name { font-weight: 700; }
     .chain-item-name { font-weight: 600; font-size: 0.875rem; }
     .chain-item-id { font-family: monospace; color: #666; font-size: 0.75rem; }
     .chain-item-empty {
@@ -1836,6 +1866,47 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #e0e0e0;
       flex-shrink: 0;
     }
+
+    /* Token Input Wrapper - for icon display */
+    .token-input-wrapper {
+      position: relative;
+      width: 100%;
+    }
+    .token-input-wrapper input {
+      width: 100%;
+      padding-left: 1.75rem; /* Make room for 18px icon + 6px margin */
+    }
+    .token-input-wrapper.no-icon input {
+      padding-left: 0.5rem; /* Standard padding when no icon */
+    }
+    .token-input-icon {
+      position: absolute;
+      left: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 18px;
+      height: 18px;
+      object-fit: cover;
+      background: #e0e0e0;
+      border-radius: 50%;
+      pointer-events: none; /* Don't interfere with input clicks */
+    }
+    .token-input-wrapper.no-icon .token-input-icon {
+      display: none;
+    }
+
+    /* Result Token Icon - small icon next to token symbols in results */
+    .result-token-icon {
+      width: 16px;
+      height: 16px;
+      object-fit: cover;
+      background: #e0e0e0;
+      border-radius: 50%;
+      vertical-align: middle;
+      margin-right: 0.25rem;
+      flex-shrink: 0;
+    }
+
     .autocomplete-meta { min-width: 0; flex: 1; }
     .autocomplete-title { display: flex; align-items: baseline; gap: 0.25rem; }
     .autocomplete-symbol { font-weight: 600; font-size: 0.875rem; }
@@ -2071,8 +2142,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     <div class="form-header-row">
       <div class="form-group">
         <label for="chainId">Chain</label>
-        <input type="text" id="chainId" placeholder="Search chain name or ID..." autocomplete="off" data-chain-id="8453" value="Base (8453)">
-        <div class="chain-dropdown" id="chainDropdown"></div>
+        <input type="text" id="chainId" placeholder="Search chain name or ID..." autocomplete="off" data-chain-id="8453" value="Base (8453)" role="combobox" aria-expanded="false" aria-controls="chainDropdown" aria-haspopup="listbox">
+        <div class="chain-dropdown" id="chainDropdown" role="listbox"></div>
       </div>
     </div>
     <!-- Row 2: Wallet (integrated into form flow) -->
@@ -2092,14 +2163,20 @@ const INDEX_HTML = `<!DOCTYPE html>
     <!-- Row 3: From Token -->
     <div class="form-group">
       <label for="from">From Token</label>
-      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="token-input-wrapper no-icon" id="fromWrapper">
+        <img class="token-input-icon" id="fromIcon" alt="" src="">
+        <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+      </div>
       <div class="autocomplete-list" id="fromAutocomplete"></div>
       <div id="fromBalance" class="token-balance" hidden></div>
     </div>
     <!-- Row 4: To Token -->
     <div class="form-group">
       <label for="to">To Token</label>
-      <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="token-input-wrapper no-icon" id="toWrapper">
+        <img class="token-input-icon" id="toIcon" alt="" src="">
+        <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
+      </div>
       <div class="autocomplete-list" id="toAutocomplete"></div>
       <div id="toBalance" class="token-balance" hidden></div>
     </div>
@@ -2293,6 +2370,9 @@ const INDEX_HTML = `<!DOCTYPE html>
     let connectedWalletProvider = null;
     let connectedWalletAddressValue = '';
     let connectedWalletInfo = null;
+    // Post-connect callback for auto-approve/auto-swap flow
+    let pendingPostConnectAction = null; // null | { type: 'approve' | 'swap', card: HTMLElement, button?: HTMLButtonElement }
+    let isConnectingProvider = false; // flag to distinguish menu close vs cancel
     let currentQuoteChainId = null;
     const AUTO_REFRESH_SECONDS = 15;
     const autoRefreshState = {
@@ -2336,9 +2416,38 @@ const INDEX_HTML = `<!DOCTYPE html>
     const chainIdInput = document.getElementById('chainId');
     const fromInput = document.getElementById('from');
     const toInput = document.getElementById('to');
+    const fromWrapper = document.getElementById('fromWrapper');
+    const toWrapper = document.getElementById('toWrapper');
+    const fromIcon = document.getElementById('fromIcon');
+    const toIcon = document.getElementById('toIcon');
     const amountInput = document.getElementById('amount');
     const slippageInput = document.getElementById('slippageBps');
     const slippagePresetBtns = document.querySelectorAll('.slippage-preset-compact');
+
+    // Update token input icon based on token data
+    function updateTokenInputIcon(input, icon, wrapper, token) {
+      if (token && typeof token.logoURI === 'string' && token.logoURI) {
+        icon.src = token.logoURI;
+        icon.alt = token.symbol ? token.symbol + ' logo' : 'token logo';
+        wrapper.classList.remove('no-icon');
+        // Handle image load error gracefully
+        icon.onerror = () => {
+          wrapper.classList.add('no-icon');
+          icon.src = '';
+        };
+      } else {
+        // No logoURI - hide icon
+        wrapper.classList.add('no-icon');
+        icon.src = '';
+      }
+    }
+
+    // Clear token input icon
+    function clearTokenInputIcon(wrapper, icon) {
+      wrapper.classList.add('no-icon');
+      icon.src = '';
+      icon.alt = '';
+    }
 
     // Update active state on slippage preset buttons
     function updateSlippagePresetActive(value) {
@@ -2407,6 +2516,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       { id: '43114', name: 'Avalanche' },
     ];
     let chainDropdownActiveIdx = -1;
+    let chainDropdownPreviousChainId = null; // Track chain to restore on cancel
+    let chainDropdownPinnedChainId = null; // Chain to pin at top when dropdown opens
 
     function formatChainDisplay(chainId, chainName) {
       const name = chainName || CHAIN_NAMES[chainId] || 'Unknown';
@@ -2423,24 +2534,61 @@ const INDEX_HTML = `<!DOCTYPE html>
       });
     }
 
-    function renderChainDropdown(chains) {
+    function renderChainDropdown(chains, pinnedChainId) {
       chainDropdown.innerHTML = '';
       chainDropdownActiveIdx = -1;
 
-      if (!chains.length) {
+      if (!chains.length && !pinnedChainId) {
         const empty = document.createElement('div');
         empty.className = 'chain-item-empty';
         empty.textContent = 'No chains match';
         chainDropdown.appendChild(empty);
         chainDropdown.classList.add('show');
+        chainIdInput.setAttribute('aria-expanded', 'true');
         return;
       }
 
       const fragment = document.createDocumentFragment();
+
+      // Render pinned chain first if specified
+      if (pinnedChainId) {
+        const pinnedChain = ALL_CHAINS.find(c => c.id === pinnedChainId);
+        if (pinnedChain) {
+          const item = document.createElement('div');
+          item.className = 'chain-item current-selection';
+          item.dataset.chainId = pinnedChain.id;
+          item.setAttribute('role', 'option');
+          item.setAttribute('id', 'chain-option-' + pinnedChain.id);
+
+          const nameEl = document.createElement('span');
+          nameEl.className = 'chain-item-name';
+          nameEl.textContent = pinnedChain.name;
+
+          const idEl = document.createElement('span');
+          idEl.className = 'chain-item-id';
+          idEl.textContent = '(' + pinnedChain.id + ')';
+
+          item.appendChild(nameEl);
+          item.appendChild(idEl);
+
+          item.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            selectChain(pinnedChain.id, pinnedChain.name);
+          });
+
+          fragment.appendChild(item);
+        }
+      }
+
+      // Render remaining chains (excluding pinned if present)
       chains.forEach((chain, idx) => {
+        if (pinnedChainId && chain.id === pinnedChainId) return; // Skip pinned chain in main list
+
         const item = document.createElement('div');
         item.className = 'chain-item';
         item.dataset.chainId = chain.id;
+        item.setAttribute('role', 'option');
+        item.setAttribute('id', 'chain-option-' + chain.id);
 
         const nameEl = document.createElement('span');
         nameEl.className = 'chain-item-name';
@@ -2463,17 +2611,29 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       chainDropdown.appendChild(fragment);
       chainDropdown.classList.add('show');
+      chainIdInput.setAttribute('aria-expanded', 'true');
     }
 
     function setActiveChainItem(index) {
       const items = chainDropdown.querySelectorAll('.chain-item');
-      items.forEach((el, i) => el.classList.toggle('active', i === index));
+      items.forEach((el, i) => {
+        el.classList.toggle('active', i === index);
+        el.setAttribute('aria-selected', i === index ? 'true' : 'false');
+      });
+      if (index >= 0 && items[index]) {
+        chainIdInput.setAttribute('aria-activedescendant', items[index].id);
+      } else {
+        chainIdInput.removeAttribute('aria-activedescendant');
+      }
     }
 
     function selectChain(chainId, chainName) {
       const display = formatChainDisplay(chainId, chainName);
       chainIdInput.value = display;
       chainIdInput.dataset.chainId = chainId;
+      // Clear previous/pinned state since we made a valid selection
+      chainDropdownPreviousChainId = null;
+      chainDropdownPinnedChainId = null;
       hideChainDropdown();
       // Trigger change event for other listeners
       chainIdInput.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2483,27 +2643,34 @@ const INDEX_HTML = `<!DOCTYPE html>
       chainDropdown.classList.remove('show');
       chainDropdown.innerHTML = '';
       chainDropdownActiveIdx = -1;
+      chainDropdownPinnedChainId = null;
+      chainIdInput.setAttribute('aria-expanded', 'false');
+      chainIdInput.removeAttribute('aria-activedescendant');
     }
 
     function refreshChainDropdown() {
       const query = chainIdInput.value;
       const chains = filterChains(query);
-      renderChainDropdown(chains);
+      // When user is typing/filtering, don't pin - just show filtered results
+      renderChainDropdown(chains, null);
     }
 
     // Chain input event handlers
     chainIdInput.addEventListener('focus', () => {
-      // Show all chains on focus if empty or just showing current selection
+      // Store current chain as the one to restore if user cancels
       const currentChainId = getCurrentChainId();
-      const currentDisplay = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
-      if (chainIdInput.value === currentDisplay || !chainIdInput.value.trim()) {
-        renderChainDropdown(ALL_CHAINS);
-      } else {
-        refreshChainDropdown();
-      }
+      chainDropdownPreviousChainId = String(currentChainId);
+      // Set current chain as pinned (appears first, highlighted)
+      chainDropdownPinnedChainId = String(currentChainId);
+      // Clear input for typing
+      chainIdInput.value = '';
+      // Show all chains with current selection pinned at top
+      renderChainDropdown(ALL_CHAINS, chainDropdownPinnedChainId);
     });
 
     chainIdInput.addEventListener('input', () => {
+      // User is typing - clear pinned since we're filtering
+      chainDropdownPinnedChainId = null;
       refreshChainDropdown();
     });
 
@@ -2513,7 +2680,12 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       if (e.key === 'ArrowDown') {
         if (!isOpen) {
-          renderChainDropdown(ALL_CHAINS);
+          // Mirror the focus handler: track previous, pin current, clear input
+          const currentChainId = getCurrentChainId();
+          chainDropdownPreviousChainId = String(currentChainId);
+          chainDropdownPinnedChainId = String(currentChainId);
+          chainIdInput.value = '';
+          renderChainDropdown(ALL_CHAINS, chainDropdownPinnedChainId);
           return;
         }
         e.preventDefault();
@@ -2525,19 +2697,31 @@ const INDEX_HTML = `<!DOCTYPE html>
         chainDropdownActiveIdx = Math.max(chainDropdownActiveIdx - 1, 0);
         setActiveChainItem(chainDropdownActiveIdx);
       } else if (e.key === 'Enter' && isOpen) {
-        const chains = filterChains(chainIdInput.value);
-        if (chains.length > 0) {
-          e.preventDefault();
-          const idx = chainDropdownActiveIdx >= 0 ? chainDropdownActiveIdx : 0;
-          const chain = chains[idx];
-          if (chain) {
-            selectChain(chain.id, chain.name);
+        e.preventDefault();
+        // If user navigated to an item, select it
+        if (chainDropdownActiveIdx >= 0 && items[chainDropdownActiveIdx]) {
+          const item = items[chainDropdownActiveIdx];
+          const chainId = item.dataset.chainId;
+          const chainName = item.querySelector('.chain-item-name').textContent;
+          selectChain(chainId, chainName);
+        } else if (chainDropdownPinnedChainId) {
+          // No navigation but have pinned chain - select it
+          const pinnedChain = ALL_CHAINS.find(c => c.id === chainDropdownPinnedChainId);
+          if (pinnedChain) {
+            selectChain(pinnedChain.id, pinnedChain.name);
+          }
+        } else {
+          // No pinned, no navigation - select first from filtered
+          const chains = filterChains(chainIdInput.value);
+          if (chains.length > 0) {
+            selectChain(chains[0].id, chains[0].name);
           }
         }
       } else if (e.key === 'Escape') {
-        // Restore current selection on Escape
-        const currentChainId = getCurrentChainId();
-        chainIdInput.value = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+        // Restore previous selection on Escape
+        const restoreChainId = chainDropdownPreviousChainId || String(getCurrentChainId());
+        chainIdInput.value = formatChainDisplay(restoreChainId, CHAIN_NAMES[restoreChainId]);
+        chainDropdownPreviousChainId = null;
         hideChainDropdown();
       } else if (e.key === 'Tab') {
         // On Tab, if typing a partial match, select first match or restore
@@ -2547,10 +2731,16 @@ const INDEX_HTML = `<!DOCTYPE html>
           if (chains.length === 1) {
             selectChain(chains[0].id, chains[0].name);
           } else if (chains.length > 1) {
-            // Ambiguous - restore current
-            const currentChainId = getCurrentChainId();
-            chainIdInput.value = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+            // Ambiguous - restore previous
+            const restoreChainId = chainDropdownPreviousChainId || String(getCurrentChainId());
+            chainIdInput.value = formatChainDisplay(restoreChainId, CHAIN_NAMES[restoreChainId]);
+            chainDropdownPreviousChainId = null;
           }
+        } else {
+          // No input - restore previous
+          const restoreChainId = chainDropdownPreviousChainId || String(getCurrentChainId());
+          chainIdInput.value = formatChainDisplay(restoreChainId, CHAIN_NAMES[restoreChainId]);
+          chainDropdownPreviousChainId = null;
         }
         hideChainDropdown();
       }
@@ -2561,16 +2751,17 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (e.target === chainIdInput || chainDropdown.contains(e.target)) {
         return;
       }
-      // On blur, restore current selection if input doesn't match a valid chain
+      // On blur, restore previous selection if input doesn't match a valid chain
       const query = chainIdInput.value.trim().toLowerCase();
       const matchingChains = filterChains(query);
       if (matchingChains.length === 1) {
         // Auto-select if only one match
         selectChain(matchingChains[0].id, matchingChains[0].name);
       } else {
-        // Restore current selection
-        const currentChainId = getCurrentChainId();
-        chainIdInput.value = formatChainDisplay(currentChainId, CHAIN_NAMES[currentChainId]);
+        // Restore previous selection
+        const restoreChainId = chainDropdownPreviousChainId || String(getCurrentChainId());
+        chainIdInput.value = formatChainDisplay(restoreChainId, CHAIN_NAMES[restoreChainId]);
+        chainDropdownPreviousChainId = null;
       }
       hideChainDropdown();
     });
@@ -2642,8 +2833,10 @@ const INDEX_HTML = `<!DOCTYPE html>
         }
 
         if (!walletConnectedValue) {
+          // Show wallet-required visual state but keep button clickable
+          // so clicking triggers auto-connect flow
           button.classList.add('wallet-required');
-          button.setAttribute('aria-disabled', 'true');
+          // Do NOT set aria-disabled - button should be clickable to trigger wallet connect
           button.disabled = false;
         } else {
           button.classList.remove('wallet-required');
@@ -3147,6 +3340,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       handleTokenSwapIfNeeded(input, token.address, newDisplay);
       input.value = newDisplay;
       input.dataset.address = token.address;
+      // Clear icon for custom tokens (no logoURI)
+      if (input === fromInput) {
+        clearTokenInputIcon(fromWrapper, fromIcon);
+      } else if (input === toInput) {
+        clearTokenInputIcon(toWrapper, toIcon);
+      }
 
       // Close modal
       closeUnrecognizedTokenModal();
@@ -3232,6 +3431,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         const token = findTokenByAddress(value, chainId);
         if (token) {
           input.value = formatTokenDisplay(token.symbol, token.address);
+          // Update token icon in input field
+          if (input === fromInput) {
+            updateTokenInputIcon(fromInput, fromIcon, fromWrapper, token);
+          } else if (input === toInput) {
+            updateTokenInputIcon(toInput, toIcon, toWrapper, token);
+          }
         }
         // Update balance for this token field
         if (input === fromInput) {
@@ -3428,9 +3633,14 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (icon) {
           walletConnectedIcon.hidden = false;
           walletConnectedIcon.src = icon;
+          walletConnectedIcon.onerror = () => {
+            walletConnectedIcon.src = ''; // Clear src to prevent broken icon from rendering
+            walletConnectedIcon.hidden = true;
+          };
         } else {
           walletConnectedIcon.hidden = true;
           walletConnectedIcon.removeAttribute('src');
+          walletConnectedIcon.onerror = null;
         }
       } else {
         connectWalletBtn.hidden = false;
@@ -3439,12 +3649,17 @@ const INDEX_HTML = `<!DOCTYPE html>
         walletConnectedAddress.textContent = '';
         walletConnectedIcon.hidden = true;
         walletConnectedIcon.removeAttribute('src');
+        walletConnectedIcon.onerror = null;
       }
     }
 
     function closeWalletProviderMenu() {
       walletProviderMenu.hidden = true;
       walletProviderMenu.innerHTML = '';
+      // If closing without a provider connection in progress, cancel any pending action
+      if (!isConnectingProvider && pendingPostConnectAction) {
+        pendingPostConnectAction = null;
+      }
     }
 
     function createWalletIcon(iconUri, altText, className) {
@@ -3457,6 +3672,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         icon.style.display = 'none';
       }
       icon.onerror = () => {
+        icon.src = ''; // Clear src to prevent broken icon from rendering
         icon.style.display = 'none';
       };
       return icon;
@@ -3467,6 +3683,9 @@ const INDEX_HTML = `<!DOCTYPE html>
         setWalletMessage('Wallet provider is not available.', true);
         return;
       }
+
+      // Mark that we're actively trying to connect (not just dismissing menu)
+      isConnectingProvider = true;
 
       try {
         const accounts = await provider.request({ method: 'eth_requestAccounts' });
@@ -3485,10 +3704,25 @@ const INDEX_HTML = `<!DOCTYPE html>
         updateTransactionActionStates();
         setWalletMessage('');
         updateTokenBalances(); // Fetch balances for selected tokens
+
+        // Execute pending post-connect action (auto-approve/auto-swap)
+        const action = pendingPostConnectAction;
+        pendingPostConnectAction = null; // Clear before executing to prevent re-trigger
+        isConnectingProvider = false; // Reset flag before action execution
+        if (action) {
+          if (action.type === 'approve' && action.card && action.button) {
+            void onApproveClick(action.card, action.button);
+          } else if (action.type === 'swap' && action.card) {
+            void onSwapClick(action.card);
+          }
+        }
       } catch (err) {
+        isConnectingProvider = false; // Reset flag on error
         const code = err && typeof err === 'object' ? err.code : undefined;
         if (code === 4001) {
           setWalletMessage('Wallet connection was canceled.', true);
+          // Clear pending action on user cancel
+          pendingPostConnectAction = null;
           return;
         }
         const detail = err instanceof Error ? err.message : String(err);
@@ -3560,7 +3794,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       fallbackWalletProvider = window.ethereum;
     }
 
-    connectWalletBtn.addEventListener('click', () => {
+    // Trigger wallet connection flow programmatically (used by auto-approve/auto-swap)
+    function triggerWalletConnectionFlow() {
       setWalletMessage('');
       window.dispatchEvent(new Event('eip6963:requestProvider'));
       const announcedProviders = getAnnouncedWalletProviders();
@@ -3581,7 +3816,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       closeWalletProviderMenu();
       setWalletMessage('No wallet detected. Install a wallet extension and try again.', true);
-    });
+    }
+
+    connectWalletBtn.addEventListener('click', triggerWalletConnectionFlow);
 
     disconnectWalletBtn.addEventListener('click', disconnectWallet);
 
@@ -4013,6 +4250,19 @@ const INDEX_HTML = `<!DOCTYPE html>
       return sym ? sym + ' (' + addr + ')' : addr;
     }
 
+    // Render a small token icon for result display (16px)
+    // Returns empty string if token not found or has no logoURI
+    // Uses onerror to hide broken images gracefully
+    function renderResultTokenIcon(address, chainId) {
+      const token = findTokenByAddress(address, chainId);
+      if (!token || typeof token.logoURI !== 'string' || !token.logoURI) {
+        return '';
+      }
+      const alt = (token.symbol || 'token') + ' logo';
+      // Use onerror to hide broken images gracefully
+      return '<img class="result-token-icon" src="' + token.logoURI + '" alt="' + alt + '" onerror="this.style.display=\\'none\\'">';
+    }
+
     // Extract address from display format or data-address attribute
     function extractAddressFromInput(input) {
       // First check data-address attribute
@@ -4078,6 +4328,12 @@ const INDEX_HTML = `<!DOCTYPE html>
             : currentAddress;
           otherInput.value = swappedDisplay;
           otherInput.dataset.address = currentAddress;
+          // Update icon for the swapped field
+          if (otherInput === fromInput) {
+            updateTokenInputIcon(fromInput, fromIcon, fromWrapper, token);
+          } else if (otherInput === toInput) {
+            updateTokenInputIcon(toInput, toIcon, toWrapper, token);
+          }
           // Update balance for the swapped field
           if (otherInput === fromInput) {
             void updateFromTokenBalance();
@@ -4111,6 +4367,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         input.value = newDisplay;
         // Store full address in data-address attribute
         input.dataset.address = token.address;
+        // Update token icon in input field
+        if (input === fromInput) {
+          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, token);
+        } else if (input === toInput) {
+          updateTokenInputIcon(toInput, toIcon, toWrapper, token);
+        }
         hide();
         // Update balance for this token field
         if (input === fromInput) {
@@ -4197,9 +4459,18 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
 
       function refresh() {
-        const chainId = document.getElementById('chainId').value;
+        const chainId = getCurrentChainId();
         matches = findTokenMatches(input.value, chainId);
         render();
+        // Clear icon when input is cleared
+        if (!input.value.trim()) {
+          input.dataset.address = '';
+          if (input === fromInput) {
+            clearTokenInputIcon(fromWrapper, fromIcon);
+          } else if (input === toInput) {
+            clearTokenInputIcon(toWrapper, toIcon);
+          }
+        }
       }
 
       input.addEventListener('input', refresh);
@@ -4659,23 +4930,27 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (defaults) {
         const fromToken = findTokenByAddress(defaults.from, chainId);
         const toToken = findTokenByAddress(defaults.to, chainId);
-        
+
         // Set from input with display format and data-address
         if (fromToken) {
           fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
           fromInput.dataset.address = fromToken.address;
+          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
         } else {
           fromInput.value = defaults.from;
           fromInput.dataset.address = defaults.from;
+          clearTokenInputIcon(fromWrapper, fromIcon);
         }
-        
+
         // Set to input with display format and data-address
         if (toToken) {
           toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
           toInput.dataset.address = toToken.address;
+          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
         } else {
           toInput.value = defaults.to;
           toInput.dataset.address = defaults.to;
+          clearTokenInputIcon(toWrapper, toIcon);
         }
       }
     }
@@ -4824,7 +5099,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       return details.join('');
     }
 
-    function renderSpandexQuote(data, isWinner, quoteChainId) {
+    function renderSpandexQuote(data, isWinner, quoteChainId, gasPriceGwei) {
       const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
       const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
       const providerLabel = 'Spandex' + (data.provider ? ' / ' + data.provider : '');
@@ -4836,11 +5111,22 @@ const INDEX_HTML = `<!DOCTYPE html>
       const primaryAmount = isTargetOut ? data.input_amount : data.output_amount;
       const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
       const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
+      const primaryTokenAddress = isTargetOut ? data.from : data.to;
 
-      // Build gas info line for primary display
+      // Get token icons for result display
+      const primaryIcon = renderResultTokenIcon(primaryTokenAddress, quoteChainId);
+      const fromIcon = renderResultTokenIcon(data.from, quoteChainId);
+      const toIcon = renderResultTokenIcon(data.to, quoteChainId);
+
+      // Build gas info line for primary display (Gas Cost and Gas Price together)
       let gasInfoLine = '';
       if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
         gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>';
+        if (gasPriceGwei) {
+          gasInfoLine += '<div class="field field-spaced"><div class="field-label">Gas Price</div><div class="field-value number">' + gasPriceGwei + ' gwei</div></div>';
+        }
+      } else if (gasPriceGwei) {
+        gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Price</div><div class="field-value number">' + gasPriceGwei + ' gwei</div></div>';
       }
 
       // Primary section: output + buttons inline
@@ -4848,7 +5134,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         '<div class="' + primaryClass + '">' +
           recommendationLabel +
           '<div class="result-output-label">' + primaryLabel + '</div>' +
-          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
+          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primaryIcon + primarySymbol : '') + '</div>' +
           '<div class="field field-spaced"><div class="field-label">Via ' + providerLabel + '</div></div>' +
           gasInfoLine +
           renderQuoteActions({
@@ -4865,10 +5151,10 @@ const INDEX_HTML = `<!DOCTYPE html>
       const secondary =
         '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
         '<div class="details-content">' +
-          '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
-          '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
-          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + data.from_symbol : '')) + '</div></div>' +
-          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">From</div><div class="field-value">' + fromIcon + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
+          '<div class="field"><div class="field-label">To</div><div class="field-value">' + toIcon + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + toIcon + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + fromIcon + data.from_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + fromIcon + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + toIcon + data.to_symbol : '')) + '</div></div>' +
           renderSecondaryDetails(data, 'spandex') +
         '</div>';
 
@@ -4889,7 +5175,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       }).join('');
     }
 
-    function renderCurveQuote(data, isWinner, quoteChainId) {
+    function renderCurveQuote(data, isWinner, quoteChainId, gasPriceGwei) {
       const symbols = {};
       symbols[data.from.toLowerCase()] = data.from_symbol;
       symbols[data.to.toLowerCase()] = data.to_symbol;
@@ -4905,11 +5191,22 @@ const INDEX_HTML = `<!DOCTYPE html>
       const primaryAmount = isTargetOut ? data.input_amount : data.output_amount;
       const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
       const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
+      const primaryTokenAddress = isTargetOut ? data.from : data.to;
 
-      // Build gas info line for primary display
+      // Get token icons for result display
+      const primaryIcon = renderResultTokenIcon(primaryTokenAddress, quoteChainId);
+      const fromIcon = renderResultTokenIcon(data.from, quoteChainId);
+      const toIcon = renderResultTokenIcon(data.to, quoteChainId);
+
+      // Build gas info line for primary display (Gas Cost and Gas Price together)
       let gasInfoLine = '';
       if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
         gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>';
+        if (gasPriceGwei) {
+          gasInfoLine += '<div class="field field-spaced"><div class="field-label">Gas Price</div><div class="field-value number">' + gasPriceGwei + ' gwei</div></div>';
+        }
+      } else if (gasPriceGwei) {
+        gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Price</div><div class="field-value number">' + gasPriceGwei + ' gwei</div></div>';
       }
 
       // Primary section: output + buttons inline
@@ -4917,7 +5214,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         '<div class="' + primaryClass + '">' +
           recommendationLabel +
           '<div class="result-output-label">' + primaryLabel + '</div>' +
-          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
+          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primaryIcon + primarySymbol : '') + '</div>' +
           '<div class="field field-spaced"><div class="field-label">Via Curve</div></div>' +
           gasInfoLine +
           renderQuoteActions({
@@ -4934,10 +5231,10 @@ const INDEX_HTML = `<!DOCTYPE html>
       const secondary =
         '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
         '<div class="details-content">' +
-          '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
-          '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
-          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + data.from_symbol : '')) + '</div></div>' +
-          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">From</div><div class="field-value">' + fromIcon + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
+          '<div class="field"><div class="field-label">To</div><div class="field-value">' + toIcon + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + toIcon + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + fromIcon + data.from_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + fromIcon + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + toIcon + data.to_symbol : '')) + '</div></div>' +
           (data.route && data.route.length > 0 ? '<div class="field"><div class="field-label">Route (' + data.route.length + ' steps)</div>' + formatCurveRoute(data.route, symbols) + '</div>' : '') +
           (data.approval_target ? '<div class="field"><div class="field-label">Approval Target</div><div class="field-value">' + data.approval_target + '</div></div>' : '') +
           renderSecondaryDetails(data, 'curve') +
@@ -4962,7 +5259,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       reasonHtml += '<div class="reason-box-title">Reason</div>';
       reasonHtml += '<div class="reason-box-content">' + data.recommendation_reason + '</div>';
       if (data.gas_price_gwei) {
-        reasonHtml += '<div class="field-value number reason-box-gas">Gas: ' + data.gas_price_gwei + ' gwei</div>';
+        reasonHtml += '<div class="field-value number reason-box-gas">Gas Price: ' + data.gas_price_gwei + ' gwei</div>';
       }
       // Show output->ETH rate if available (for non-ETH outputs)
       if (data.output_to_eth_rate) {
@@ -4973,11 +5270,11 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       if (data.recommendation === 'spandex' && data.spandex) {
         tabRecommended.textContent = 'Spandex';
-        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true, quoteChainId);
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true, quoteChainId, data.gas_price_gwei);
         if (data.curve) {
           tabAlternative.textContent = 'Curve';
           tabAlternative.style.display = '';
-          alternativeContent.innerHTML = renderCurveQuote(data.curve, false, quoteChainId);
+          alternativeContent.innerHTML = renderCurveQuote(data.curve, false, quoteChainId, data.gas_price_gwei);
         } else {
           tabAlternative.textContent = 'Curve';
           tabAlternative.style.display = '';
@@ -4985,11 +5282,11 @@ const INDEX_HTML = `<!DOCTYPE html>
         }
       } else if (data.recommendation === 'curve' && data.curve) {
         tabRecommended.textContent = 'Curve';
-        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, true, quoteChainId);
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, true, quoteChainId, data.gas_price_gwei);
         if (data.spandex) {
           tabAlternative.textContent = 'Spandex';
           tabAlternative.style.display = '';
-          alternativeContent.innerHTML = renderSpandexQuote(data.spandex, false, quoteChainId);
+          alternativeContent.innerHTML = renderSpandexQuote(data.spandex, false, quoteChainId, data.gas_price_gwei);
         } else {
           tabAlternative.textContent = 'Spandex';
           tabAlternative.style.display = '';
@@ -4997,12 +5294,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         }
       } else if (data.spandex) {
         tabRecommended.textContent = 'Spandex';
-        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false, quoteChainId);
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false, quoteChainId, data.gas_price_gwei);
         tabAlternative.style.display = 'none';
         alternativeContent.innerHTML = '';
       } else if (data.curve) {
         tabRecommended.textContent = 'Curve';
-        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, false, quoteChainId);
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, false, quoteChainId, data.gas_price_gwei);
         tabAlternative.style.display = 'none';
         alternativeContent.innerHTML = '';
       } else {
@@ -5294,9 +5591,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     async function onApproveClick(card, button) {
       if (!hasConnectedWallet()) {
-        setWalletMessage('Connect wallet first', true);
-        setTxStatus(card, 'Connect wallet first', 'error');
-        updateTransactionActionStates();
+        // Store pending action and trigger wallet connection flow
+        pendingPostConnectAction = { type: 'approve', card, button };
+        triggerWalletConnectionFlow();
         return;
       }
 
@@ -5342,9 +5639,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     async function onSwapClick(card) {
       if (!hasConnectedWallet()) {
-        setWalletMessage('Connect wallet first', true);
-        setTxStatus(card, 'Connect wallet first', 'error');
-        updateTransactionActionStates();
+        // Store pending action and trigger wallet connection flow
+        pendingPostConnectAction = { type: 'swap', card };
+        triggerWalletConnectionFlow();
         return;
       }
 
@@ -5534,9 +5831,11 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (fromToken) {
           fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
           fromInput.dataset.address = fromToken.address;
+          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
         } else {
           fromInput.value = fromAddr;
           fromInput.dataset.address = fromAddr;
+          clearTokenInputIcon(fromWrapper, fromIcon);
         }
       }
 
@@ -5546,9 +5845,11 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (toToken) {
           toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
           toInput.dataset.address = toToken.address;
+          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
         } else {
           toInput.value = toAddr;
           toInput.dataset.address = toAddr;
+          clearTokenInputIcon(toWrapper, toIcon);
         }
       }
 
@@ -5848,23 +6149,10 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
 async function main() {
   if (CURVE_ENABLED) {
-    const rpcUrl =
-      process.env.RPC_URL_1 ||
-      (process.env.ALCHEMY_API_KEY
-        ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
-        : "");
-    if (rpcUrl) {
-      try {
-        log("Initializing Curve API...");
-        await initCurve(rpcUrl);
-        log("Curve API initialized");
-        captureMessage("Curve API initialized successfully");
-      } catch (err) {
-        logError("Curve initialization failed, continuing without Curve", err);
-      }
-    } else {
-      log("No RPC URL for Ethereum, Curve disabled");
-    }
+    log("Initializing Curve API for all supported chains...");
+    await initAllCurveInstances(getRpcUrl, log, logError);
+    log("Curve API initialization complete");
+    captureMessage("Curve API initialization complete");
   }
 
   const server = http.createServer(handleRequest);

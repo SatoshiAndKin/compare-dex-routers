@@ -110,9 +110,7 @@ export function getClient(chainId: number): PublicClient {
     );
   }
 
-  const rpcUrl =
-    process.env[`RPC_URL_${chainId}`] ||
-    `https://${chain.alchemySubdomain}.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`;
+  const rpcUrl = getRpcUrl(chainId);
 
   const client = createPublicClient({
     transport: http(rpcUrl),
@@ -120,6 +118,20 @@ export function getClient(chainId: number): PublicClient {
 
   clientCache.set(chainId, client as PublicClient);
   return client as PublicClient;
+}
+
+export function getRpcUrl(chainId: number): string {
+  const chain = SUPPORTED_CHAINS[chainId];
+  if (!chain) {
+    throw new Error(
+      `Unsupported chain: ${chainId}. Supported: ${Object.keys(SUPPORTED_CHAINS).join(", ")}`
+    );
+  }
+
+  return (
+    process.env[`RPC_URL_${chainId}`] ||
+    `https://${chain.alchemySubdomain}.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+  );
 }
 
 export function getSpandexConfig(): Config {

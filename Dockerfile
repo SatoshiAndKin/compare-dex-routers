@@ -6,6 +6,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm install -g tsx
 
 COPY src/ ./src/
+COPY static/ ./static/
 COPY tsconfig.json ./
 
 ENV NODE_ENV=production

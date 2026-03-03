@@ -1,0 +1,137 @@
+{
+  "groupId": "group-docker-runtime",
+  "testedAt": "2026-03-03T17:40:00Z",
+  "credentials": {
+    "account": "docker_worker_a",
+    "namespace": "docker-a"
+  },
+  "toolsUsed": ["Execute (shell)", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-DOCKER-001",
+      "title": "Dockerfile copies static/ directory",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "docker run --rm compare-dex-routers-docker-a ls -la static/",
+          "expected": "static/tokenlist.json present in image",
+          "observed": "total 580\n-rw-r--r-- 1 root root 590354 Mar  2 00:32 tokenlist.json"
+        }
+      ],
+      "evidence": {
+        "command": "docker run --rm compare-dex-routers-docker-a ls -la static/",
+        "output": "total 580\ndrwxr-xr-x 1 root root     28 Mar  3 00:03 .\ndrwxr-xr-x 1 root root     26 Mar  3 17:37 ..\n-rw-r--r-- 1 root root 590354 Mar  2 00:32 tokenlist.json",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-002",
+      "title": "Docker image uses Node 24 LTS",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "docker run --rm compare-dex-routers-docker-a node --version",
+          "expected": "v24.x output",
+          "observed": "v24.14.0"
+        },
+        {
+          "action": "Verify Dockerfile FROM instruction",
+          "expected": "FROM node:24-slim",
+          "observed": "FROM node:24-slim (confirmed in Dockerfile)"
+        }
+      ],
+      "evidence": {
+        "command": "docker run --rm compare-dex-routers-docker-a node --version",
+        "output": "v24.14.0",
+        "exitCode": 0,
+        "dockerfileFrom": "FROM node:24-slim"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-003",
+      "title": "Docker image builds without errors",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "docker build -t compare-dex-routers-docker-a .",
+          "expected": "Build completes with exit code 0",
+          "observed": "Build completed successfully, all 7 steps cached, image sha256:df91f5c9749ded6c909804075b8d40b7b01afc137403858d89e5a3a16b931eee created"
+        }
+      ],
+      "evidence": {
+        "command": "docker build -t compare-dex-routers-docker-a .",
+        "output": "#12 exporting to image\n#12 exporting layers done\n#12 writing image sha256:df91f5c9749ded6c909804075b8d40b7b01afc137403858d89e5a3a16b931eee 0.0s done\n#12 naming to docker.io/library/compare-dex-routers-docker-a\n#12 DONE 0.1s",
+        "exitCode": 0,
+        "steps": "7/7 completed (all cached)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-004",
+      "title": "Container responds to health check",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "docker run -d --name docker-a-test -p 3099:3000 -e PORT=3000 compare-dex-routers-docker-a",
+          "expected": "Container starts",
+          "observed": "Container d679bbb01b9f started"
+        },
+        {
+          "action": "curl http://localhost:3099/health",
+          "expected": "{\"status\":\"ok\"} with HTTP 200",
+          "observed": "{\"status\":\"ok\",\"requestId\":\"52b55c0f-8118-4853-86aa-74971bb64373\",\"flags\":{\"curve_enabled\":true,\"compare_endpoint\":true,\"metrics_endpoint\":true}} HTTP 200"
+        }
+      ],
+      "evidence": {
+        "command": "curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:3099/health",
+        "output": "{\"status\":\"ok\",\"requestId\":\"52b55c0f-8118-4853-86aa-74971bb64373\",\"flags\":{\"curve_enabled\":true,\"compare_endpoint\":true,\"metrics_endpoint\":true}}\nHTTP_CODE:200",
+        "httpCode": 200
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-005",
+      "title": "Container serves web UI",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl http://localhost:3099/",
+          "expected": "HTML response containing 'Compare DEX Routers'",
+          "observed": "HTML response with <title>Compare DEX Routers</title>, full page HTML served"
+        }
+      ],
+      "evidence": {
+        "command": "curl -s http://localhost:3099/ | grep -o 'Compare DEX Routers'",
+        "output": "Compare DEX Routers",
+        "httpCode": 200,
+        "htmlTitle": "<title>Compare DEX Routers</title>",
+        "responseType": "Full HTML page with inline CSS/JS, brutalist design"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-006",
+      "title": "Tokenlist endpoint works in container",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl http://localhost:3099/tokenlist",
+          "expected": "JSON response with tokens array",
+          "observed": "JSON with 1 tokenlist ('Uniswap Labs Default') containing 1367 tokens, HTTP 200"
+        }
+      ],
+      "evidence": {
+        "command": "curl -s http://localhost:3099/tokenlist | python3 -c \"import sys,json; d=json.load(sys.stdin); tl=d.get('tokenlists',[]); print(f'Lists: {len(tl)}'); total=sum(len(t.get('tokens',[]))for t in tl); print(f'Total tokens: {total}')\"",
+        "output": "Lists: 1\nTotal tokens: 1367",
+        "httpCode": 200,
+        "responseStructure": "{\"name\":\"Uniswap Labs Default\",\"tokenlists\":[{\"name\":\"...\",\"tokens\":[...]}]}"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: all 6 passed. Docker image builds cleanly from node:24-slim (v24.14.0), includes static/tokenlist.json (590KB), and container on port 3099 responds correctly to /health (200 OK), / (full HTML UI with 'Compare DEX Routers'), and /tokenlist (1367 tokens across 1 list). Container and image cleaned up after testing."
+}

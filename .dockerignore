@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+
+# Version control
+.git
+
+# Secrets and environment
+.env
+
+# Test and coverage output
+coverage
+
+# Screenshot/image files
+*.png
+
+# Factory mission files
+.factory
+
+# Documentation
+docs
+
+# Development scripts
+scripts
+
+# Development config files
+*.config.ts
+
+# Docker compose (not needed in image)
+docker-compose.yml

@@ -1,0 +1,25 @@
+{
+  "milestone": "gas-price-fallback",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-GAS-001",
+    "VAL-GAS-002",
+    "VAL-GAS-003",
+    "VAL-GAS-004",
+    "VAL-GAS-010",
+    "VAL-GAS-011",
+    "VAL-GAS-012",
+    "VAL-GAS-020"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/gas-price-fallback/user-testing/synthesis.json#round-1"
+}

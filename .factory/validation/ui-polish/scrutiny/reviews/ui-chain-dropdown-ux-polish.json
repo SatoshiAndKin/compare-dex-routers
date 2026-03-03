@@ -1,0 +1,28 @@
+{
+  "featureId": "ui-chain-dropdown-ux-polish",
+  "reviewedAt": "2026-03-03T07:05:00.000Z",
+  "commitId": "ccf011a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, well-structured implementation of combobox UX for the chain searchable dropdown. The commit adds CSS for a green-highlighted pinned item, two state variables (chainDropdownPreviousChainId, chainDropdownPinnedChainId), and modifies focus/input/keydown/blur handlers to implement clear-on-open, pin-current-at-top, and restore-on-cancel behavior. All seven expectedBehavior items from the feature spec are covered. The prior blocking bug (chainId.value regression at the token autocomplete refresh function) is NOT reintroduced — line 4428 continues to use getCurrentChainId(). ARIA combobox/listbox semantics added in the prior fix commit (60a8476) are fully preserved and extended to the new pinned items (role=option, proper IDs). The renderChainDropdown function correctly skips the pinned chain from the main list to avoid duplicate DOM IDs. Enter key handling reads from DOM items rather than the filtered array, correctly accounting for the pinned item's position.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 2660,
+        "severity": "non_blocking",
+        "description": "ArrowDown-when-closed path sets chainDropdownPinnedChainId but does NOT set chainDropdownPreviousChainId or clear the input text, creating a subtle UX inconsistency with the focus-based opening path (which clears input and stores previous). In practice this is harmless because the fallback `getCurrentChainId()` in restore logic ensures correct behavior, and the input text already shows the correct display value. Edge case only."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The transcript skeleton for this worker session (1c1050ad) shows 0 tool calls recorded, while the handoff confirms substantial interactive work (7 manual checks, dev server startup, browser testing). This suggests the transcript capture may have been incomplete for this session.",
+      "evidence": "worker-transcripts.jsonl entry for workerSessionId 1c1050ad-7647-46ee-9b02-f7c8cbc426cd has toolCalls: 0 and no skeleton content, yet the handoff documents a full verification cycle including typecheck, lint, test, and 7 interactive browser checks."
+    }
+  ],
+  "addressesFailureFrom": "/Users/bryan/code/compare-dex-routers/.factory/validation/ui-polish/scrutiny/reviews/ui-chain-searchable-dropdown.json",
+  "summary": "PASS — The combobox UX polish cleanly addresses all expected behaviors from the feature spec: input clears on focus, current chain pins at top with green highlight, remaining chains appear below, closing without selection restores previous text, typing filters correctly, and selection works correctly. Critically, neither the prior blocking chainId.value regression nor the ARIA semantics are regressed — getCurrentChainId() usage remains intact at line 4428, and all new pinned items include role=option with proper IDs. One non-blocking edge case: ArrowDown-when-closed doesn't mirror the focus handler's input-clearing and previous-chain-tracking, but the fallback to getCurrentChainId() keeps behavior correct."
+}

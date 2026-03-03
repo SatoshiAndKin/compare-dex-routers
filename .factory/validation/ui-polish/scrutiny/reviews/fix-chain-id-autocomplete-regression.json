@@ -1,0 +1,33 @@
+{
+  "featureId": "fix-chain-id-autocomplete-regression",
+  "reviewedAt": "2026-03-03T07:05:00.000Z",
+  "commitId": "60a84766464cf14083a4ec63df51b07a46134a20",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix correctly addresses the blocking regression from the prior review. The single remaining `document.getElementById('chainId').value` read in the autocomplete refresh() function (previously at line 4343) is replaced with `getCurrentChainId()`, which reads from `data-chain-id` attribute. A grep of the current codebase confirms zero remaining reads of `#chainId.value` for chain ID extraction purposes — all remaining `.value` reads are either writes (setting display text), search query reads (for dropdown filtering), or within `getCurrentChainId()` itself as fallback parsing. The ARIA combobox/listbox semantics are comprehensive: `role=\"combobox\"` with `aria-expanded`, `aria-controls`, `aria-haspopup` on the input; `role=\"listbox\"` on the dropdown; `role=\"option\"` with `aria-selected` on items; and `aria-activedescendant` management on keyboard navigation. The subsequent UX polish commit (ccf011a) preserves all ARIA attributes. The library note in quick-fixes-scrutiny-notes.md documents the gotcha for future developers.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 4428,
+        "severity": "non_blocking",
+        "description": "No new unit tests were added for the autocomplete refresh() chain ID resolution. The fix is for existing functionality and existing tests pass, but a targeted test verifying that refresh() uses getCurrentChainId() rather than raw .value would guard against future regressions. Low priority since manual verification confirmed correct behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The prior synthesis already flagged a suggested AGENTS.md convention: 'never read chain ID from #chainId.value; always use getCurrentChainId()'. The fix worker correctly applied this but the AGENTS.md convention has not yet been added. The library note was updated, but AGENTS.md still lacks the explicit rule.",
+      "evidence": "synthesis.json suggestedGuidanceUpdates[0] recommends AGENTS.md update. Current AGENTS.md (mission) does not mention getCurrentChainId(). The fix correctly applied the pattern and documented it in .factory/library/quick-fixes-scrutiny-notes.md."
+    },
+    {
+      "area": "conventions",
+      "observation": "The fix added ARIA combobox/listbox attributes to the chain dropdown, addressing the prior review's non-blocking ARIA issue. The pattern is now consistent with other interactive elements in the app (settings button has aria-haspopup/aria-expanded, modals have role=dialog). The suggested AGENTS.md accessibility convention from the prior synthesis has not yet been added.",
+      "evidence": "synthesis.json suggestedGuidanceUpdates[1] recommends ARIA requirement for new interactive widgets. Current AGENTS.md (mission) does not mention ARIA requirements."
+    }
+  ],
+  "addressesFailureFrom": "/Users/bryan/code/compare-dex-routers/.factory/validation/ui-polish/scrutiny/reviews/ui-chain-searchable-dropdown.json",
+  "summary": "PASS — The fix fully addresses the blocking regression from the prior ui-chain-searchable-dropdown review. The single remaining `document.getElementById('chainId').value` read in autocomplete refresh() was replaced with `getCurrentChainId()`. A codebase-wide grep confirms no other chain-ID-as-value reads remain. ARIA combobox/listbox semantics were added comprehensively (combobox, listbox, option roles; aria-expanded, aria-selected, aria-activedescendant management). The subsequent UX polish commit (ccf011a) preserves all fixes. All validators (typecheck, lint, 136 tests) pass. Manual verification confirmed autocomplete works correctly after chain selection. One non-blocking note: no new unit test was added for the specific fix, but existing tests and manual verification cover the behavior."
+}

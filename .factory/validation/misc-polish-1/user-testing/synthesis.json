@@ -1,21 +1,16 @@
 {
   "milestone": "misc-polish-1",
-  "round": 1,
+  "round": 2,
   "status": "pass",
   "assertionsSummary": {
-    "total": 4,
-    "passed": 4,
+    "total": 0,
+    "passed": 0,
     "failed": 0,
     "blocked": 0
   },
-  "passedAssertions": [
-    "VAL-IO-006",
-    "VAL-TRUST-001",
-    "VAL-SWAP-001",
-    "VAL-SWAP-002"
-  ],
+  "passedAssertions": [],
   "failedAssertions": [],
   "blockedAssertions": [],
   "appliedUpdates": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/misc-polish-1/user-testing/synthesis.json"
 }

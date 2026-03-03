@@ -1,0 +1,231 @@
+{
+  "groupId": "group-curve-quotes",
+  "testedAt": "2026-03-03T12:00:00.000Z",
+  "credentials": {
+    "account": "api_curve_quotes_validator_01@example.test",
+    "namespace": "curve-multichain-api-quotes"
+  },
+  "toolsUsed": ["curl"],
+  "assertions": [
+    {
+      "id": "VAL-CURVE-001",
+      "title": "Curve quotes on Ethereum (chainId 1)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl GET /compare?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000000000&slippageBps=50",
+          "expected": "Curve quote with non-zero output_amount",
+          "observed": "Curve quote returned: source=curve, output_amount=6148.722581446487775058, from_symbol=USDC, to_symbol=WETH, route has 2 hops via crvUSD"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": "GET /compare -> 200, curve.source=curve, curve.output_amount=6148.722581446487775058, curve_error=null, recommendation=curve"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CURVE-002",
+      "title": "Curve quotes on Base (chainId 8453)",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "curl GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0x4200000000000000000000000000000000000006&amount=1000000000&slippageBps=50",
+          "expected": "Curve quote with non-zero output",
+          "observed": "curve=null, curve_error='This method exists only for L2 networks'"
+        },
+        {
+          "action": "curl GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA&amount=1000000000&slippageBps=50 (alternate pair: USDC→USDbC)",
+          "expected": "Curve quote with non-zero output",
+          "observed": "curve=null, curve_error='This method exists only for L2 networks'"
+        },
+        {
+          "action": "curl GET /compare?chainId=8453&from=0x4200000000000000000000000000000000000006&to=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&amount=1000000000000000000&slippageBps=50 (alternate pair: WETH→USDC)",
+          "expected": "Curve quote with non-zero output",
+          "observed": "curve=null, curve_error='This method exists only for L2 networks'"
+        },
+        {
+          "action": "curl GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22&amount=1000000&slippageBps=50 (alternate pair: USDC→cbETH)",
+          "expected": "Curve quote with non-zero output",
+          "observed": "curve=null, curve_error='This method exists only for L2 networks'"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": "GET /compare -> 200 (all 4 pair attempts), all returned curve=null with curve_error='This method exists only for L2 networks'"
+      },
+      "issues": "Curve library router.getBestRouteAndOutput() throws 'This method exists only for L2 networks' for all tested token pairs on Base (chainId 8453). Despite Base being an L2, the Curve library appears to reject the router method. Likely a @curvefi/api library bug or misconfiguration for Base chain support."
+    },
+    {
+      "id": "VAL-CURVE-003",
+      "title": "Curve quotes on Arbitrum (chainId 42161)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl GET /compare?chainId=42161&from=0xaf88d065e77c8cC2239327C5EDb3A432268e5831&to=0x82aF49447D8a07e3bd95BD0d56f35241523fBab1&amount=1000000000&slippageBps=50",
+          "expected": "Curve quote with non-zero output_amount",
+          "observed": "Curve quote returned: source=curve, output_amount=44.554984943382753869, from_symbol=USDC, to_symbol=WETH, route has 2 hops via USDT"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": "GET /compare -> 200, curve.source=curve, curve.output_amount=44.554984943382753869, curve_error=null, recommendation=curve"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CURVE-004",
+      "title": "Curve quotes on Optimism (chainId 10)",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "curl GET /compare?chainId=10&from=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85&to=0x4200000000000000000000000000000000000006&amount=1000000000&slippageBps=50",
+          "expected": "Curve quote with non-zero output",
+          "observed": "curve=null, curve_error='This method exists only for L2 networks'"
+        },
+        {
+          "action": "curl GET /compare?chainId=10&from=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85&to=0x94b008aA00579c1307B0EF2c499aD98a8ce58e58&amount=1000000000&slippageBps=50 (alternate pair: USDC→USDT)",
+          "expected": "Curve quote with non-zero output",
+          "observed": "curve=null, curve_error='This method exists only for L2 networks'"
+        },
+        {
+          "action": "curl GET /compare?chainId=10&from=0x4200000000000000000000000000000000000006&to=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85&amount=1000000000000000000&slippageBps=50 (alternate pair: WETH→USDC)",
+          "expected": "Curve quote with non-zero output",
+          "observed": "curve=null, curve_error='You must call getBestRouteAndOutput first'"
+        },
+        {
+          "action": "curl GET /compare?chainId=10&from=0xc52D7F23a2e460248Db6eE192Cb23dD12bDDCbf6&to=0x94b008aA00579c1307B0EF2c499aD98a8ce58e58&amount=1000000000000000000000&slippageBps=50 (alternate pair: crvUSD→USDT)",
+          "expected": "Curve quote with non-zero output",
+          "observed": "curve=null, curve_error='You must call getBestRouteAndOutput first'"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": "GET /compare -> 200 (all 4 pair attempts), all returned curve=null with various errors from @curvefi/api"
+      },
+      "issues": "Curve library fails for all tested token pairs on Optimism (chainId 10). Errors alternate between 'This method exists only for L2 networks' and 'You must call getBestRouteAndOutput first' depending on pair direction. Likely a @curvefi/api library bug or missing pool data for Optimism."
+    },
+    {
+      "id": "VAL-CURVE-005",
+      "title": "Curve quotes on Polygon (chainId 137)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl GET /compare?chainId=137&from=0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359&to=0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619&amount=1000000000&slippageBps=50",
+          "expected": "Curve quote with non-zero output_amount",
+          "observed": "Curve quote returned: source=curve, output_amount=0.164689490441885432, from_symbol=USDC, to_symbol=WETH, route has 3 hops via crvUSD and bridged USDC"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": "GET /compare -> 200, curve.source=curve, curve.output_amount=0.164689490441885432, curve_error=null, recommendation=curve"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CURVE-006",
+      "title": "Curve quotes on BSC (chainId 56)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl GET /compare?chainId=56&from=0x55d398326f99059fF775485246999027B3197955&to=0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c&amount=1000000000000000000000&slippageBps=50 (default pair: USDT→WBNB)",
+          "expected": "Curve quote with non-zero output",
+          "observed": "curve=null, curve_error='You must call getBestRouteAndOutput first' — default pair has no Curve route"
+        },
+        {
+          "action": "curl GET /compare?chainId=56&from=0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d&to=0x55d398326f99059fF775485246999027B3197955&amount=1000000000000000000000&slippageBps=50 (alternate pair: USDC→USDT)",
+          "expected": "Curve quote with non-zero output",
+          "observed": "Curve quote returned: source=curve, output_amount=4.040610885371686726, curve_error=null, recommendation=curve"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": "GET /compare -> 200, alternate pair USDC→USDT returned curve.source=curve, curve.output_amount=4.040610885371686726, curve_error=null"
+      },
+      "issues": "Default token pair (USDT→WBNB) has no Curve route on BSC, but alternate stablecoin pair (USDC→USDT) works. Curve routing on BSC is limited to stablecoin pools."
+    },
+    {
+      "id": "VAL-CURVE-007",
+      "title": "Curve quotes on Avalanche (chainId 43114)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl GET /compare?chainId=43114&from=0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E&to=0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7&amount=1000000000&slippageBps=50",
+          "expected": "Curve quote with non-zero output_amount",
+          "observed": "Curve quote returned: source=curve, output_amount=18.022926548817519537, from_symbol=USDC, to_symbol=WAVAX, route has 3 hops via USDt and 2CRV-f"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": "GET /compare -> 200, curve.source=curve, curve.output_amount=18.022926548817519537, curve_error=null, recommendation=curve"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CURVE-008",
+      "title": "No 'Curve only supports Ethereum' warning",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check curve_error on Base (chainId 8453) for 'Curve only supports Ethereum' message",
+          "expected": "Error should NOT contain 'Curve only supports Ethereum'",
+          "observed": "curve_error='This method exists only for L2 networks' — does NOT contain the old Ethereum-only message"
+        },
+        {
+          "action": "Check curve_error on Optimism (chainId 10) for 'Curve only supports Ethereum' message",
+          "expected": "Error should NOT contain 'Curve only supports Ethereum'",
+          "observed": "curve_error='This method exists only for L2 networks' — does NOT contain the old Ethereum-only message"
+        },
+        {
+          "action": "Check curve_error on Arbitrum (chainId 42161) — working chain, no error",
+          "expected": "No error, or error without 'Curve only supports Ethereum'",
+          "observed": "curve_error=null (quote succeeded)"
+        },
+        {
+          "action": "Check curve_error on Polygon (chainId 137) — working chain, no error",
+          "expected": "No error, or error without 'Curve only supports Ethereum'",
+          "observed": "curve_error=null (quote succeeded)"
+        },
+        {
+          "action": "Check curve_error on BSC (chainId 56) with default pair",
+          "expected": "Error should NOT contain 'Curve only supports Ethereum'",
+          "observed": "curve_error='You must call getBestRouteAndOutput first' — route-specific error, no Ethereum-only message"
+        },
+        {
+          "action": "Check curve_error on Avalanche (chainId 43114) — working chain, no error",
+          "expected": "No error, or error without 'Curve only supports Ethereum'",
+          "observed": "curve_error=null (quote succeeded)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API test)",
+        "network": "All 6 non-Ethereum chains checked: none returned 'Curve only supports Ethereum' in curve_error. Errors are route-specific or absent."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "BSC default token pair (USDT→WBNB) has no Curve route. Had to discover a working pair (USDC→USDT) by trying stablecoin combinations. Not documented which pairs are Curve-supported per chain.",
+      "resolved": true,
+      "resolution": "Tried USDC→USDT stablecoin pair which succeeded on BSC.",
+      "affectedAssertions": ["VAL-CURVE-006"]
+    },
+    {
+      "description": "Spandex returned 'No providers returned a successful quote' for all test requests, so comparison testing (Spandex vs Curve) was not possible — only Curve results could be validated.",
+      "resolved": true,
+      "resolution": "Assertions only require Curve quote verification, not Spandex. Spandex failures are documented as a known issue (rate limits).",
+      "affectedAssertions": ["VAL-CURVE-001", "VAL-CURVE-002", "VAL-CURVE-003", "VAL-CURVE-004", "VAL-CURVE-005", "VAL-CURVE-006", "VAL-CURVE-007"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 8 assertions: 6 passed, 2 failed. VAL-CURVE-002 (Base) and VAL-CURVE-004 (Optimism) fail — Curve library returns errors for all tested token pairs on these chains ('This method exists only for L2 networks' / 'You must call getBestRouteAndOutput first'). Ethereum, Arbitrum, Polygon, Avalanche work correctly. BSC works with stablecoin pairs (not default USDT→WBNB). VAL-CURVE-008 passes — no 'Curve only supports Ethereum' messages appear anywhere."
+}

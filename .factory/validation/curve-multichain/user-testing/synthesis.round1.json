@@ -1,0 +1,40 @@
+{
+  "milestone": "curve-multichain",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 10,
+    "passed": 8,
+    "failed": 2,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CURVE-001",
+    "VAL-CURVE-003",
+    "VAL-CURVE-005",
+    "VAL-CURVE-006",
+    "VAL-CURVE-007",
+    "VAL-CURVE-008",
+    "VAL-CURVE-010",
+    "VAL-CURVE-011"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-CURVE-002",
+      "reason": "Base (8453) returned no Curve quote for multiple tested pairs; curve_error was consistently 'This method exists only for L2 networks'."
+    },
+    {
+      "id": "VAL-CURVE-004",
+      "reason": "Optimism (10) returned no Curve quote for multiple tested pairs; curve_error included 'This method exists only for L2 networks' and 'You must call getBestRouteAndOutput first'."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added curve-multichain validation quirks (Base/Optimism errors, BSC supported pair note, and startup-log validation pattern).",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}

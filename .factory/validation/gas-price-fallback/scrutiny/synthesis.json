@@ -1,0 +1,46 @@
+{
+  "milestone": "gas-price-fallback",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test -- --maxWorkers=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated .factory/library/architecture.md with gas price sourcing architecture (Spandex first, RPC fallback via src/gas-price.ts, cache keyed by chainId+blockNumber).",
+      "sourceFeature": "gas-price-rpc-fallback"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add src/gas-price.ts to the Architecture file map so future workers can discover the gas fallback and cache module quickly.",
+      "evidence": "Feature gas-price-rpc-fallback introduced src/gas-price.ts, but AGENTS.md architecture module list does not mention it.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

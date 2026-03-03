@@ -1,0 +1,118 @@
+{
+  "groupId": "group-docker-stack-deploy",
+  "testedAt": "2026-03-03T00:00:00.000Z",
+  "credentials": {
+    "account": "docker_worker_c",
+    "namespace": "docker-c"
+  },
+  "toolsUsed": ["Read", "Execute (docker compose config)"],
+  "assertions": [
+    {
+      "id": "VAL-DOCKER-022",
+      "title": "Rolling update configuration",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read docker-stack.yml deploy.update_config section",
+          "expected": "parallelism: 1, delay > 0, order: start-first",
+          "observed": "update_config contains parallelism: 1, delay: 10s, order: start-first, failure_action: rollback"
+        },
+        {
+          "action": "Confirm parallelism is 1",
+          "expected": "parallelism: 1",
+          "observed": "parallelism: 1 — correct for single-node zero-downtime"
+        },
+        {
+          "action": "Confirm delay is greater than 0",
+          "expected": "delay > 0",
+          "observed": "delay: 10s — provides time for healthcheck stabilization"
+        },
+        {
+          "action": "Confirm order is start-first",
+          "expected": "order: start-first",
+          "observed": "order: start-first — new container starts before old stops"
+        }
+      ],
+      "evidence": {
+        "fileContents": "update_config:\n  parallelism: 1\n  delay: 10s\n  order: start-first\n  failure_action: rollback",
+        "dockerComposeConfigOutput": "update_config:\n  parallelism: 1\n  delay: 10s\n  failure_action: rollback\n  order: start-first"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-023",
+      "title": "Health check in stack file",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read docker-stack.yml healthcheck section",
+          "expected": "healthcheck exists and targets /health endpoint",
+          "observed": "healthcheck uses CMD node -e with fetch() to http://localhost:{PORT}/health"
+        },
+        {
+          "action": "Verify healthcheck test command hits /health",
+          "expected": "Test command references /health path",
+          "observed": "test: [\"CMD\", \"node\", \"-e\", \"fetch('http://localhost:' + (process.env.PORT||'3000') + '/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\"]"
+        },
+        {
+          "action": "Verify healthcheck timing parameters",
+          "expected": "Reasonable interval, timeout, retries, start_period",
+          "observed": "interval: 10s, timeout: 5s, retries: 3, start_period: 15s"
+        }
+      ],
+      "evidence": {
+        "fileContents": "healthcheck:\n  test: [\"CMD\", \"node\", \"-e\", \"fetch('http://localhost:' + (process.env.PORT||'3000') + '/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\"]\n  interval: 10s\n  timeout: 5s\n  retries: 3\n  start_period: 15s",
+        "dockerComposeConfigOutput": "healthcheck:\n  test:\n    - CMD\n    - node\n    - -e\n    - fetch('http://localhost:' + (process.env.PORT||'3000') + '/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\n  timeout: 5s\n  interval: 10s\n  retries: 3\n  start_period: 15s"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-024",
+      "title": "Restart policy",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read docker-stack.yml deploy.restart_policy section",
+          "expected": "condition: on-failure or any, with suitable max_attempts",
+          "observed": "restart_policy contains condition: on-failure, max_attempts: 3"
+        },
+        {
+          "action": "Verify condition is on-failure or any",
+          "expected": "condition: on-failure or condition: any",
+          "observed": "condition: on-failure — prevents infinite restart loops on fatal errors"
+        },
+        {
+          "action": "Verify max_attempts is a reasonable value",
+          "expected": "max_attempts > 0",
+          "observed": "max_attempts: 3"
+        }
+      ],
+      "evidence": {
+        "fileContents": "restart_policy:\n  condition: on-failure\n  max_attempts: 3",
+        "dockerComposeConfigOutput": "restart_policy:\n  condition: on-failure\n  max_attempts: 3"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-025",
+      "title": "Stack file validates",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run docker compose -f docker-stack.yml config",
+          "expected": "Command succeeds with exit code 0, outputs valid parsed config",
+          "observed": "Exit code 0. Full parsed config output with all services, deploy settings, healthcheck, ports, and resources correctly resolved."
+        }
+      ],
+      "evidence": {
+        "command": "docker compose -f docker-stack.yml config",
+        "exitCode": 0,
+        "outputSnippet": "name: compare-dex-routers\nservices:\n  spandex-router:\n    deploy:\n      update_config:\n        parallelism: 1\n        delay: 10s\n        failure_action: rollback\n        order: start-first\n      ...\n    healthcheck:\n      test: [CMD, node, -e, ...]\n    image: compare-dex-routers:latest\n    ports:\n      - mode: ingress\n        target: 3001\n        published: \"3001\""
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 4 assertions: all 4 passed. VAL-DOCKER-022 confirmed rolling update_config with parallelism:1, delay:10s, order:start-first. VAL-DOCKER-023 confirmed healthcheck targets /health via node fetch(). VAL-DOCKER-024 confirmed restart_policy condition:on-failure with max_attempts:3. VAL-DOCKER-025 confirmed docker compose config validates with exit code 0."
+}

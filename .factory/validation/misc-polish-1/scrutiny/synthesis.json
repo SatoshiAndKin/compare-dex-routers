@@ -1,11 +1,11 @@
 {
   "milestone": "misc-polish-1",
-  "round": 1,
+  "round": 2,
   "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "npm test",
+      "command": "npm test -- --maxWorkers=7",
       "exitCode": 0
     },
     "typecheck": {
@@ -20,8 +20,8 @@
     }
   },
   "reviewsSummary": {
-    "total": 3,
-    "passed": 3,
+    "total": 1,
+    "passed": 1,
     "failed": 0,
     "failedFeatures": []
   },
@@ -29,35 +29,17 @@
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
-      "target": "AGENTS.md",
-      "suggestion": "Add a strict modal rule: all modal open/close flows must use lockBodyScroll()/unlockBodyScroll() helpers and must not directly set document.body.style.overflow.",
-      "evidence": "Feature misc-quality-fixes introduced shared scroll-lock helpers to prevent one modal restoring page scroll while another modal remains open.",
-      "isSystemic": true
-    },
-    {
       "target": "fullstack-worker skill",
-      "suggestion": "Clarify testing expectations for inline client-side JS in src/server.ts: use unit tests when practical, but allow Playwright/manual validation when behavior is not readily unit-testable.",
-      "evidence": "Features misc-quality-fixes and token-swap-on-duplicate-selection primarily changed inline browser JS and were validated through typecheck/lint/tests plus interactive checks.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Define duplicate-token conflict behavior explicitly when one side is empty (e.g., clear the opposite field to avoid any duplicate pair state) to remove ambiguity for future token selection changes.",
-      "evidence": "Feature token-swap-on-duplicate-selection passed but reviewer identified ambiguous edge-case interpretation when one input had no previous token.",
-      "isSystemic": false
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Clarify warning/notice color governance for UI additions and require adding any new non-canonical warning colors to .factory/library/color-system.md with contrast evidence.",
-      "evidence": "Feature tokenlist-trust-warning-and-button-labels introduced warning colors that passed WCAG AA but were not documented in the color system library.",
+      "suggestion": "Require workers to set skillFeedback.followedProcedure=false whenever required interactive checks are skipped, and to include interactiveChecks evidence whenever followedProcedure=true.",
+      "evidence": "Review for misc-chain-dropdown-polish found no Playwright/manual checks despite client-side behavior changes, but handoff marked followedProcedure=true with no interactiveChecks evidence.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Reviewer note that the worker followed skill procedure correctly.",
-      "reason": "informational-only and not an actionable shared-state update"
+      "observation": "Make gas-price cache constants configurable via feature flags/environment variables.",
+      "reason": "non-blocking optimization with no demonstrated operational need in this milestone"
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/misc-polish-1/scrutiny/synthesis.round1.json"
 }

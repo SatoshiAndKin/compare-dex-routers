@@ -8,6 +8,8 @@ commands:
   lint_fix: npm run lint:fix
   format: npm run format
   dead_code: npm run dead-code
+  docker_build_local: docker build -t compare-dex-routers-test .
+  docker_validate_stack: docker compose -f docker-stack.yml config
 
 services:
   dev:
