@@ -1,0 +1,44 @@
+{
+  "featureId": "css-brutalist-consolidation",
+  "reviewedAt": "2026-03-03T01:10:00.000Z",
+  "commitId": "17e63fa",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean CSS-only refactoring that addresses all 11 items from the feature description. All eliminated colors (#f8f8f8, #fafafa, #e8e8e8, #fff0f0, #fff8f0, #FFF3CD, #856404, #999) are confirmed gone by grep. Border-left accents unified to 4px, focus outlines standardized to 3px, pastel backgrounds replaced with neutral gray + colored borders, inline styles extracted to named CSS classes, Connect Wallet given .btn-primary, Disconnect given .btn-disconnect class, body background softened to #f5f5f5, .settings-section border changed to #000, dead .btn-small.btn-secondary override removed. No JS or functionality changes. All 129 tests pass, typecheck and lint clean.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 552,
+        "severity": "non_blocking",
+        "description": "Body background set to #f5f5f5 introduces a 4th background gray value, while expectedBehavior states 'Only 3 background gray values remain: #f0f0f0, #e0e0e0, #fff'. This is explicitly requested in the feature description item 10 and the body background is functionally distinct from content backgrounds, so the intent is satisfied. However, the expectedBehavior wording is technically inaccurate — there are now 4 gray tiers: #f5f5f5 (page), #f0f0f0 (panels), #e0e0e0 (badges), #fff (cards)."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 1477,
+        "severity": "non_blocking",
+        "description": ".btn-disconnect only defines font-size and padding. It inherits the base button styles (2px solid #000 border, #fff background, uppercase text). This works but means the Disconnect button is an 'outlined default' style — not explicitly categorized in the 3-variant button system (primary/secondary/default). Minor naming clarity issue; the class name suggests a semantic role rather than a visual variant."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The color-system.md in .factory/library/ references '#e8e8e8' as the verified contrast background for green (#007700) success text, but #e8e8e8 was eliminated by this feature and replaced with #f0f0f0. The contrast ratio is actually higher on #f0f0f0 (still passes WCAG AA), but the documentation is now stale.",
+      "evidence": ".factory/library/color-system.md table row: '| Green | #007700 | Success status text | #e8e8e8 | 4.71:1 ✅ AA |' — but src/server.ts line 1462 now uses 'background: #f0f0f0' for .tx-status.success"
+    },
+    {
+      "area": "conventions",
+      "observation": "The color-system.md does not document #CC7A00 (warning), which is now a canonical accent color used for trust warnings and unrecognized token borders. The mission AGENTS.md lists it in the CSS Consolidation palette, but the persistent library doc doesn't.",
+      "evidence": "Mission AGENTS.md: 'Standard palette: ... #CC7A00 (warning)'. src/server.ts uses #CC7A00 in .tokenlist-trust-warning (line ~845), .unrecognized-token-info (line ~966). But .factory/library/color-system.md only lists Blue, Orange (#CC2900), Green, Red."
+    },
+    {
+      "area": "conventions",
+      "observation": "The background gray palette (now 4 values: #f5f5f5 body, #f0f0f0 panels, #e0e0e0 badges, #fff default, plus #ccc for disabled states) is not documented in color-system.md. Only the mission AGENTS.md mentions 3 of them. This palette is now a settled convention after this feature and should be in the persistent library.",
+      "evidence": "grep 'background: #' src/server.ts shows 28x #f0f0f0, 18x #fff, 7x #e0e0e0, 1x #f5f5f5, 2x #ccc. None of these are documented in .factory/library/color-system.md."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "CSS consolidation feature passes review. All 11 specification items are implemented correctly with no functionality changes. The diff is 80 insertions / 47 deletions in a single file (src/server.ts), all CSS-only. Two non-blocking issues noted: (1) the body background #f5f5f5 technically creates a 4th background gray despite the spec saying 3, but this was explicitly requested; (2) .btn-disconnect naming is semantic rather than visual-variant-based. Three shared state observations flag stale/missing documentation in color-system.md."
+}

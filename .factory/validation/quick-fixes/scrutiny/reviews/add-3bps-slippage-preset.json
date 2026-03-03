@@ -1,0 +1,26 @@
+{
+  "featureId": "add-3bps-slippage-preset",
+  "reviewedAt": "2026-03-03T00:35:00.000Z",
+  "commitId": "025b840",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, minimal 1-line change that adds a 3bps slippage preset button before the existing presets. The button follows the exact same HTML pattern (class, data-bps attribute) as the four existing preset buttons. The JS handlers (querySelectorAll('.slippage-preset-btn'), updateSlippagePresetActive, click handler) are fully generic and pick up the new button automatically with no code changes needed. All expected behaviors are satisfied: button order is 3/10/50/100/300, clicking sets value and highlights, default remains 50bps. Typecheck, lint, and all 126 tests pass. Manual browser verification confirmed correct rendering and interaction.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The mission AGENTS.md references slippage presets at '~line 1492' but the actual location at commit time was line 1533-1540. Line references in mission AGENTS.md drift as prior features modify server.ts. This is a known limitation of line-number references in a monolith file but could cause confusion for future workers.",
+      "evidence": "Mission AGENTS.md says 'Slippage preset buttons exist at ~line 1492 in src/server.ts' but git show 025b840:src/server.ts shows them at lines 1536-1540. Feature preconditions also reference ~line 1492."
+    },
+    {
+      "area": "conventions",
+      "observation": "Subsequent commits (32a260d 'Redesign slippage/submit row') renamed the CSS class from .slippage-preset-btn to .slippage-preset-compact and restructured the HTML. The 3bps button was preserved in the redesign, but this shows that purely HTML features in the monolith can be silently refactored by later features. No issue with this specific feature, just noting the coupling.",
+      "evidence": "Commit 025b840 uses .slippage-preset-btn class; current HEAD uses .slippage-preset-compact (line 1864). The redesign at 32a260d changed class names and layout structure."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The 3bps slippage preset feature is a clean, correct 1-line HTML addition. It follows the existing button pattern exactly, requires no JS changes, and was verified via automated checks (typecheck, lint, 126 tests) and manual browser interaction. No blocking or non-blocking issues found."
+}

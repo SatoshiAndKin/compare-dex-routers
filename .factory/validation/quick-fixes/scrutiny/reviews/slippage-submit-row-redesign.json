@@ -1,0 +1,39 @@
+{
+  "featureId": "slippage-submit-row-redesign",
+  "reviewedAt": "2026-03-03T01:45:00.000Z",
+  "commitId": "32a260d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, well-scoped implementation. The old standalone slippage-section was fully removed and replaced with a compact action-row containing the submit button (dominant, leftmost) and a bordered slippage box with all 5 presets, custom input, and bps hint. CSS follows brutalist conventions (no gradients, no border-radius, flat colors). JS handlers (updateSlippagePresetActive, preset click, input listener) correctly updated to use new `.slippage-preset-compact` class selector. The integration test was updated to verify the new form element order (submit before slippage). All expected behaviors from the feature spec are met. One minor deviation: the commit changed focus outlines from 3px to 2px on preset buttons and slippage input, which deviates from the documented convention (3px focus outlines per mission AGENTS.md and color-system.md). This was corrected by a later commit (ec3f414) so it's non-blocking.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 1369,
+        "severity": "non_blocking",
+        "description": "Focus outline on .slippage-preset-compact was changed from 3px to 2px in this commit, deviating from the project convention of '3px solid #0055FF' for all focus outlines (documented in mission AGENTS.md and .factory/library/color-system.md). This was corrected by a later commit (ec3f414 - button sizing and color consistency) so the current codebase is correct, but the worker should have maintained the 3px convention."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 1380,
+        "severity": "non_blocking",
+        "description": "Same focus outline deviation: .slippage-box-input:focus was set to 2px instead of the conventional 3px. Also corrected by later commit ec3f414."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker changed focus outlines from 3px to 2px for the compact slippage elements, despite the 3px convention being documented in both mission AGENTS.md ('Focus outlines: all 3px solid #0055FF') and .factory/library/color-system.md. The worker may not have consulted the color-system.md library doc during implementation. A later feature (button-size-consistency) corrected this, suggesting the convention is easy to miss.",
+      "evidence": "Diff shows `.slippage-preset-compact:focus { outline: 2px solid #0055FF; }` and `.slippage-box-input:focus { outline: 2px solid #0055FF; }` where convention requires 3px. Mission AGENTS.md line 'Focus outlines: all 3px solid #0055FF' and .factory/library/color-system.md both document this."
+    },
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill procedure does not mention checking .factory/library/color-system.md or other library docs before making CSS changes. Adding a reminder to consult library docs when modifying styles could prevent convention deviations like the focus outline change.",
+      "evidence": "SKILL.md says 'Follow the existing brutalist UI style (thick borders, high contrast, monospace elements for addresses)' but doesn't reference color-system.md or other library docs for specific values."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The slippage/submit row redesign is correctly implemented: submit button is first in a shared action row, compact bordered slippage box sits next to it with all 5 presets on one row, custom input accessible, old standalone section removed, JS handlers working, test updated. The only non-blocking issue is a focus outline deviation (2px instead of 3px) that was corrected by a subsequent commit. Worker followed the skill procedure and produced a clean, well-verified implementation."
+}

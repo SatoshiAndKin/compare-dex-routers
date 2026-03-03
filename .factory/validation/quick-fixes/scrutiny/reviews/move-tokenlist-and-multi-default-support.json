@@ -1,0 +1,60 @@
+{
+  "featureId": "move-tokenlist-and-multi-default-support",
+  "reviewedAt": "2026-03-03T01:30:00.000Z",
+  "commitId": "53fbde1",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation replacing TOKENLIST_PATH with DEFAULT_TOKENLISTS. Server-side: getDefaultTokenlistPaths() parses comma-separated paths with relative->absolute resolution, loadDefaultTokenlists() loads each with per-file error isolation and caches by path key. GET /tokenlist returns {tokenlists: [{name, tokens}...], tokens: merged}. Client-side: loadDefaultTokenlists() has backward-compatible fallback for old response format. initializeTokenlistSources() creates one tokenlistSources entry per default with a single toggle state. Tests updated from TOKENLIST_PATH to DEFAULT_TOKENLISTS with 3 new multi-tokenlist cases (multi-entry, single-entry, merge). init.sh and env.example updated. static/tokenlist.json is committed (confirmed via git ls-files). No remaining references to TOKENLIST_PATH or data/tokenlist.json in src/. All 126 tests pass, typecheck clean, lint clean.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 5188,
+        "severity": "non_blocking",
+        "description": "The outer try/catch around the GET /tokenlist route still sends a 500 error, but loadDefaultTokenlists() catches all per-file errors internally and never throws. This makes the catch block effectively dead code. It acts as a safety net for truly unexpected errors (e.g., flatMap on a corrupted cache), so keeping it is reasonable, but worth noting."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 5007,
+        "severity": "non_blocking",
+        "description": "Single DEFAULT_TOKENLIST_ENABLED_KEY toggle controls all default tokenlists simultaneously. When multiple defaults are configured, toggling one off disables all. The code comments acknowledge this ('Note: single toggle applies to all default tokenlists'). This is a reasonable first-pass design but may need per-list toggle in the future."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 119,
+        "severity": "non_blocking",
+        "description": "Cache key uses paths.join('|'). If a tokenlist filename contained a pipe character, cache key would be ambiguous. Extremely unlikely in practice but technically imprecise. Could use JSON.stringify(paths) for robustness."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "README.md still references data/tokenlist.json in 3 places: token selection description, settings panel description, and GET /tokenlist API docs. Should be updated to reference static/tokenlist.json and DEFAULT_TOKENLISTS.",
+      "evidence": "README.md:21 — 'Autocomplete powered by a built-in tokenlist (data/tokenlist.json)', README.md:39 — 'Token autocomplete reads from data/tokenlist.json', README.md:86 — 'Returns the contents of data/tokenlist.json'"
+    },
+    {
+      "area": "knowledge",
+      "observation": ".factory/library/environment.md still documents the old TOKENLIST_PATH env var and data/tokenlist.json lifecycle. Should be updated to document DEFAULT_TOKENLISTS and static/tokenlist.json (committed to git, not downloaded).",
+      "evidence": ".factory/library/environment.md:13 — 'TOKENLIST_PATH optional override for the tokenlist file path (defaults to data/tokenlist.json)' and line 14 documenting data/ as untracked."
+    },
+    {
+      "area": "knowledge",
+      "observation": ".factory/library/architecture.md still references 'data/tokenlist.json served via GET /tokenlist endpoint'. Should be updated to 'static/tokenlist.json'.",
+      "evidence": ".factory/library/architecture.md:12 — 'Token data: data/tokenlist.json served via GET /tokenlist endpoint'"
+    },
+    {
+      "area": "knowledge",
+      "observation": ".factory/library/user-testing.md still documents 'data/tokenlist.json: Must be downloaded on disk via .factory/init.sh'. Should be updated to reflect static/tokenlist.json is committed to git and init.sh only downloads if missing.",
+      "evidence": ".factory/library/user-testing.md:97 — 'data/tokenlist.json: Must be downloaded on disk via .factory/init.sh (curl from https://tokens.uniswap.org). Not committed to git. Without it, /tokenlist returns 500.'"
+    },
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md in the repo root does not mention DEFAULT_TOKENLISTS in the Environment Variables section. It still only lists TOKENLIST_PATH-era variables. The env.example was updated but the project AGENTS.md was not.",
+      "evidence": "AGENTS.md:58 — Environment Variables section lists 'ALCHEMY_API_KEY', 'ZEROX_API_KEY', 'FABRIC_API_KEY', 'RPC_URL_<chainId>', 'CURVE_ENABLED', 'COMPARE_ENABLED', 'METRICS_ENABLED', 'SENTRY_DSN', 'LOG_LEVEL' but not DEFAULT_TOKENLISTS"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The implementation correctly replaces the single-file TOKENLIST_PATH with a multi-default DEFAULT_TOKENLISTS system. Server-side code handles comma-separated paths, per-file error isolation, caching, and structured API response with backward compatibility. Client-side code creates separate tokenlistSources entries per default with shared toggle state and handles both new and old server response formats. Tests are comprehensive with 3 new multi-tokenlist cases. static/tokenlist.json is confirmed tracked in git. init.sh correctly references static/ and skips download if present. Non-blocking issues: single toggle for all defaults, dead 500 catch block, and pipe-character cache key. Multiple documentation files (.factory/library/environment.md, architecture.md, user-testing.md, README.md, AGENTS.md) still reference old data/tokenlist.json and TOKENLIST_PATH."
+}
