@@ -4980,7 +4980,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       return details.join('');
     }
 
-    function renderSpandexQuote(data, isWinner, quoteChainId) {
+    function renderSpandexQuote(data, isWinner, quoteChainId, gasPriceGwei) {
       const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
       const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
       const providerLabel = 'Spandex' + (data.provider ? ' / ' + data.provider : '');
@@ -4999,10 +4999,15 @@ const INDEX_HTML = `<!DOCTYPE html>
       const fromIcon = renderResultTokenIcon(data.from, quoteChainId);
       const toIcon = renderResultTokenIcon(data.to, quoteChainId);
 
-      // Build gas info line for primary display
+      // Build gas info line for primary display (Gas Cost and Gas Price together)
       let gasInfoLine = '';
       if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
         gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>';
+        if (gasPriceGwei) {
+          gasInfoLine += '<div class="field field-spaced"><div class="field-label">Gas Price</div><div class="field-value number">' + gasPriceGwei + ' gwei</div></div>';
+        }
+      } else if (gasPriceGwei) {
+        gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Price</div><div class="field-value number">' + gasPriceGwei + ' gwei</div></div>';
       }
 
       // Primary section: output + buttons inline
@@ -5051,7 +5056,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       }).join('');
     }
 
-    function renderCurveQuote(data, isWinner, quoteChainId) {
+    function renderCurveQuote(data, isWinner, quoteChainId, gasPriceGwei) {
       const symbols = {};
       symbols[data.from.toLowerCase()] = data.from_symbol;
       symbols[data.to.toLowerCase()] = data.to_symbol;
@@ -5074,10 +5079,15 @@ const INDEX_HTML = `<!DOCTYPE html>
       const fromIcon = renderResultTokenIcon(data.from, quoteChainId);
       const toIcon = renderResultTokenIcon(data.to, quoteChainId);
 
-      // Build gas info line for primary display
+      // Build gas info line for primary display (Gas Cost and Gas Price together)
       let gasInfoLine = '';
       if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
         gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>';
+        if (gasPriceGwei) {
+          gasInfoLine += '<div class="field field-spaced"><div class="field-label">Gas Price</div><div class="field-value number">' + gasPriceGwei + ' gwei</div></div>';
+        }
+      } else if (gasPriceGwei) {
+        gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Price</div><div class="field-value number">' + gasPriceGwei + ' gwei</div></div>';
       }
 
       // Primary section: output + buttons inline
@@ -5130,7 +5140,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       reasonHtml += '<div class="reason-box-title">Reason</div>';
       reasonHtml += '<div class="reason-box-content">' + data.recommendation_reason + '</div>';
       if (data.gas_price_gwei) {
-        reasonHtml += '<div class="field-value number reason-box-gas">Gas: ' + data.gas_price_gwei + ' gwei</div>';
+        reasonHtml += '<div class="field-value number reason-box-gas">Gas Price: ' + data.gas_price_gwei + ' gwei</div>';
       }
       // Show output->ETH rate if available (for non-ETH outputs)
       if (data.output_to_eth_rate) {
@@ -5141,11 +5151,11 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       if (data.recommendation === 'spandex' && data.spandex) {
         tabRecommended.textContent = 'Spandex';
-        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true, quoteChainId);
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, true, quoteChainId, data.gas_price_gwei);
         if (data.curve) {
           tabAlternative.textContent = 'Curve';
           tabAlternative.style.display = '';
-          alternativeContent.innerHTML = renderCurveQuote(data.curve, false, quoteChainId);
+          alternativeContent.innerHTML = renderCurveQuote(data.curve, false, quoteChainId, data.gas_price_gwei);
         } else {
           tabAlternative.textContent = 'Curve';
           tabAlternative.style.display = '';
@@ -5153,11 +5163,11 @@ const INDEX_HTML = `<!DOCTYPE html>
         }
       } else if (data.recommendation === 'curve' && data.curve) {
         tabRecommended.textContent = 'Curve';
-        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, true, quoteChainId);
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, true, quoteChainId, data.gas_price_gwei);
         if (data.spandex) {
           tabAlternative.textContent = 'Spandex';
           tabAlternative.style.display = '';
-          alternativeContent.innerHTML = renderSpandexQuote(data.spandex, false, quoteChainId);
+          alternativeContent.innerHTML = renderSpandexQuote(data.spandex, false, quoteChainId, data.gas_price_gwei);
         } else {
           tabAlternative.textContent = 'Spandex';
           tabAlternative.style.display = '';
@@ -5165,12 +5175,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         }
       } else if (data.spandex) {
         tabRecommended.textContent = 'Spandex';
-        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false, quoteChainId);
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(data.spandex, false, quoteChainId, data.gas_price_gwei);
         tabAlternative.style.display = 'none';
         alternativeContent.innerHTML = '';
       } else if (data.curve) {
         tabRecommended.textContent = 'Curve';
-        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, false, quoteChainId);
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(data.curve, false, quoteChainId, data.gas_price_gwei);
         tabAlternative.style.display = 'none';
         alternativeContent.innerHTML = '';
       } else {
