@@ -1516,7 +1516,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #0055FF;
       color: #fff;
       border-color: #0055FF;
-      min-width: 140px; /* Accommodate "Compare Quotes" and "Comparing..." without resize */
+      min-width: 180px; /* Accommodate "Compare Quotes" (longest label) without resize */
     }
     .btn-primary:hover { background: #0046CC; }
     
