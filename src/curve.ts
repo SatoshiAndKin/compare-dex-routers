@@ -76,6 +76,10 @@ export interface CurveQuoteResult {
   gas_used?: string;
   approval_target?: string;
   approval_calldata?: string;
+  // Gas-adjusted comparison fields
+  gas_cost_eth?: string; // Gas cost in ETH (gas_used * gas_price / 1e18)
+  output_value_eth?: string; // Output converted to ETH
+  net_value_eth?: string; // output_value_eth - gas_cost_eth
 }
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;

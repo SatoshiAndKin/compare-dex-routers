@@ -62,6 +62,10 @@ interface QuoteResult {
   router_value?: string;
   approval_token?: string;
   approval_spender?: string;
+  // Gas-adjusted comparison fields
+  gas_cost_eth?: string; // Gas cost in ETH (gas_used * gas_price / 1e18)
+  output_value_eth?: string; // Output converted to ETH
+  net_value_eth?: string; // output_value_eth - gas_cost_eth
 }
 
 interface TokenListPayload {
@@ -365,6 +369,8 @@ interface CompareResult {
   recommendation: "spandex" | "curve" | null;
   recommendation_reason: string;
   gas_price_gwei: string | null;
+  // Gas-adjusted comparison fields
+  output_to_eth_rate: string | null; // Rate used to convert output to ETH (null if output is ETH)
 }
 
 // Known WETH addresses by chainId
@@ -378,6 +384,10 @@ const WETH_ADDRESSES: Record<number, string> = {
   43114: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", // Avalanche (WAVAX)
 };
 
+// Rate cache for output->ETH conversions (60s TTL)
+const OUTPUT_TO_ETH_RATE_CACHE_TTL_MS = 60 * 1000;
+const outputToEthRateCache = new Map<string, { rate: number; timestamp: number }>();
+
 // Check if output token is ETH/WETH
 function isEthOutput(symbol: string, address: string, chainId: number): boolean {
   const normalizedSymbol = symbol.toUpperCase();
@@ -387,6 +397,69 @@ function isEthOutput(symbol: string, address: string, chainId: number): boolean 
   if (wethAddress && address.toLowerCase() === wethAddress.toLowerCase()) return true;
 
   return false;
+}
+
+// Fetch output->ETH rate via Spandex quote
+// Uses a small amount (1 unit of output token) to get the exchange rate
+// Caches the rate for 60 seconds since both quotes in a comparison use the same output token
+async function fetchOutputToEthRate(
+  chainId: number,
+  outputToken: string,
+  outputDecimals: number
+): Promise<number | null> {
+  const cacheKey = `${chainId}:${outputToken.toLowerCase()}`;
+  const cached = outputToEthRateCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < OUTPUT_TO_ETH_RATE_CACHE_TTL_MS) {
+    return cached.rate;
+  }
+
+  const wethAddress = WETH_ADDRESSES[chainId];
+  if (!wethAddress) {
+    // No WETH address for this chain, can't fetch rate
+    return null;
+  }
+
+  try {
+    // Use 1 unit of the output token to get the rate
+    const oneUnit = parseUnits("1", outputDecimals);
+
+    const quote = await getQuote({
+      config,
+      swap: {
+        chainId,
+        inputToken: outputToken as Address,
+        outputToken: wethAddress as Address,
+        mode: "exactIn",
+        inputAmount: oneUnit,
+        slippageBps: 1000, // 10% slippage for rate fetch (we just need an approximate rate)
+        swapperAccount: FALLBACK_ACCOUNT,
+      },
+      strategy: "bestPrice",
+    });
+
+    if (!quote) {
+      return null;
+    }
+
+    // Rate = outputAmount (in ETH) / 1 unit of input
+    // Since we used 1 unit, the output amount IS the rate
+    const rate = Number(formatUnits(quote.simulation.outputAmount, 18));
+
+    // Cache the rate
+    outputToEthRateCache.set(cacheKey, { rate, timestamp: Date.now() });
+
+    return rate;
+  } catch {
+    // Rate fetch failed
+    return null;
+  }
+}
+
+// Helper to format ETH values with appropriate precision
+function formatEthValue(value: number): string {
+  if (value === 0) return "0";
+  if (value < 0.000001) return value.toExponential(6);
+  return value.toFixed(6);
 }
 
 async function compareQuotes(
@@ -422,6 +495,76 @@ async function compareQuotes(
 
   let recommendation: "spandex" | "curve" | null = null;
   let reason: string;
+  let outputToEthRate: number | null = null;
+  let outputToEthRateStr: string | null = null;
+
+  // Determine if output is ETH/WETH
+  const outputIsEth = spandex.result
+    ? isEthOutput(spandex.result.to_symbol, spandex.result.to, chainId)
+    : curveResult.result
+      ? isEthOutput(curveResult.result.to_symbol, curveResult.result.to, chainId)
+      : false;
+
+  const outputSymbol = spandex.result?.to_symbol || curveResult.result?.to_symbol || "tokens";
+
+  // Fetch output->ETH rate for non-ETH outputs (if we have at least one quote)
+  if (!outputIsEth && (spandex.result || curveResult.result)) {
+    const outputToken = spandex.result?.to || curveResult.result?.to;
+    const outputDecimals = await getTokenDecimals(chainId, outputToken || "");
+    outputToEthRate = await fetchOutputToEthRate(chainId, outputToken || "", outputDecimals);
+    if (outputToEthRate !== null) {
+      outputToEthRateStr = outputToEthRate.toFixed(6);
+    }
+  }
+
+  // Helper to compute gas-adjusted values for a quote
+  function computeGasAdjustedValues(
+    outputAmount: number,
+    gasUsed: number,
+    gasPriceWei: number
+  ): {
+    gasCostEth: number;
+    outputValueEth: number;
+    netValueEth: number;
+  } {
+    const gasCostEth = gasUsed > 0 && gasPriceWei > 0 ? (gasUsed * gasPriceWei) / 1e18 : 0;
+    // Convert output to ETH
+    const outputValueEth = outputIsEth
+      ? outputAmount
+      : outputToEthRate !== null
+        ? outputAmount * outputToEthRate
+        : 0;
+    const netValueEth = outputValueEth - gasCostEth;
+    return { gasCostEth, outputValueEth, netValueEth };
+  }
+
+  // Helper to enrich quote with gas-adjusted fields
+  function enrichQuoteWithGasFields(
+    quote: QuoteResult | null,
+    gasCostEth: number,
+    outputValueEth: number,
+    netValueEth: number
+  ): void {
+    if (!quote) return;
+    quote.gas_cost_eth = formatEthValue(gasCostEth);
+    quote.output_value_eth = formatEthValue(outputValueEth);
+    quote.net_value_eth = formatEthValue(netValueEth);
+  }
+
+  // Enrich Curve quote with gas-adjusted fields
+  function enrichCurveQuoteWithGasFields(
+    quote: CurveQuoteResult | null,
+    gasCostEth: number,
+    outputValueEth: number,
+    netValueEth: number
+  ): void {
+    if (!quote) return;
+    quote.gas_cost_eth = formatEthValue(gasCostEth);
+    quote.output_value_eth = formatEthValue(outputValueEth);
+    quote.net_value_eth = formatEthValue(netValueEth);
+  }
+
+  const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
 
   if (spandex.result && curveResult.result) {
     const spandexOutput = Number(spandex.result.output_amount);
@@ -429,56 +572,69 @@ async function compareQuotes(
     const spandexGas = Number(spandex.result.gas_used || "0");
     const curveGas = Number(curveResult.result.gas_used || "0");
 
-    // Determine gas availability
-    const spandexHasGas = spandexGas > 0 && gasPriceGwei !== null;
-    const curveHasGas = curveGas > 0 && gasPriceGwei !== null;
-    const bothHaveGas = spandexHasGas && curveHasGas;
+    // Compute gas-adjusted values
+    const spandexValues = computeGasAdjustedValues(spandexOutput, spandexGas, gasPriceWei);
+    const curveValues = computeGasAdjustedValues(curveOutput, curveGas, gasPriceWei);
 
-    // Compute gas costs in ETH
-    const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
-    const spandexGasCostEth = spandexHasGas ? (spandexGas * gasPriceWei) / 1e18 : 0;
-    const curveGasCostEth = curveHasGas ? (curveGas * gasPriceWei) / 1e18 : 0;
+    // Enrich quotes with gas fields
+    enrichQuoteWithGasFields(
+      spandex.result,
+      spandexValues.gasCostEth,
+      spandexValues.outputValueEth,
+      spandexValues.netValueEth
+    );
+    enrichCurveQuoteWithGasFields(
+      curveResult.result,
+      curveValues.gasCostEth,
+      curveValues.outputValueEth,
+      curveValues.netValueEth
+    );
 
-    // Determine if output is ETH/WETH
-    const outputIsEth = isEthOutput(spandex.result.to_symbol, spandex.result.to, chainId);
-    const outputSymbol = spandex.result.to_symbol || "tokens";
+    // Determine if we can do gas-adjusted comparison
+    const canDoGasAdjusted = outputIsEth || outputToEthRate !== null;
+    const bothHaveGas = spandexGas > 0 && curveGas > 0 && gasPriceGwei !== null;
 
-    if (bothHaveGas && outputIsEth) {
-      // Gas-adjusted comparison: subtract gas cost from output
-      const spandexAdjustedOutput = spandexOutput - spandexGasCostEth;
-      const curveAdjustedOutput = curveOutput - curveGasCostEth;
-
-      if (curveAdjustedOutput > spandexAdjustedOutput) {
+    if (canDoGasAdjusted && bothHaveGas) {
+      // Gas-adjusted comparison for ALL pairs using net ETH value
+      if (curveValues.netValueEth > spandexValues.netValueEth) {
         recommendation = "curve";
-        reason = `Curve returns ${curveOutput.toFixed(6)} ETH (${curveAdjustedOutput.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ETH (${spandexAdjustedOutput.toFixed(6)} ETH after gas). Curve recommended.`;
-      } else if (spandexAdjustedOutput > curveAdjustedOutput) {
+        if (outputIsEth) {
+          reason = `Curve returns ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas). Curve recommended.`;
+        } else {
+          reason = `Curve returns ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Curve recommended.`;
+        }
+      } else if (spandexValues.netValueEth > curveValues.netValueEth) {
         recommendation = "spandex";
-        reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ETH (${spandexAdjustedOutput.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ETH (${curveAdjustedOutput.toFixed(6)} ETH after gas). Spandex recommended.`;
+        if (outputIsEth) {
+          reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas). Spandex recommended.`;
+        } else {
+          reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Spandex recommended.`;
+        }
       } else {
         recommendation = "spandex";
-        reason = `Equal gas-adjusted output: ${spandexAdjustedOutput.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        reason = `Equal gas-adjusted net value: ${spandexValues.netValueEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
       }
-    } else if (bothHaveGas && !outputIsEth) {
-      // Gas-aware comparison: note gas costs in reason but compare raw output
+    } else if (!canDoGasAdjusted && bothHaveGas) {
+      // Rate fetch failed but we have gas - show gas costs in ETH for info, compare raw output
       if (curveOutput > spandexOutput) {
         recommendation = "curve";
         const diff = curveOutput - spandexOutput;
         const pct = ((diff / spandexOutput) * 100).toFixed(3);
-        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Curve ${curveGasCostEth.toFixed(6)} ETH vs Spandex ${spandexGasCostEth.toFixed(6)} ETH. Curve recommended (gas-aware).`;
+        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Curve ${curveValues.gasCostEth.toFixed(6)} ETH vs Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH. Curve recommended (gas cost shown for info, rate unavailable).`;
       } else if (spandexOutput > curveOutput) {
         recommendation = "spandex";
         const diff = spandexOutput - curveOutput;
         const pct = ((diff / curveOutput) * 100).toFixed(3);
-        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Spandex ${spandexGasCostEth.toFixed(6)} ETH vs Curve ${curveGasCostEth.toFixed(6)} ETH. Spandex recommended (gas-aware).`;
+        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Spandex recommended (gas cost shown for info, rate unavailable).`;
       } else {
         recommendation = "spandex";
-        reason = `Equal output amounts. Gas costs: Spandex ${spandexGasCostEth.toFixed(6)} ETH vs Curve ${curveGasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        reason = `Equal output amounts. Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
       }
     } else {
       // Fall back to raw output comparison with a note about missing gas
       const missingGas: string[] = [];
-      if (!spandexHasGas) missingGas.push("Spandex");
-      if (!curveHasGas) missingGas.push("Curve");
+      if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
+      if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
       const missingGasNote =
         missingGas.length > 0
           ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw output only.`
@@ -502,9 +658,31 @@ async function compareQuotes(
   } else if (spandex.result) {
     recommendation = "spandex";
     reason = "Only Spandex returned a quote";
+
+    // Enrich with gas fields
+    const spandexOutput = Number(spandex.result.output_amount);
+    const spandexGas = Number(spandex.result.gas_used || "0");
+    const values = computeGasAdjustedValues(spandexOutput, spandexGas, gasPriceWei);
+    enrichQuoteWithGasFields(
+      spandex.result,
+      values.gasCostEth,
+      values.outputValueEth,
+      values.netValueEth
+    );
   } else if (curveResult.result) {
     recommendation = "curve";
     reason = "Only Curve returned a quote";
+
+    // Enrich with gas fields
+    const curveOutput = Number(curveResult.result.output_amount);
+    const curveGas = Number(curveResult.result.gas_used || "0");
+    const values = computeGasAdjustedValues(curveOutput, curveGas, gasPriceWei);
+    enrichCurveQuoteWithGasFields(
+      curveResult.result,
+      values.gasCostEth,
+      values.outputValueEth,
+      values.netValueEth
+    );
   } else {
     reason = "Neither source returned a quote";
   }
@@ -517,6 +695,7 @@ async function compareQuotes(
     recommendation,
     recommendation_reason: reason,
     gas_price_gwei: gasPriceGwei,
+    output_to_eth_rate: outputToEthRateStr,
   };
 }
 
@@ -4157,9 +4336,24 @@ const INDEX_HTML = `<!DOCTYPE html>
         details.push('<div class="field"><div class="field-label">Approval Spender</div><div class="field-value">' + data.approval_spender + '</div></div>');
       }
       
-      // Always show Gas Used field - "N/A" if missing or zero
-      const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null;
-      details.push('<div class="field"><div class="field-label">Gas Used</div><div class="field-value number">' + (gasUsed || 'N/A') + '</div></div>');
+      // Show Gas Cost in ETH (preferred) or Gas Used (fallback)
+      if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
+        details.push('<div class="field"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>');
+        // Also show raw gas units as secondary info
+        const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null;
+        if (gasUsed) {
+          details.push('<div class="field"><div class="field-label">Gas Units</div><div class="field-value number">' + gasUsed + '</div></div>');
+        }
+      } else {
+        // Fallback to raw gas units if ETH cost not available
+        const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null;
+        details.push('<div class="field"><div class="field-label">Gas Used</div><div class="field-value number">' + (gasUsed || 'N/A') + '</div></div>');
+      }
+      
+      // Show net value in ETH if available
+      if (data.net_value_eth && Number(data.net_value_eth) > 0) {
+        details.push('<div class="field"><div class="field-label">Net Value (after gas)</div><div class="field-value number">' + data.net_value_eth + ' ETH</div></div>');
+      }
       
       if (type === 'spandex' && data.slippage_bps) {
         details.push('<div class="field"><div class="field-label">Slippage</div><div class="field-value number">' + data.slippage_bps + ' bps</div></div>');
@@ -4181,6 +4375,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
       const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
 
+      // Build gas info line for primary display
+      let gasInfoLine = '';
+      if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
+        gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>';
+      }
+
       // Primary section: output + buttons inline
       const primary =
         '<div class="' + primaryClass + '">' +
@@ -4188,6 +4388,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           '<div class="result-output-label">' + primaryLabel + '</div>' +
           '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
           '<div class="field field-spaced"><div class="field-label">Via ' + providerLabel + '</div></div>' +
+          gasInfoLine +
           renderQuoteActions({
             quoteChainId,
             routerAddress: data.router_address,
@@ -4243,6 +4444,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
       const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
 
+      // Build gas info line for primary display
+      let gasInfoLine = '';
+      if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
+        gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>';
+      }
+
       // Primary section: output + buttons inline
       const primary =
         '<div class="' + primaryClass + '">' +
@@ -4250,6 +4457,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           '<div class="result-output-label">' + primaryLabel + '</div>' +
           '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
           '<div class="field field-spaced"><div class="field-label">Via Curve</div></div>' +
+          gasInfoLine +
           renderQuoteActions({
             quoteChainId,
             routerAddress: data.router_address,
@@ -4293,6 +4501,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       reasonHtml += '<div class="reason-box-content">' + data.recommendation_reason + '</div>';
       if (data.gas_price_gwei) {
         reasonHtml += '<div class="field-value number reason-box-gas">Gas: ' + data.gas_price_gwei + ' gwei</div>';
+      }
+      // Show output->ETH rate if available (for non-ETH outputs)
+      if (data.output_to_eth_rate) {
+        const outputSymbol = (data.spandex && data.spandex.to_symbol) || (data.curve && data.curve.to_symbol) || 'token';
+        reasonHtml += '<div class="field-value number reason-box-gas">Rate: 1 ' + outputSymbol + ' = ' + data.output_to_eth_rate + ' ETH</div>';
       }
       reasonHtml += '</div>';
 

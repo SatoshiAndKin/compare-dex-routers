@@ -424,15 +424,42 @@ describe("server /quote and /compare", () => {
     expect(body.recommendation_reason).toContain("ETH");
   });
 
-  it("GET /compare shows gas-aware comparison for non-ETH output", async () => {
+  it("GET /compare shows gas-adjusted comparison for non-ETH output with rate fetch", async () => {
     // Create a mock where output token is USDC (not ETH/WETH)
     getTokenSymbolMock.mockImplementation(async (_chainId: number, token: string) =>
       token.toLowerCase() === ADDR_FROM.toLowerCase() ? "WETH" : "USDC"
     );
 
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ outputAmount: 2_500_000_000n, gasUsed: 20000n }) // 2500 USDC (6 decimals)
+    // Mock getQuote to return different results based on the call:
+    // 1st call (rate fetch): 1 USDC -> 0.0004 ETH (rate for gas-adjusted comparison)
+    // 2nd call (Spandex quote): 2500 USDC output
+    // 3rd call (fallback quote): same as 2nd
+    const WETH_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+    getQuoteMock.mockImplementation(
+      async (params: {
+        swap: { inputToken: string; outputToken: string; inputAmount: bigint };
+      }) => {
+        // Check if this is a rate fetch (output to WETH address)
+        const isRateFetch = params.swap.outputToken.toLowerCase() === WETH_ADDRESS.toLowerCase();
+
+        if (isRateFetch) {
+          // Rate fetch: return 0.0004 ETH for 1 USDC (rate = 0.0004)
+          return {
+            simulation: {
+              outputAmount: 400_000_000_000_000n, // 0.0004 ETH (18 decimals)
+              gasUsed: 50000n,
+            },
+            inputAmount: params.swap.inputAmount, // Echo back the input amount
+            provider: "fabric",
+            txData: { to: ADDR_ROUTER, data: "0xdeadbeef" },
+          };
+        }
+
+        // Regular quote: return 2500 USDC output
+        return makeQuote({ outputAmount: 2_500_000_000n, gasUsed: 20000n });
+      }
     );
+
     findCurveQuoteMock.mockResolvedValue({
       ...makeCurveQuote({ output: "2600", gas: "30000" }),
       to_symbol: "USDC",
@@ -445,8 +472,14 @@ describe("server /quote and /compare", () => {
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.recommendation).toBe("curve");
-    // Should show gas costs in ETH but not subtract from USDC output
-    expect(body.recommendation_reason).toContain("gas-aware");
+    // Should show gas-adjusted comparison with ETH conversion
+    expect(body.recommendation_reason).toContain("ETH");
+    expect(body.recommendation_reason).toContain("after gas");
+    // Should include the rate used
+    expect(body.output_to_eth_rate).toBeDefined();
+    // Quotes should have gas cost in ETH
+    expect(body.spandex.gas_cost_eth).toBeDefined();
+    expect(body.curve.gas_cost_eth).toBeDefined();
   });
 
   it("GET /compare falls back to raw output when gas unavailable for one router", async () => {
