@@ -1836,6 +1836,35 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #e0e0e0;
       flex-shrink: 0;
     }
+
+    /* Token Input Wrapper - for icon display */
+    .token-input-wrapper {
+      position: relative;
+      width: 100%;
+    }
+    .token-input-wrapper input {
+      width: 100%;
+      padding-left: 1.75rem; /* Make room for 18px icon + 6px margin */
+    }
+    .token-input-wrapper.no-icon input {
+      padding-left: 0.5rem; /* Standard padding when no icon */
+    }
+    .token-input-icon {
+      position: absolute;
+      left: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 18px;
+      height: 18px;
+      object-fit: cover;
+      background: #e0e0e0;
+      border-radius: 50%;
+      pointer-events: none; /* Don't interfere with input clicks */
+    }
+    .token-input-wrapper.no-icon .token-input-icon {
+      display: none;
+    }
+
     .autocomplete-meta { min-width: 0; flex: 1; }
     .autocomplete-title { display: flex; align-items: baseline; gap: 0.25rem; }
     .autocomplete-symbol { font-weight: 600; font-size: 0.875rem; }
@@ -2092,14 +2121,20 @@ const INDEX_HTML = `<!DOCTYPE html>
     <!-- Row 3: From Token -->
     <div class="form-group">
       <label for="from">From Token</label>
-      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="token-input-wrapper no-icon" id="fromWrapper">
+        <img class="token-input-icon" id="fromIcon" alt="" src="">
+        <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+      </div>
       <div class="autocomplete-list" id="fromAutocomplete"></div>
       <div id="fromBalance" class="token-balance" hidden></div>
     </div>
     <!-- Row 4: To Token -->
     <div class="form-group">
       <label for="to">To Token</label>
-      <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="token-input-wrapper no-icon" id="toWrapper">
+        <img class="token-input-icon" id="toIcon" alt="" src="">
+        <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
+      </div>
       <div class="autocomplete-list" id="toAutocomplete"></div>
       <div id="toBalance" class="token-balance" hidden></div>
     </div>
@@ -2336,9 +2371,38 @@ const INDEX_HTML = `<!DOCTYPE html>
     const chainIdInput = document.getElementById('chainId');
     const fromInput = document.getElementById('from');
     const toInput = document.getElementById('to');
+    const fromWrapper = document.getElementById('fromWrapper');
+    const toWrapper = document.getElementById('toWrapper');
+    const fromIcon = document.getElementById('fromIcon');
+    const toIcon = document.getElementById('toIcon');
     const amountInput = document.getElementById('amount');
     const slippageInput = document.getElementById('slippageBps');
     const slippagePresetBtns = document.querySelectorAll('.slippage-preset-compact');
+
+    // Update token input icon based on token data
+    function updateTokenInputIcon(input, icon, wrapper, token) {
+      if (token && typeof token.logoURI === 'string' && token.logoURI) {
+        icon.src = token.logoURI;
+        icon.alt = token.symbol ? token.symbol + ' logo' : 'token logo';
+        wrapper.classList.remove('no-icon');
+        // Handle image load error gracefully
+        icon.onerror = () => {
+          wrapper.classList.add('no-icon');
+          icon.src = '';
+        };
+      } else {
+        // No logoURI - hide icon
+        wrapper.classList.add('no-icon');
+        icon.src = '';
+      }
+    }
+
+    // Clear token input icon
+    function clearTokenInputIcon(wrapper, icon) {
+      wrapper.classList.add('no-icon');
+      icon.src = '';
+      icon.alt = '';
+    }
 
     // Update active state on slippage preset buttons
     function updateSlippagePresetActive(value) {
@@ -3147,6 +3211,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       handleTokenSwapIfNeeded(input, token.address, newDisplay);
       input.value = newDisplay;
       input.dataset.address = token.address;
+      // Clear icon for custom tokens (no logoURI)
+      if (input === fromInput) {
+        clearTokenInputIcon(fromWrapper, fromIcon);
+      } else if (input === toInput) {
+        clearTokenInputIcon(toWrapper, toIcon);
+      }
 
       // Close modal
       closeUnrecognizedTokenModal();
@@ -3232,6 +3302,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         const token = findTokenByAddress(value, chainId);
         if (token) {
           input.value = formatTokenDisplay(token.symbol, token.address);
+          // Update token icon in input field
+          if (input === fromInput) {
+            updateTokenInputIcon(fromInput, fromIcon, fromWrapper, token);
+          } else if (input === toInput) {
+            updateTokenInputIcon(toInput, toIcon, toWrapper, token);
+          }
         }
         // Update balance for this token field
         if (input === fromInput) {
@@ -4078,6 +4154,12 @@ const INDEX_HTML = `<!DOCTYPE html>
             : currentAddress;
           otherInput.value = swappedDisplay;
           otherInput.dataset.address = currentAddress;
+          // Update icon for the swapped field
+          if (otherInput === fromInput) {
+            updateTokenInputIcon(fromInput, fromIcon, fromWrapper, token);
+          } else if (otherInput === toInput) {
+            updateTokenInputIcon(toInput, toIcon, toWrapper, token);
+          }
           // Update balance for the swapped field
           if (otherInput === fromInput) {
             void updateFromTokenBalance();
@@ -4111,6 +4193,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         input.value = newDisplay;
         // Store full address in data-address attribute
         input.dataset.address = token.address;
+        // Update token icon in input field
+        if (input === fromInput) {
+          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, token);
+        } else if (input === toInput) {
+          updateTokenInputIcon(toInput, toIcon, toWrapper, token);
+        }
         hide();
         // Update balance for this token field
         if (input === fromInput) {
@@ -4200,6 +4288,15 @@ const INDEX_HTML = `<!DOCTYPE html>
         const chainId = document.getElementById('chainId').value;
         matches = findTokenMatches(input.value, chainId);
         render();
+        // Clear icon when input is cleared
+        if (!input.value.trim()) {
+          input.dataset.address = '';
+          if (input === fromInput) {
+            clearTokenInputIcon(fromWrapper, fromIcon);
+          } else if (input === toInput) {
+            clearTokenInputIcon(toWrapper, toIcon);
+          }
+        }
       }
 
       input.addEventListener('input', refresh);
@@ -4659,23 +4756,27 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (defaults) {
         const fromToken = findTokenByAddress(defaults.from, chainId);
         const toToken = findTokenByAddress(defaults.to, chainId);
-        
+
         // Set from input with display format and data-address
         if (fromToken) {
           fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
           fromInput.dataset.address = fromToken.address;
+          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
         } else {
           fromInput.value = defaults.from;
           fromInput.dataset.address = defaults.from;
+          clearTokenInputIcon(fromWrapper, fromIcon);
         }
-        
+
         // Set to input with display format and data-address
         if (toToken) {
           toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
           toInput.dataset.address = toToken.address;
+          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
         } else {
           toInput.value = defaults.to;
           toInput.dataset.address = defaults.to;
+          clearTokenInputIcon(toWrapper, toIcon);
         }
       }
     }
@@ -5534,9 +5635,11 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (fromToken) {
           fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
           fromInput.dataset.address = fromToken.address;
+          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
         } else {
           fromInput.value = fromAddr;
           fromInput.dataset.address = fromAddr;
+          clearTokenInputIcon(fromWrapper, fromIcon);
         }
       }
 
@@ -5546,9 +5649,11 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (toToken) {
           toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
           toInput.dataset.address = toToken.address;
+          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
         } else {
           toInput.value = toAddr;
           toInput.dataset.address = toAddr;
+          clearTokenInputIcon(toWrapper, toIcon);
         }
       }
 
