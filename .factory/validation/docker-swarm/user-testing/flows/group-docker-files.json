@@ -1,0 +1,164 @@
+{
+  "groupId": "group-docker-files",
+  "testedAt": "2026-03-03T12:00:00Z",
+  "credentials": {
+    "account": "docker_worker_b",
+    "namespace": "docker-b"
+  },
+  "toolsUsed": ["Execute", "Read", "Glob"],
+  "assertions": [
+    {
+      "id": "VAL-DOCKER-010",
+      "title": ".dockerignore exists",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Glob search for .dockerignore in project root",
+          "expected": ".dockerignore file found",
+          "observed": ".dockerignore found at ./.dockerignore"
+        },
+        {
+          "action": "ls -la .dockerignore",
+          "expected": "File exists with non-zero size",
+          "observed": "-rw-r--r-- 1 bryan staff 339 Mar 3 08:24 .dockerignore"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (file inspection only)",
+        "fileListing": "-rw-r--r-- 1 bryan staff 339 Mar 3 08:24 /Users/bryan/code/compare-dex-routers/.dockerignore"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-011",
+      "title": ".dockerignore excludes node_modules",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read .dockerignore contents",
+          "expected": "node_modules pattern present",
+          "observed": "Line 'node_modules' found under '# Dependencies' comment"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (file inspection only)",
+        "fileContents": "# Dependencies\nnode_modules\n\n# Version control\n.git\n\n# Secrets and environment\n.env\n\n# Test and coverage output\ncoverage\n\n# Screenshot/image files\n*.png\n\n# Factory mission files\n.factory\n\n# Documentation\ndocs\n\n# Development scripts\nscripts\n\n# Development config files\n*.config.ts\n\n# Docker compose (not needed in image)\ndocker-compose.yml"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-012",
+      "title": ".dockerignore excludes unnecessary files",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read .dockerignore and check for required patterns: node_modules, .git, .env, coverage, *.png",
+          "expected": "All five required exclusion patterns present",
+          "observed": "All five found: 'node_modules' (line under # Dependencies), '.git' (line under # Version control), '.env' (line under # Secrets and environment), 'coverage' (line under # Test and coverage output), '*.png' (line under # Screenshot/image files)"
+        },
+        {
+          "action": "Check for additional exclusions",
+          "expected": "Additional useful exclusions present",
+          "observed": "Also excludes: .factory, docs, scripts, *.config.ts, docker-compose.yml"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (file inspection only)",
+        "requiredPatterns": {
+          "node_modules": true,
+          ".git": true,
+          ".env": true,
+          "coverage": true,
+          "*.png": true
+        },
+        "additionalPatterns": [".factory", "docs", "scripts", "*.config.ts", "docker-compose.yml"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-020",
+      "title": "Swarm stack file exists",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Glob search for docker-stack.yml in project root",
+          "expected": "docker-stack.yml file found",
+          "observed": "docker-stack.yml found at ./docker-stack.yml"
+        },
+        {
+          "action": "ls -la docker-stack.yml",
+          "expected": "File exists with non-zero size",
+          "observed": "-rw-r--r-- 1 bryan staff 2894 Mar 3 08:28 docker-stack.yml"
+        },
+        {
+          "action": "Read file to verify valid YAML structure",
+          "expected": "Well-formed YAML with services key",
+          "observed": "File parses as valid YAML with top-level 'services' key containing 'spandex-router' service definition"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (file inspection only)",
+        "fileListing": "-rw-r--r-- 1 bryan staff 2894 Mar 3 08:28 /Users/bryan/code/compare-dex-routers/docker-stack.yml"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCKER-021",
+      "title": "Stack file defines service with image, ports, and env configuration",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read docker-stack.yml and verify service definition",
+          "expected": "Service defined with image, port mapping, and env configuration",
+          "observed": "Service 'spandex-router' defined with image '${DOCKER_IMAGE:-compare-dex-routers:latest}', ports '${PORT:-3000}:${PORT:-3000}', and env_file '.env'"
+        },
+        {
+          "action": "Verify deploy configuration present",
+          "expected": "Deploy section with update_config, restart_policy, healthcheck",
+          "observed": "Deploy section includes update_config (parallelism:1, delay:10s, order:start-first, failure_action:rollback), rollback_config, restart_policy (condition:on-failure, max_attempts:3), resource limits, and healthcheck (HTTP GET /health, interval:10s, timeout:5s, retries:3, start_period:15s)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (file inspection only)",
+        "serviceDefinition": {
+          "serviceName": "spandex-router",
+          "image": "${DOCKER_IMAGE:-compare-dex-routers:latest}",
+          "ports": ["${PORT:-3000}:${PORT:-3000}"],
+          "envFile": [".env"],
+          "deploy": {
+            "update_config": {
+              "parallelism": 1,
+              "delay": "10s",
+              "order": "start-first",
+              "failure_action": "rollback"
+            },
+            "restart_policy": {
+              "condition": "on-failure",
+              "max_attempts": 3
+            },
+            "resources": {
+              "limits": { "memory": "512M" },
+              "reservations": { "memory": "256M" }
+            }
+          },
+          "healthcheck": {
+            "test": "node -e fetch http://localhost:PORT/health",
+            "interval": "10s",
+            "timeout": "5s",
+            "retries": 3,
+            "start_period": "15s"
+          }
+        }
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: 5 passed, 0 failed. .dockerignore exists with all required exclusion patterns (node_modules, .git, .env, coverage, *.png) plus additional useful exclusions. docker-stack.yml exists with a fully configured spandex-router service including image, ports, env_file, rolling update config, restart policy, resource limits, and healthcheck."
+}

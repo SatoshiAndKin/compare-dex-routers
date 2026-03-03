@@ -1,0 +1,137 @@
+{
+  "groupId": "group-regression-ui",
+  "testedAt": "2026-03-03T18:47:00Z",
+  "credentials": {
+    "account": "ui_worker_reg",
+    "namespace": "ui-reg"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-REG-004",
+      "title": "Autocomplete works after reorder",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "App loads with form", "observed": "App loaded with Chain, From Token, To Token, Direction, Amount, Slippage fields in correct order" },
+        { "action": "Clear From Token input and type 'USDC' slowly", "expected": "Autocomplete dropdown appears with USDC suggestions", "observed": "Autocomplete dropdown appeared showing USDC (USD Coin) with icon, full name, and full address 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 from enabled tokenlist" }
+      ],
+      "evidence": {
+        "screenshots": ["val-reg-004-autocomplete.png"],
+        "consoleErrors": "none (only favicon.ico 404 cosmetic)",
+        "network": "No network requests needed for autocomplete (client-side filtering)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REG-005",
+      "title": "Chain switching resets defaults",
+      "status": "pass",
+      "steps": [
+        { "action": "Start with Base (8453) selected, default tokens USDC (0x8335...) and WETH (0x4200...)", "expected": "Base default tokens shown", "observed": "From: USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), To: WETH (0x4200000000000000000000000000000000000006)" },
+        { "action": "Open chain dropdown and select Ethereum (1)", "expected": "Token defaults update to Ethereum addresses", "observed": "From changed to USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48), To changed to WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2) — correct Ethereum mainnet addresses" }
+      ],
+      "evidence": {
+        "screenshots": ["val-reg-005-before-switch-base.png", "val-reg-005-after-switch-ethereum.png"],
+        "consoleErrors": "none (only favicon.ico 404 cosmetic)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REG-006",
+      "title": "Wallet connect/disconnect flow",
+      "status": "pass",
+      "steps": [
+        { "action": "Inject mock ERC-6963 wallet provider via page.evaluate()", "expected": "Mock wallet registered", "observed": "Mock wallet injected with eip6963:announceProvider event" },
+        { "action": "Click 'Connect Wallet' button", "expected": "Wallet provider menu appears", "observed": "Provider menu appeared with 'Frame' and 'Mock Wallet' options" },
+        { "action": "Click 'Mock Wallet' option", "expected": "Wallet connected, address displayed", "observed": "Connected state shown: 'Mock Wallet' label, full address 0x1234567890123456789012345678901234567890, and 'Disconnect' button" },
+        { "action": "Click 'Disconnect' button", "expected": "Wallet disconnected, Connect Wallet button returns", "observed": "'Wallet disconnected.' message shown, 'Connect Wallet' button reappeared" }
+      ],
+      "evidence": {
+        "screenshots": ["val-reg-006-connected.png", "val-reg-006-disconnected.png"],
+        "consoleErrors": "none (only favicon.ico 404 cosmetic)",
+        "network": "N/A (mock wallet, no real RPC calls)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REG-007",
+      "title": "MEV Protection modal",
+      "status": "pass",
+      "steps": [
+        { "action": "Submit comparison on Ethereum (USDC→WETH, 1000, 50bps) to generate results", "expected": "Comparison results appear with MEV Protection button", "observed": "Results loaded showing Spandex recommended quote, MEV Protection button visible below results" },
+        { "action": "Click 'MEV Protection' button", "expected": "MEV modal opens with chain-specific content", "observed": "Modal opened with title 'MEV Protection', explanation of MEV/sandwich attacks, Flashbots Docs link, and Ethereum Mainnet-specific section with 'Add Flashbots Protect to Wallet' button (disabled, 'Connect wallet first')" },
+        { "action": "Press Escape", "expected": "Modal closes", "observed": "Modal closed (classList.contains('show') returned false)" }
+      ],
+      "evidence": {
+        "screenshots": ["val-reg-007-mev-modal.png"],
+        "consoleErrors": "none (only favicon.ico 404 cosmetic)",
+        "network": "GET /compare returned comparison results"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REG-008",
+      "title": "Settings modal",
+      "status": "pass",
+      "steps": [
+        { "action": "Click gear icon (Open settings button)", "expected": "Settings modal opens", "observed": "Settings dialog opened with 'Settings' heading" },
+        { "action": "Verify settings content", "expected": "Tokenlist sources and local tokens sections present", "observed": "Tokenlist Sources section with trust warning, URL input, 'Uniswap Labs Default' (357 tokens) with toggle. Local Tokens section with toggle, Export/Import Tokenlist buttons, 'No custom tokens saved' message" },
+        { "action": "Press Escape", "expected": "Modal closes", "observed": "Modal closed (classList.contains('show') returned false)" }
+      ],
+      "evidence": {
+        "screenshots": ["val-reg-008-settings-modal.png"],
+        "consoleErrors": "none (only favicon.ico 404 cosmetic)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REG-009",
+      "title": "Custom tokenlist add/remove",
+      "status": "pass",
+      "steps": [
+        { "action": "Open settings, enter 'https://tokens.coingecko.com/uniswap/all.json' in URL input, click Load", "expected": "CoinGecko tokenlist loads with token count", "observed": "CoinGecko list added: 'Added CoinGecko' message, list entry shows 'CoinGecko 5095 tokens' with toggle and remove button" },
+        { "action": "Close settings, type 'PEPE' in To Token input", "expected": "Autocomplete shows tokens from both lists", "observed": "Autocomplete showed 20+ PEPE-related tokens — main PEPE from 'Uniswap Labs Default', plus multiple CoinGecko-tagged entries (The Original Pepe, NEWPEPE, Pepe King Prawn, Baby Pepe, Pepe Chain, American Pepe, etc.)" },
+        { "action": "Open settings, click Remove (×) on CoinGecko tokenlist", "expected": "CoinGecko list removed, autocomplete no longer shows CoinGecko tokens", "observed": "CoinGecko entry removed from settings list. Autocomplete for 'PEPE' now shows only 1 result: PEPE (Pepe) from Uniswap Labs Default" }
+      ],
+      "evidence": {
+        "screenshots": ["val-reg-009-tokenlist-added.png", "val-reg-009-tokenlist-removed.png"],
+        "consoleErrors": "none (only favicon.ico 404 cosmetic)",
+        "network": "Fetched CoinGecko tokenlist JSON successfully"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REG-010",
+      "title": "Direction toggle",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to fresh app, select Ethereum, click 'Buy exact' toggle", "expected": "Toggle activates Buy exact mode with provider notice", "observed": "Buy exact button pressed/active, notice appeared: '⚠️ Fewer providers support reverse quotes (3/7 Spandex providers)'" },
+        { "action": "Click Compare Quotes", "expected": "Results show targetOut mode with 'You pay (required)' label", "observed": "URL updated with mode=targetOut. Results showed 'You pay (required)' label with USDC amount (2121519.81253 USDC) via Curve. Recommended badge displayed correctly." }
+      ],
+      "evidence": {
+        "screenshots": ["val-reg-010-direction-toggle.png"],
+        "consoleErrors": "none (only favicon.ico 404 cosmetic)",
+        "network": "GET /compare?...&mode=targetOut returned targetOut results"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Setting input values directly via DOM manipulation (input.value = ...) does not trigger the app's internal address parsing. Autocomplete selection or slow typing is required for tokens to be properly registered by the app. Had to reload and use proper UI interactions for VAL-REG-010.",
+      "resolved": true,
+      "resolution": "Used full page reload and proper chain selection + default tokens instead of direct DOM value setting",
+      "affectedAssertions": ["VAL-REG-010"]
+    },
+    {
+      "description": "MEV Protection button only appears after comparison results are loaded (it's inside the #result div), not in the initial form view.",
+      "resolved": true,
+      "resolution": "Submitted a comparison first to make the MEV button visible before testing VAL-REG-007",
+      "affectedAssertions": ["VAL-REG-007"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 7 assertions (VAL-REG-004 through VAL-REG-010): all 7 passed. Autocomplete works with reordered form, chain switching resets token defaults correctly, wallet connect/disconnect flow works with mock ERC-6963 provider, MEV Protection modal opens with Ethereum-specific content and closes on Escape, Settings modal shows tokenlist sources and local tokens, custom tokenlist add/remove works end-to-end affecting autocomplete, and direction toggle produces targetOut results with 'You pay (required)' display."
+}

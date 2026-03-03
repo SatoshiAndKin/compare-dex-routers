@@ -1,0 +1,78 @@
+{
+  "groupId": "group-cross-005-r2",
+  "testedAt": "2026-03-03T19:15:28.000Z",
+  "credentials": {
+    "account": "mock-cross005-r2@example.invalid",
+    "namespace": "cross005-r2"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-005",
+      "title": "Auto-connect swap + Curve quote",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/, select Ethereum (1) chain, confirm USDC→WETH defaults, amount 1000",
+          "expected": "Form loads with Ethereum chain, no wallet connected",
+          "observed": "Form loads with Ethereum (1), Connect Wallet button visible (no wallet connected), USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48) → WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2), amount 1000"
+        },
+        {
+          "action": "Click Compare Quotes to fetch results, then click Curve tab",
+          "expected": "Curve result card with Swap button visible, no Approve button (no sender means no approval data)",
+          "observed": "Curve tab shows ALTERNATIVE result: 0.503380039303158938 WETH, Via Curve, Gas Price 0.2456 gwei. Only a Swap button present — no Approve button, consistent with contract note that Curve approval requires sender address"
+        },
+        {
+          "action": "Disable auto-refresh timer to prevent interference, inject mock ERC-6963 wallet (Mock Cross005 Wallet) with request logging",
+          "expected": "Mock wallet available for selection, request log tracking active",
+          "observed": "Auto-refresh intervals cleared. Mock ERC-6963 wallet injected with uuid cross005-r2-mock-wallet, logging all provider.request calls to window.__mockWalletLog"
+        },
+        {
+          "action": "Click Swap button on Curve card with no wallet connected",
+          "expected": "Wallet provider menu appears (auto-connect flow triggered)",
+          "observed": "Wallet provider menu appeared showing two options: Frame and Mock Cross005 Wallet. Swap button became inactive while awaiting wallet selection."
+        },
+        {
+          "action": "Select Mock Cross005 Wallet from provider menu",
+          "expected": "Wallet connects (eth_requestAccounts), then swap auto-submits (eth_sendTransaction) without requiring a second Swap click",
+          "observed": "Wallet connected immediately. Mock Cross005 Wallet shown with address 0x1234567890abcdef1234567890abcdef12345678. Curve card displays 'SUCCESS: Success' status. No second Swap click was needed — the swap auto-submitted after connect."
+        },
+        {
+          "action": "Read mock wallet request log to verify call order",
+          "expected": "eth_requestAccounts followed by eth_sendTransaction",
+          "observed": "Full request sequence: (1) eth_requestAccounts → (2) eth_call to USDC contract (balance check) → (3) eth_call to WETH contract (balance check) → (4) eth_chainId → (5) eth_sendTransaction to Curve router 0x45312ea0eff7e09c83cbe249fa1d7598c4c8cd4e with from=0x1234567890abcdef1234567890abcdef12345678 → (6) eth_getTransactionReceipt (polling for confirmation). eth_requestAccounts at T+0ms, eth_sendTransaction at T+3ms — confirms auto-swap with no user re-click."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "cross-005-r2-01-initial-no-wallet.png (Ethereum chain, no wallet connected, USDC→WETH form)",
+          "cross-005-r2-02-curve-results-no-wallet.png (Curve tab with Swap button, no wallet, no Approve button)",
+          "cross-005-r2-03-swap-wallet-menu.png (Wallet provider menu appeared after clicking Swap — Frame and Mock Cross005 Wallet options)",
+          "cross-005-r2-04-auto-swap-after-connect.png (Wallet connected, Curve result showing balances, auto-swap completed)",
+          "cross-005-r2-05-swap-success-status.png (Post-refresh view showing wallet connected)"
+        ],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic, known issue — ignored per mission guidance)",
+        "network": "Mock wallet request log confirms auto-connect + auto-swap flow",
+        "mockWalletLog": [
+          {"method": "eth_requestAccounts", "timestamp": "2026-03-03T19:15:28.572Z"},
+          {"method": "eth_call", "params": "balanceOf(0x1234...5678) on USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)", "timestamp": "2026-03-03T19:15:28.573Z"},
+          {"method": "eth_call", "params": "balanceOf(0x1234...5678) on WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)", "timestamp": "2026-03-03T19:15:28.573Z"},
+          {"method": "eth_chainId", "timestamp": "2026-03-03T19:15:28.574Z"},
+          {"method": "eth_sendTransaction", "to": "0x45312ea0eff7e09c83cbe249fa1d7598c4c8cd4e", "from": "0x1234567890abcdef1234567890abcdef12345678", "value": "0x0", "timestamp": "2026-03-03T19:15:28.575Z"},
+          {"method": "eth_getTransactionReceipt", "txHash": "0xmocktxhash19cb52072bf", "timestamp": "2026-03-03T19:15:28.575Z"}
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Auto-refresh timer (15s interval) re-fetched comparison results after wallet connected, replacing the Curve card that showed SUCCESS status. Required clearing all intervals before testing to capture the swap result cleanly.",
+      "resolved": true,
+      "resolution": "Cleared all setInterval timers via brute-force clearInterval loop before clicking Swap",
+      "affectedAssertions": ["VAL-CROSS-005"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 1 assertion (VAL-CROSS-005): pass. With no wallet connected and Curve results visible, clicking Swap triggered the wallet provider menu. After selecting Mock Cross005 Wallet, the wallet connected (eth_requestAccounts) and the swap auto-submitted (eth_sendTransaction to Curve router 0x45312ea0eff7e09c83cbe249fa1d7598c4c8cd4e) without requiring a second Swap click. The mock wallet request log confirms the exact sequence: eth_requestAccounts → eth_sendTransaction. The prior round's failure was a misread — the contract specifically tests the Swap auto-connect flow (not Approve), and notes that Curve Approve is unavailable when disconnected due to @curvefi/api requiring a sender address for approval routing."
+}

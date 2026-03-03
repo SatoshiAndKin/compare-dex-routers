@@ -1,0 +1,48 @@
+{
+  "milestone": "docker-swarm",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 27,
+    "passed": 26,
+    "failed": 1,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CROSS-001",
+    "VAL-CROSS-002",
+    "VAL-CROSS-003",
+    "VAL-CROSS-004",
+    "VAL-DOCKER-001",
+    "VAL-DOCKER-002",
+    "VAL-DOCKER-003",
+    "VAL-DOCKER-004",
+    "VAL-DOCKER-005",
+    "VAL-DOCKER-006",
+    "VAL-DOCKER-010",
+    "VAL-DOCKER-011",
+    "VAL-DOCKER-012",
+    "VAL-DOCKER-020",
+    "VAL-DOCKER-021",
+    "VAL-DOCKER-022",
+    "VAL-DOCKER-023",
+    "VAL-DOCKER-024",
+    "VAL-DOCKER-025",
+    "VAL-REG-004",
+    "VAL-REG-005",
+    "VAL-REG-006",
+    "VAL-REG-007",
+    "VAL-REG-008",
+    "VAL-REG-009",
+    "VAL-REG-010"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-CROSS-005",
+      "reason": "The Curve result card does not render an 'Approve' button when no wallet is connected because the Curve API only returns approval data (approval_target, approval_calldata) when a sender address is provided in the request. Without a wallet, no sender is sent, so approval fields are empty, and only the Swap button is shown. The auto-connect mechanism works correctly for Swap on Curve cards (verified), but the specific 'auto-approve' flow described in this assertion is not possible for Curve results without a prior wallet connection. This is a chicken-and-egg design gap: the assertion requires clicking Approve without a wallet, but the Approve button requires wallet-derived sender data to appear."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
