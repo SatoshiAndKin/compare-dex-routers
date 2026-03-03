@@ -1,0 +1,72 @@
+# Docker Swarm Stack for FlashProfits DEX Router Comparison
+#
+# Zero-Downtime Rolling Deploy Strategy:
+# ---------------------------------------
+# This stack is configured for single-node zero-downtime deployments.
+#
+# The key setting is `order: start-first` in update_config. This means:
+# 1. Docker Swarm starts a NEW container with the updated image
+# 2. The new container must pass its healthcheck before being considered healthy
+# 3. Only AFTER the new container is healthy, the OLD container is stopped
+# 4. This ensures zero downtime - there's always at least one healthy container serving traffic
+#
+# The `parallelism: 1` ensures only one container is updated at a time (important for single-node).
+# The `delay: 10s` adds a brief pause between update batches to allow healthchecks to stabilize.
+#
+# Rollback is automatic if the new container fails to become healthy within the configured window.
+
+services:
+  spandex-router:
+    # Image: configurable via DOCKER_IMAGE env var, or defaults to locally-built image
+    # To use a registry image: DOCKER_IMAGE=myregistry/spandex-router:v1.2.3 docker stack deploy -c docker-stack.yml spandex
+    image: ${DOCKER_IMAGE:-compare-dex-routers:latest}
+
+    # Port mapping: app port from env (default 3000)
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+
+    # Load environment variables from .env file
+    env_file:
+      - .env
+
+    # Resource limits for a single-node deployment
+    deploy:
+      # Zero-downtime rolling update configuration
+      # - parallelism: 1 = update one container at a time (required for single-node)
+      # - delay: 10s = wait 10s between update batches for healthcheck stabilization
+      # - order: start-first = new container starts BEFORE old one stops (zero-downtime)
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+
+      # Automatic rollback if update fails (healthcheck doesn't pass, crashes, etc.)
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+
+      # Restart policy: restart on failure, max 3 attempts
+      # This prevents infinite restart loops if the app has a fatal error
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+
+      # Resource limits for single-node deployment
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+    # Healthcheck: HTTP GET to /health endpoint
+    # - interval: check every 10s
+    # - timeout: fail if no response in 5s
+    # - retries: 3 consecutive failures = unhealthy
+    # - start_period: 15s grace period for startup
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:' + (process.env.PORT||'3000') + '/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
