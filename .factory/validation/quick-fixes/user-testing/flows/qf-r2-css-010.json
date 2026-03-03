@@ -1,0 +1,63 @@
+{
+  "groupId": "qf-r2-css-010",
+  "milestone": "quick-fixes",
+  "surface": "web-ui",
+  "testedAt": "2026-03-03T03:24:00Z",
+  "credentials": {
+    "account": "stateless-ui-runner-1",
+    "namespace": "quick-fixes-r2-css010"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-CSS-010",
+      "title": "Uniform button sizing; submit button must not resize when text changes",
+      "status": "pass",
+      "reason": "Submit button maintained exactly 180×40.5 px across all text states: 'Compare Quotes' (180×40.5) → 'Comparing...' (180×40.5) → 'Compare Quotes' (180×40.5). The min-width: 180px CSS rule prevents the button from shrinking when shorter text is displayed. Prior failure (177×41 → 144×41) is resolved.",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/",
+          "expected": "App loads with Compare Quotes button visible",
+          "observed": "App loaded; Compare Quotes button visible with text 'Compare Quotes'"
+        },
+        {
+          "action": "Measure submit button dimensions before click",
+          "expected": "Stable initial dimensions",
+          "observed": "Width: 180px, Height: 40.5px, min-width: 180px applied via CSS"
+        },
+        {
+          "action": "Install MutationObserver on submit button to log dimensions on every text change",
+          "expected": "Observer captures all transitions",
+          "observed": "Observer installed successfully"
+        },
+        {
+          "action": "Click Compare Quotes to trigger loading state text change",
+          "expected": "Button text changes to 'Comparing...' then back to 'Compare Quotes'",
+          "observed": "Text changed: 'Compare Quotes' → 'Comparing...' → 'Compare Quotes'. All three states logged."
+        },
+        {
+          "action": "Retrieve MutationObserver size log",
+          "expected": "All logged widths/heights are identical",
+          "observed": "All 3 entries show width: 180, height: 40.5 — zero size change across text transitions"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g6-button-sizing-before.png", "qf-g6-button-sizing-after.png", "qf-g6-button-sizing-full-view.png"],
+        "consoleErrors": "favicon.ico 404 only (known cosmetic issue)",
+        "measurements": {
+          "beforeClick": { "text": "Compare Quotes", "width": 180, "height": 40.5 },
+          "duringLoading": { "text": "Comparing...", "width": 180, "height": 40.5 },
+          "afterLoading": { "text": "Compare Quotes", "width": 180, "height": 40.5 },
+          "cssMinWidth": "180px",
+          "tolerance": "0px (exact match across all states)",
+          "priorFailure": { "beforeWidth": 177, "afterWidth": 144, "delta": -33 },
+          "currentDelta": 0
+        }
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion: VAL-CSS-010 PASS. Submit button maintains 180×40.5 px across all text states ('Compare Quotes' → 'Comparing...' → 'Compare Quotes') with zero width/height change. The min-width: 180px CSS fix resolved the prior regression where button shrank from 177px to 144px."
+}
