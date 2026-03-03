@@ -45,7 +45,7 @@ describe("server integration", () => {
   });
 
   afterAll(async () => {
-    delete process.env.TOKENLIST_PATH;
+    delete process.env.DEFAULT_TOKENLISTS;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
@@ -177,7 +177,7 @@ describe("server integration", () => {
       ],
     };
     await writeFile(tokenlistPath, JSON.stringify(fixture), "utf8");
-    process.env.TOKENLIST_PATH = tokenlistPath;
+    process.env.DEFAULT_TOKENLISTS = tokenlistPath;
     try {
       const res = await request(`${baseUrl}/tokenlist`);
       expect(res.status).toBe(200);
@@ -185,7 +185,7 @@ describe("server integration", () => {
       expect(Array.isArray(body.tokens)).toBe(true);
       expect(body.tokens.length).toBeGreaterThan(0);
     } finally {
-      delete process.env.TOKENLIST_PATH;
+      delete process.env.DEFAULT_TOKENLISTS;
       await rm(dir, { recursive: true, force: true });
     }
   });
@@ -209,12 +209,12 @@ describe("server integration", () => {
       }),
       "utf8"
     );
-    process.env.TOKENLIST_PATH = tokenlistPath;
+    process.env.DEFAULT_TOKENLISTS = tokenlistPath;
     try {
       const res = await request(`${baseUrl}/tokenlist`);
       expect(res.headers["content-type"]).toContain("application/json");
     } finally {
-      delete process.env.TOKENLIST_PATH;
+      delete process.env.DEFAULT_TOKENLISTS;
       await rm(dir, { recursive: true, force: true });
     }
   });
@@ -235,7 +235,7 @@ describe("server integration", () => {
       ],
     };
     await writeFile(tokenlistPath, JSON.stringify(fixture), "utf8");
-    process.env.TOKENLIST_PATH = tokenlistPath;
+    process.env.DEFAULT_TOKENLISTS = tokenlistPath;
     try {
       const res = await request(`${baseUrl}/tokenlist`);
       const body = JSON.parse(res.body);
@@ -250,7 +250,7 @@ describe("server integration", () => {
         logoURI: expect.any(String),
       });
     } finally {
-      delete process.env.TOKENLIST_PATH;
+      delete process.env.DEFAULT_TOKENLISTS;
       await rm(dir, { recursive: true, force: true });
     }
   });
@@ -287,7 +287,7 @@ describe("server integration", () => {
 
     try {
       await writeFile(tokenlistPath, JSON.stringify(initial), "utf8");
-      process.env.TOKENLIST_PATH = tokenlistPath;
+      process.env.DEFAULT_TOKENLISTS = tokenlistPath;
 
       const firstResponse = await request(`${baseUrl}/tokenlist`);
       expect(firstResponse.status).toBe(200);
@@ -299,22 +299,24 @@ describe("server integration", () => {
       expect(secondResponse.status).toBe(200);
       expect(JSON.parse(secondResponse.body).tokens[0].name).toBe("Initial Token");
     } finally {
-      delete process.env.TOKENLIST_PATH;
+      delete process.env.DEFAULT_TOKENLISTS;
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it("GET /tokenlist returns 500 with descriptive error when file is missing", async () => {
-    process.env.TOKENLIST_PATH = join(tmpdir(), `missing-tokenlist-${Date.now()}.json`);
+  it("GET /tokenlist returns 200 with empty arrays when file is missing (logs error)", async () => {
+    process.env.DEFAULT_TOKENLISTS = join(tmpdir(), `missing-tokenlist-${Date.now()}.json`);
 
     try {
       const res = await request(`${baseUrl}/tokenlist`);
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(200);
       expect(res.headers["content-type"]).toContain("application/json");
       const body = JSON.parse(res.body);
-      expect(body.error).toContain("Failed to load tokenlist");
+      // Should return empty arrays when no tokenlists can be loaded
+      expect(body.tokenlists).toEqual([]);
+      expect(body.tokens).toEqual([]);
     } finally {
-      delete process.env.TOKENLIST_PATH;
+      delete process.env.DEFAULT_TOKENLISTS;
     }
   });
 
@@ -455,6 +457,154 @@ describe("server integration", () => {
     expect(html).toContain("hasConnectedWallet()");
     // Sender should be empty string when no wallet
     expect(html).toContain("sender: hasConnectedWallet() ? connectedWalletAddressValue : ''");
+  });
+
+  // VAL-TL-003: Multiple default tokenlists via DEFAULT_TOKENLISTS env var
+  describe("GET /tokenlist with multiple defaults", () => {
+    it("returns tokenlists array with one entry per default tokenlist", async () => {
+      const dir1 = await mkdtemp(join(tmpdir(), "tokenlist-multi-1-"));
+      const dir2 = await mkdtemp(join(tmpdir(), "tokenlist-multi-2-"));
+      const path1 = join(dir1, "list1.json");
+      const path2 = join(dir2, "list2.json");
+
+      const list1 = {
+        name: "First List",
+        tokens: [
+          {
+            chainId: 1,
+            address: "0x0000000000000000000000000000000000000001",
+            name: "Token One",
+            symbol: "ONE",
+            decimals: 18,
+          },
+        ],
+      };
+      const list2 = {
+        name: "Second List",
+        tokens: [
+          {
+            chainId: 1,
+            address: "0x0000000000000000000000000000000000000002",
+            name: "Token Two",
+            symbol: "TWO",
+            decimals: 18,
+          },
+        ],
+      };
+
+      await writeFile(path1, JSON.stringify(list1), "utf8");
+      await writeFile(path2, JSON.stringify(list2), "utf8");
+      process.env.DEFAULT_TOKENLISTS = `${path1},${path2}`;
+
+      try {
+        const res = await request(`${baseUrl}/tokenlist`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+
+        // Should have tokenlists array with 2 entries
+        expect(Array.isArray(body.tokenlists)).toBe(true);
+        expect(body.tokenlists.length).toBe(2);
+
+        // Each entry should have name and tokens
+        expect(body.tokenlists[0].name).toBe("First List");
+        expect(body.tokenlists[0].tokens.length).toBe(1);
+        expect(body.tokenlists[1].name).toBe("Second List");
+        expect(body.tokenlists[1].tokens.length).toBe(1);
+
+        // Merged tokens array should have both
+        expect(body.tokens.length).toBe(2);
+      } finally {
+        delete process.env.DEFAULT_TOKENLISTS;
+        await rm(dir1, { recursive: true, force: true });
+        await rm(dir2, { recursive: true, force: true });
+      }
+    });
+
+    it("returns tokenlists array for single default tokenlist", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "tokenlist-single-"));
+      const tokenlistPath = join(dir, "tokenlist.json");
+      const fixture = {
+        name: "Single List",
+        tokens: [
+          {
+            chainId: 1,
+            address: "0x0000000000000000000000000000000000000001",
+            name: "Test Token",
+            symbol: "TST",
+            decimals: 18,
+          },
+        ],
+      };
+      await writeFile(tokenlistPath, JSON.stringify(fixture), "utf8");
+      process.env.DEFAULT_TOKENLISTS = tokenlistPath;
+
+      try {
+        const res = await request(`${baseUrl}/tokenlist`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+
+        // Should have tokenlists array with 1 entry
+        expect(Array.isArray(body.tokenlists)).toBe(true);
+        expect(body.tokenlists.length).toBe(1);
+        expect(body.tokenlists[0].name).toBe("Single List");
+        expect(body.tokenlists[0].tokens.length).toBe(1);
+      } finally {
+        delete process.env.DEFAULT_TOKENLISTS;
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("merges tokens from all default tokenlists into flat tokens array", async () => {
+      const dir1 = await mkdtemp(join(tmpdir(), "tokenlist-merge-1-"));
+      const dir2 = await mkdtemp(join(tmpdir(), "tokenlist-merge-2-"));
+      const path1 = join(dir1, "list1.json");
+      const path2 = join(dir2, "list2.json");
+
+      const list1 = {
+        name: "List A",
+        tokens: [
+          {
+            chainId: 1,
+            address: "0x0000000000000000000000000000000000000001",
+            name: "A",
+            symbol: "A",
+            decimals: 18,
+          },
+        ],
+      };
+      const list2 = {
+        name: "List B",
+        tokens: [
+          {
+            chainId: 1,
+            address: "0x0000000000000000000000000000000000000002",
+            name: "B",
+            symbol: "B",
+            decimals: 18,
+          },
+        ],
+      };
+
+      await writeFile(path1, JSON.stringify(list1), "utf8");
+      await writeFile(path2, JSON.stringify(list2), "utf8");
+      process.env.DEFAULT_TOKENLISTS = `${path1},${path2}`;
+
+      try {
+        const res = await request(`${baseUrl}/tokenlist`);
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+
+        // Merged tokens array should have both tokens
+        expect(body.tokens.length).toBe(2);
+        const symbols = body.tokens.map((t: { symbol: string }) => t.symbol);
+        expect(symbols).toContain("A");
+        expect(symbols).toContain("B");
+      } finally {
+        delete process.env.DEFAULT_TOKENLISTS;
+        await rm(dir1, { recursive: true, force: true });
+        await rm(dir2, { recursive: true, force: true });
+      }
+    });
   });
 
   // Tokenlist proxy endpoint tests

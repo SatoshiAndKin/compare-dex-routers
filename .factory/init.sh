@@ -6,11 +6,13 @@ cd /Users/bryan/code/compare-dex-routers
 # Install dependencies (idempotent)
 npm install --prefer-offline --no-audit 2>/dev/null || npm install
 
-# Ensure data directory exists with tokenlist
-if [ ! -f data/tokenlist.json ]; then
-  mkdir -p data
+# Ensure default tokenlist exists in static/
+# The committed static/tokenlist.json should already be present.
+# Only download if missing (e.g., fresh checkout with incomplete clone).
+if [ ! -f static/tokenlist.json ]; then
+  mkdir -p static
   echo "Downloading Uniswap default tokenlist..."
-  curl -sf https://tokens.uniswap.org -o data/tokenlist.json
+  curl -sf https://tokens.uniswap.org -o static/tokenlist.json
 fi
 
 # Ensure .env exists

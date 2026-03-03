@@ -75,25 +75,69 @@ interface TokenListPayload {
 }
 
 const FALLBACK_ACCOUNT = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055" as Address;
-let cachedTokenList: TokenListPayload | null = null;
-let cachedTokenListPath: string | null = null;
 
-function getTokenListPath() {
-  return process.env.TOKENLIST_PATH || resolve(process.cwd(), "data", "tokenlist.json");
+interface TokenlistEntry {
+  path: string;
+  name: string;
+  tokens: TokenListPayload["tokens"];
 }
 
-async function loadTokenList(): Promise<TokenListPayload> {
-  const tokenListPath = getTokenListPath();
-  if (cachedTokenList && cachedTokenListPath === tokenListPath) {
-    return cachedTokenList;
+let cachedDefaultTokenlists: TokenlistEntry[] | null = null;
+let cachedDefaultTokenlistsKey: string | null = null;
+
+/**
+ * Get the list of default tokenlist file paths from environment.
+ * DEFAULT_TOKENLISTS: comma-separated list of file paths (relative to cwd or absolute)
+ * Defaults to ['static/tokenlist.json'] when not set.
+ */
+function getDefaultTokenlistPaths(): string[] {
+  const envValue = process.env.DEFAULT_TOKENLISTS;
+  if (!envValue || envValue.trim() === "") {
+    return [resolve(process.cwd(), "static", "tokenlist.json")];
+  }
+  // Split by comma, trim whitespace, resolve relative paths to cwd
+  return envValue
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+    .map((p) => (p.startsWith("/") ? p : resolve(process.cwd(), p)));
+}
+
+/**
+ * Load all default tokenlists from configured paths.
+ * Returns array of {path, name, tokens} entries.
+ * Caches based on the DEFAULT_TOKENLISTS env value.
+ */
+async function loadDefaultTokenlists(): Promise<TokenlistEntry[]> {
+  const paths = getDefaultTokenlistPaths();
+  const cacheKey = paths.join("|");
+
+  if (cachedDefaultTokenlists && cachedDefaultTokenlistsKey === cacheKey) {
+    return cachedDefaultTokenlists;
   }
 
-  const fileContents = await readFile(tokenListPath, "utf8");
-  const parsed = JSON.parse(fileContents) as TokenListPayload;
+  const entries: TokenlistEntry[] = [];
 
-  cachedTokenList = parsed;
-  cachedTokenListPath = tokenListPath;
-  return parsed;
+  for (const path of paths) {
+    try {
+      const fileContents = await readFile(path, "utf8");
+      const parsed = JSON.parse(fileContents) as TokenListPayload;
+      const tokens = Array.isArray(parsed.tokens) ? parsed.tokens : [];
+      // Use the name from the tokenlist, or derive from filename
+      const name =
+        typeof parsed.name === "string" && parsed.name.trim() !== ""
+          ? parsed.name
+          : path.split("/").pop() || path;
+      entries.push({ path, name, tokens });
+    } catch (err) {
+      logError(`Failed to load default tokenlist from ${path}`, err);
+      // Continue to next path - don't fail entirely if one is missing
+    }
+  }
+
+  cachedDefaultTokenlists = entries;
+  cachedDefaultTokenlistsKey = cacheKey;
+  return entries;
 }
 
 // Maximum response size for proxy endpoint (5MB)
@@ -2750,17 +2794,30 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
     }
 
-    // Load default tokenlist from server
-    async function loadDefaultTokenlist() {
+    // Load default tokenlist(s) from server
+    // Returns array of {name, tokens} objects (one per configured default)
+    async function loadDefaultTokenlists() {
       try {
         const res = await fetch('/tokenlist');
         if (!res.ok) {
           throw new Error('HTTP ' + res.status);
         }
         const data = await res.json();
-        const tokens = Array.isArray(data.tokens) ? data.tokens : [];
-        // Tag tokens with source
-        return tokens.map(t => ({ ...t, _source: DEFAULT_TOKENLIST_NAME }));
+        // Server now returns {tokenlists: [{name, tokens}, ...], tokens: merged}
+        const tokenlists = Array.isArray(data.tokenlists) ? data.tokenlists : [];
+        if (tokenlists.length === 0) {
+          // Fallback for old server response format
+          const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+          if (tokens.length > 0) {
+            return [{ name: DEFAULT_TOKENLIST_NAME, tokens: tokens.map(t => ({ ...t, _source: DEFAULT_TOKENLIST_NAME })) }];
+          }
+          return [];
+        }
+        // Tag tokens with their source name
+        return tokenlists.map(entry => ({
+          name: entry.name || DEFAULT_TOKENLIST_NAME,
+          tokens: (entry.tokens || []).map(t => ({ ...t, _source: entry.name || DEFAULT_TOKENLIST_NAME }))
+        }));
       } catch {
         return [];
       }
@@ -4337,10 +4394,11 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     // Initialize tokenlist sources on page load
     async function initializeTokenlistSources() {
-      // Step 1: Load default tokenlist first
-      const defaultTokens = await loadDefaultTokenlist();
-      
+      // Step 1: Load all default tokenlists from server
+      const defaultTokenlistEntries = await loadDefaultTokenlists();
+
       // Read default tokenlist enabled state from localStorage (default: true for new visitors)
+      // Note: single toggle applies to all default tokenlists
       let defaultEnabled = true;
       try {
         const stored = localStorage.getItem(DEFAULT_TOKENLIST_ENABLED_KEY);
@@ -4350,14 +4408,16 @@ const INDEX_HTML = `<!DOCTYPE html>
       } catch {
         // Ignore storage errors, use default
       }
-      
-      tokenlistSources = [{
-        url: null, // null indicates default
+
+      // Create one tokenlistSources entry per default tokenlist
+      // Each has url: null (marker for default) but distinct names
+      tokenlistSources = defaultTokenlistEntries.map((entry) => ({
+        url: null, // null indicates default (not a custom URL)
         enabled: defaultEnabled,
-        name: DEFAULT_TOKENLIST_NAME,
-        tokens: defaultTokens,
+        name: entry.name,
+        tokens: entry.tokens,
         error: null
-      }];
+      }));
 
       // Step 2: Check for migration from old single-URL format
       const migrated = migrateOldTokenlistUrl();
@@ -4505,8 +4565,19 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
   if (url.pathname === "/tokenlist" && req.method === "GET") {
     try {
-      const tokenList = await loadTokenList();
-      sendJson(res, 200, tokenList);
+      const defaultTokenlists = await loadDefaultTokenlists();
+      // Return structured response with all default tokenlists
+      // For backward compatibility, merge all tokens into a single array
+      const allTokens = defaultTokenlists.flatMap((entry) => entry.tokens);
+      const names = defaultTokenlists.map((entry) => entry.name);
+      sendJson(res, 200, {
+        name: names.length === 1 ? names[0] : "Default Tokenlists",
+        tokenlists: defaultTokenlists.map((entry) => ({
+          name: entry.name,
+          tokens: entry.tokens,
+        })),
+        tokens: allTokens,
+      });
     } catch (err) {
       logError("Failed to load tokenlist", err);
       const details = err instanceof Error ? err.message : String(err);
