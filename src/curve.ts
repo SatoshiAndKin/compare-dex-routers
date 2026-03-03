@@ -45,6 +45,21 @@ type CurveInstance = {
     ) => Promise<Array<{ to?: string | null; data?: string | null }>>;
     required: (from: string, to: string, outputAmount: string) => Promise<string>;
   };
+  // L2-specific gas tracking
+  L1WeightedGasPrice?: number;
+  chainId: number;
+  getNetworkConstants: () => Promise<{
+    ALIASES: Record<string, string>;
+    ZERO_ADDRESS: string;
+    [key: string]: unknown;
+  }>;
+  contracts: Record<
+    string,
+    { contract: { [method: string]: (...args: unknown[]) => Promise<unknown> } }
+  >;
+  provider: {
+    estimateGas: (tx: { to: string; data: string }) => Promise<bigint | [bigint, bigint]>;
+  };
 };
 
 interface CurveRouteStep {
@@ -79,6 +94,7 @@ export function getCurveInitError(chainId: number): string | undefined {
 /**
  * Initialize a single Curve instance for a specific chain.
  * Creates a new curve instance and initializes it with the chain's RPC URL.
+ * For L2 networks (Optimism, Base), also initializes L1WeightedGasPrice.
  */
 export async function initCurveInstance(
   chainId: number,
@@ -149,20 +165,21 @@ export async function initAllCurveInstances(
   }
 }
 
+// Symbol cache keyed by chainId:address to prevent cross-chain contamination
 const symbolCache = new Map<string, string>();
 
 async function getCurveTokenSymbol(curve: CurveInstance, address: string): Promise<string> {
-  const lower = address.toLowerCase();
-  const cached = symbolCache.get(lower);
+  const key = `${curve.chainId}:${address.toLowerCase()}`;
+  const cached = symbolCache.get(key);
   if (cached !== undefined) return cached;
 
   try {
     const data = await curve.getCoinsData([address]);
     const symbol = data[0]?.symbol || "";
-    symbolCache.set(lower, symbol);
+    symbolCache.set(key, symbol);
     return symbol;
   } catch {
-    symbolCache.set(lower, "");
+    symbolCache.set(key, "");
     return "";
   }
 }
@@ -195,6 +212,7 @@ const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 /**
  * Find a Curve quote for the given token pair.
  * Uses the curve instance initialized for the specific chain.
+ * For L2 networks, handles the gas price initialization issue.
  */
 export async function findCurveQuote(
   chainId: number,
@@ -214,30 +232,56 @@ export async function findCurveQuote(
     );
   }
 
+  // Normalize addresses to lowercase for consistent handling
+  const fromLower = from.toLowerCase();
+  const toLower = to.toLowerCase();
+
   // For targetOut mode, we need to first get the required input amount
   let inputAmount: string;
   let outputAmount: string;
   let route: CurveRouteStep[];
 
-  if (mode === "targetOut") {
-    // Use required() to get the input needed for desired output
-    const requiredInput = await curve.router.required(from, to, amount);
-    inputAmount = requiredInput;
-    outputAmount = amount;
-    // Get the route for the input amount
-    const routeResult = await curve.router.getBestRouteAndOutput(from, to, inputAmount);
-    route = routeResult.route as CurveRouteStep[];
-  } else {
-    // exactIn mode - original behavior
-    const routeResult = await curve.router.getBestRouteAndOutput(from, to, amount);
-    route = routeResult.route as CurveRouteStep[];
-    inputAmount = amount;
-    outputAmount = routeResult.output;
+  try {
+    if (mode === "targetOut") {
+      // Use required() to get the input needed for desired output
+      const requiredInput = await curve.router.required(fromLower, toLower, amount);
+      inputAmount = requiredInput;
+      outputAmount = amount;
+      // Get the route for the input amount
+      const routeResult = await curve.router.getBestRouteAndOutput(fromLower, toLower, inputAmount);
+      route = routeResult.route as CurveRouteStep[];
+    } else {
+      // exactIn mode - original behavior
+      const routeResult = await curve.router.getBestRouteAndOutput(fromLower, toLower, amount);
+      route = routeResult.route as CurveRouteStep[];
+      inputAmount = amount;
+      outputAmount = routeResult.output;
+    }
+  } catch (err) {
+    // Handle L2-specific error with better message
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (errorMsg.includes("This method exists only for L2 networks")) {
+      throw new Error(
+        `No Curve route found for ${from.slice(0, 10)}...→${to.slice(0, 10)}... on chain ${chainId}. ` +
+          `The pair may not be supported by Curve pools on this chain.`,
+        { cause: err }
+      );
+    }
+    // Re-throw other errors
+    throw err;
+  }
+
+  // Check if we got an empty route (no pools found)
+  if (!route || route.length === 0) {
+    throw new Error(
+      `No Curve route found for ${from.slice(0, 10)}...→${to.slice(0, 10)}... on chain ${chainId}. ` +
+        `The pair may not be supported by Curve pools on this chain.`
+    );
   }
 
   const [fromSymbol, toSymbol] = await Promise.all([
-    getCurveTokenSymbol(curve, from),
-    getCurveTokenSymbol(curve, to),
+    getCurveTokenSymbol(curve, fromLower),
+    getCurveTokenSymbol(curve, toLower),
   ]);
 
   const typedRoute = route;
@@ -257,16 +301,16 @@ export async function findCurveQuote(
   );
 
   // For swap transaction, we always use the input amount
-  const swapTx = await curve.router.populateSwap(from, to, inputAmount);
+  const swapTx = await curve.router.populateSwap(fromLower, toLower, inputAmount);
   if (!swapTx.to || !swapTx.data) {
     throw new Error("Failed to generate Curve swap transaction");
   }
 
   const result: CurveQuoteResult = {
     source: "curve",
-    from,
+    from: fromLower,
     from_symbol: fromSymbol,
-    to,
+    to: toLower,
     to_symbol: toSymbol,
     amount,
     input_amount: inputAmount,
@@ -295,9 +339,14 @@ export async function findCurveQuote(
 
   if (sender && ADDRESS_REGEX.test(sender)) {
     try {
-      const isApproved = await curve.hasAllowance([from], [inputAmount], sender, swapTx.to);
+      const isApproved = await curve.hasAllowance([fromLower], [inputAmount], sender, swapTx.to);
       if (!isApproved) {
-        const approveTxs = await curve.router.populateApprove(from, inputAmount, false, sender);
+        const approveTxs = await curve.router.populateApprove(
+          fromLower,
+          inputAmount,
+          false,
+          sender
+        );
         const approveTx = approveTxs[0];
         if (approveTx?.to && approveTx?.data) {
           result.approval_target = approveTx.to;
