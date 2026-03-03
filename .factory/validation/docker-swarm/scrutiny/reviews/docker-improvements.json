@@ -1,0 +1,51 @@
+{
+  "featureId": "docker-improvements",
+  "reviewedAt": "2026-03-03T17:45:00.000Z",
+  "commitId": "cde4429",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, minimal implementation that adds COPY static/ ./static/ to the Dockerfile and creates a comprehensive .dockerignore. The diff is exactly 2 files changed: 1 line added to Dockerfile, 29-line .dockerignore created. The COPY static/ placement (after COPY src/ and before COPY tsconfig.json) is correct and follows layer caching best practices — static assets change less frequently than source code, but more frequently than config. The .dockerignore covers all major exclusions (node_modules, .git, .env, coverage, *.png, .factory, docs, scripts, *.config.ts, docker-compose.yml). Worker thoroughly verified: docker build, container health, UI serving, tokenlist endpoint, Node version (v24.14.0), typecheck, lint, and 157 tests passing.",
+    "issues": [
+      {
+        "file": ".dockerignore",
+        "line": null,
+        "severity": "non_blocking",
+        "description": "docker-stack.yml is not excluded. The .dockerignore excludes docker-compose.yml but omits docker-stack.yml, which was added by the sibling feature. This file would be included in the build context unnecessarily. Not harmful (it's not COPY'd into the image), but inconsistent with the intent to exclude Docker orchestration files."
+      },
+      {
+        "file": ".dockerignore",
+        "line": null,
+        "severity": "non_blocking",
+        "description": "eslint.config.js is not excluded. The *.config.ts pattern covers TypeScript config files (vitest.config.ts, knip.config.ts), but eslint.config.js uses .js extension and slips through. Again not COPY'd into the image, just adds ~2KB to build context."
+      },
+      {
+        "file": ".dockerignore",
+        "line": null,
+        "severity": "non_blocking",
+        "description": "openapi.yaml, README.md, and various root-level non-source files are not excluded. These add to build context size but are not COPY'd into the image. A more aggressive .dockerignore could use a whitelist approach (exclude everything, then !include only what's needed), but the current approach is reasonable for this project size."
+      },
+      {
+        "file": "Dockerfile",
+        "line": null,
+        "severity": "non_blocking",
+        "description": "Pre-existing: No USER directive — container runs as root. This is a security best practice violation but was pre-existing before this feature and is out of scope. Noting for awareness."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "services.yaml doesn't include Docker build/test commands. The worker ran docker build -t compare-dex-routers-test ., docker run with port 3099, and various curl health checks manually. These are standard verification commands for Docker features that could be documented for consistency across Docker-related work.",
+      "evidence": "Handoff commandsRun includes docker build, docker run, docker exec, docker stop — none of these are in .factory/services.yaml"
+    },
+    {
+      "area": "conventions",
+      "observation": "The worker initially mapped container port to 3000 (docker run -p 3099:3000) which failed because .env has PORT=3001. Worker then corrected to -p 3099:3001. The Dockerfile EXPOSE 3000 is misleading since the actual app port is configured via .env (PORT=3001). This PORT mismatch between Dockerfile EXPOSE and actual runtime config could trip up future workers.",
+      "evidence": "Transcript shows first curl to localhost:3099 failed with exit code 52 (empty reply). Worker checked .env, found PORT=3001, then re-ran with -p 3099:3001 which worked. Dockerfile line: EXPOSE 3000 vs .env: PORT=3001"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The implementation is correct, minimal, and well-verified. Two files changed: Dockerfile gets COPY static/ ./static/ (1 line), and a new .dockerignore excludes build artifacts and dev-only files. The worker verified the full Docker lifecycle (build → run → health → UI → tokenlist → node version) plus ran typecheck, lint, and all 157 tests. Non-blocking issues are minor omissions in .dockerignore coverage (docker-stack.yml, eslint.config.js) and a pre-existing lack of USER directive in the Dockerfile."
+}
