@@ -1,0 +1,164 @@
+{
+  "groupId": "qf-g4-reverse-gas",
+  "testedAt": "2026-03-03T02:27:00Z",
+  "credentials": {
+    "account": "validator_qf_g4",
+    "namespace": "qf_g4"
+  },
+  "toolsUsed": ["playwright-mcp", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-REV-001",
+      "title": "Quote direction toggle",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "Form displayed with direction toggle", "observed": "Form displayed with 'Sell exact' (pressed/active) and 'Buy exact' buttons" },
+        { "action": "Verify toggle buttons visible", "expected": "Two toggle buttons for exactIn and targetOut", "observed": "'Sell exact' and 'Buy exact' buttons visible in a toggle row between Amount and From Token fields" },
+        { "action": "Click 'Buy exact'", "expected": "Buy exact becomes active", "observed": "'Buy exact' became pressed/active, 'Sell exact' became inactive" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g4-rev-001-direction-toggle.png", "qf-g4-rev-003-provider-notice.png"],
+        "consoleErrors": "none (favicon.ico 404 only - cosmetic)",
+        "network": "N/A - UI toggle only"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REV-002",
+      "title": "targetOut mode returns required input",
+      "status": "pass",
+      "steps": [
+        { "action": "Set chain to Ethereum, click 'Buy exact', keep default tokens USDC->WETH", "expected": "Form in targetOut mode", "observed": "Buy exact pressed, provider notice shown" },
+        { "action": "Click 'Compare Quotes' with amount=1000", "expected": "API call with mode=targetOut, results show required input", "observed": "URL shows mode=targetOut; result card shows 'YOU PAY (REQUIRED): 2186651.83783 USDC' via Curve" },
+        { "action": "Verify API response via curl: GET /compare?chainId=1&from=USDC&to=WETH&amount=1000&slippageBps=50&mode=targetOut", "expected": "mode: targetOut in response with input_amount", "observed": "Response: mode=targetOut, input_amount=2186651.83783, output_amount=1000, recommendation=curve" },
+        { "action": "Expand details", "expected": "Output Amount (desired) and Input Amount (required) labels", "observed": "Details show 'Output Amount (desired): 1000 WETH' and 'Input Amount (required): 2186651.83783 USDC'" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g4-rev-002-targetout-result.png", "qf-g4-rev-002-targetout-result-full.png", "qf-g4-rev-002-details-expanded.png"],
+        "consoleErrors": "none (favicon.ico 404 only)",
+        "network": "GET /compare?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000&slippageBps=50&mode=targetOut -> 200. Response: spandex=null (no providers), curve={input_amount: 2186651.83783, output_amount: 1000, mode: targetOut}"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REV-003",
+      "title": "Provider coverage note in targetOut mode",
+      "status": "pass",
+      "steps": [
+        { "action": "Click 'Buy exact' to enter targetOut mode", "expected": "Warning notice about reduced provider coverage", "observed": "Warning box appeared: '⚠️ Fewer providers support reverse quotes (3/7 Spandex providers)'" },
+        { "action": "Click 'Sell exact' to return to exactIn mode", "expected": "Warning disappears", "observed": "Warning box disappeared when switching back to Sell exact" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g4-rev-003-provider-notice.png"],
+        "consoleErrors": "none",
+        "network": "N/A - UI state only"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-GAS-001",
+      "title": "Gas cost displayed per quote in ETH",
+      "status": "pass",
+      "steps": [
+        { "action": "Compare USDC->WETH on Ethereum (exactIn, amount=1000)", "expected": "Quote cards show gas cost in ETH", "observed": "Spandex quote card shows 'Gas Cost: 0.000029 ETH' (visible in both card summary and expanded details). Gas Units: 512461 shown in details." },
+        { "action": "Verify API response", "expected": "gas_cost_eth field in response", "observed": "Spandex: gas_used=431189, gas_cost_eth=0.000019. Curve: gas_cost_eth=0 (gas estimation requires funded sender - known quirk). gas_price_gwei=0.0443" },
+        { "action": "Expand details", "expected": "Gas Cost field shows ETH value", "observed": "Details section shows 'Gas Cost: 0.000029 ETH' and 'Gas Units: 512461'" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g4-gas-001-comparison-results.png", "qf-g4-gas-001-spandex-gas-cost-eth.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1&from=USDC&to=WETH&amount=1000&slippageBps=50 -> 200. Spandex: gas_used=431189, gas_cost_eth=0.000019. Curve: gas_cost_eth=0 (known quirk: requires funded sender)."
+      },
+      "issues": "Curve gas_cost_eth is always 0 because gas estimation requires a funded sender address. This is a known limitation documented in user-testing.md."
+    },
+    {
+      "id": "VAL-GAS-002",
+      "title": "Gas-adjusted comparison for all token pairs",
+      "status": "pass",
+      "steps": [
+        { "action": "Compare WETH->USDT on Ethereum (non-ETH output, amount=1)", "expected": "System fetches outputToken->ETH rate for gas normalization", "observed": "API response includes output_to_eth_rate=0.000496, output_value_eth=0.998950, net_value_eth=0.998950. UI shows 'Rate: 1 USDT = 0.000496 ETH'" },
+        { "action": "Check UI reason and rate display", "expected": "Rate display in comparison section", "observed": "Reason section shows 'Rate: 1 USDT = 0.000496 ETH'. Recommended card shows 2012.239637 USDT via Curve." },
+        { "action": "Expand details", "expected": "Net Value (after gas) in ETH", "observed": "Net Value (after gas): 0.999009 ETH - confirming output was normalized to ETH via the fetched rate" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g4-gas-002-non-eth-swap-with-rate.png", "qf-g4-gas-003-net-value-eth-non-eth-output.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1&from=WETH&to=USDT&amount=1&slippageBps=50 -> 200. output_to_eth_rate=0.000496, curve.output_value_eth=0.998950, curve.net_value_eth=0.998950"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-GAS-003",
+      "title": "Gas-adjusted output shown per quote",
+      "status": "pass",
+      "steps": [
+        { "action": "Compare USDC->WETH on Ethereum (ETH output)", "expected": "Net value after gas shown per quote", "observed": "Spandex details: Gas Cost=0.000029 ETH, Net Value (after gas)=0.496305 ETH. Output was 0.49633350319423968 WETH, net = output - gas." },
+        { "action": "Compare WETH->USDT (non-ETH output)", "expected": "Net value after gas in ETH even for non-ETH output", "observed": "Curve details: Net Value (after gas)=0.999009 ETH (for 2012.239637 USDT output at rate 0.000496 ETH/USDT, minus gas)" },
+        { "action": "Verify API net_value_eth field", "expected": "net_value_eth present in API response", "observed": "Spandex: net_value_eth=0.496780 for USDC->WETH. Curve: net_value_eth=0.998950 for WETH->USDT" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g4-gas-001-spandex-gas-cost-eth.png", "qf-g4-gas-003-net-value-eth-non-eth-output.png"],
+        "consoleErrors": "none",
+        "network": "Confirmed net_value_eth field in API responses for both ETH and non-ETH output tokens"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-GAS-004",
+      "title": "Graceful fallback when price unavailable",
+      "status": "pass",
+      "steps": [
+        { "action": "Compare USDC->DAI on Ethereum (both non-ETH, outputToken->ETH rate may fail)", "expected": "Falls back to raw output comparison with gas shown separately, no crash", "observed": "API: output_to_eth_rate=null, output_value_eth=0 for both quotes. Recommendation falls back to raw output: 'Spandex (kyberswap) outputs 0.084156 DAI more (+0.008%). Gas estimates unavailable for Curve, comparing raw output only.'" },
+        { "action": "Verify UI shows gas cost in ETH alongside", "expected": "Gas cost still displayed in ETH for informational purposes", "observed": "UI shows 'GAS COST: 0.000031 ETH' on the Spandex card, even though the comparison uses raw output. No crash or error." },
+        { "action": "Confirm no errors in console or response", "expected": "No errors, clean fallback", "observed": "No console errors. API returns valid JSON with recommendation. App continues working." }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g4-gas-004-fallback-comparison.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1&from=USDC&to=DAI&amount=1000&slippageBps=50 -> 200. output_to_eth_rate=null. Spandex: gas_cost_eth=0.000029, output_value_eth=0, net_value_eth=-0.0000188. Curve: gas_cost_eth=0, output_value_eth=0. Recommendation: spandex (raw output comparison fallback)."
+      },
+      "issues": "When output_to_eth_rate cannot be fetched (DAI case), the net_value_eth for Spandex becomes slightly negative (-0.0000188) because gas cost is subtracted from a 0 ETH value. The recommendation still correctly uses raw output comparison. This is acceptable fallback behavior."
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Full reverse quote flow",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to app, select Ethereum chain", "expected": "Chain set to Ethereum", "observed": "Chain dropdown shows 'Ethereum (1)'" },
+        { "action": "Default tokens USDC/WETH already populated", "expected": "From and To tokens pre-filled", "observed": "From: USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48), To: WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)" },
+        { "action": "Click 'Buy exact' to switch to targetOut", "expected": "Mode switched, provider notice shown", "observed": "'Buy exact' pressed, '⚠️ Fewer providers support reverse quotes (3/7 Spandex providers)' notice visible" },
+        { "action": "Set amount to 0.5 (desired output)", "expected": "Amount set", "observed": "Amount field shows 0.5" },
+        { "action": "Click 'Compare Quotes'", "expected": "Results show required input amounts", "observed": "URL: mode=targetOut. Result: 'YOU PAY (REQUIRED): 1007.576922 USDC' via Curve. Only Curve returned a quote." },
+        { "action": "Verify URL reflects targetOut mode", "expected": "URL contains mode=targetOut", "observed": "URL: /compare?chainId=1&from=...&to=...&amount=0.5&slippageBps=50&mode=targetOut" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g4-cross-002-reverse-quote-flow.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=0.5&slippageBps=50&mode=targetOut -> 200. Curve: input_amount=1007.576922, output_amount=0.5"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Auto-refresh (15s interval) collapses expanded Details section and changes DOM refs, making it difficult to take screenshots of expanded details. Had to use page.evaluate to stop auto-refresh timer before interacting.",
+      "resolved": true,
+      "resolution": "Used page.evaluate(() => clearInterval(window._refreshTimer)) and also monkey-patched setInterval to block new refresh timers",
+      "affectedAssertions": ["VAL-GAS-001", "VAL-GAS-002", "VAL-GAS-003"]
+    },
+    {
+      "description": "Playwright MCP tools lose page context between operations (page navigates to about:blank), requiring re-navigation. run_code approach more reliable for multi-step sequences.",
+      "resolved": true,
+      "resolution": "Used playwright browser_run_code for multi-step interactions, and browser_navigate to recover from lost page context",
+      "affectedAssertions": ["VAL-REV-001", "VAL-REV-002", "VAL-CROSS-002"]
+    },
+    {
+      "description": "Spandex provider frequently returns no quotes for certain pairs (WETH->USDT, USDC->WETH in targetOut) - likely due to provider rate limits or API key issues. Only Curve returns results in many tests.",
+      "resolved": false,
+      "resolution": "Documented as observed behavior; Curve quotes still validate the assertion requirements",
+      "affectedAssertions": ["VAL-REV-002", "VAL-GAS-002", "VAL-CROSS-002"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 8 assertions: all 8 passed. VAL-REV-001/002/003 confirm direction toggle, targetOut results with required input amounts, and provider coverage notice (3/7). VAL-GAS-001/002/003/004 confirm gas cost in ETH per quote, gas-adjusted comparison for non-ETH outputs via outputToken->ETH rate, net value after gas display, and graceful fallback when rate unavailable. VAL-CROSS-002 confirms the full reverse quote end-to-end flow. Curve gas_cost_eth is 0 due to known limitation requiring funded sender. USDC->DAI fallback correctly uses raw output comparison when no ETH rate available."
+}

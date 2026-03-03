@@ -1,0 +1,122 @@
+{
+  "groupId": "qf-g2-form-layout-slippage",
+  "testedAt": "2026-03-03T02:55:00.000Z",
+  "credentials": {
+    "account": "validator_qf_g2",
+    "namespace": "qf_g2"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-SLIP-001",
+      "title": "3 bps preset button visible",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "Page loads with slippage presets visible", "observed": "Page loaded successfully with slippage preset buttons visible in the action row" },
+        { "action": "Inspect slippage preset buttons", "expected": "Buttons include 3, 10, 50, 100, 300", "observed": "All five preset buttons visible in order: 3, 10, 50, 100, 300. The '3' button appears first (leftmost) in the preset group." }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g2-main-form.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "GET / -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SLIP-002",
+      "title": "Clicking 3 bps preset sets value",
+      "status": "pass",
+      "steps": [
+        { "action": "Click the '3' preset button", "expected": "Slippage input value changes to 3 and button highlights as active", "observed": "After clicking '3' button, it gained [active] state and the slippage input value changed from '50' to '3'" },
+        { "action": "Verify visual state", "expected": "Button highlighted with blue/active styling", "observed": "Screenshot confirms '3' button has blue filled background (active state) while other presets remain outlined" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g2-3bps-active.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "n/a (client-side interaction only)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SLIP-003",
+      "title": "Slippage controls compact alongside submit button",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect the action row layout", "expected": "Compare Quotes button is first/leftmost, followed by compact bordered slippage box with all presets on single row", "observed": "Compare Quotes button (blue, primary) is the leftmost element. To its right is a compact bordered box containing 'SLIPPAGE' label, preset buttons (3, 10, 50, 100, 300), custom input field, and 'bps' label — all on a single row" },
+        { "action": "Verify slippage visual hierarchy", "expected": "Slippage controls visually smaller/subordinate to submit button", "observed": "Slippage preset buttons are significantly smaller than the Compare Quotes button. The slippage box has a thin border and compact layout. Compare Quotes is the dominant visual element." },
+        { "action": "Check 375px responsive layout", "expected": "All presets still fit and are usable", "observed": "At 375px width, the slippage row wraps below the Compare Quotes button (expected responsive behavior). All 5 presets (3, 10, 50, 100, 300) plus custom input remain visible and accessible." }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g2-main-form.png", "qf-g2-375px-form.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "n/a (layout inspection only)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SLIP-004",
+      "title": "Custom slippage input accessible",
+      "status": "pass",
+      "steps": [
+        { "action": "Locate custom slippage input in the compact box", "expected": "Text input for custom bps value is visible inline", "observed": "A textbox labeled 'Slippage (bps)' is visible inline in the compact slippage box, to the right of the preset buttons, with 'bps' suffix label" },
+        { "action": "Enter custom non-preset value '25'", "expected": "Input accepts the value and no preset button is highlighted", "observed": "After setting value to '25', the input shows '25', and no preset button has active styling (all presets appear outlined/inactive)" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g2-custom-slippage.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "n/a (client-side interaction only)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AMT-001",
+      "title": "Amount field on its own full-width row",
+      "status": "pass",
+      "steps": [
+        { "action": "Inspect form layout", "expected": "Amount input occupies its own full-width row above from/to token fields", "observed": "The Amount field has its own labeled row (AMOUNT label + full-width input) positioned above the Sell exact/Buy exact toggle and From Token/To Token fields. It spans the full form width." },
+        { "action": "Verify ordering", "expected": "Amount row is above token fields", "observed": "DOM order confirmed: Chain → Connect Wallet → Amount → Direction toggle → From Token → To Token → Action row (Compare Quotes + Slippage)" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g2-main-form.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "n/a (layout inspection only)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AMT-002",
+      "title": "Long numbers display without truncation",
+      "status": "pass",
+      "steps": [
+        { "action": "Enter 20-digit number '12345678901234567890' in amount field", "expected": "Full number displays without overflow or truncation", "observed": "The full 20-digit number '12345678901234567890' is fully visible in the amount input field with no truncation, overflow, or scrolling needed" },
+        { "action": "Verify visual rendering", "expected": "All digits readable in the field", "observed": "Screenshot confirms all 20 digits are clearly readable within the full-width amount field" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g2-amount-20-digits.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "n/a (client-side interaction only)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "First visit full form usable",
+      "status": "pass",
+      "steps": [
+        { "action": "Clear localStorage and sessionStorage, reload page", "expected": "Page loads with default tokenlist, functional form", "observed": "After clearing storage and reloading, the page loaded with default tokens pre-populated (USDC and WETH for Base chain), all form fields functional" },
+        { "action": "Verify default tokenlist provides autocomplete tokens", "expected": "Typing token name shows autocomplete suggestions", "observed": "Typing 'DAI' in the From Token field showed autocomplete dropdown with 'DAI - Dai Stablecoin' and full address '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb'" },
+        { "action": "Verify all slippage presets visible", "expected": "Presets 3, 10, 50, 100, 300 all visible", "observed": "All five slippage preset buttons (3, 10, 50, 100, 300) visible in the compact slippage box alongside Compare Quotes button" },
+        { "action": "Verify overall form completeness", "expected": "Chain selector, wallet button, amount, direction toggle, token fields, slippage, compare button all present", "observed": "All form elements present: Chain dropdown (Base selected), Connect Wallet button, Amount input (1000), Sell exact/Buy exact toggle, From Token (USDC), To Token (WETH), Compare Quotes button, slippage presets + custom input" }
+      ],
+      "evidence": {
+        "screenshots": ["qf-g2-first-visit-autocomplete.png", "qf-g2-main-form.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "GET / -> 200"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 7 assertions: 7 passed, 0 failed. All slippage presets (including new 3 bps) are visible and functional. The compact slippage box alongside the Compare Quotes button works correctly. Amount field properly occupies its own full-width row and handles 20+ digit numbers. First-visit experience confirmed working with default tokenlist and autocomplete."
+}

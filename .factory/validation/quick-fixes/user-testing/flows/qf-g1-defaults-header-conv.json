@@ -1,0 +1,150 @@
+{
+  "groupId": "qf-g1-defaults-header-conv",
+  "testedAt": "2026-03-03T02:10:00Z",
+  "credentials": {
+    "account": "validator_qf_g1",
+    "namespace": "qf_g1"
+  },
+  "toolsUsed": ["playwright-mcp", "curl", "grep"],
+  "assertions": [
+    {
+      "id": "VAL-TL-001",
+      "title": "Default tokenlist loads on first visit",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/ in fresh browser",
+          "expected": "App loads with default tokenlist available",
+          "observed": "App loads successfully, HTTP 200"
+        },
+        {
+          "action": "Open Settings modal via gear icon",
+          "expected": "Default tokenlist appears as a source in settings",
+          "observed": "Settings shows 'Uniswap Labs Default' with 87 tokens, toggle enabled"
+        },
+        {
+          "action": "Close settings, type 'USD' in From Token field",
+          "expected": "Autocomplete dropdown shows tokens from default list",
+          "observed": "Autocomplete shows USDbC (0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA) and USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) on Base chain"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-qf-g1-settings-default-list.png", "val-qf-g1-autocomplete-with-tokens.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic, expected)",
+        "network": "GET / -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TL-002",
+      "title": "Tokenlist served from static/ directory",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check static/tokenlist.json exists on disk",
+          "expected": "File exists at static/tokenlist.json",
+          "observed": "File exists: -rw-r--r-- 590354 bytes at static/tokenlist.json"
+        },
+        {
+          "action": "Check file is tracked in git",
+          "expected": "git ls-files returns the file path",
+          "observed": "git ls-files static/tokenlist.json returns 'static/tokenlist.json' (committed, not gitignored)"
+        },
+        {
+          "action": "curl GET /tokenlist",
+          "expected": "HTTP 200 with tokenlist JSON content",
+          "observed": "HTTP 200, response body starts with {\"name\":\"Uniswap Labs Default\",\"tokenlists\":[{\"name\":\"Uniswap Labs Default\",\"tokens\":[...]}"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API-only check)",
+        "network": "GET /tokenlist -> 200, response contains valid tokenlist JSON with 'Uniswap Labs Default' name"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TL-004",
+      "title": "Single default backward compatibility",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check .env for DEFAULT_TOKENLISTS",
+          "expected": "DEFAULT_TOKENLISTS not set in .env",
+          "observed": "grep returns 0 matches in .env; env.example has it commented out: # DEFAULT_TOKENLISTS=static/tokenlist.json,static/another-list.json"
+        },
+        {
+          "action": "Verify server.ts fallback logic",
+          "expected": "Code falls back to static/tokenlist.json when DEFAULT_TOKENLISTS is unset",
+          "observed": "getDefaultTokenlistPaths() checks process.env.DEFAULT_TOKENLISTS; when not set, returns [resolve(cwd, 'static', 'tokenlist.json')]"
+        },
+        {
+          "action": "Verify app works with fallback (settings shows single default list)",
+          "expected": "Single default tokenlist loads and functions correctly",
+          "observed": "Settings shows exactly one default source: 'Uniswap Labs Default' with 87 tokens. GET /tokenlist -> 200."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-qf-g1-settings-default-list.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic)",
+        "network": "GET /tokenlist -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HDR-001",
+      "title": "Settings gear in header",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Load app and inspect header layout",
+          "expected": "Gear icon is in page header row alongside h1 title, not in form row with chain selector",
+          "observed": "Gear button (aria-label='Open settings') and h1 'Compare DEX Routers' are both children of div.page-header (sameParent: true)"
+        },
+        {
+          "action": "Verify chain selector is NOT in same container as gear",
+          "expected": "Chain selector is in a separate form row",
+          "observed": "Chain selector combobox is in a separate generic container below the page-header div. Visual screenshot confirms gear is top-right next to title, chain is below in form area."
+        },
+        {
+          "action": "Take screenshot of header layout",
+          "expected": "Visual evidence of gear in header",
+          "observed": "Screenshot val-qf-g1-main-view.png shows gear icon in top-right of header next to 'Compare DEX Routers' title"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-qf-g1-main-view.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic)",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONV-001",
+      "title": "AGENTS.md branch workflow convention",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Grep AGENTS.md for commit-push-pr and feature branch convention",
+          "expected": "AGENTS.md contains guidance about feature branches and /commit-push-pr",
+          "observed": "Line 68: '**All work must be done on feature branches.** Use the `/commit-push-pr` command to create commits and PRs. **Never commit directly to main.** This ensures all changes are reviewed before merging.'"
+        },
+        {
+          "action": "Verify the section heading context",
+          "expected": "Convention is in a named section (e.g., Git Workflow)",
+          "observed": "Located under '### Git Workflow' section within '## Conventions'"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "network": "n/a",
+        "terminalOutput": "grep match at AGENTS.md line 68: '**All work must be done on feature branches.** Use the `/commit-push-pr` command to create commits and PRs. **Never commit directly to main.**'"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. VAL-TL-001 confirmed default tokenlist loads and autocomplete works. VAL-TL-002 confirmed static/tokenlist.json is committed and GET /tokenlist returns 200. VAL-TL-004 confirmed DEFAULT_TOKENLISTS unset falls back to static/tokenlist.json. VAL-HDR-001 confirmed gear icon is in .page-header alongside h1, not in form row. VAL-CONV-001 confirmed AGENTS.md contains feature-branch and /commit-push-pr convention at line 68."
+}

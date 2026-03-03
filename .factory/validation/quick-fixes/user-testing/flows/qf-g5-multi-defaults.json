@@ -1,0 +1,60 @@
+{
+  "groupId": "qf-g5-multi-defaults",
+  "testedAt": "2026-03-03T03:21:00Z",
+  "credentials": {
+    "account": "validator_qf_g5",
+    "namespace": "qf_g5"
+  },
+  "toolsUsed": [
+    "playwright-mcp",
+    "curl"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-TL-003",
+      "title": "Multiple default tokenlists via env var",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Start temporary server with DEFAULT_TOKENLISTS containing two comma-separated tokenlist files",
+          "expected": "Server boots and loads both defaults",
+          "observed": "Temporary server responded healthy on port 3005 with multi-default config."
+        },
+        {
+          "action": "Call GET /tokenlist on the temporary server",
+          "expected": "Response includes two tokenlists",
+          "observed": "Response returned name 'Default Tokenlists' and tokenlists array with 2 entries: 'QF G5 Test List Alpha' and 'QF G5 Test List Beta'."
+        },
+        {
+          "action": "Open settings modal in browser",
+          "expected": "Both default sources appear as separate entries",
+          "observed": "Settings modal showed separate source rows for 'QF G5 Test List Alpha' and 'QF G5 Test List Beta', each with its own enabled toggle."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "qf-g5-settings-multiple-defaults.png",
+          "qf-g5-val-tl003-settings-two-defaults.png",
+          "qf-g5-val-tl003-settings-ethereum-tokens.png"
+        ],
+        "network": "GET http://localhost:3005/tokenlist -> 200 with tokenlists.length=2",
+        "artifacts": [
+          "/tmp/qf_g5_tokenlist_response.json"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Port 3004 was already occupied during validation startup.",
+      "resolved": true,
+      "resolution": "Used alternate port 3005 for isolated validation run.",
+      "affectedAssertions": [
+        "VAL-TL-003"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated VAL-TL-003 as pass. With DEFAULT_TOKENLISTS set to two defaults, /tokenlist returned both lists and the settings panel displayed them as distinct default sources with independent toggles."
+}
