@@ -85,6 +85,21 @@ Read `/Users/bryan/code/compare-dex-routers/src/server.ts` to verify swap/approv
 **Base URL:** http://localhost:3002/
 **Isolation:** No isolation needed — stateless API calls
 
+## Flow Validator Guidance: Terminal Test Runner
+
+**Tool:** Execute (shell) for targeted Vitest commands
+**Working directory:** /Users/bryan/code/compare-dex-routers
+
+### Isolation Rules
+- Keep all assertions in your assigned namespace in report metadata.
+- Do not modify source files while validating.
+- Run only read/validation commands (tests, grep/read, curl) needed for assigned assertions.
+
+### Boundaries
+- Do not stop shared dev services on port 3002.
+- Ignore known cosmetic favicon 404 noise.
+- Capture exact command output observations in the flow report.
+
 ---
 
 ## Known Issues & Quirks (from ux-polish validation round 1)
@@ -110,4 +125,14 @@ Read `/Users/bryan/code/compare-dex-routers/src/server.ts` to verify swap/approv
 
 - **VAL-CROSS-003 currently fails**: Local Tokens does not have a source-level toggle in Settings (only Import/Export/remove token controls). Local tokens are always merged into autocomplete.
 - **Cross-flow fixture note**: `cUSDC` (`0x39AA39c021dfbaE8faC545936693aC917d5E7563`) also exists in the CoinGecko list and can be deduplicated with local tokens. For pure local-token chain-switch checks, remove/disable CoinGecko first.
+
+## Known Issues & Quirks (from ui-polish wallet validation round 1)
+
+- **Playwright MCP Chrome profile lock**: Browser launch can fail with `Opening in existing browser session` when another Chrome process holds `/Users/bryan/Library/Caches/ms-playwright/mcp-chrome`. Preferred fix is to close existing Chrome sessions before testing; if still locked, clear stale lock files (`SingletonLock`, `SingletonSocket`, `SingletonCookie`) in that directory before retrying.
+
+## Known Issues & Quirks (from curve-multichain validation round 1)
+
+- **Base and Optimism Curve failures**: `/compare` can return Curve errors on chain `8453` and `10` for multiple tested pairs, including `This method exists only for L2 networks` and `You must call getBestRouteAndOutput first`.
+- **BSC pair caveat**: Default BSC pair `USDT -> WBNB` did not route on Curve in validation; `USDC -> USDT` returned a valid Curve quote.
+- **Startup/init validation pattern**: For `VAL-CURVE-010` and `VAL-CURVE-011`, restarting the dev server and capturing startup logs is required evidence. A controlled `RPC_URL_<chainId>` bad override is effective for verifying single-chain init failure isolation.
 
