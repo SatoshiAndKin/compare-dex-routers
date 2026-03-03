@@ -1,0 +1,91 @@
+{
+  "milestone": "ui-polish",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm --prefix /Users/bryan/code/compare-dex-routers test -- --maxWorkers=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm --prefix /Users/bryan/code/compare-dex-routers run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix /Users/bryan/code/compare-dex-routers run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 6,
+    "passed": 5,
+    "failed": 1,
+    "failedFeatures": [
+      "ui-chain-searchable-dropdown"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "ui-chain-searchable-dropdown",
+      "file": "src/server.ts",
+      "line": 4343,
+      "severity": "blocking",
+      "description": "Token autocomplete refresh() reads #chainId.value after chain selector moved to a searchable text input. The value is display text (for example, 'Base (8453)'), which becomes NaN when coerced and breaks getTokensForChain() filtering for both token inputs. Use getCurrentChainId() (or dataset.chainId) instead of reading .value directly."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Added a factual gotcha note to .factory/library/quick-fixes-scrutiny-notes.md documenting that #chainId.value is display text for the searchable chain control and chain-scoped logic must use getCurrentChainId()/dataset.chainId.",
+      "sourceFeature": "ui-chain-searchable-dropdown"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a UI convention for chain context reads: when using the searchable chain control, never read chain ID from #chainId.value; always use getCurrentChainId() (or dataset.chainId) for chain-dependent logic.",
+      "evidence": "ui-chain-searchable-dropdown review found a blocking regression where one remaining .value read in autocomplete refresh() converted display text to NaN and disabled token suggestions.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add an accessibility requirement that newly introduced custom dropdowns/autocomplete widgets include combobox/listbox ARIA roles and state attributes (aria-expanded, aria-controls, role=option).",
+      "evidence": "ui-chain-searchable-dropdown shipped without ARIA combobox/listbox semantics while other interactive UI components in this app already carry ARIA metadata.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a security guideline for inline template rendering: HTML-escape tokenlist-sourced strings (symbol/name/logoURI) before interpolation into HTML attributes/text.",
+      "evidence": "ui-token-icons-results review identified unsanitized token.logoURI and token.symbol interpolation in result icon markup; the same pattern exists in autocomplete rendering.",
+      "isSystemic": true
+    },
+    {
+      "target": "skill",
+      "suggestion": "Consider adding orchestrator-side de-dup logic to avoid reassigning a completed feature when its implementation commit already exists and only verification remains.",
+      "evidence": "ui-form-reorder had two worker sessions; the second session only confirmed previously committed work and produced no new code changes.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Document token-input wrapper/icon CSS pattern as a shared convention.",
+      "reason": "rejected as non-critical and implementation-specific; existing code is already readable and this does not affect validator or review correctness."
+    },
+    {
+      "observation": "Add general guidance to avoid variable shadowing in inline JS.",
+      "reason": "rejected as a generic style preference without demonstrated defects in this milestone's behavior."
+    },
+    {
+      "observation": "Document the 'void' fire-and-forget pattern for async event handlers.",
+      "reason": "rejected as already-established local style and low impact relative to current blocking defects."
+    },
+    {
+      "observation": "Create guidance update from ui-gas-label-fix skill feedback note saying no update needed.",
+      "reason": "rejected because the observation explicitly indicated no change required."
+    }
+  ],
+  "previousRound": null
+}

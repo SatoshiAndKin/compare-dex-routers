@@ -1,0 +1,51 @@
+{
+  "milestone": "ui-polish",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/bryan/code/compare-dex-routers\" test -- --maxWorkers=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/bryan/code/compare-dex-routers\" run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/bryan/code/compare-dex-routers\" run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a UI convention for chain context reads: when using the searchable chain control, never read chain ID from #chainId.value; always use getCurrentChainId() (or dataset.chainId) for chain-dependent logic.",
+      "evidence": "Round-2 fix review confirmed this pattern resolved a prior blocker and was applied broadly in src/server.ts, but mission AGENTS.md still does not state this rule.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add an accessibility requirement that newly introduced custom dropdown/autocomplete widgets include combobox/listbox ARIA roles and state attributes (aria-expanded, aria-controls, role=option, aria-activedescendant management).",
+      "evidence": "Round-2 reviews confirmed ARIA semantics are now implemented and preserved in chain dropdown follow-up work, but mission AGENTS.md still does not codify the requirement.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "worker-transcripts.jsonl recorded 0 tool calls for ui-chain-dropdown-ux-polish session despite substantial handoff evidence.",
+      "reason": "rejected as ambiguous and not yet proven systemic; single-session telemetry inconsistency is insufficient to justify immediate shared-state guidance updates."
+    }
+  ],
+  "previousRound": ".factory/validation/ui-polish/scrutiny/synthesis.round1.json"
+}
