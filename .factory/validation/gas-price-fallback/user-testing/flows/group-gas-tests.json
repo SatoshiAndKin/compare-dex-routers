@@ -1,0 +1,210 @@
+{
+  "groupId": "group-gas-tests",
+  "testedAt": "2026-03-03T01:52:00Z",
+  "credentials": {
+    "account": "gas_test_validator_02@example.test",
+    "namespace": "gas-price-fallback-tests-02"
+  },
+  "toolsUsed": ["Execute (vitest)", "Read (source inspection)"],
+  "assertions": [
+    {
+      "id": "VAL-GAS-002",
+      "title": "Gas price fetched from RPC when Spandex omits it",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run vitest src/__tests__/server.quote-compare.test.ts (verbose)",
+          "expected": "All 21 tests pass including gas price integration tests",
+          "observed": "21/21 tests passed (0 failures)"
+        },
+        {
+          "action": "Inspect test 'GET /compare shows gas price in response when available'",
+          "expected": "Test mocks Spandex response without gas_price_gwei, verifies RPC fallback returns gas_price_gwei in response",
+          "observed": "Test sets getGasPriceMock.mockResolvedValue(1_000_000_000n) (1 gwei), getClientMock returns mock client with getGasPrice. Spandex quote (makeQuote()) has no gas_price_gwei field. Response body asserts gas_price_gwei === '1.0000' — confirming RPC fallback was used."
+        },
+        {
+          "action": "Inspect server.ts lines 568-580 for fallback integration",
+          "expected": "getGasPriceWithCache called in parallel with Spandex/Curve, with preference for Spandex gas_price_gwei then RPC fallback",
+          "observed": "Line 568: getGasPriceWithCache(chainId, getClient(chainId)) runs in parallel via Promise.all. Line 580: effectiveGasPriceGwei = spandex.result?.gas_price_gwei ?? gasPriceGwei — Spandex value preferred, RPC fallback used when Spandex omits it."
+        }
+      ],
+      "evidence": {
+        "testOutput": "vitest run src/__tests__/server.quote-compare.test.ts: 21 passed, 0 failed",
+        "keyTest": "GET /compare shows gas price in response when available — asserts body.gas_price_gwei === '1.0000' with mock RPC returning 1 gwei",
+        "sourceInspection": "server.ts:568-580 — getGasPriceWithCache runs in parallel; effectiveGasPriceGwei = spandex.result?.gas_price_gwei ?? gasPriceGwei"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-GAS-003",
+      "title": "Gas cost calculated with fallback price",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run vitest src/__tests__/server.quote-compare.test.ts (verbose)",
+          "expected": "Tests that compute gas_cost_eth using fallback price pass",
+          "observed": "All 21 tests passed"
+        },
+        {
+          "action": "Inspect test 'GET /compare factors gas into recommendation when output is WETH'",
+          "expected": "Test computes gas cost = gas_used * gas_price / 1e18 and verifies gas-adjusted recommendation",
+          "observed": "Test comment documents: Spandex gas cost = 20000 * 1e9 / 1e18 = 0.00002 ETH, Curve gas cost = 10000 * 1e9 / 1e18 = 0.00001 ETH. Adjusted values: Spandex 1.5 - 0.00002 = 1.49998, Curve 1.49 - 0.00001 = 1.48999. Asserts recommendation='spandex' and reason contains 'after gas'."
+        },
+        {
+          "action": "Inspect test 'GET /compare recommendation flips when gas costs reverse the output advantage'",
+          "expected": "Test verifies gas_cost_eth correctly computed such that higher-gas router loses recommendation",
+          "observed": "Spandex: 1.50 ETH, 15M gas → gas cost 0.015 ETH → adjusted 1.485 ETH. Curve: 1.49 ETH, 10k gas → gas cost 0.00001 ETH → adjusted 1.48999 ETH. Curve wins after gas adjustment. Asserts recommendation='curve' and reason matches regex /1\\.50.*ETH.*1\\.485.*ETH.*after gas/i."
+        },
+        {
+          "action": "Inspect server.ts computeGasAdjustedValuesExactIn function",
+          "expected": "gas_cost_eth = (gasUsed * gasPriceWei) / 1e18",
+          "observed": "Function at ~line 654: gasCostEth = gasUsed > 0 && gasPriceWei > 0 ? (gasUsed * gasPriceWei) / 1e18 : 0. gasPriceWei derived from effectiveGasPriceGwei (line 695: gasPriceWei = effectiveGasPriceGwei * 1e9). Matches specification: gas_used * gas_price / 1e18."
+        }
+      ],
+      "evidence": {
+        "testOutput": "vitest run src/__tests__/server.quote-compare.test.ts: 21 passed, 0 failed",
+        "keyTests": [
+          "GET /compare factors gas into recommendation when output is WETH — verifies gas-adjusted values with mock 1 gwei RPC price",
+          "GET /compare recommendation flips when gas costs reverse the output advantage — proves gas_cost_eth calculation correctness with 15M vs 10k gas"
+        ],
+        "sourceInspection": "server.ts computeGasAdjustedValuesExactIn: gasCostEth = (gasUsed * gasPriceWei) / 1e18, where gasPriceWei = effectiveGasPriceGwei * 1e9"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-GAS-010",
+      "title": "Gas price cached per block",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run vitest src/__tests__/gas-price.test.ts (verbose)",
+          "expected": "All 16 gas-price module tests pass",
+          "observed": "16/16 tests passed (0 failures, duration 143ms)"
+        },
+        {
+          "action": "Inspect test 'returns cached value on cache hit (same block)'",
+          "expected": "Two requests in same block make only one getGasPrice RPC call; second returns fromCache: true",
+          "observed": "Test calls getGasPriceWithCache(1, mockClient) twice with getBlockNumber returning 1000n both times. First call: fromCache=false. Second call: fromCache=true, gasPriceGwei='20.0000'. Asserts getGasPrice called exactly 1 time (cache hit on second call)."
+        },
+        {
+          "action": "Inspect test 'shares cache among concurrent requests'",
+          "expected": "5 concurrent same-chain/block requests all return same value",
+          "observed": "Promise.all fires 5 concurrent getGasPriceWithCache(1, mockClient) calls. All return gasPriceGwei='20.0000'. Confirms cache sharing across concurrent requests."
+        }
+      ],
+      "evidence": {
+        "testOutput": "vitest run src/__tests__/gas-price.test.ts: 16 passed, 0 failed",
+        "keyTest": "returns cached value on cache hit (same block) — asserts getGasPrice called only once for two requests in same block, second returns fromCache: true",
+        "supplementaryTest": "shares cache among concurrent requests — 5 concurrent calls, all return same cached value"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-GAS-011",
+      "title": "Cache invalidates on new block",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run vitest src/__tests__/gas-price.test.ts (verbose)",
+          "expected": "Cache invalidation test passes",
+          "observed": "16/16 tests passed"
+        },
+        {
+          "action": "Inspect test 'fetches fresh gas price on new block'",
+          "expected": "Block advances from 1000 to 1001; second request fetches fresh price, not cached",
+          "observed": "First call: getBlockNumber returns 1000n, getGasPrice returns 20 gwei. result1.fromCache=false, result1.blockNumber=1000n. Second call: getBlockNumber returns 1001n, getGasPrice returns 25 gwei. result2.fromCache=false, result2.blockNumber=1001n, result2.gasPriceGwei='25.0000'. Asserts getGasPrice called exactly 2 times (cache miss on new block)."
+        },
+        {
+          "action": "Inspect source gas-price.ts cache key logic",
+          "expected": "Cache keyed by chainId:blockNumber so different blocks are different cache entries",
+          "observed": "getCacheKey function: return `${chainId}:${blockNumber.toString()}`. Cache lookup: gasPriceCache.get(cacheKey). New block number → new key → cache miss → fresh fetch."
+        }
+      ],
+      "evidence": {
+        "testOutput": "vitest run src/__tests__/gas-price.test.ts: 16 passed, 0 failed",
+        "keyTest": "fetches fresh gas price on new block — block 1000→1001, getGasPrice called twice, second returns fromCache: false with updated price 25 gwei",
+        "sourceInspection": "gas-price.ts getCacheKey: `${chainId}:${blockNumber.toString()}` — different block numbers produce different cache keys"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-GAS-012",
+      "title": "Cache keyed by chain",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run vitest src/__tests__/gas-price.test.ts (verbose)",
+          "expected": "Per-chain cache isolation test passes",
+          "observed": "16/16 tests passed"
+        },
+        {
+          "action": "Inspect test 'per-chain cache isolation'",
+          "expected": "Chain 1 and chain 8453 have independent cache entries even with same block number",
+          "observed": "Both chains use blockNumber 1000n. Chain 1: getGasPrice returns 20 gwei (20_000_000_000n). Chain 8453: getGasPrice returns 5 gwei (5_000_000_000n). result2.fromCache=false (cache miss for new chain). getGasPrice called exactly 2 times. getGasPriceCacheStats().size === 2. Confirms per-chain isolation."
+        },
+        {
+          "action": "Inspect test 'clears entries for specified chain only' (invalidateChainCache)",
+          "expected": "Invalidating chain 1 leaves chain 8453 cached",
+          "observed": "After caching both chain 1 and 8453, invalidateChainCache(1) reduces cache size from 2 to 1. Remaining entry is chain 8453. Confirms per-chain key isolation."
+        },
+        {
+          "action": "Inspect source gas-price.ts cache key and Map structure",
+          "expected": "Cache Map keyed by `${chainId}:${blockNumber}` ensures per-chain isolation",
+          "observed": "gasPriceCache = new Map<string, GasPriceCacheEntry>(). getCacheKey returns `${chainId}:${blockNumber.toString()}`. invalidateChainCache iterates keys with prefix `${chainId}:`. Module docstring: 'Different chains have independent cache entries'."
+        }
+      ],
+      "evidence": {
+        "testOutput": "vitest run src/__tests__/gas-price.test.ts: 16 passed, 0 failed",
+        "keyTest": "per-chain cache isolation — chain 1 (20 gwei) and chain 8453 (5 gwei) at same block have independent entries, cache size=2",
+        "supplementaryTest": "clears entries for specified chain only — invalidateChainCache(1) leaves chain 8453 intact",
+        "sourceInspection": "gas-price.ts: Map key format `${chainId}:${blockNumber}`, invalidateChainCache uses `${chainId}:` prefix filter"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-GAS-020",
+      "title": "RPC fallback failure is graceful",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run vitest src/__tests__/gas-price.test.ts (verbose)",
+          "expected": "RPC failure tests pass with null gas fields",
+          "observed": "16/16 tests passed"
+        },
+        {
+          "action": "Inspect test 'handles RPC failure gracefully'",
+          "expected": "When getGasPrice rejects, gasPriceGwei is null but blockNumber still returned",
+          "observed": "getGasPrice.mockRejectedValue(new Error('RPC error')). Result: gasPriceGwei=null, blockNumber=1000n, fromCache=false. Quote data unaffected."
+        },
+        {
+          "action": "Inspect test 'handles block number fetch failure gracefully'",
+          "expected": "When getBlockNumber rejects, both gasPriceGwei and blockNumber are null",
+          "observed": "getBlockNumber.mockRejectedValue(new Error('RPC error')). Result: gasPriceGwei=null, blockNumber=null, fromCache=false. No exception thrown."
+        },
+        {
+          "action": "Inspect server.ts gasPricePromise error handling",
+          "expected": "Server catches gas price fetch failure and proceeds with null gas",
+          "observed": "Line 568-570: gasPricePromise = getGasPriceWithCache(...).then(r => r.gasPriceGwei).catch(() => null). Failure returns null, which flows into effectiveGasPriceGwei=null, gasPriceWei=0. Quote data still returned intact."
+        },
+        {
+          "action": "Run vitest server compare test 'falls back to raw output when gas unavailable for both routers'",
+          "expected": "Both Spandex and Curve quote data returned even without gas",
+          "observed": "Test passes. With gas_used=0 and no gas_used on Curve, recommendation still produced ('curve' wins by raw output). Reason: 'Gas estimates unavailable for Spandex and Curve — comparing raw output only'."
+        }
+      ],
+      "evidence": {
+        "testOutput": "vitest run src/__tests__/gas-price.test.ts: 16 passed; vitest run server.quote-compare.test.ts: 21 passed",
+        "keyTests": [
+          "handles RPC failure gracefully — gasPriceGwei=null, blockNumber=1000n (no crash)",
+          "handles block number fetch failure gracefully — gasPriceGwei=null, blockNumber=null (no crash)",
+          "GET /compare falls back to raw output when gas unavailable for both routers — quote data intact, recommendation by raw output"
+        ],
+        "sourceInspection": "server.ts:568-570 — .catch(() => null) ensures gas price fetch failure never blocks compare response"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions (VAL-GAS-002, VAL-GAS-003, VAL-GAS-010, VAL-GAS-011, VAL-GAS-012, VAL-GAS-020): all 6 passed. Evidence collected via targeted Vitest runs (16/16 gas-price.test.ts + 21/21 server.quote-compare.test.ts all passing) and read-only source inspection of gas-price.ts and server.ts. RPC fallback integration, per-block caching, per-chain isolation, gas cost computation, and graceful failure handling all verified."
+}

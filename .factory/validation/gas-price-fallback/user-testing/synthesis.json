@@ -1,6 +1,6 @@
 {
   "milestone": "gas-price-fallback",
-  "round": 1,
+  "round": 2,
   "status": "pass",
   "assertionsSummary": {
     "total": 8,
@@ -20,12 +20,6 @@
   ],
   "failedAssertions": [],
   "blockedAssertions": [],
-  "appliedUpdates": [
-    {
-      "target": "user-testing.md",
-      "description": "Added \"Flow Validator Guidance: Terminal Test Runner\" to document isolation rules and boundaries for targeted Vitest-based assertion validation.",
-      "source": "setup"
-    }
-  ],
-  "previousRound": null
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/gas-price-fallback/user-testing/synthesis.json#round-1"
 }
