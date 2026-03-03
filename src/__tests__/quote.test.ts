@@ -66,6 +66,7 @@ describe("parseQuoteParams", () => {
         amount: "1000",
         slippageBps: 100,
         sender: undefined,
+        mode: "exactIn",
       },
     });
   });
@@ -224,8 +225,51 @@ describe("parseQuoteParams", () => {
         amount: "0.5",
         slippageBps: 50,
         sender: undefined,
+        mode: "exactIn",
       },
     });
+  });
+
+  it("parses mode=targetOut", () => {
+    const result = parseQuoteParams(
+      makeParams({
+        chainId: "8453",
+        from: USDC_BASE,
+        to: WETH_BASE,
+        amount: "1",
+        mode: "targetOut",
+      })
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mode).toBe("targetOut");
+    }
+  });
+
+  it("defaults mode to exactIn", () => {
+    const result = parseQuoteParams(
+      makeParams({ chainId: "8453", from: USDC_BASE, to: WETH_BASE, amount: "1" })
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mode).toBe("exactIn");
+    }
+  });
+
+  it("ignores invalid mode and defaults to exactIn", () => {
+    const result = parseQuoteParams(
+      makeParams({
+        chainId: "8453",
+        from: USDC_BASE,
+        to: WETH_BASE,
+        amount: "1",
+        mode: "invalid",
+      })
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mode).toBe("exactIn");
+    }
   });
 
   it("rejects slippageBps over 10000", () => {

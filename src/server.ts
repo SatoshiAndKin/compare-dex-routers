@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { getQuote, serializeWithBigInt } from "@spandex/core";
 import type { Address } from "viem";
 import { parseUnits, formatUnits } from "viem";
-import { parseQuoteParams } from "./quote.js";
+import { parseQuoteParams, type QuoteMode } from "./quote.js";
 import {
   getSpandexConfig,
   getTokenDecimals,
@@ -49,9 +49,11 @@ interface QuoteResult {
   to: string;
   to_symbol: string;
   amount: string;
+  input_amount: string;
   output_amount: string;
-  output_amount_raw: string;
   input_amount_raw: string;
+  output_amount_raw: string;
+  mode: QuoteMode;
   provider: string;
   slippage_bps: number;
   gas_used: string;
@@ -258,21 +260,34 @@ async function findQuote(
   to: string,
   amount: string,
   slippageBps: number,
-  sender?: string
+  sender?: string,
+  mode: QuoteMode = "exactIn"
 ): Promise<QuoteResult> {
-  // Only input decimals are needed before calling Spandex (for parseUnits).
-  // Output decimals and symbols are fetched in parallel with the quote.
-  const inputDecimals = await getTokenDecimals(chainId, from);
-  const inputAmount = parseUnits(amount, inputDecimals);
+  // Fetch decimals for both tokens upfront
+  const [inputDecimals, outputDecimals] = await Promise.all([
+    getTokenDecimals(chainId, from),
+    getTokenDecimals(chainId, to),
+  ]);
 
-  const swapRequest = {
-    chainId,
-    inputToken: from as Address,
-    outputToken: to as Address,
-    mode: "exactIn" as const,
-    inputAmount,
-    slippageBps,
-  };
+  // Build swap request based on mode
+  const swapRequest =
+    mode === "targetOut"
+      ? {
+          chainId,
+          inputToken: from as Address,
+          outputToken: to as Address,
+          mode: "targetOut" as const,
+          outputAmount: parseUnits(amount, outputDecimals),
+          slippageBps,
+        }
+      : {
+          chainId,
+          inputToken: from as Address,
+          outputToken: to as Address,
+          mode: "exactIn" as const,
+          inputAmount: parseUnits(amount, inputDecimals),
+          slippageBps,
+        };
 
   // Fire sender and fallback quotes in parallel when sender is provided
   const quotePromises = [];
@@ -294,9 +309,8 @@ async function findQuote(
   );
 
   // Fetch non-critical metadata concurrently with the Spandex query
-  const [quotes, outputDecimals, fromSymbol, toSymbol] = await Promise.all([
+  const [quotes, fromSymbol, toSymbol] = await Promise.all([
     Promise.all(quotePromises),
-    getTokenDecimals(chainId, to),
     getTokenSymbol(chainId, from),
     getTokenSymbol(chainId, to),
   ]);
@@ -308,6 +322,8 @@ async function findQuote(
     throw new Error("No providers returned a successful quote");
   }
 
+  // Format amounts based on mode
+  const inputHuman = formatUnits(quote.inputAmount, inputDecimals);
   const outputHuman = formatUnits(quote.simulation.outputAmount, outputDecimals);
 
   const result: QuoteResult = {
@@ -317,9 +333,11 @@ async function findQuote(
     to,
     to_symbol: toSymbol,
     amount,
+    input_amount: inputHuman,
     output_amount: outputHuman,
-    output_amount_raw: quote.simulation.outputAmount.toString(),
     input_amount_raw: quote.inputAmount.toString(),
+    output_amount_raw: quote.simulation.outputAmount.toString(),
+    mode,
     provider: quote.provider,
     slippage_bps: slippageBps,
     gas_used: quote.simulation.gasUsed?.toString() ?? "0",
@@ -377,15 +395,16 @@ async function compareQuotes(
   to: string,
   amount: string,
   slippageBps: number,
-  sender?: string
+  sender?: string,
+  mode: QuoteMode = "exactIn"
 ): Promise<CompareResult> {
-  const spandexPromise = findQuote(chainId, from, to, amount, slippageBps, sender)
+  const spandexPromise = findQuote(chainId, from, to, amount, slippageBps, sender, mode)
     .then((r) => ({ result: r, error: null }))
     .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }));
 
   const curveAvailable = CURVE_ENABLED && isCurveSupported(chainId);
   const curvePromise = curveAvailable
-    ? findCurveQuote(from, to, amount, sender, getClient(chainId))
+    ? findCurveQuote(from, to, amount, sender, getClient(chainId), mode)
         .then((r) => ({ result: r, error: null }))
         .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }))
     : Promise.resolve({ result: null, error: "Curve only supports Ethereum (chainId 1)" });
@@ -1136,6 +1155,55 @@ const INDEX_HTML = `<!DOCTYPE html>
       margin-left: 0.125rem;
     }
 
+    /* Direction Toggle - Sell exact / Buy exact */
+    .direction-toggle-row {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0.75rem;
+    }
+    .direction-btn {
+      flex: 1;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.5rem 1rem;
+      background: #fff;
+      color: #000;
+      border: 2px solid #000;
+      cursor: pointer;
+    }
+    .direction-btn:first-child {
+      border-right: none;
+    }
+    .direction-btn:hover {
+      background: #f0f0f0;
+    }
+    .direction-btn.active {
+      background: #000;
+      color: #fff;
+    }
+    .direction-btn:focus {
+      outline: 3px solid #0055FF;
+      outline-offset: 0;
+    }
+
+    /* Target Out Note - provider coverage warning */
+    .target-out-note {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      background: #f0f0f0;
+      border: 2px solid #CC7A00;
+      margin-bottom: 0.75rem;
+      font-size: 0.75rem;
+      color: #000;
+    }
+    .target-out-note-icon {
+      flex-shrink: 0;
+    }
+
     /* Tokenlist URL Input */
     .tokenlist-url-row {
       display: flex;
@@ -1518,6 +1586,19 @@ const INDEX_HTML = `<!DOCTYPE html>
       <label for="amount">Amount</label>
       <input type="text" id="amount" value="1000">
     </div>
+    <!-- Row 3b: Direction Toggle -->
+    <div class="direction-toggle-row">
+      <button type="button" id="directionExactIn" class="direction-btn active" aria-pressed="true">
+        Sell exact
+      </button>
+      <button type="button" id="directionTargetOut" class="direction-btn" aria-pressed="false">
+        Buy exact
+      </button>
+    </div>
+    <div id="targetOutNote" class="target-out-note" hidden>
+      <span class="target-out-note-icon">⚠️</span>
+      <span>Fewer providers support reverse quotes (3/7 Spandex providers)</span>
+    </div>
     <!-- Row 4: From Token -->
     <div class="form-group">
       <label for="from">From Token</label>
@@ -1772,6 +1853,36 @@ const INDEX_HTML = `<!DOCTYPE html>
     // On custom input, update preset active state
     slippageInput.addEventListener('input', () => {
       updateSlippagePresetActive(slippageInput.value);
+    });
+
+    // Direction Toggle - Sell exact (exactIn) / Buy exact (targetOut)
+    const directionExactInBtn = document.getElementById('directionExactIn');
+    const directionTargetOutBtn = document.getElementById('directionTargetOut');
+    const targetOutNote = document.getElementById('targetOutNote');
+
+    // Current mode state: 'exactIn' (default) or 'targetOut'
+    let currentQuoteMode = 'exactIn';
+
+    function setDirectionMode(mode) {
+      currentQuoteMode = mode;
+      const isExactIn = mode === 'exactIn';
+
+      directionExactInBtn.classList.toggle('active', isExactIn);
+      directionExactInBtn.setAttribute('aria-pressed', String(isExactIn));
+
+      directionTargetOutBtn.classList.toggle('active', !isExactIn);
+      directionTargetOutBtn.setAttribute('aria-pressed', String(!isExactIn));
+
+      // Show/hide the provider note for targetOut mode
+      targetOutNote.hidden = isExactIn;
+    }
+
+    directionExactInBtn.addEventListener('click', () => {
+      setDirectionMode('exactIn');
+    });
+
+    directionTargetOutBtn.addEventListener('click', () => {
+      setDirectionMode('targetOut');
     });
 
     const mevInfoBtn = document.getElementById('mevInfoBtn');
@@ -3426,6 +3537,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         amount: String(params.amount || '').trim(),
         slippageBps: String(params.slippageBps || '').trim(),
         sender: String(params.sender || '').trim(),
+        mode: String(params.mode || 'exactIn').trim(),
       };
     }
 
@@ -3437,6 +3549,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         amount: amountInput.value,
         slippageBps: slippageInput.value,
         sender: hasConnectedWallet() ? connectedWalletAddressValue : '',
+        mode: currentQuoteMode,
       });
     }
 
@@ -3448,6 +3561,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         to: normalized.to,
         amount: normalized.amount,
         slippageBps: normalized.slippageBps,
+        mode: normalized.mode,
       });
 
       if (normalized.sender) {
@@ -3465,6 +3579,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       url.searchParams.set('to', normalized.to);
       url.searchParams.set('amount', normalized.amount);
       url.searchParams.set('slippageBps', normalized.slippageBps);
+      // Only add mode to URL if it's not the default
+      if (normalized.mode && normalized.mode !== 'exactIn') {
+        url.searchParams.set('mode', normalized.mode);
+      } else {
+        url.searchParams.delete('mode');
+      }
       // Sender is never written to URL - it comes from wallet connection state
       url.searchParams.delete('sender');
       // Remove MEV protection param if it exists (no longer used)
@@ -3803,13 +3923,21 @@ const INDEX_HTML = `<!DOCTYPE html>
       const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
       const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
       const providerLabel = 'Spandex' + (data.provider ? ' / ' + data.provider : '');
-      
+
+      // Handle mode-specific display
+      const isTargetOut = data.mode === 'targetOut';
+      // In targetOut mode: amount is the desired output, input_amount is what you pay
+      // In exactIn mode: amount is the input, output_amount is what you receive
+      const primaryAmount = isTargetOut ? data.input_amount : data.output_amount;
+      const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
+      const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
+
       // Primary section: output + buttons inline
-      const primary = 
+      const primary =
         '<div class="' + primaryClass + '">' +
           recommendationLabel +
-          '<div class="result-output-label">You receive (estimated)</div>' +
-          '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
+          '<div class="result-output-label">' + primaryLabel + '</div>' +
+          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
           '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via ' + providerLabel + '</div></div>' +
           renderQuoteActions({
             quoteChainId,
@@ -3820,17 +3948,18 @@ const INDEX_HTML = `<!DOCTYPE html>
             approvalSpender: data.approval_spender || '',
           }) +
         '</div>';
-      
+
       // Secondary details (collapsible)
-      const secondary = 
+      const secondary =
         '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
         '<div class="details-content">' +
           '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
           '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
-          '<div class="field"><div class="field-label">Input Amount</div><div class="field-value number">' + data.amount + (data.from_symbol ? ' ' + data.from_symbol : '') + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + data.from_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '')) + '</div></div>' +
           renderSecondaryDetails(data, 'spandex') +
         '</div>';
-      
+
       return primary + secondary;
     }
 
@@ -3855,16 +3984,22 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (data.route_symbols) {
         Object.entries(data.route_symbols).forEach(([k, v]) => { symbols[k.toLowerCase()] = v; });
       }
-      
+
       const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
       const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
-      
+
+      // Handle mode-specific display
+      const isTargetOut = data.mode === 'targetOut';
+      const primaryAmount = isTargetOut ? data.input_amount : data.output_amount;
+      const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
+      const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
+
       // Primary section: output + buttons inline
-      const primary = 
+      const primary =
         '<div class="' + primaryClass + '">' +
           recommendationLabel +
-          '<div class="result-output-label">You receive (estimated)</div>' +
-          '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
+          '<div class="result-output-label">' + primaryLabel + '</div>' +
+          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
           '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via Curve</div></div>' +
           renderQuoteActions({
             quoteChainId,
@@ -3875,19 +4010,20 @@ const INDEX_HTML = `<!DOCTYPE html>
             approvalSpender: data.approval_target || '',
           }) +
         '</div>';
-      
+
       // Secondary details (collapsible)
-      const secondary = 
+      const secondary =
         '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
         '<div class="details-content">' +
           '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
           '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
-          '<div class="field"><div class="field-label">Input Amount</div><div class="field-value number">' + data.amount + (data.from_symbol ? ' ' + data.from_symbol : '') + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + data.from_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '')) + '</div></div>' +
           (data.route && data.route.length > 0 ? '<div class="field"><div class="field-label">Route (' + data.route.length + ' steps)</div>' + formatCurveRoute(data.route, symbols) + '</div>' : '') +
           (data.approval_target ? '<div class="field"><div class="field-label">Approval Target</div><div class="field-value">' + data.approval_target + '</div></div>' : '') +
           renderSecondaryDetails(data, 'curve') +
         '</div>';
-      
+
       return primary + secondary;
     }
 
@@ -4380,6 +4516,10 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     if (params.get('amount')) amountInput.value = params.get('amount');
     if (params.get('slippageBps')) slippageInput.value = params.get('slippageBps');
+    // Read mode from URL and set toggle state
+    if (params.get('mode') === 'targetOut') {
+      setDirectionMode('targetOut');
+    }
     // Sender param from URL is silently ignored - sender comes from wallet connection state
 
     // Remove any stale mevProtection param from URL
@@ -4695,15 +4835,15 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       return;
     }
 
-    const { chainId, from, to, amount, slippageBps, sender } = parsed.data;
+    const { chainId, from, to, amount, slippageBps, sender, mode } = parsed.data;
 
     const startTime = Date.now();
     try {
-      const result = await findQuote(chainId, from, to, amount, slippageBps, sender);
+      const result = await findQuote(chainId, from, to, amount, slippageBps, sender, mode);
       const duration = Date.now() - startTime;
       log(
         `Quote: chain=${chainId} ${result.from_symbol || from.slice(0, 10)} -> ` +
-          `${result.to_symbol || to.slice(0, 10)}, amount=${amount}, ` +
+          `${result.to_symbol || to.slice(0, 10)}, amount=${amount}, mode=${mode}, ` +
           `output=${result.output_amount}, provider=${result.provider}, ${duration}ms`
       );
       recordRequest("/quote", duration, false);
@@ -4745,15 +4885,15 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       return;
     }
 
-    const { chainId, from, to, amount, slippageBps, sender } = parsed.data;
+    const { chainId, from, to, amount, slippageBps, sender, mode } = parsed.data;
 
     const startTime = Date.now();
     try {
-      const result = await compareQuotes(chainId, from, to, amount, slippageBps, sender);
+      const result = await compareQuotes(chainId, from, to, amount, slippageBps, sender, mode);
       const duration = Date.now() - startTime;
       log(
         `Compare: chain=${chainId} ${from.slice(0, 10)} -> ${to.slice(0, 10)}, ` +
-          `amount=${amount}, recommendation=${result.recommendation}, ${duration}ms`
+          `amount=${amount}, mode=${mode}, recommendation=${result.recommendation}, ${duration}ms`
       );
       recordRequest("/compare", duration, false);
       sendJson(res, 200, result);
