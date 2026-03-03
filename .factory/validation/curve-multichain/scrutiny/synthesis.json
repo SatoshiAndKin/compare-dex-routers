@@ -1,0 +1,45 @@
+{
+  "milestone": "curve-multichain",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/bryan/code/compare-dex-routers\" test -- --maxWorkers=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/bryan/code/compare-dex-routers\" run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/bryan/code/compare-dex-routers\" run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a multi-chain cache convention: per-token caches should use `${chainId}:${address.toLowerCase()}` keys instead of address-only keys.",
+      "evidence": "Scrutiny review for curve-multichain-support found src/config.ts uses chain-aware keys while src/curve.ts symbolCache is address-only, creating edge-case risk for same-address tokens across chains.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "createCurve() convention was already present in AGENTS.md and skill guidance before implementation",
+      "reason": "already-documented"
+    }
+  ],
+  "previousRound": null
+}
