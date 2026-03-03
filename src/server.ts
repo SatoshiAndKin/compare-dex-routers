@@ -2680,8 +2680,11 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       if (e.key === 'ArrowDown') {
         if (!isOpen) {
-          // Set pinned and show dropdown with current selection at top
-          chainDropdownPinnedChainId = String(getCurrentChainId());
+          // Mirror the focus handler: track previous, pin current, clear input
+          const currentChainId = getCurrentChainId();
+          chainDropdownPreviousChainId = String(currentChainId);
+          chainDropdownPinnedChainId = String(currentChainId);
+          chainIdInput.value = '';
           renderChainDropdown(ALL_CHAINS, chainDropdownPinnedChainId);
           return;
         }

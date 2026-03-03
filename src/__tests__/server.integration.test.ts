@@ -845,4 +845,36 @@ describe("server integration", () => {
       expect(res.body).toContain("function handleLocalTokensToggle()");
     });
   });
+
+  // Autocomplete refresh uses getCurrentChainId regression test
+  describe("Autocomplete Chain ID usage", () => {
+    it("autocomplete refresh() uses getCurrentChainId() not raw chainId.value", async () => {
+      const res = await request(`${baseUrl}/`);
+      expect(res.status).toBe(200);
+
+      // The refresh function inside setupAutocomplete should call getCurrentChainId()
+      // This is a regression test to ensure we don't accidentally use #chainId.value directly
+      // (which would break after the searchable dropdown change since value is display text)
+
+      // Look for the pattern: function refresh() { const chainId = getCurrentChainId();
+      // This ensures the autocomplete filters by actual chain ID, not display text
+      expect(res.body).toMatch(
+        /function\s+refresh\s*\(\s*\)\s*\{[\s\S]*?const\s+chainId\s*=\s*getCurrentChainId\s*\(\s*\)/
+      );
+
+      // Also verify we don't have the bug pattern: reading #chainId.value directly in refresh
+      // The old buggy pattern would be: const chainId = document.getElementById('chainId').value
+      // or: const chainId = chainIdInput.value (without calling getCurrentChainId)
+      const refreshFunctionMatch = res.body.match(
+        /function\s+refresh\s*\(\s*\)\s*\{[\s\S]{0,200}?findTokenMatches/
+      );
+      expect(refreshFunctionMatch).toBeTruthy();
+
+      // Within the refresh function (first 200 chars before findTokenMatches call),
+      // we should NOT see the buggy pattern of reading chainIdInput.value directly
+      const refreshFunctionBody = refreshFunctionMatch?.[0] ?? "";
+      expect(refreshFunctionBody).not.toMatch(/chainIdInput\.value/);
+      expect(refreshFunctionBody).not.toMatch(/getElementById\s*\(\s*['"]chainId['"]\s*\)\.value/);
+    });
+  });
 });

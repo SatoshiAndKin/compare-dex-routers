@@ -8,7 +8,7 @@ const ADDR_ROUTER = makeAddress("4");
 const ADDR_SENDER = makeAddress("5");
 const ADDR_APPROVAL = makeAddress("6");
 
-// Mock curve instance
+// Mock curve instance factory
 const createMockCurveInstance = () => ({
   init: vi.fn(),
   factory: { fetchPools: vi.fn() },
@@ -27,25 +27,37 @@ const createMockCurveInstance = () => ({
   },
 });
 
-const mockCurveInstance = createMockCurveInstance();
+// Queue of instances to return from createCurve
+let instanceQueue: ReturnType<typeof createMockCurveInstance>[] = [];
+let allCreatedInstances: ReturnType<typeof createMockCurveInstance>[] = [];
 
 vi.mock("@curvefi/api", () => ({
-  createCurve: () => mockCurveInstance,
+  createCurve: () => {
+    // Return from queue if available, otherwise create new
+    const instance = instanceQueue.shift() ?? createMockCurveInstance();
+    allCreatedInstances.push(instance);
+    return instance;
+  },
 }));
 
 describe("curve multi-chain integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    instanceQueue = [];
+    allCreatedInstances = [];
+  });
 
-    mockCurveInstance.init.mockResolvedValue(undefined);
-    mockCurveInstance.factory.fetchPools.mockResolvedValue(undefined);
-    mockCurveInstance.crvUSDFactory.fetchPools.mockResolvedValue(undefined);
-    mockCurveInstance.cryptoFactory.fetchPools.mockResolvedValue(undefined);
-    mockCurveInstance.twocryptoFactory.fetchPools.mockResolvedValue(undefined);
-    mockCurveInstance.tricryptoFactory.fetchPools.mockResolvedValue(undefined);
-    mockCurveInstance.stableNgFactory.fetchPools.mockResolvedValue(undefined);
+  // Helper to configure a mock instance with default successful behavior
+  const configureMockInstance = (instance: ReturnType<typeof createMockCurveInstance>) => {
+    instance.init.mockResolvedValue(undefined);
+    instance.factory.fetchPools.mockResolvedValue(undefined);
+    instance.crvUSDFactory.fetchPools.mockResolvedValue(undefined);
+    instance.cryptoFactory.fetchPools.mockResolvedValue(undefined);
+    instance.twocryptoFactory.fetchPools.mockResolvedValue(undefined);
+    instance.tricryptoFactory.fetchPools.mockResolvedValue(undefined);
+    instance.stableNgFactory.fetchPools.mockResolvedValue(undefined);
 
-    mockCurveInstance.router.getBestRouteAndOutput.mockResolvedValue({
+    instance.router.getBestRouteAndOutput.mockResolvedValue({
       route: [
         {
           poolId: "pool-1",
@@ -58,26 +70,24 @@ describe("curve multi-chain integration", () => {
       output: "123.45",
     });
 
-    mockCurveInstance.router.populateSwap.mockResolvedValue({
+    instance.router.populateSwap.mockResolvedValue({
       to: ADDR_ROUTER,
       data: "0xabcdef",
       value: "7",
     });
 
-    mockCurveInstance.router.populateApprove.mockResolvedValue([
-      { to: ADDR_APPROVAL, data: "0xbeef" },
-    ]);
-    mockCurveInstance.hasAllowance.mockResolvedValue(false);
+    instance.router.populateApprove.mockResolvedValue([{ to: ADDR_APPROVAL, data: "0xbeef" }]);
+    instance.hasAllowance.mockResolvedValue(false);
 
-    mockCurveInstance.getCoinsData.mockImplementation(async ([address]: string[]) => {
+    instance.getCoinsData.mockImplementation(async ([address]: string[]) => {
       const lower = String(address).toLowerCase();
       if (lower === ADDR_FROM.toLowerCase()) return [{ symbol: "USDC" }];
       if (lower === ADDR_TO.toLowerCase()) return [{ symbol: "WETH" }];
       return [{ symbol: "LP" }];
     });
 
-    mockCurveInstance.router.required.mockResolvedValue("10.5");
-  });
+    instance.router.required.mockResolvedValue("10.5");
+  };
 
   it("isCurveSupported returns true for all 7 supported chains", async () => {
     vi.resetModules();
@@ -107,7 +117,11 @@ describe("curve multi-chain integration", () => {
 
     expect(result).not.toBeNull();
     expect(isCurveInitialized(1)).toBe(true);
-    expect(mockCurveInstance.init).toHaveBeenCalledWith(
+
+    // Verify the instance was initialized with correct chainId
+    expect(allCreatedInstances.length).toBe(1);
+    const instance = allCreatedInstances[0];
+    expect(instance?.init).toHaveBeenCalledWith(
       "JsonRpc",
       { url: "https://eth-mainnet.example.com" },
       { chainId: 1 }
@@ -116,10 +130,14 @@ describe("curve multi-chain integration", () => {
 
   it("initCurveInstance handles initialization failure gracefully", async () => {
     vi.resetModules();
+
+    // Pre-configure an instance to fail
+    const failingInstance = createMockCurveInstance();
+    failingInstance.init.mockRejectedValueOnce(new Error("RPC connection failed"));
+    instanceQueue.push(failingInstance);
+
     const { initCurveInstance, isCurveInitialized, getCurveInitError } =
       await import("../curve.js");
-
-    mockCurveInstance.init.mockRejectedValueOnce(new Error("RPC connection failed"));
 
     const result = await initCurveInstance(8453, "https://base-mainnet.example.com");
 
@@ -146,20 +164,30 @@ describe("curve multi-chain integration", () => {
 
     // Should have logged for each chain
     expect(log).toHaveBeenCalledTimes(7);
+
+    // Should have created 7 distinct instances
+    expect(allCreatedInstances.length).toBe(7);
   });
 
   it("initAllCurveInstances continues when one chain fails", async () => {
     vi.resetModules();
+
+    // Create 7 instances, one configured to fail for chain 137
+    for (let i = 0; i < 7; i++) {
+      const instance = createMockCurveInstance();
+      configureMockInstance(instance);
+      instanceQueue.push(instance);
+    }
+
     const { initAllCurveInstances, isCurveInitialized } = await import("../curve.js");
 
-    // Make chain 137 fail
-    mockCurveInstance.init.mockImplementation(
-      async (_type: string, _settings: object, options: { chainId: number }) => {
-        if (options.chainId === 137) {
-          throw new Error("Polygon RPC failed");
-        }
-      }
-    );
+    // Find the instance that will be used for chain 137 and make it fail
+    // The instances are used in the order CURVE_SUPPORTED_CHAINS is defined
+    // [1, 8453, 42161, 10, 137, 56, 43114] - chain 137 is index 4
+    const polygonInstance = instanceQueue[4];
+    if (polygonInstance) {
+      polygonInstance.init.mockRejectedValueOnce(new Error("Polygon RPC failed"));
+    }
 
     const log = vi.fn();
     const logError = vi.fn();
@@ -172,7 +200,7 @@ describe("curve multi-chain integration", () => {
     expect(isCurveInitialized(8453)).toBe(true);
     expect(isCurveInitialized(137)).toBe(false);
 
-    // Error should be logged (logError is called with just the message string)
+    // Error should be logged
     expect(logError).toHaveBeenCalledWith(expect.stringContaining("137"));
   });
 
@@ -187,6 +215,12 @@ describe("curve multi-chain integration", () => {
 
   it("findCurveQuote returns quote with symbols, gas estimate, and approval tx", async () => {
     vi.resetModules();
+
+    // Pre-configure a working instance
+    const instance = createMockCurveInstance();
+    configureMockInstance(instance);
+    instanceQueue.push(instance);
+
     const { initCurveInstance, findCurveQuote } = await import("../curve.js");
     await initCurveInstance(1, "https://eth-mainnet.example.com");
 
@@ -221,13 +255,13 @@ describe("curve multi-chain integration", () => {
         value: 7n,
       })
     );
-    expect(mockCurveInstance.hasAllowance).toHaveBeenCalledWith(
+    expect(instance.hasAllowance).toHaveBeenCalledWith(
       [ADDR_FROM],
       ["10"],
       ADDR_SENDER,
       ADDR_ROUTER
     );
-    expect(mockCurveInstance.router.populateApprove).toHaveBeenCalledWith(
+    expect(instance.router.populateApprove).toHaveBeenCalledWith(
       ADDR_FROM,
       "10",
       false,
@@ -237,6 +271,11 @@ describe("curve multi-chain integration", () => {
 
   it("findCurveQuote skips gas and approval checks for invalid sender", async () => {
     vi.resetModules();
+
+    const instance = createMockCurveInstance();
+    configureMockInstance(instance);
+    instanceQueue.push(instance);
+
     const { initCurveInstance, findCurveQuote } = await import("../curve.js");
     await initCurveInstance(1, "https://eth-mainnet.example.com");
 
@@ -256,23 +295,27 @@ describe("curve multi-chain integration", () => {
     expect(result.gas_used).toBeUndefined();
     expect(result.approval_target).toBeUndefined();
     expect(client.estimateGas).not.toHaveBeenCalled();
-    expect(mockCurveInstance.hasAllowance).not.toHaveBeenCalled();
-    expect(mockCurveInstance.router.populateApprove).not.toHaveBeenCalled();
+    expect(instance.hasAllowance).not.toHaveBeenCalled();
+    expect(instance.router.populateApprove).not.toHaveBeenCalled();
   });
 
   it("findCurveQuote handles symbol lookup and gas/approval failures gracefully", async () => {
     vi.resetModules();
-    const { initCurveInstance, findCurveQuote } = await import("../curve.js");
-    await initCurveInstance(1, "https://eth-mainnet.example.com");
 
-    mockCurveInstance.getCoinsData.mockRejectedValueOnce(new Error("symbol failure"));
-    mockCurveInstance.getCoinsData.mockResolvedValue([{ symbol: "WETH" }]);
-    mockCurveInstance.router.populateSwap.mockResolvedValue({
+    const instance = createMockCurveInstance();
+    configureMockInstance(instance);
+    instance.getCoinsData.mockRejectedValueOnce(new Error("symbol failure"));
+    instance.getCoinsData.mockResolvedValue([{ symbol: "WETH" }]);
+    instance.router.populateSwap.mockResolvedValue({
       to: ADDR_ROUTER,
       data: "0xabcdef",
       value: "0",
     });
-    mockCurveInstance.hasAllowance.mockRejectedValue(new Error("allowance failure"));
+    instance.hasAllowance.mockRejectedValue(new Error("allowance failure"));
+    instanceQueue.push(instance);
+
+    const { initCurveInstance, findCurveQuote } = await import("../curve.js");
+    await initCurveInstance(1, "https://eth-mainnet.example.com");
 
     const client = {
       estimateGas: vi.fn().mockRejectedValue(new Error("estimation failed")),
@@ -287,10 +330,14 @@ describe("curve multi-chain integration", () => {
 
   it("findCurveQuote throws if populateSwap does not return transaction data", async () => {
     vi.resetModules();
+
+    const instance = createMockCurveInstance();
+    configureMockInstance(instance);
+    instance.router.populateSwap.mockResolvedValue({ to: "", data: "" });
+    instanceQueue.push(instance);
+
     const { initCurveInstance, findCurveQuote } = await import("../curve.js");
     await initCurveInstance(1, "https://eth-mainnet.example.com");
-
-    mockCurveInstance.router.populateSwap.mockResolvedValue({ to: "", data: "" });
 
     await expect(findCurveQuote(1, ADDR_FROM, ADDR_TO, "10")).rejects.toThrow(
       "Failed to generate Curve swap transaction"
@@ -299,6 +346,11 @@ describe("curve multi-chain integration", () => {
 
   it("findCurveQuote works for targetOut mode", async () => {
     vi.resetModules();
+
+    const instance = createMockCurveInstance();
+    configureMockInstance(instance);
+    instanceQueue.push(instance);
+
     const { initCurveInstance, findCurveQuote } = await import("../curve.js");
     await initCurveInstance(1, "https://eth-mainnet.example.com");
 
@@ -315,26 +367,54 @@ describe("curve multi-chain integration", () => {
     expect(result.mode).toBe("targetOut");
     expect(result.output_amount).toBe("100");
     expect(result.input_amount).toBe("10.5");
-    expect(mockCurveInstance.router.required).toHaveBeenCalledWith(ADDR_FROM, ADDR_TO, "100");
+    expect(instance.router.required).toHaveBeenCalledWith(ADDR_FROM, ADDR_TO, "100");
   });
 
-  it("findCurveQuote routes to correct chain instance", async () => {
+  it("findCurveQuote routes to correct chain instance with distinct instances", async () => {
     vi.resetModules();
+
+    // Create distinct instances with different outputs for each chain
+    const ethereumInstance = createMockCurveInstance();
+    configureMockInstance(ethereumInstance);
+    ethereumInstance.router.getBestRouteAndOutput.mockResolvedValue({
+      route: [{ poolId: "eth-pool", poolName: "Ethereum Pool" }],
+      output: "100.00",
+    });
+
+    const baseInstance = createMockCurveInstance();
+    configureMockInstance(baseInstance);
+    baseInstance.router.getBestRouteAndOutput.mockResolvedValue({
+      route: [{ poolId: "base-pool", poolName: "Base Pool" }],
+      output: "200.00",
+    });
+
+    // Queue them in order: Ethereum first, then Base
+    instanceQueue.push(ethereumInstance, baseInstance);
+
     const { initCurveInstance, findCurveQuote } = await import("../curve.js");
 
-    // Initialize multiple chains
+    // Initialize both chains
     await initCurveInstance(1, "https://eth-mainnet.example.com");
     await initCurveInstance(8453, "https://base-mainnet.example.com");
 
     // Request quote for Base (chainId 8453)
-    const result = await findCurveQuote(8453, ADDR_FROM, ADDR_TO, "10");
+    const baseResult = await findCurveQuote(8453, ADDR_FROM, ADDR_TO, "10");
 
-    expect(result.source).toBe("curve");
-    // Verify it used the Base instance (init would have been called with chainId 8453)
-    expect(mockCurveInstance.init).toHaveBeenCalledWith(
-      "JsonRpc",
-      { url: "https://base-mainnet.example.com" },
-      { chainId: 8453 }
-    );
+    // Verify it returned the Base-specific output (200.00 not 100.00)
+    expect(baseResult.output_amount).toBe("200.00");
+
+    // Verify the Base instance's getBestRouteAndOutput was called, not Ethereum's
+    expect(baseInstance.router.getBestRouteAndOutput).toHaveBeenCalledTimes(1);
+    expect(ethereumInstance.router.getBestRouteAndOutput).not.toHaveBeenCalled();
+
+    // Clear mock call counts before testing Ethereum
+    baseInstance.router.getBestRouteAndOutput.mockClear();
+    ethereumInstance.router.getBestRouteAndOutput.mockClear();
+
+    // Now test Ethereum routing
+    const ethResult = await findCurveQuote(1, ADDR_FROM, ADDR_TO, "10");
+    expect(ethResult.output_amount).toBe("100.00");
+    expect(ethereumInstance.router.getBestRouteAndOutput).toHaveBeenCalledTimes(1);
+    expect(baseInstance.router.getBestRouteAndOutput).not.toHaveBeenCalled();
   });
 });

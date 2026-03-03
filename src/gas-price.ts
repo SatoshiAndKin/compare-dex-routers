@@ -10,12 +10,21 @@
  * - Multiple requests in the same block share one RPC call
  * - When the block advances, fresh gas price is fetched
  * - Different chains have independent cache entries
+ * - TTL-based eviction: entries older than 5 minutes are evicted
+ * - Max-size eviction: when cache exceeds 1000 entries, oldest are evicted
  *
  * Graceful degradation:
  * - If both Spandex and RPC fail, the quote still returns with null gas fields
  */
 
 import type { PublicClient } from "viem";
+import { logger } from "./logger.js";
+
+/** Cache TTL in milliseconds (5 minutes) */
+export const CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** Maximum number of entries in the cache */
+export const MAX_CACHE_SIZE = 1000;
 
 /**
  * Cache entry for gas price data.
@@ -30,8 +39,48 @@ interface GasPriceCacheEntry {
  * Cache keyed by chainId, storing block number and gas price.
  * Key format: `${chainId}:${blockNumber}`
  * This ensures per-chain, per-block isolation.
+ *
+ * Eviction policy:
+ * - TTL: entries older than CACHE_TTL_MS are considered stale
+ * - Max-size: when cache exceeds MAX_CACHE_SIZE, oldest entries are evicted
  */
 const gasPriceCache = new Map<string, GasPriceCacheEntry>();
+
+/**
+ * Evict expired and excess entries from the cache.
+ * Called after adding new entries to prevent unbounded growth.
+ */
+function evictStaleEntries(): void {
+  const now = Date.now();
+
+  // Evict TTL-expired entries
+  for (const [key, entry] of gasPriceCache.entries()) {
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      gasPriceCache.delete(key);
+    }
+  }
+
+  // If still over max size, evict oldest entries
+  if (gasPriceCache.size > MAX_CACHE_SIZE) {
+    // Get entries sorted by timestamp (oldest first)
+    const entries = Array.from(gasPriceCache.entries()).sort(
+      (a, b) => a[1].timestamp - b[1].timestamp
+    );
+
+    // Evict oldest until under max size
+    const toEvict = entries.slice(0, gasPriceCache.size - MAX_CACHE_SIZE);
+    for (const [key] of toEvict) {
+      gasPriceCache.delete(key);
+    }
+
+    if (toEvict.length > 0) {
+      logger.debug(
+        { evictedCount: toEvict.length, remainingSize: gasPriceCache.size },
+        "Gas price cache evicted oldest entries to stay under max size"
+      );
+    }
+  }
+}
 
 /**
  * Generate cache key for a chain and block.
@@ -71,8 +120,12 @@ export async function getGasPriceWithCache(
   let blockNumber: bigint;
   try {
     blockNumber = await client.getBlockNumber();
-  } catch {
+  } catch (error) {
     // Block number fetch failed - graceful degradation
+    logger.debug(
+      { chainId, error: String(error) },
+      "Failed to fetch block number for gas price cache"
+    );
     return { gasPriceGwei: null, blockNumber: null, fromCache: false };
   }
 
@@ -82,23 +135,32 @@ export async function getGasPriceWithCache(
 
   const cacheKey = getCacheKey(chainId, blockNumber);
 
-  // Check cache for this chain+block
+  // Check cache for this chain+block (also check TTL)
   const cached = gasPriceCache.get(cacheKey);
   if (cached) {
-    const gasPriceGwei = (Number(cached.gasPriceWei) / 1e9).toFixed(4);
-    return {
-      gasPriceGwei,
-      blockNumber: cached.blockNumber,
-      fromCache: true,
-    };
+    // Check if entry has expired due to TTL
+    if (Date.now() - cached.timestamp <= CACHE_TTL_MS) {
+      const gasPriceGwei = (Number(cached.gasPriceWei) / 1e9).toFixed(4);
+      return {
+        gasPriceGwei,
+        blockNumber: cached.blockNumber,
+        fromCache: true,
+      };
+    }
+    // Entry expired, remove it and fetch fresh
+    gasPriceCache.delete(cacheKey);
   }
 
   // Cache miss - fetch fresh gas price
   let gasPriceWei: bigint;
   try {
     gasPriceWei = await client.getGasPrice();
-  } catch {
+  } catch (error) {
     // Gas price fetch failed - return with null gas but valid block number
+    logger.debug(
+      { chainId, blockNumber: blockNumber.toString(), error: String(error) },
+      "Failed to fetch gas price from RPC"
+    );
     return { gasPriceGwei: null, blockNumber, fromCache: false };
   }
 
@@ -113,6 +175,9 @@ export async function getGasPriceWithCache(
     timestamp: Date.now(),
   });
 
+  // Evict stale entries to prevent unbounded growth
+  evictStaleEntries();
+
   const gasPriceGwei = (Number(gasPriceWei) / 1e9).toFixed(4);
   return {
     gasPriceGwei,
@@ -123,7 +188,7 @@ export async function getGasPriceWithCache(
 
 /**
  * Get cached gas price for a specific chain and block (without fetching).
- * Returns null if not cached.
+ * Returns null if not cached or if entry has expired due to TTL.
  *
  * Useful for checking if we have a cached value before deciding to fetch.
  */
@@ -131,7 +196,12 @@ export function getCachedGasPrice(chainId: number, blockNumber: bigint): string 
   const cacheKey = getCacheKey(chainId, blockNumber);
   const cached = gasPriceCache.get(cacheKey);
   if (cached) {
-    return (Number(cached.gasPriceWei) / 1e9).toFixed(4);
+    // Check TTL - if expired, treat as cache miss
+    if (Date.now() - cached.timestamp <= CACHE_TTL_MS) {
+      return (Number(cached.gasPriceWei) / 1e9).toFixed(4);
+    }
+    // Entry expired, remove it
+    gasPriceCache.delete(cacheKey);
   }
   return null;
 }

@@ -6,6 +6,9 @@ import {
   clearGasPriceCache,
   getGasPriceCacheStats,
   invalidateChainCache,
+  // Re-export for testing TTL/max-size
+  CACHE_TTL_MS,
+  MAX_CACHE_SIZE,
 } from "../gas-price.js";
 
 // Mock viem PublicClient
@@ -252,6 +255,103 @@ describe("gas-price module", () => {
       // Note: Due to async nature, we might get multiple RPC calls
       // This test verifies the cache works, not that it deduplicates in-flight requests
       // (which would require additional logic like a promise cache)
+    });
+  });
+
+  describe("TTL eviction", () => {
+    it("evicts expired entries on cache read", async () => {
+      vi.useFakeTimers();
+
+      vi.mocked(mockClient.getBlockNumber).mockResolvedValue(1000n);
+      vi.mocked(mockClient.getGasPrice).mockResolvedValue(20_000_000_000n);
+
+      // First call - cache the result
+      const result1 = await getGasPriceWithCache(1, mockClient);
+      expect(result1.fromCache).toBe(false);
+
+      // Advance time past TTL
+      vi.advanceTimersByTime(CACHE_TTL_MS + 1000);
+
+      // Second call should be cache miss due to TTL expiry
+      vi.mocked(mockClient.getBlockNumber).mockResolvedValue(1000n);
+      vi.mocked(mockClient.getGasPrice).mockResolvedValue(25_000_000_000n);
+
+      const result2 = await getGasPriceWithCache(1, mockClient);
+      expect(result2.fromCache).toBe(false);
+      expect(result2.gasPriceGwei).toBe("25.0000");
+
+      vi.useRealTimers();
+    });
+
+    it("getCachedGasPrice returns null for expired entries", async () => {
+      vi.useFakeTimers();
+
+      vi.mocked(mockClient.getBlockNumber).mockResolvedValue(1000n);
+      vi.mocked(mockClient.getGasPrice).mockResolvedValue(20_000_000_000n);
+
+      await getGasPriceWithCache(1, mockClient);
+
+      // Advance time past TTL
+      vi.advanceTimersByTime(CACHE_TTL_MS + 1000);
+
+      // getCachedGasPrice should return null for expired entry
+      const cached = getCachedGasPrice(1, 1000n);
+      expect(cached).toBeNull();
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe("max-size eviction", () => {
+    it("evicts oldest entries when cache exceeds max size", async () => {
+      vi.useFakeTimers();
+
+      vi.mocked(mockClient.getBlockNumber).mockImplementation(async () => {
+        return BigInt(Math.floor(Math.random() * 1000000));
+      });
+      vi.mocked(mockClient.getGasPrice).mockResolvedValue(20_000_000_000n);
+
+      // Fill cache beyond max size
+      for (let i = 0; i < MAX_CACHE_SIZE + 100; i++) {
+        vi.advanceTimersByTime(1); // Each entry has unique timestamp
+        await getGasPriceWithCache(i % 10, mockClient); // Use various chains
+      }
+
+      const stats = getGasPriceCacheStats();
+      expect(stats.size).toBeLessThanOrEqual(MAX_CACHE_SIZE);
+
+      vi.useRealTimers();
+    });
+
+    it("preferves more recent entries during eviction", async () => {
+      vi.useFakeTimers();
+
+      vi.mocked(mockClient.getBlockNumber).mockResolvedValue(1000n);
+      vi.mocked(mockClient.getGasPrice).mockResolvedValue(20_000_000_000n);
+
+      // Add first entry (oldest)
+      await getGasPriceWithCache(1, mockClient);
+
+      // Advance time
+      vi.advanceTimersByTime(1000);
+
+      // Add many more entries to exceed max size
+      for (let i = 0; i < MAX_CACHE_SIZE; i++) {
+        vi.advanceTimersByTime(1);
+        vi.mocked(mockClient.getBlockNumber).mockResolvedValue(BigInt(2000 + i));
+        await getGasPriceWithCache(1, mockClient);
+      }
+
+      // The oldest entry (block 1000) should have been evicted
+      const cached = getCachedGasPrice(1, 1000n);
+      expect(cached).toBeNull();
+
+      // But a recent entry should still be there
+      vi.mocked(mockClient.getBlockNumber).mockResolvedValue(BigInt(2000 + MAX_CACHE_SIZE - 1));
+      const recentCached = getCachedGasPrice(1, BigInt(2000 + MAX_CACHE_SIZE - 1));
+      expect(recentCached).toBe("20.0000");
+
+      vi.useRealTimers();
     });
   });
 });
