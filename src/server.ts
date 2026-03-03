@@ -2112,8 +2112,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     <div class="form-header-row">
       <div class="form-group">
         <label for="chainId">Chain</label>
-        <input type="text" id="chainId" placeholder="Search chain name or ID..." autocomplete="off" data-chain-id="8453" value="Base (8453)">
-        <div class="chain-dropdown" id="chainDropdown"></div>
+        <input type="text" id="chainId" placeholder="Search chain name or ID..." autocomplete="off" data-chain-id="8453" value="Base (8453)" role="combobox" aria-expanded="false" aria-controls="chainDropdown" aria-haspopup="listbox">
+        <div class="chain-dropdown" id="chainDropdown" role="listbox"></div>
       </div>
     </div>
     <!-- Row 2: Wallet (integrated into form flow) -->
@@ -2512,6 +2512,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         empty.textContent = 'No chains match';
         chainDropdown.appendChild(empty);
         chainDropdown.classList.add('show');
+        chainIdInput.setAttribute('aria-expanded', 'true');
         return;
       }
 
@@ -2520,6 +2521,8 @@ const INDEX_HTML = `<!DOCTYPE html>
         const item = document.createElement('div');
         item.className = 'chain-item';
         item.dataset.chainId = chain.id;
+        item.setAttribute('role', 'option');
+        item.setAttribute('id', 'chain-option-' + chain.id);
 
         const nameEl = document.createElement('span');
         nameEl.className = 'chain-item-name';
@@ -2542,11 +2545,20 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       chainDropdown.appendChild(fragment);
       chainDropdown.classList.add('show');
+      chainIdInput.setAttribute('aria-expanded', 'true');
     }
 
     function setActiveChainItem(index) {
       const items = chainDropdown.querySelectorAll('.chain-item');
-      items.forEach((el, i) => el.classList.toggle('active', i === index));
+      items.forEach((el, i) => {
+        el.classList.toggle('active', i === index);
+        el.setAttribute('aria-selected', i === index ? 'true' : 'false');
+      });
+      if (index >= 0 && items[index]) {
+        chainIdInput.setAttribute('aria-activedescendant', items[index].id);
+      } else {
+        chainIdInput.removeAttribute('aria-activedescendant');
+      }
     }
 
     function selectChain(chainId, chainName) {
@@ -2562,6 +2574,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       chainDropdown.classList.remove('show');
       chainDropdown.innerHTML = '';
       chainDropdownActiveIdx = -1;
+      chainIdInput.setAttribute('aria-expanded', 'false');
+      chainIdInput.removeAttribute('aria-activedescendant');
     }
 
     function refreshChainDropdown() {
@@ -4340,7 +4354,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
 
       function refresh() {
-        const chainId = document.getElementById('chainId').value;
+        const chainId = getCurrentChainId();
         matches = findTokenMatches(input.value, chainId);
         render();
         // Clear icon when input is cleared
