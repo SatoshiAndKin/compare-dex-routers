@@ -1098,14 +1098,16 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #0055FF;
       color: #fff;
       border-color: #0055FF;
+      min-width: 140px; /* Accommodate "Compare Quotes" and "Comparing..." without resize */
     }
     .btn-primary:hover { background: #0046CC; }
     
     .btn-secondary {
-      background: #000;
-      color: #fff;
+      background: #fff;
+      color: #000;
+      border-color: #000;
     }
-    .btn-secondary:hover { background: #333; }
+    .btn-secondary:hover { background: #f0f0f0; }
 
     /* Utility classes for extracted inline styles */
     .mev-button-row {
@@ -1266,6 +1268,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-size: 0.75rem;
       padding: 0.375rem 0.625rem;
       white-space: nowrap;
+      min-width: 70px; /* Accommodate "Loading..." without resize */
     }
     .tokenlist-message {
       font-size: 0.75rem;
@@ -1294,7 +1297,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .wallet-connected-row { gap: 0.5rem; }
     .btn-disconnect {
       font-size: 0.75rem;
-      padding: 0.25rem 0.5rem;
+      padding: 0.375rem 0.625rem; /* Match .btn-small for consistent small button sizing */
     }
     .wallet-message {
       font-size: 0.75rem;
@@ -1452,6 +1455,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #fff;
       color: #000;
       cursor: pointer;
+      min-width: 100px; /* Accommodate "Approved ✓" without resize */
     }
     .tx-btn.swap-btn { background: #0055FF; color: #fff; border-color: #0055FF; }
     .tx-btn.swap-btn:hover { background: #0046CC; }
