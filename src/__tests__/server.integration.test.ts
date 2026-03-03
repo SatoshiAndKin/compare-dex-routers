@@ -386,6 +386,45 @@ describe("server integration", () => {
     expect(html).toContain('type="button" id="disconnectWalletBtn"');
   });
 
+  // VAL-UI-050: Chain selector accepts text input
+  // VAL-UI-051: Filter by chain name
+  // VAL-UI-052: Filter by chain ID
+  it("GET / has searchable chain dropdown with input and dropdown list", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // Chain selector is now an input (not select)
+    expect(html).toContain('id="chainId"');
+    expect(html).toContain('placeholder="Search chain name or ID..."');
+    expect(html).toContain("data-chain-id=");
+
+    // Chain dropdown list element exists
+    expect(html).toContain('id="chainDropdown"');
+    expect(html).toContain('class="chain-dropdown"');
+
+    // Chain dropdown CSS styles are present
+    expect(html).toContain(".chain-item");
+    expect(html).toContain(".chain-item-name");
+    expect(html).toContain(".chain-item-id");
+
+    // Chain dropdown JavaScript functions are present
+    expect(html).toContain("filterChains");
+    expect(html).toContain("selectChain");
+    expect(html).toContain("formatChainDisplay");
+    expect(html).toContain("ALL_CHAINS");
+  });
+
+  // VAL-UI-055: No match shows empty/message
+  it("GET / has chain-dropdown-empty CSS class for no-match state", async () => {
+    const res = await request(`${baseUrl}/`);
+    expect(res.status).toBe(200);
+    const html = res.body;
+
+    // Chain dropdown empty state class is defined
+    expect(html).toContain(".chain-item-empty");
+  });
+
   // VAL-FLOW-008: MEV info button in results area
   it("GET / has MEV info button positioned after form, near results area", async () => {
     const res = await request(`${baseUrl}/`);
