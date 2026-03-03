@@ -1,0 +1,68 @@
+{
+  "featureId": "gas-adjusted-comparison-and-display",
+  "reviewedAt": "2026-03-03T01:30:00.000Z",
+  "commitId": "225786e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation that replaces the three-tier gas comparison system with a unified gas-adjusted approach using net ETH value. The server-side logic correctly fetches output->ETH rates via Spandex, caches them for 60s, and enriches both Spandex and Curve quotes with gas_cost_eth, output_value_eth, and net_value_eth. The UI properly shows gas cost in ETH on primary quote cards and raw gas units in details. Graceful fallback when rate fetch fails is well-handled. Tests were updated and a new test for non-ETH rate fetch was added. All 129 tests pass, typecheck and lint pass. Several non-blocking improvements noted below.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 389,
+        "severity": "non_blocking",
+        "description": "outputToEthRateCache is a Map with 60s TTL but no eviction of stale entries. Expired entries are only replaced on the next read for the same key, never deleted. Over time this could be a slow memory leak if many distinct tokens are queried. Consider adding periodic cleanup or using an LRU cache."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 4341,
+        "severity": "non_blocking",
+        "description": "UI hardcodes ' ETH' label for gas_cost_eth on all chains (lines 4341, 4381, 4450). On BSC (chain 56) gas costs are in BNB, on Avalanche (43114) in AVAX. Since Curve only supports Ethereum, the comparison path is currently Ethereum-only, but the single-quote enrichment and UI display would show 'Gas Cost: X ETH' even on non-Ethereum chains. The label should ideally use the native gas token symbol for the chain."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 513,
+        "severity": "non_blocking",
+        "description": "outputToken falls back to empty string via `outputToken || \"\"` when both quotes somehow have undefined `to` field. This would cause getTokenDecimals and fetchOutputToEthRate to receive an empty string, which fails gracefully (returns null), but is a code smell. The condition `spandex.result || curveResult.result` guarantees at least one exists, so `outputToken` should always be defined here."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 540,
+        "severity": "non_blocking",
+        "description": "Two nearly identical helper functions enrichQuoteWithGasFields() and enrichCurveQuoteWithGasFields() differ only in their type parameter (QuoteResult vs CurveQuoteResult). Since both types now share the same optional gas fields (gas_cost_eth, output_value_eth, net_value_eth), these could be merged into a single generic function to reduce duplication."
+      },
+      {
+        "file": "src/__tests__/server.quote-compare.test.ts",
+        "line": 481,
+        "severity": "non_blocking",
+        "description": "Test assertions for gas_cost_eth use toBeDefined() which is a weak check - any non-undefined value passes. Could assert on approximate numeric values or at least check that the value is a non-empty string matching expected format."
+      },
+      {
+        "file": "src/__tests__/server.quote-compare.test.ts",
+        "line": 426,
+        "severity": "non_blocking",
+        "description": "No test coverage for: (1) cache hit path in fetchOutputToEthRate, (2) fetchOutputToEthRate returning null when WETH address is missing for a chain, (3) the non-ETH chain labeling issue. These are edge cases that would improve confidence in the caching and multi-chain behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The WETH_ADDRESSES map at module level (line 376) defines native wrapped token addresses for 7 chains. This is a useful cross-cutting constant that may be needed by other features. The mission AGENTS.md already mentions 'WETH addresses per chain are already in isEthOutput() helper and config.ts' but the worker extracted them into a standalone map, which is cleaner. However, this duplication between what AGENTS.md says and what now exists could cause confusion.",
+      "evidence": "src/server.ts:376-384 defines WETH_ADDRESSES map. Mission AGENTS.md references 'WETH addresses per chain are already in isEthOutput() helper and config.ts'."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The gas-adjusted comparison algorithm (normalize all quotes to net ETH value by fetching output->ETH rate) is non-trivial domain logic that future workers may need to understand or modify. The implementation details (rate caching, fallback tiers, enrichment pattern) are not documented in .factory/library/ but would be valuable as a reference.",
+      "evidence": "src/server.ts:385-560 contains ~175 lines of gas comparison infrastructure. No corresponding entry in .factory/library/."
+    },
+    {
+      "area": "conventions",
+      "observation": "The worker used getQuote (from @spandex/core) directly for rate fetching rather than the project's findQuote wrapper. This is a reasonable choice since findQuote has sender/fallback logic not needed for rate estimation, but it introduces a second pattern for calling Spandex. Not documented as a convention.",
+      "evidence": "src/server.ts:432 calls getQuote directly for rate fetch, while src/server.ts:289 uses getQuote through the findQuote wrapper for actual quotes."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The implementation correctly replaces the three-tier gas comparison with a unified net-ETH-value approach. Server changes add rate fetching, caching, and enrichment of both quote types. UI properly shows gas cost in ETH. Tests updated and passing. Six non-blocking issues identified: unbounded cache growth, hardcoded ETH label for non-Ethereum chains, minor code duplication, empty-string fallback smell, and weak test assertions. No blocking issues found."
+}

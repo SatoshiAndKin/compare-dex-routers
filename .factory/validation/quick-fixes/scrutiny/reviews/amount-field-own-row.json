@@ -1,0 +1,28 @@
+{
+  "featureId": "amount-field-own-row",
+  "reviewedAt": "2026-03-03T01:30:00.000Z",
+  "commitId": "801c82adee3d39a77620b2a544f03923afaaa007",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, minimal diff that accomplishes the feature goal. The HTML change moves the amount input from a shared form-row-fixed div with the from-token into its own standalone form-group div. The CSS rule `.form-row-fixed .form-group.amount-group { flex: 0 0 150px; }` was correctly removed since amount-group no longer exists. Tests were updated to reflect the new element order (chain → wallet → amount → from → to → slippage → compare) and a new test verifies the amount field has its own row with a label. The commit only touches src/server.ts (HTML layout) and src/__tests__/server.integration.test.ts (test expectations). All expectedBehavior items are covered: own row, 20+ digits, responsive at 375px, and form submission still works.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 1256,
+        "severity": "non_blocking",
+        "description": "Orphaned CSS: `.form-row-fixed` class (lines 1256-1257) and its responsive comment (line 1779) are now dead code. After this commit, no HTML element uses `class=\"form-row-fixed\"` — the only consumer was the old from+amount row that was removed. These three CSS lines should be cleaned up to avoid confusion."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker's commit spans two worker sessions (b045077e made HTML changes, 8c7f14a1 fixed tests). The handoff correctly describes this split, but this pattern of one session leaving broken tests for the next isn't documented in AGENTS.md or mission AGENTS.md as something to avoid. Workers should be expected to run tests before handing off.",
+      "evidence": "Handoff says 'Previous worker had already made the HTML changes; I fixed the failing tests that expected the old layout.' Feature has two workerSessionIds: b045077e-7d0e-4867-bad8-0102d0d98b6d and 8c7f14a1-f05d-44de-a15a-d49257df8adb."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The feature correctly moves the amount input to its own full-width row above from/to token fields. The diff is clean and minimal (26 lines in server.ts, 38 lines in tests). One non-blocking issue: the .form-row-fixed CSS class is now orphaned dead code after this change removed its only HTML consumer."
+}

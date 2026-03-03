@@ -1,5 +1,6 @@
 import curve from "@curvefi/api";
 import type { PublicClient } from "viem";
+import type { QuoteMode } from "./quote.js";
 
 const CURVE_CHAIN_ID = 1;
 
@@ -65,7 +66,9 @@ export interface CurveQuoteResult {
   to: string;
   to_symbol: string;
   amount: string;
+  input_amount: string;
   output_amount: string;
+  mode: QuoteMode;
   route: CurveRouteStep[];
   route_symbols: Record<string, string>;
   router_address: string;
@@ -73,6 +76,10 @@ export interface CurveQuoteResult {
   gas_used?: string;
   approval_target?: string;
   approval_calldata?: string;
+  // Gas-adjusted comparison fields
+  gas_cost_eth?: string; // Gas cost in ETH (gas_used * gas_price / 1e18)
+  output_value_eth?: string; // Output converted to ETH
+  net_value_eth?: string; // output_value_eth - gas_cost_eth
 }
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
@@ -82,17 +89,38 @@ export async function findCurveQuote(
   to: string,
   amount: string,
   sender?: string,
-  client?: PublicClient
+  client?: PublicClient,
+  mode: QuoteMode = "exactIn"
 ): Promise<CurveQuoteResult> {
   if (!initialized) throw new Error("Curve API not initialized");
 
-  const [{ route, output }, fromSymbol, toSymbol] = await Promise.all([
-    curve.router.getBestRouteAndOutput(from, to, amount),
+  // For targetOut mode, we need to first get the required input amount
+  let inputAmount: string;
+  let outputAmount: string;
+  let route: CurveRouteStep[];
+
+  if (mode === "targetOut") {
+    // Use required() to get the input needed for desired output
+    const requiredInput = await curve.router.required(from, to, amount);
+    inputAmount = requiredInput;
+    outputAmount = amount;
+    // Get the route for the input amount
+    const routeResult = await curve.router.getBestRouteAndOutput(from, to, inputAmount);
+    route = routeResult.route as CurveRouteStep[];
+  } else {
+    // exactIn mode - original behavior
+    const routeResult = await curve.router.getBestRouteAndOutput(from, to, amount);
+    route = routeResult.route as CurveRouteStep[];
+    inputAmount = amount;
+    outputAmount = routeResult.output;
+  }
+
+  const [fromSymbol, toSymbol] = await Promise.all([
     getCurveTokenSymbol(from),
     getCurveTokenSymbol(to),
   ]);
 
-  const typedRoute = route as CurveRouteStep[];
+  const typedRoute = route;
 
   const tokenAddresses = new Set<string>();
   for (const step of typedRoute) {
@@ -108,7 +136,8 @@ export async function findCurveQuote(
     })
   );
 
-  const swapTx = await curve.router.populateSwap(from, to, amount);
+  // For swap transaction, we always use the input amount
+  const swapTx = await curve.router.populateSwap(from, to, inputAmount);
   if (!swapTx.to || !swapTx.data) {
     throw new Error("Failed to generate Curve swap transaction");
   }
@@ -120,7 +149,9 @@ export async function findCurveQuote(
     to,
     to_symbol: toSymbol,
     amount,
-    output_amount: output,
+    input_amount: inputAmount,
+    output_amount: outputAmount,
+    mode,
     route: typedRoute,
     route_symbols: routeSymbols,
     router_address: swapTx.to,
@@ -144,9 +175,9 @@ export async function findCurveQuote(
 
   if (sender && ADDRESS_REGEX.test(sender)) {
     try {
-      const isApproved = await curve.hasAllowance([from], [amount], sender, swapTx.to);
+      const isApproved = await curve.hasAllowance([from], [inputAmount], sender, swapTx.to);
       if (!isApproved) {
-        const approveTxs = await curve.router.populateApprove(from, amount, false, sender);
+        const approveTxs = await curve.router.populateApprove(from, inputAmount, false, sender);
         const approveTx = approveTxs[0];
         if (approveTx?.to && approveTx?.data) {
           result.approval_target = approveTx.to;

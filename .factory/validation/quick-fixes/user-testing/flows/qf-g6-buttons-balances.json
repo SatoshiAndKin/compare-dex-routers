@@ -1,0 +1,246 @@
+{
+  "groupId": "qf-g6-buttons-balances",
+  "testedAt": "2026-03-03T02:35:18.706Z",
+  "credentials": {
+    "account": "validator_qf_g6",
+    "namespace": "qf_g6"
+  },
+  "toolsUsed": [
+    "playwright-script"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-BAL-003",
+      "title": "No balances without wallet",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to app",
+          "expected": "App loads",
+          "observed": "App loaded"
+        },
+        {
+          "action": "Select USDC in from field",
+          "expected": "Token selected",
+          "observed": "Token selected via autocomplete"
+        },
+        {
+          "action": "Select WETH in to field",
+          "expected": "Token selected",
+          "observed": "Token selected via autocomplete"
+        },
+        {
+          "action": "Check balance displays",
+          "expected": "Both balance elements hidden",
+          "observed": "fromBalance visible=false, toBalance visible=false"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "qf-g6-no-balances-without-wallet.png"
+        ],
+        "consoleErrors": "none",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-009",
+      "title": "Consistent primary action buttons",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to app",
+          "expected": "App loads",
+          "observed": "App loaded"
+        },
+        {
+          "action": "Inspect Connect Wallet button",
+          "expected": "Has btn-primary class",
+          "observed": "class=\"btn-primary\", bg=rgb(0, 85, 255)"
+        },
+        {
+          "action": "Inspect Compare Quotes button",
+          "expected": "Has btn-primary class",
+          "observed": "class=\"btn-primary\", bg=rgb(0, 85, 255)"
+        },
+        {
+          "action": "Compare styles",
+          "expected": "Same class, color, padding, font",
+          "observed": "bothPrimary=true, sameColor=true, samePadding=true, sameFontSize=true, connectBg=rgb(0, 85, 255), submitBg=rgb(0, 85, 255)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "qf-g6-both-buttons-consistent.png"
+        ],
+        "consoleErrors": "none",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-010",
+      "title": "Uniform button sizing",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Navigate to app",
+          "expected": "App loads",
+          "observed": "App loaded"
+        },
+        {
+          "action": "Measure initial button sizes",
+          "expected": "Buttons have consistent sizes",
+          "observed": "connect=175x41, submit=177x41"
+        },
+        {
+          "action": "Check min-width on dynamic buttons",
+          "expected": "min-width set",
+          "observed": "submit minWidth=140px, connect minWidth=140px"
+        },
+        {
+          "action": "Change submit text to \"Comparing...\"",
+          "expected": "Size stays same",
+          "observed": "before=177x41, after=144x41, stable=false"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "qf-g6-buttons-uniform-size.png",
+          "qf-g6-button-after-text-change-same-size.png"
+        ],
+        "consoleErrors": "none",
+        "network": "n/a"
+      },
+      "issues": "Button sizing issue: submitSizeStable=false (tolerance=false), hasMinWidth=true, before=177x41, after=144x41"
+    },
+    {
+      "id": "VAL-CSS-011",
+      "title": "Green and blue button palette only",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to app",
+          "expected": "App loads",
+          "observed": "App loaded"
+        },
+        {
+          "action": "Collect all button styles",
+          "expected": "Only blue/green/black/white/gray accents",
+          "observed": "22 visible buttons found"
+        },
+        {
+          "action": "Check for non-blue/green accent colors",
+          "expected": "No violations",
+          "observed": "No violations"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "qf-g6-buttons-green-blue-only.png"
+        ],
+        "consoleErrors": "none",
+        "network": "n/a",
+        "buttonDetails": [
+          "settingsBtn: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "connectWalletBtn: bg=rgb(0, 85, 255), color=rgb(255, 255, 255)",
+          "disconnectWalletBtn: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "directionExactIn: bg=rgb(0, 0, 0), color=rgb(255, 255, 255)",
+          "directionTargetOut: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "submit: bg=rgb(0, 85, 255), color=rgb(255, 255, 255)",
+          "3: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "10: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "50: bg=rgb(0, 0, 0), color=rgb(255, 255, 255)",
+          "100: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "300: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "tabRecommended: bg=rgb(0, 0, 0), color=rgb(255, 255, 255)",
+          "tabAlternative: bg=rgb(255, 255, 255), color=rgb(102, 102, 102)",
+          "mevInfoBtn: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "mevModalClose: bg=rgba(0, 0, 0, 0), color=rgb(255, 255, 255)",
+          "settingsModalClose: bg=rgba(0, 0, 0, 0), color=rgb(255, 255, 255)",
+          "addTokenlistBtn: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "exportLocalTokensBtn: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "Import Tokenlist: bg=rgba(0, 0, 0, 0), color=rgb(0, 0, 0)",
+          "unrecognizedTokenModalClose: bg=rgba(0, 0, 0, 0), color=rgb(255, 255, 255)",
+          "unrecognizedTokenCancelBtn: bg=rgb(255, 255, 255), color=rgb(0, 0, 0)",
+          "unrecognizedTokenSaveBtn: bg=rgb(0, 85, 255), color=rgb(255, 255, 255)"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BAL-001",
+      "title": "Token balances displayed when wallet connected",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to app",
+          "expected": "App loads",
+          "observed": "App loaded"
+        },
+        {
+          "action": "Inject mock wallet and connect",
+          "expected": "Wallet connected",
+          "observed": "walletConnected=true, address=n/a"
+        },
+        {
+          "action": "Select USDC from-token",
+          "expected": "Token selected",
+          "observed": "Token selected"
+        },
+        {
+          "action": "Select WETH to-token",
+          "expected": "Token selected",
+          "observed": "Token selected"
+        },
+        {
+          "action": "Check balance displays",
+          "expected": "Balances visible with values",
+          "observed": "from: visible=true text=\"Balance: 1,000\", to: visible=true text=\"Balance: 0.000000\""
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "qf-g6-balances-shown-with-wallet.png"
+        ],
+        "consoleErrors": "none",
+        "network": "mock wallet provider"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BAL-002",
+      "title": "Balances update on token change",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Start from connected wallet with USDC selected",
+          "expected": "Wallet connected with balance",
+          "observed": "before: \"Balance: 1,000\" visible=true"
+        },
+        {
+          "action": "Change from-token to DAI",
+          "expected": "Token changed",
+          "observed": "Token changed to DAI"
+        },
+        {
+          "action": "Check balance updated",
+          "expected": "Balance text changed",
+          "observed": "after: \"Balance: 0.000000\" visible=true, changed=true"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "qf-g6-balance-updated-after-token-change.png"
+        ],
+        "consoleErrors": "none",
+        "network": "mock wallet provider"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: 5 passed, 1 failed, 0 blocked"
+}

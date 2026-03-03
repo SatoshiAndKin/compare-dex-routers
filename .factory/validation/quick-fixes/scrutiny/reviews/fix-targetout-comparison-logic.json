@@ -1,0 +1,45 @@
+{
+  "featureId": "fix-targetout-comparison-logic",
+  "reviewedAt": "2026-03-03T02:04:00.000Z",
+  "commitId": "07c7c21",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix fully addresses both blocking issues from the prior review of reverse-quote-targetout-support. (1) compareQuotes() now branches on mode: in targetOut mode it compares input_amount (lower = better) instead of output_amount; gas-adjusted targetOut uses totalCostEth = inputValueEth + gasCostEth with lower total cost winning. (2) Recommendation reason wording correctly uses 'requires X less' instead of 'outputs more' in targetOut mode. Additionally, fetchInputToEthRate() was added for non-ETH inputs in targetOut mode, CompareResult was extended with input_to_eth_rate and mode fields, openapi.yaml was updated to document the mode parameter and new response fields, and 5 new test cases cover targetOut comparison scenarios. All 134 tests pass, typecheck and lint are clean.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 698,
+        "severity": "non_blocking",
+        "description": "The enrichQuoteWithGasFields() and enrichCurveQuoteWithGasFields() functions use parameter names 'outputValueEth' and 'netValueEth', but in targetOut mode they receive inputValueEth and totalCostEth respectively. The response fields output_value_eth and net_value_eth change semantics based on mode. The openapi.yaml documents this dual meaning, but dedicated fields (e.g. input_value_eth, total_cost_eth) would be clearer for API consumers."
+      },
+      {
+        "file": "src/__tests__/server.quote-compare.test.ts",
+        "line": 630,
+        "severity": "non_blocking",
+        "description": "The gas-adjusted targetOut test sets getTokenSymbolMock to return 'WETH' for both from and to tokens (line: token.toLowerCase() === ADDR_FROM.toLowerCase() ? 'WETH' : 'WETH'). While this correctly tests the ETH-input gas-adjusted path, the ternary is misleading (both branches return the same value). A comment or simplified mock would improve clarity."
+      },
+      {
+        "file": "src/__tests__/server.quote-compare.test.ts",
+        "line": 573,
+        "severity": "non_blocking",
+        "description": "The makeCurveQuote() helper was not updated with input_amount and mode fields (prior non-blocking issue still present). New targetOut tests work around this by constructing full mock objects directly. The exactIn baseline test uses makeCurveQuote which still lacks these fields, though this doesn't cause test failures since the fields are optional in practice."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md API endpoint docs still only list 'chainId, from, to, amount, slippageBps, sender' for /compare and /quote, missing the mode parameter that was added by the original feature and now has corrected comparison logic. The prior review flagged this; it remains unaddressed in AGENTS.md.",
+      "evidence": "AGENTS.md line: 'GET /compare - Compare quotes from Spandex and Curve (chainId, from, to, amount, slippageBps, sender)'. openapi.yaml now documents mode parameter correctly, but AGENTS.md does not."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The quick-fixes-scrutiny-notes.md was updated by the prior scrutiny validator to note mode parameter and Curve method name. However, it doesn't document the targetOut comparison semantics (input comparison, gas-adjusted total cost) which are non-obvious business logic. This could help future workers understand the dual comparison model.",
+      "evidence": ".factory/library/quick-fixes-scrutiny-notes.md mentions mode but not the targetOut vs exactIn comparison approach differences."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/quick-fixes/scrutiny/reviews/reverse-quote-targetout-support.json",
+  "summary": "The fix fully resolves both blocking issues from the prior scrutiny review. Blocking issue 1 (comparison direction inverted in targetOut mode) is fixed: compareQuotes() now compares input_amount (lower = better) in targetOut mode, with gas-adjusted total cost = input_in_ETH + gas_cost_in_ETH. Blocking issue 2 (wrong recommendation wording) is fixed: reason text uses 'requires X less' instead of 'outputs more'. The non-blocking issue about missing openapi.yaml documentation is also resolved. Five new test cases cover targetOut comparison scenarios including gas-adjusted comparison, wording verification, non-ETH rate fetch, and exactIn baseline. All 134 tests pass. Three minor non-blocking observations noted (field naming semantics, test mock clarity, makeCurveQuote helper not updated)."
+}

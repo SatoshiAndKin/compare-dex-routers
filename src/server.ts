@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { getQuote, serializeWithBigInt } from "@spandex/core";
 import type { Address } from "viem";
 import { parseUnits, formatUnits } from "viem";
-import { parseQuoteParams } from "./quote.js";
+import { parseQuoteParams, type QuoteMode } from "./quote.js";
 import {
   getSpandexConfig,
   getTokenDecimals,
@@ -49,9 +49,11 @@ interface QuoteResult {
   to: string;
   to_symbol: string;
   amount: string;
+  input_amount: string;
   output_amount: string;
-  output_amount_raw: string;
   input_amount_raw: string;
+  output_amount_raw: string;
+  mode: QuoteMode;
   provider: string;
   slippage_bps: number;
   gas_used: string;
@@ -60,6 +62,10 @@ interface QuoteResult {
   router_value?: string;
   approval_token?: string;
   approval_spender?: string;
+  // Gas-adjusted comparison fields
+  gas_cost_eth?: string; // Gas cost in ETH (gas_used * gas_price / 1e18)
+  output_value_eth?: string; // Output converted to ETH
+  net_value_eth?: string; // output_value_eth - gas_cost_eth
 }
 
 interface TokenListPayload {
@@ -75,25 +81,69 @@ interface TokenListPayload {
 }
 
 const FALLBACK_ACCOUNT = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055" as Address;
-let cachedTokenList: TokenListPayload | null = null;
-let cachedTokenListPath: string | null = null;
 
-function getTokenListPath() {
-  return process.env.TOKENLIST_PATH || resolve(process.cwd(), "data", "tokenlist.json");
+interface TokenlistEntry {
+  path: string;
+  name: string;
+  tokens: TokenListPayload["tokens"];
 }
 
-async function loadTokenList(): Promise<TokenListPayload> {
-  const tokenListPath = getTokenListPath();
-  if (cachedTokenList && cachedTokenListPath === tokenListPath) {
-    return cachedTokenList;
+let cachedDefaultTokenlists: TokenlistEntry[] | null = null;
+let cachedDefaultTokenlistsKey: string | null = null;
+
+/**
+ * Get the list of default tokenlist file paths from environment.
+ * DEFAULT_TOKENLISTS: comma-separated list of file paths (relative to cwd or absolute)
+ * Defaults to ['static/tokenlist.json'] when not set.
+ */
+function getDefaultTokenlistPaths(): string[] {
+  const envValue = process.env.DEFAULT_TOKENLISTS;
+  if (!envValue || envValue.trim() === "") {
+    return [resolve(process.cwd(), "static", "tokenlist.json")];
+  }
+  // Split by comma, trim whitespace, resolve relative paths to cwd
+  return envValue
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+    .map((p) => (p.startsWith("/") ? p : resolve(process.cwd(), p)));
+}
+
+/**
+ * Load all default tokenlists from configured paths.
+ * Returns array of {path, name, tokens} entries.
+ * Caches based on the DEFAULT_TOKENLISTS env value.
+ */
+async function loadDefaultTokenlists(): Promise<TokenlistEntry[]> {
+  const paths = getDefaultTokenlistPaths();
+  const cacheKey = paths.join("|");
+
+  if (cachedDefaultTokenlists && cachedDefaultTokenlistsKey === cacheKey) {
+    return cachedDefaultTokenlists;
   }
 
-  const fileContents = await readFile(tokenListPath, "utf8");
-  const parsed = JSON.parse(fileContents) as TokenListPayload;
+  const entries: TokenlistEntry[] = [];
 
-  cachedTokenList = parsed;
-  cachedTokenListPath = tokenListPath;
-  return parsed;
+  for (const path of paths) {
+    try {
+      const fileContents = await readFile(path, "utf8");
+      const parsed = JSON.parse(fileContents) as TokenListPayload;
+      const tokens = Array.isArray(parsed.tokens) ? parsed.tokens : [];
+      // Use the name from the tokenlist, or derive from filename
+      const name =
+        typeof parsed.name === "string" && parsed.name.trim() !== ""
+          ? parsed.name
+          : path.split("/").pop() || path;
+      entries.push({ path, name, tokens });
+    } catch (err) {
+      logError(`Failed to load default tokenlist from ${path}`, err);
+      // Continue to next path - don't fail entirely if one is missing
+    }
+  }
+
+  cachedDefaultTokenlists = entries;
+  cachedDefaultTokenlistsKey = cacheKey;
+  return entries;
 }
 
 // Maximum response size for proxy endpoint (5MB)
@@ -214,21 +264,34 @@ async function findQuote(
   to: string,
   amount: string,
   slippageBps: number,
-  sender?: string
+  sender?: string,
+  mode: QuoteMode = "exactIn"
 ): Promise<QuoteResult> {
-  // Only input decimals are needed before calling Spandex (for parseUnits).
-  // Output decimals and symbols are fetched in parallel with the quote.
-  const inputDecimals = await getTokenDecimals(chainId, from);
-  const inputAmount = parseUnits(amount, inputDecimals);
+  // Fetch decimals for both tokens upfront
+  const [inputDecimals, outputDecimals] = await Promise.all([
+    getTokenDecimals(chainId, from),
+    getTokenDecimals(chainId, to),
+  ]);
 
-  const swapRequest = {
-    chainId,
-    inputToken: from as Address,
-    outputToken: to as Address,
-    mode: "exactIn" as const,
-    inputAmount,
-    slippageBps,
-  };
+  // Build swap request based on mode
+  const swapRequest =
+    mode === "targetOut"
+      ? {
+          chainId,
+          inputToken: from as Address,
+          outputToken: to as Address,
+          mode: "targetOut" as const,
+          outputAmount: parseUnits(amount, outputDecimals),
+          slippageBps,
+        }
+      : {
+          chainId,
+          inputToken: from as Address,
+          outputToken: to as Address,
+          mode: "exactIn" as const,
+          inputAmount: parseUnits(amount, inputDecimals),
+          slippageBps,
+        };
 
   // Fire sender and fallback quotes in parallel when sender is provided
   const quotePromises = [];
@@ -250,9 +313,8 @@ async function findQuote(
   );
 
   // Fetch non-critical metadata concurrently with the Spandex query
-  const [quotes, outputDecimals, fromSymbol, toSymbol] = await Promise.all([
+  const [quotes, fromSymbol, toSymbol] = await Promise.all([
     Promise.all(quotePromises),
-    getTokenDecimals(chainId, to),
     getTokenSymbol(chainId, from),
     getTokenSymbol(chainId, to),
   ]);
@@ -264,6 +326,8 @@ async function findQuote(
     throw new Error("No providers returned a successful quote");
   }
 
+  // Format amounts based on mode
+  const inputHuman = formatUnits(quote.inputAmount, inputDecimals);
   const outputHuman = formatUnits(quote.simulation.outputAmount, outputDecimals);
 
   const result: QuoteResult = {
@@ -273,9 +337,11 @@ async function findQuote(
     to,
     to_symbol: toSymbol,
     amount,
+    input_amount: inputHuman,
     output_amount: outputHuman,
-    output_amount_raw: quote.simulation.outputAmount.toString(),
     input_amount_raw: quote.inputAmount.toString(),
+    output_amount_raw: quote.simulation.outputAmount.toString(),
+    mode,
     provider: quote.provider,
     slippage_bps: slippageBps,
     gas_used: quote.simulation.gasUsed?.toString() ?? "0",
@@ -303,6 +369,10 @@ interface CompareResult {
   recommendation: "spandex" | "curve" | null;
   recommendation_reason: string;
   gas_price_gwei: string | null;
+  // Gas-adjusted comparison fields
+  output_to_eth_rate: string | null; // Rate used to convert output to ETH (null if output is ETH)
+  input_to_eth_rate: string | null; // Rate used to convert input to ETH (null if input is ETH, used for targetOut mode)
+  mode: QuoteMode; // The quote mode used for this comparison
 }
 
 // Known WETH addresses by chainId
@@ -316,6 +386,14 @@ const WETH_ADDRESSES: Record<number, string> = {
   43114: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", // Avalanche (WAVAX)
 };
 
+// Rate cache for output->ETH conversions (60s TTL)
+const OUTPUT_TO_ETH_RATE_CACHE_TTL_MS = 60 * 1000;
+const outputToEthRateCache = new Map<string, { rate: number; timestamp: number }>();
+
+// Rate cache for input->ETH conversions (60s TTL) - used for targetOut mode
+const INPUT_TO_ETH_RATE_CACHE_TTL_MS = 60 * 1000;
+const inputToEthRateCache = new Map<string, { rate: number; timestamp: number }>();
+
 // Check if output token is ETH/WETH
 function isEthOutput(symbol: string, address: string, chainId: number): boolean {
   const normalizedSymbol = symbol.toUpperCase();
@@ -327,21 +405,141 @@ function isEthOutput(symbol: string, address: string, chainId: number): boolean 
   return false;
 }
 
+// Fetch output->ETH rate via Spandex quote
+// Uses a small amount (1 unit of output token) to get the exchange rate
+// Caches the rate for 60 seconds since both quotes in a comparison use the same output token
+async function fetchOutputToEthRate(
+  chainId: number,
+  outputToken: string,
+  outputDecimals: number
+): Promise<number | null> {
+  const cacheKey = `${chainId}:${outputToken.toLowerCase()}`;
+  const cached = outputToEthRateCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < OUTPUT_TO_ETH_RATE_CACHE_TTL_MS) {
+    return cached.rate;
+  }
+
+  const wethAddress = WETH_ADDRESSES[chainId];
+  if (!wethAddress) {
+    // No WETH address for this chain, can't fetch rate
+    return null;
+  }
+
+  try {
+    // Use 1 unit of the output token to get the rate
+    const oneUnit = parseUnits("1", outputDecimals);
+
+    const quote = await getQuote({
+      config,
+      swap: {
+        chainId,
+        inputToken: outputToken as Address,
+        outputToken: wethAddress as Address,
+        mode: "exactIn",
+        inputAmount: oneUnit,
+        slippageBps: 1000, // 10% slippage for rate fetch (we just need an approximate rate)
+        swapperAccount: FALLBACK_ACCOUNT,
+      },
+      strategy: "bestPrice",
+    });
+
+    if (!quote) {
+      return null;
+    }
+
+    // Rate = outputAmount (in ETH) / 1 unit of input
+    // Since we used 1 unit, the output amount IS the rate
+    const rate = Number(formatUnits(quote.simulation.outputAmount, 18));
+
+    // Cache the rate
+    outputToEthRateCache.set(cacheKey, { rate, timestamp: Date.now() });
+
+    return rate;
+  } catch {
+    // Rate fetch failed
+    return null;
+  }
+}
+
+// Fetch input->ETH rate via Spandex quote (for targetOut mode gas-adjusted comparison)
+// Uses a small amount (1 unit of input token) to get the exchange rate
+// Caches the rate for 60 seconds since both quotes in a comparison use the same input token
+async function fetchInputToEthRate(
+  chainId: number,
+  inputToken: string,
+  inputDecimals: number
+): Promise<number | null> {
+  const cacheKey = `${chainId}:${inputToken.toLowerCase()}`;
+  const cached = inputToEthRateCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < INPUT_TO_ETH_RATE_CACHE_TTL_MS) {
+    return cached.rate;
+  }
+
+  const wethAddress = WETH_ADDRESSES[chainId];
+  if (!wethAddress) {
+    // No WETH address for this chain, can't fetch rate
+    return null;
+  }
+
+  try {
+    // Use 1 unit of the input token to get the rate
+    const oneUnit = parseUnits("1", inputDecimals);
+
+    const quote = await getQuote({
+      config,
+      swap: {
+        chainId,
+        inputToken: inputToken as Address,
+        outputToken: wethAddress as Address,
+        mode: "exactIn",
+        inputAmount: oneUnit,
+        slippageBps: 1000, // 10% slippage for rate fetch (we just need an approximate rate)
+        swapperAccount: FALLBACK_ACCOUNT,
+      },
+      strategy: "bestPrice",
+    });
+
+    if (!quote) {
+      return null;
+    }
+
+    // Rate = outputAmount (in ETH) / 1 unit of input
+    // Since we used 1 unit, the output amount IS the rate
+    const rate = Number(formatUnits(quote.simulation.outputAmount, 18));
+
+    // Cache the rate
+    inputToEthRateCache.set(cacheKey, { rate, timestamp: Date.now() });
+
+    return rate;
+  } catch {
+    // Rate fetch failed
+    return null;
+  }
+}
+
+// Helper to format ETH values with appropriate precision
+function formatEthValue(value: number): string {
+  if (value === 0) return "0";
+  if (value < 0.000001) return value.toExponential(6);
+  return value.toFixed(6);
+}
+
 async function compareQuotes(
   chainId: number,
   from: string,
   to: string,
   amount: string,
   slippageBps: number,
-  sender?: string
+  sender?: string,
+  mode: QuoteMode = "exactIn"
 ): Promise<CompareResult> {
-  const spandexPromise = findQuote(chainId, from, to, amount, slippageBps, sender)
+  const spandexPromise = findQuote(chainId, from, to, amount, slippageBps, sender, mode)
     .then((r) => ({ result: r, error: null }))
     .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }));
 
   const curveAvailable = CURVE_ENABLED && isCurveSupported(chainId);
   const curvePromise = curveAvailable
-    ? findCurveQuote(from, to, amount, sender, getClient(chainId))
+    ? findCurveQuote(from, to, amount, sender, getClient(chainId), mode)
         .then((r) => ({ result: r, error: null }))
         .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }))
     : Promise.resolve({ result: null, error: "Curve only supports Ethereum (chainId 1)" });
@@ -359,89 +557,369 @@ async function compareQuotes(
 
   let recommendation: "spandex" | "curve" | null = null;
   let reason: string;
+  let outputToEthRate: number | null = null;
+  let outputToEthRateStr: string | null = null;
+  let inputToEthRate: number | null = null;
+  let inputToEthRateStr: string | null = null;
+
+  // Determine if output is ETH/WETH
+  const outputIsEth = spandex.result
+    ? isEthOutput(spandex.result.to_symbol, spandex.result.to, chainId)
+    : curveResult.result
+      ? isEthOutput(curveResult.result.to_symbol, curveResult.result.to, chainId)
+      : false;
+
+  // Determine if input is ETH/WETH (relevant for targetOut mode)
+  const inputIsEth = spandex.result
+    ? isEthOutput(spandex.result.from_symbol, spandex.result.from, chainId)
+    : curveResult.result
+      ? isEthOutput(curveResult.result.from_symbol, curveResult.result.from, chainId)
+      : false;
+
+  const outputSymbol = spandex.result?.to_symbol || curveResult.result?.to_symbol || "tokens";
+  const inputSymbol = spandex.result?.from_symbol || curveResult.result?.from_symbol || "tokens";
+
+  // Fetch output->ETH rate for non-ETH outputs (needed for exactIn gas-adjusted comparison)
+  if (mode === "exactIn" && !outputIsEth && (spandex.result || curveResult.result)) {
+    const outputToken = spandex.result?.to || curveResult.result?.to;
+    const outputDecimals = await getTokenDecimals(chainId, outputToken || "");
+    outputToEthRate = await fetchOutputToEthRate(chainId, outputToken || "", outputDecimals);
+    if (outputToEthRate !== null) {
+      outputToEthRateStr = outputToEthRate.toFixed(6);
+    }
+  }
+
+  // Fetch input->ETH rate for non-ETH inputs (needed for targetOut gas-adjusted comparison)
+  if (mode === "targetOut" && !inputIsEth && (spandex.result || curveResult.result)) {
+    const inputToken = spandex.result?.from || curveResult.result?.from;
+    const inputDecimals = await getTokenDecimals(chainId, inputToken || "");
+    inputToEthRate = await fetchInputToEthRate(chainId, inputToken || "", inputDecimals);
+    if (inputToEthRate !== null) {
+      inputToEthRateStr = inputToEthRate.toFixed(6);
+    }
+  }
+
+  // Helper to compute gas-adjusted values for a quote (exactIn mode)
+  // Returns: gas cost in ETH, output value in ETH, net value (output - gas)
+  function computeGasAdjustedValuesExactIn(
+    outputAmount: number,
+    gasUsed: number,
+    gasPriceWei: number
+  ): {
+    gasCostEth: number;
+    outputValueEth: number;
+    netValueEth: number;
+  } {
+    const gasCostEth = gasUsed > 0 && gasPriceWei > 0 ? (gasUsed * gasPriceWei) / 1e18 : 0;
+    // Convert output to ETH
+    const outputValueEth = outputIsEth
+      ? outputAmount
+      : outputToEthRate !== null
+        ? outputAmount * outputToEthRate
+        : 0;
+    const netValueEth = outputValueEth - gasCostEth;
+    return { gasCostEth, outputValueEth, netValueEth };
+  }
+
+  // Helper to compute gas-adjusted values for a quote (targetOut mode)
+  // Returns: gas cost in ETH, input value in ETH, total cost (input + gas) - LOWER is better
+  function computeGasAdjustedValuesTargetOut(
+    inputAmount: number,
+    gasUsed: number,
+    gasPriceWei: number
+  ): {
+    gasCostEth: number;
+    inputValueEth: number;
+    totalCostEth: number;
+  } {
+    const gasCostEth = gasUsed > 0 && gasPriceWei > 0 ? (gasUsed * gasPriceWei) / 1e18 : 0;
+    // Convert input to ETH (input is what we're paying, so we need its ETH value)
+    const inputValueEth = inputIsEth
+      ? inputAmount
+      : inputToEthRate !== null
+        ? inputAmount * inputToEthRate
+        : 0;
+    const totalCostEth = inputValueEth + gasCostEth;
+    return { gasCostEth, inputValueEth, totalCostEth };
+  }
+
+  // Helper to enrich quote with gas-adjusted fields
+  function enrichQuoteWithGasFields(
+    quote: QuoteResult | null,
+    gasCostEth: number,
+    outputValueEth: number,
+    netValueEth: number
+  ): void {
+    if (!quote) return;
+    quote.gas_cost_eth = formatEthValue(gasCostEth);
+    quote.output_value_eth = formatEthValue(outputValueEth);
+    quote.net_value_eth = formatEthValue(netValueEth);
+  }
+
+  // Enrich Curve quote with gas-adjusted fields
+  function enrichCurveQuoteWithGasFields(
+    quote: CurveQuoteResult | null,
+    gasCostEth: number,
+    outputValueEth: number,
+    netValueEth: number
+  ): void {
+    if (!quote) return;
+    quote.gas_cost_eth = formatEthValue(gasCostEth);
+    quote.output_value_eth = formatEthValue(outputValueEth);
+    quote.net_value_eth = formatEthValue(netValueEth);
+  }
+
+  const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
 
   if (spandex.result && curveResult.result) {
-    const spandexOutput = Number(spandex.result.output_amount);
-    const curveOutput = Number(curveResult.result.output_amount);
     const spandexGas = Number(spandex.result.gas_used || "0");
     const curveGas = Number(curveResult.result.gas_used || "0");
+    const bothHaveGas = spandexGas > 0 && curveGas > 0 && gasPriceGwei !== null;
 
-    // Determine gas availability
-    const spandexHasGas = spandexGas > 0 && gasPriceGwei !== null;
-    const curveHasGas = curveGas > 0 && gasPriceGwei !== null;
-    const bothHaveGas = spandexHasGas && curveHasGas;
+    if (mode === "targetOut") {
+      // === TARGET_OUT MODE ===
+      // Compare by required INPUT amount (lower = better)
+      // User specifies desired output, quotes return required input
+      const spandexInput = Number(spandex.result.input_amount);
+      const curveInput = Number(curveResult.result.input_amount);
 
-    // Compute gas costs in ETH
-    const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
-    const spandexGasCostEth = spandexHasGas ? (spandexGas * gasPriceWei) / 1e18 : 0;
-    const curveGasCostEth = curveHasGas ? (curveGas * gasPriceWei) / 1e18 : 0;
+      // Compute gas-adjusted values for targetOut
+      const spandexValues = computeGasAdjustedValuesTargetOut(
+        spandexInput,
+        spandexGas,
+        gasPriceWei
+      );
+      const curveValues = computeGasAdjustedValuesTargetOut(curveInput, curveGas, gasPriceWei);
 
-    // Determine if output is ETH/WETH
-    const outputIsEth = isEthOutput(spandex.result.to_symbol, spandex.result.to, chainId);
-    const outputSymbol = spandex.result.to_symbol || "tokens";
+      // Enrich quotes with gas fields (for targetOut, net_value_eth represents total cost)
+      enrichQuoteWithGasFields(
+        spandex.result,
+        spandexValues.gasCostEth,
+        spandexValues.inputValueEth,
+        spandexValues.totalCostEth
+      );
+      enrichCurveQuoteWithGasFields(
+        curveResult.result,
+        curveValues.gasCostEth,
+        curveValues.inputValueEth,
+        curveValues.totalCostEth
+      );
 
-    if (bothHaveGas && outputIsEth) {
-      // Gas-adjusted comparison: subtract gas cost from output
-      const spandexAdjustedOutput = spandexOutput - spandexGasCostEth;
-      const curveAdjustedOutput = curveOutput - curveGasCostEth;
+      // Determine if we can do gas-adjusted comparison
+      const canDoGasAdjusted = inputIsEth || inputToEthRate !== null;
 
-      if (curveAdjustedOutput > spandexAdjustedOutput) {
-        recommendation = "curve";
-        reason = `Curve returns ${curveOutput.toFixed(6)} ETH (${curveAdjustedOutput.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ETH (${spandexAdjustedOutput.toFixed(6)} ETH after gas). Curve recommended.`;
-      } else if (spandexAdjustedOutput > curveAdjustedOutput) {
-        recommendation = "spandex";
-        reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ETH (${spandexAdjustedOutput.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ETH (${curveAdjustedOutput.toFixed(6)} ETH after gas). Spandex recommended.`;
+      if (canDoGasAdjusted && bothHaveGas) {
+        // Gas-adjusted comparison: lower total cost wins
+        if (curveValues.totalCostEth < spandexValues.totalCostEth) {
+          recommendation = "curve";
+          // Show input difference if amounts differ
+          const inputDiff = spandexInput - curveInput;
+          const inputDiffNote =
+            inputDiff > 0.000001
+              ? ` Curve requires ${inputDiff.toFixed(6)} ${inputSymbol} less input.`
+              : "";
+          if (inputIsEth) {
+            reason = `Curve requires ${curveInput.toFixed(6)} ETH (${curveValues.totalCostEth.toFixed(6)} ETH total with gas) vs Spandex ${spandexInput.toFixed(6)} ETH (${spandexValues.totalCostEth.toFixed(6)} ETH total).${inputDiffNote} Curve recommended.`;
+          } else {
+            reason = `Curve requires ${curveInput.toFixed(6)} ${inputSymbol} (~${curveValues.inputValueEth.toFixed(6)} ETH, ${curveValues.totalCostEth.toFixed(6)} ETH total with gas) vs Spandex ${spandexInput.toFixed(6)} ${inputSymbol} (~${spandexValues.inputValueEth.toFixed(6)} ETH, ${spandexValues.totalCostEth.toFixed(6)} ETH total). Rate: 1 ${inputSymbol} = ${inputToEthRateStr} ETH.${inputDiffNote} Curve recommended.`;
+          }
+        } else if (spandexValues.totalCostEth < curveValues.totalCostEth) {
+          recommendation = "spandex";
+          // Show input difference if amounts differ
+          const inputDiff = curveInput - spandexInput;
+          const inputDiffNote =
+            inputDiff > 0.000001
+              ? ` Spandex requires ${inputDiff.toFixed(6)} ${inputSymbol} less input.`
+              : "";
+          if (inputIsEth) {
+            reason = `Spandex (${spandex.result.provider}) requires ${spandexInput.toFixed(6)} ETH (${spandexValues.totalCostEth.toFixed(6)} ETH total with gas) vs Curve ${curveInput.toFixed(6)} ETH (${curveValues.totalCostEth.toFixed(6)} ETH total).${inputDiffNote} Spandex recommended.`;
+          } else {
+            reason = `Spandex (${spandex.result.provider}) requires ${spandexInput.toFixed(6)} ${inputSymbol} (~${spandexValues.inputValueEth.toFixed(6)} ETH, ${spandexValues.totalCostEth.toFixed(6)} ETH total with gas) vs Curve ${curveInput.toFixed(6)} ${inputSymbol} (~${curveValues.inputValueEth.toFixed(6)} ETH, ${curveValues.totalCostEth.toFixed(6)} ETH total). Rate: 1 ${inputSymbol} = ${inputToEthRateStr} ETH.${inputDiffNote} Spandex recommended.`;
+          }
+        } else {
+          recommendation = "spandex";
+          reason = `Equal total cost: ${spandexValues.totalCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        }
+      } else if (!canDoGasAdjusted && bothHaveGas) {
+        // Rate fetch failed but we have gas - show gas costs in ETH for info, compare raw input
+        if (curveInput < spandexInput) {
+          recommendation = "curve";
+          const diff = spandexInput - curveInput;
+          const pct = ((diff / spandexInput) * 100).toFixed(3);
+          reason = `Curve requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%). Gas costs: Curve ${curveValues.gasCostEth.toFixed(6)} ETH vs Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH. Curve recommended (gas cost shown for info, rate unavailable).`;
+        } else if (spandexInput < curveInput) {
+          recommendation = "spandex";
+          const diff = curveInput - spandexInput;
+          const pct = ((diff / curveInput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%). Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Spandex recommended (gas cost shown for info, rate unavailable).`;
+        } else {
+          recommendation = "spandex";
+          reason = `Equal input amounts. Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        }
       } else {
-        recommendation = "spandex";
-        reason = `Equal gas-adjusted output: ${spandexAdjustedOutput.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
-      }
-    } else if (bothHaveGas && !outputIsEth) {
-      // Gas-aware comparison: note gas costs in reason but compare raw output
-      if (curveOutput > spandexOutput) {
-        recommendation = "curve";
-        const diff = curveOutput - spandexOutput;
-        const pct = ((diff / spandexOutput) * 100).toFixed(3);
-        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Curve ${curveGasCostEth.toFixed(6)} ETH vs Spandex ${spandexGasCostEth.toFixed(6)} ETH. Curve recommended (gas-aware).`;
-      } else if (spandexOutput > curveOutput) {
-        recommendation = "spandex";
-        const diff = spandexOutput - curveOutput;
-        const pct = ((diff / curveOutput) * 100).toFixed(3);
-        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Spandex ${spandexGasCostEth.toFixed(6)} ETH vs Curve ${curveGasCostEth.toFixed(6)} ETH. Spandex recommended (gas-aware).`;
-      } else {
-        recommendation = "spandex";
-        reason = `Equal output amounts. Gas costs: Spandex ${spandexGasCostEth.toFixed(6)} ETH vs Curve ${curveGasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        // Fall back to raw input comparison with a note about missing gas
+        const missingGas: string[] = [];
+        if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
+        if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
+        const missingGasNote =
+          missingGas.length > 0
+            ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw input only.`
+            : "";
+
+        if (curveInput < spandexInput) {
+          recommendation = "curve";
+          const diff = spandexInput - curveInput;
+          const pct = ((diff / spandexInput) * 100).toFixed(3);
+          reason = `Curve requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%).${missingGasNote}`;
+        } else if (spandexInput < curveInput) {
+          recommendation = "spandex";
+          const diff = curveInput - spandexInput;
+          const pct = ((diff / curveInput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%).${missingGasNote}`;
+        } else {
+          recommendation = "spandex";
+          reason = `Equal input amounts; defaulting to Spandex for multi-provider coverage.${missingGasNote}`;
+        }
       }
     } else {
-      // Fall back to raw output comparison with a note about missing gas
-      const missingGas: string[] = [];
-      if (!spandexHasGas) missingGas.push("Spandex");
-      if (!curveHasGas) missingGas.push("Curve");
-      const missingGasNote =
-        missingGas.length > 0
-          ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw output only.`
-          : "";
+      // === EXACT_IN MODE (default) ===
+      // Compare by OUTPUT amount (higher = better)
+      const spandexOutput = Number(spandex.result.output_amount);
+      const curveOutput = Number(curveResult.result.output_amount);
 
-      if (curveOutput > spandexOutput) {
-        recommendation = "curve";
-        const diff = curveOutput - spandexOutput;
-        const pct = ((diff / spandexOutput) * 100).toFixed(3);
-        reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
-      } else if (spandexOutput > curveOutput) {
-        recommendation = "spandex";
-        const diff = spandexOutput - curveOutput;
-        const pct = ((diff / curveOutput) * 100).toFixed(3);
-        reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+      // Compute gas-adjusted values for exactIn
+      const spandexValues = computeGasAdjustedValuesExactIn(spandexOutput, spandexGas, gasPriceWei);
+      const curveValues = computeGasAdjustedValuesExactIn(curveOutput, curveGas, gasPriceWei);
+
+      // Enrich quotes with gas fields
+      enrichQuoteWithGasFields(
+        spandex.result,
+        spandexValues.gasCostEth,
+        spandexValues.outputValueEth,
+        spandexValues.netValueEth
+      );
+      enrichCurveQuoteWithGasFields(
+        curveResult.result,
+        curveValues.gasCostEth,
+        curveValues.outputValueEth,
+        curveValues.netValueEth
+      );
+
+      // Determine if we can do gas-adjusted comparison
+      const canDoGasAdjusted = outputIsEth || outputToEthRate !== null;
+
+      if (canDoGasAdjusted && bothHaveGas) {
+        // Gas-adjusted comparison for ALL pairs using net ETH value
+        if (curveValues.netValueEth > spandexValues.netValueEth) {
+          recommendation = "curve";
+          if (outputIsEth) {
+            reason = `Curve returns ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas). Curve recommended.`;
+          } else {
+            reason = `Curve returns ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Curve recommended.`;
+          }
+        } else if (spandexValues.netValueEth > curveValues.netValueEth) {
+          recommendation = "spandex";
+          if (outputIsEth) {
+            reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas). Spandex recommended.`;
+          } else {
+            reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Spandex recommended.`;
+          }
+        } else {
+          recommendation = "spandex";
+          reason = `Equal gas-adjusted net value: ${spandexValues.netValueEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        }
+      } else if (!canDoGasAdjusted && bothHaveGas) {
+        // Rate fetch failed but we have gas - show gas costs in ETH for info, compare raw output
+        if (curveOutput > spandexOutput) {
+          recommendation = "curve";
+          const diff = curveOutput - spandexOutput;
+          const pct = ((diff / spandexOutput) * 100).toFixed(3);
+          reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Curve ${curveValues.gasCostEth.toFixed(6)} ETH vs Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH. Curve recommended (gas cost shown for info, rate unavailable).`;
+        } else if (spandexOutput > curveOutput) {
+          recommendation = "spandex";
+          const diff = spandexOutput - curveOutput;
+          const pct = ((diff / curveOutput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%). Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Spandex recommended (gas cost shown for info, rate unavailable).`;
+        } else {
+          recommendation = "spandex";
+          reason = `Equal output amounts. Gas costs: Spandex ${spandexValues.gasCostEth.toFixed(6)} ETH vs Curve ${curveValues.gasCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        }
       } else {
-        recommendation = "spandex";
-        reason = `Equal output amounts; defaulting to Spandex for multi-provider coverage.${missingGasNote}`;
+        // Fall back to raw output comparison with a note about missing gas
+        const missingGas: string[] = [];
+        if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
+        if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
+        const missingGasNote =
+          missingGas.length > 0
+            ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw output only.`
+            : "";
+
+        if (curveOutput > spandexOutput) {
+          recommendation = "curve";
+          const diff = curveOutput - spandexOutput;
+          const pct = ((diff / spandexOutput) * 100).toFixed(3);
+          reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+        } else if (spandexOutput > curveOutput) {
+          recommendation = "spandex";
+          const diff = spandexOutput - curveOutput;
+          const pct = ((diff / curveOutput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).${missingGasNote}`;
+        } else {
+          recommendation = "spandex";
+          reason = `Equal output amounts; defaulting to Spandex for multi-provider coverage.${missingGasNote}`;
+        }
       }
     }
   } else if (spandex.result) {
     recommendation = "spandex";
     reason = "Only Spandex returned a quote";
+
+    // Enrich with gas fields
+    const spandexGas = Number(spandex.result.gas_used || "0");
+    if (mode === "targetOut") {
+      const spandexInput = Number(spandex.result.input_amount);
+      const values = computeGasAdjustedValuesTargetOut(spandexInput, spandexGas, gasPriceWei);
+      enrichQuoteWithGasFields(
+        spandex.result,
+        values.gasCostEth,
+        values.inputValueEth,
+        values.totalCostEth
+      );
+    } else {
+      const spandexOutput = Number(spandex.result.output_amount);
+      const values = computeGasAdjustedValuesExactIn(spandexOutput, spandexGas, gasPriceWei);
+      enrichQuoteWithGasFields(
+        spandex.result,
+        values.gasCostEth,
+        values.outputValueEth,
+        values.netValueEth
+      );
+    }
   } else if (curveResult.result) {
     recommendation = "curve";
     reason = "Only Curve returned a quote";
+
+    // Enrich with gas fields
+    const curveGas = Number(curveResult.result.gas_used || "0");
+    if (mode === "targetOut") {
+      const curveInput = Number(curveResult.result.input_amount);
+      const values = computeGasAdjustedValuesTargetOut(curveInput, curveGas, gasPriceWei);
+      enrichCurveQuoteWithGasFields(
+        curveResult.result,
+        values.gasCostEth,
+        values.inputValueEth,
+        values.totalCostEth
+      );
+    } else {
+      const curveOutput = Number(curveResult.result.output_amount);
+      const values = computeGasAdjustedValuesExactIn(curveOutput, curveGas, gasPriceWei);
+      enrichCurveQuoteWithGasFields(
+        curveResult.result,
+        values.gasCostEth,
+        values.outputValueEth,
+        values.netValueEth
+      );
+    }
   } else {
     reason = "Neither source returned a quote";
   }
@@ -454,6 +932,9 @@ async function compareQuotes(
     recommendation,
     recommendation_reason: reason,
     gas_price_gwei: gasPriceGwei,
+    output_to_eth_rate: outputToEthRateStr,
+    input_to_eth_rate: inputToEthRateStr,
+    mode,
   };
 }
 
@@ -487,7 +968,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     [hidden] { display: none !important; }
     body {
       font-family: system-ui, -apple-system, sans-serif;
-      background: #fff;
+      background: #f5f5f5;
       color: #000;
       max-width: 800px;
       margin: 0 auto;
@@ -561,7 +1042,21 @@ const INDEX_HTML = `<!DOCTYPE html>
       flex-shrink: 0;
     }
 
-    /* Form Header Row with Chain Selector and Settings */
+    /* Page Header - Title and Settings Gear */
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .page-header h1 {
+      margin-bottom: 0;
+    }
+    .page-header .settings-btn {
+      flex-shrink: 0;
+    }
+
+    /* Form Header Row - Chain Selector only */
     .form-header-row {
       display: flex;
       align-items: flex-end;
@@ -621,7 +1116,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       padding: 0 0.25rem;
     }
     .modal-close:hover { background: #333; }
-    .modal-close:focus { outline: 2px solid #0055FF; }
+    .modal-close:focus { outline: 3px solid #0055FF; }
     .modal-body {
       padding: 1rem;
     }
@@ -646,12 +1141,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       border: 2px solid #000;
       padding: 0.75rem;
       margin-bottom: 0.75rem;
-      background: #f8f8f8;
+      background: #f0f0f0;
     }
     .mev-chain-message.ethereum { border-color: #0055FF; }
     .mev-chain-message.bsc { border-color: #F0B90B; }
     .mev-chain-message.l2 { border-color: #666; }
-    .mev-chain-message.other { border-color: #999; }
+    .mev-chain-message.other { border-color: #666; }
 
     .mev-chain-title {
       font-size: 0.75rem;
@@ -695,7 +1190,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .settings-section {
       margin-bottom: 1.25rem;
       padding-bottom: 1rem;
-      border-bottom: 2px solid #e0e0e0;
+      border-bottom: 2px solid #000;
     }
     .settings-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
     .settings-section-title {
@@ -725,7 +1220,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       color: #666;
       font-style: italic;
       padding: 0.5rem;
-      background: #f8f8f8;
+      background: #f0f0f0;
       border: 1px solid #e0e0e0;
     }
 
@@ -747,11 +1242,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       padding: 0.5rem;
       border: 1px solid #e0e0e0;
       margin-bottom: 0.5rem;
-      background: #fafafa;
+      background: #f0f0f0;
     }
     .tokenlist-entry:last-child { margin-bottom: 0; }
     .tokenlist-entry.disabled { opacity: 0.5; background: #f0f0f0; }
-    .tokenlist-entry.error { border-color: #CC0000; background: #fff0f0; }
+    .tokenlist-entry.error { border-color: #CC0000; border-left: 4px solid #CC0000; background: #f0f0f0; }
     .tokenlist-entry-name {
       flex: 1;
       min-width: 0;
@@ -779,8 +1274,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       margin-left: 0.25rem;
     }
     .tokenlist-trust-warning {
-      background: #FFF3CD;
+      background: #f0f0f0;
       border: 2px solid #CC7A00;
+      border-left: 4px solid #CC7A00;
       padding: 0.75rem;
       margin-bottom: 0.75rem;
       font-size: 0.8125rem;
@@ -788,7 +1284,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .tokenlist-trust-warning strong {
       font-weight: 700;
-      color: #856404;
+      color: #CC7A00;
     }
     .tokenlist-toggle {
       position: relative;
@@ -826,7 +1322,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       line-height: 1;
     }
     .tokenlist-remove-btn:hover { color: #CC0000; }
-    .tokenlist-remove-btn:focus { outline: 2px solid #0055FF; }
+    .tokenlist-remove-btn:focus { outline: 3px solid #0055FF; }
     .tokenlist-retry-btn {
       font-size: 0.625rem;
       padding: 0.125rem 0.25rem;
@@ -843,7 +1339,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       padding: 0.5rem;
       border: 1px solid #e0e0e0;
       margin-bottom: 0.5rem;
-      background: #fafafa;
+      background: #f0f0f0;
     }
     .local-token-entry:last-child { margin-bottom: 0; }
     .local-token-symbol {
@@ -878,7 +1374,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       line-height: 1;
     }
     .local-token-remove-btn:hover { color: #CC0000; }
-    .local-token-remove-btn:focus { outline: 2px solid #0055FF; }
+    .local-token-remove-btn:focus { outline: 3px solid #0055FF; }
 
     /* Local Tokens Actions Row */
     .local-tokens-actions {
@@ -900,9 +1396,10 @@ const INDEX_HTML = `<!DOCTYPE html>
     /* Unrecognized Token Popup */
     .unrecognized-token-info {
       border: 2px solid #CC7A00;
+      border-left: 4px solid #CC7A00;
       padding: 0.75rem;
       margin-bottom: 0.75rem;
-      background: #fff8f0;
+      background: #f0f0f0;
     }
     .unrecognized-token-address {
       font-family: monospace;
@@ -936,7 +1433,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .unrecognized-token-metadata {
       padding: 0.75rem;
       border: 1px solid #e0e0e0;
-      background: #f8f8f8;
+      background: #f0f0f0;
     }
     .unrecognized-token-field {
       display: flex;
@@ -962,7 +1459,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-weight: 600;
       padding: 0.75rem;
       border: 2px solid #CC0000;
-      background: #fff0f0;
+      border-left: 4px solid #CC0000;
+      background: #f0f0f0;
     }
     .unrecognized-token-actions {
       display: flex;
@@ -996,7 +1494,6 @@ const INDEX_HTML = `<!DOCTYPE html>
     /* Non-collapsible Form Row - stays horizontal even at 375px */
     .form-row-fixed { display: flex; gap: 0.5rem; }
     .form-row-fixed .form-group { flex: 1; min-width: 0; }
-    .form-row-fixed .form-group.amount-group { flex: 0 0 150px; }
     
     /* Buttons - Accent Color: Electric Blue #0055FF (color-blind safe) */
     button {
@@ -1019,74 +1516,160 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #0055FF;
       color: #fff;
       border-color: #0055FF;
+      min-width: 180px; /* Accommodate "Compare Quotes" (longest label) without resize */
     }
     .btn-primary:hover { background: #0046CC; }
     
     .btn-secondary {
+      background: #fff;
+      color: #000;
+      border-color: #000;
+    }
+    .btn-secondary:hover { background: #f0f0f0; }
+
+    /* Utility classes for extracted inline styles */
+    .mev-button-row {
+      margin-top: 1rem;
+      padding-top: 0.75rem;
+      border-top: 2px solid #000;
+    }
+    .settings-section-title-inline { display: inline; }
+    .field-value-compact {
+      font-size: 0.625rem;
+      word-break: break-all;
+    }
+    .field-spaced { margin-top: 0.5rem; }
+    .reason-box {
+      padding: 0.5rem;
+      border: 2px solid #000;
+      margin-bottom: 0.5rem;
+      background: #f0f0f0;
+    }
+    .reason-box-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+    .reason-box-content { font-size: 0.875rem; }
+    .reason-box-gas {
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+    }
+
+    /* Action Row - Submit + Compact Slippage */
+    .action-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .action-row .btn-primary {
+      flex-shrink: 0;
+    }
+    
+    /* Compact Slippage Box - bordered container next to submit */
+    .slippage-box {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      border: 2px solid #000;
+      background: #fff;
+    }
+    .slippage-box-label {
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #666;
+      margin-right: 0.25rem;
+    }
+    .slippage-box-presets {
+      display: flex;
+      gap: 0.125rem;
+    }
+    .slippage-preset-compact {
+      font-size: 0.5rem;
+      font-weight: 600;
+      padding: 0.125rem 0.375rem;
+      background: #fff;
+      color: #000;
+      border: 1px solid #000;
+      cursor: pointer;
+      min-width: 20px;
+    }
+    .slippage-preset-compact:hover { background: #f0f0f0; }
+    .slippage-preset-compact.active {
       background: #000;
       color: #fff;
     }
-    .btn-secondary:hover { background: #333; }
-
-    /* Slippage Preset Buttons - Brutalist style */
-    .slippage-section { max-width: 300px; }
-    .slippage-label-row {
-      display: flex;
-      align-items: baseline;
-      gap: 0.5rem;
-      margin-bottom: 0.25rem;
-    }
-    .slippage-label {
-      font-weight: 600;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      padding-left: 0.5rem;
-      border-left: 4px solid #0055FF;
-    }
-    .slippage-presets {
-      display: flex;
-      gap: 0.25rem;
-      flex-wrap: wrap;
-    }
-    .slippage-preset-btn {
+    .slippage-preset-compact:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    .slippage-box-input {
+      width: 40px;
+      padding: 0.125rem 0.25rem;
+      font-family: monospace;
       font-size: 0.625rem;
+      background: #fff;
+      color: #000;
+      border: 1px solid #000;
+      margin-left: 0.25rem;
+    }
+    .slippage-box-input:focus { outline: 3px solid #0055FF; outline-offset: 0; }
+    .slippage-box-hint {
+      font-size: 0.5rem;
+      color: #666;
+      margin-left: 0.125rem;
+    }
+
+    /* Direction Toggle - Sell exact / Buy exact */
+    .direction-toggle-row {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0.75rem;
+    }
+    .direction-btn {
+      flex: 1;
+      font-size: 0.75rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      padding: 0.25rem 0.5rem;
+      padding: 0.5rem 1rem;
       background: #fff;
       color: #000;
       border: 2px solid #000;
       cursor: pointer;
-      min-width: 40px;
     }
-    .slippage-preset-btn:hover { background: #f0f0f0; }
-    .slippage-preset-btn.active {
+    .direction-btn:first-child {
+      border-right: none;
+    }
+    .direction-btn:hover {
+      background: #f0f0f0;
+    }
+    .direction-btn.active {
       background: #000;
       color: #fff;
     }
-    .slippage-preset-btn:focus { outline: 3px solid #0055FF; outline-offset: 0; }
-    .slippage-input-row {
+    .direction-btn:focus {
+      outline: 3px solid #0055FF;
+      outline-offset: 0;
+    }
+
+    /* Target Out Note - provider coverage warning */
+    .target-out-note {
       display: flex;
       align-items: center;
       gap: 0.5rem;
-    }
-    .slippage-input-row input {
-      width: 80px;
       padding: 0.5rem;
-      font-family: monospace;
-      font-size: 0.875rem;
-      background: #fff;
+      background: #f0f0f0;
+      border: 2px solid #CC7A00;
+      margin-bottom: 0.75rem;
+      font-size: 0.75rem;
       color: #000;
-      border: 2px solid #000;
     }
-    .slippage-input-row input:focus { outline: 3px solid #0055FF; outline-offset: 0; }
-    .slippage-hint {
-      font-size: 0.625rem;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+    .target-out-note-icon {
+      flex-shrink: 0;
     }
 
     /* Tokenlist URL Input */
@@ -1103,13 +1686,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-size: 0.75rem;
       padding: 0.375rem 0.625rem;
       white-space: nowrap;
+      min-width: 70px; /* Accommodate "Loading..." without resize */
     }
-    .btn-small.btn-secondary {
-      background: #666;
-      color: #fff;
-      border-color: #666;
-    }
-    .btn-small.btn-secondary:hover { background: #555; }
     .tokenlist-message {
       font-size: 0.75rem;
       margin-top: 0.25rem;
@@ -1133,7 +1711,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-size: 0.875rem;
       font-weight: 600;
     }
-    .wallet-address { font-family: monospace; font-size: 0.75rem; padding-left: 0.375rem; border-left: 3px solid #0055FF; word-break: break-all; }
+    .wallet-address { font-family: monospace; font-size: 0.75rem; padding-left: 0.375rem; border-left: 4px solid #0055FF; word-break: break-all; }
+    .wallet-connected-row { gap: 0.5rem; }
+    .btn-disconnect {
+      font-size: 0.75rem;
+      padding: 0.375rem 0.625rem; /* Match .btn-small for consistent small button sizing */
+    }
     .wallet-message {
       font-size: 0.75rem;
       font-style: italic;
@@ -1203,6 +1786,15 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .autocomplete-item:last-child { border-bottom: none; }
     .autocomplete-item:hover, .autocomplete-item.active { background: #f0f0f0; }
+
+    /* Token Balance Display */
+    .token-balance {
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #666;
+      margin-top: 0.25rem;
+      padding-left: 0.25rem;
+    }
     .autocomplete-logo {
       width: 18px;
       height: 18px;
@@ -1223,7 +1815,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     /* Primary Result - Output Amount + Actions Inline */
     .result-primary {
       border: 2px solid #000;
-      border-left-width: 6px;
+      border-left-width: 4px;
       padding: 1rem;
       margin-bottom: 0.5rem;
       background: #fff;
@@ -1281,6 +1873,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #fff;
       color: #000;
       cursor: pointer;
+      min-width: 100px; /* Accommodate "Approved ✓" without resize */
     }
     .tx-btn.swap-btn { background: #0055FF; color: #fff; border-color: #0055FF; }
     .tx-btn.swap-btn:hover { background: #0046CC; }
@@ -1288,12 +1881,12 @@ const INDEX_HTML = `<!DOCTYPE html>
     .tx-btn.approve-btn:hover { background: #0046CC; }
     .tx-btn.approved { background: #007700; color: #fff; border-color: #007700; cursor: default; }
     .tx-btn.approved:hover { background: #007700; }
-    .tx-btn.disabled, .tx-btn.wallet-required { 
-      opacity: 0.4; 
-      cursor: not-allowed; 
+    .tx-btn.disabled, .tx-btn.wallet-required {
+      opacity: 0.4;
+      cursor: not-allowed;
       background: #e0e0e0;
       color: #666;
-      border-color: #999;
+      border-color: #666;
     }
     .tx-btn.disabled:hover, .tx-btn.wallet-required:hover { background: #e0e0e0; }
     .tx-checkmark {
@@ -1314,7 +1907,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .tx-status.success::before { content: "SUCCESS: "; }
     .tx-status.error::before { content: "FAILED: "; }
     .tx-status.pending { color: #666; }
-    .tx-status.success { color: #007700; background: #e8e8e8; padding: 0.125rem 0.25rem; }
+    .tx-status.success { color: #007700; background: #f0f0f0; padding: 0.125rem 0.25rem; }
     .tx-status.error { color: #CC0000; background: #f0f0f0; padding: 0.125rem 0.25rem; border: 1px solid #CC0000; }
     
     /* Tabs - Compact */
@@ -1365,7 +1958,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       border: 2px solid #000;
       border-top: none;
       padding: 0.75rem;
-      background: #f8f8f8;
+      background: #f0f0f0;
     }
     .details-content.open { display: block; }
     
@@ -1400,8 +1993,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       color: #666;
       padding: 0.25rem 0.5rem;
       border: 1px solid #e0e0e0;
-      border-left: 3px solid #0055FF;
-      background: #fafafa;
+      border-left: 4px solid #0055FF;
+      background: #f0f0f0;
       margin-bottom: 0.5rem;
       display: flex;
       justify-content: space-between;
@@ -1414,7 +2007,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .error-message {
       border: 2px solid #000;
       padding: 0.75rem;
-      background: #f8f8f8;
+      background: #f0f0f0;
       font-weight: 600;
     }
     
@@ -1427,11 +2020,20 @@ const INDEX_HTML = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>Compare DEX Routers</h1>
+  <!-- Page Header: Title + Settings Gear -->
+  <div class="page-header">
+    <h1>Compare DEX Routers</h1>
+    <button type="button" id="settingsBtn" class="settings-btn" aria-label="Open settings" aria-haspopup="dialog" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+  </div>
   
   <!-- Wallet Section - Inline with trading flow -->
   <form id="form">
-    <!-- Row 1: Chain Selector + Settings Gear -->
+    <!-- Row 1: Chain Selector -->
     <div class="form-header-row">
       <div class="form-group">
         <label for="chainId">Chain</label>
@@ -1445,62 +2047,69 @@ const INDEX_HTML = `<!DOCTYPE html>
           <option value="43114">Avalanche (43114)</option>
         </select>
       </div>
-      <button type="button" id="settingsBtn" class="settings-btn" aria-label="Open settings" aria-haspopup="dialog" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
-      </button>
     </div>
     <!-- Row 2: Wallet (integrated into form flow) -->
     <div class="form-group wallet-group">
       <div class="wallet-row">
-        <button type="button" id="connectWalletBtn">Connect Wallet</button>
-        <div id="walletConnected" class="wallet-row" hidden style="gap: 0.5rem;">
+        <button type="button" id="connectWalletBtn" class="btn-primary">Connect Wallet</button>
+        <div id="walletConnected" class="wallet-row wallet-connected-row" hidden>
           <img id="walletConnectedIcon" class="wallet-connected-icon" alt="" hidden>
           <span id="walletConnectedName" class="wallet-status"></span>
           <span id="walletConnectedAddress" class="wallet-address"></span>
-          <button type="button" id="disconnectWalletBtn" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Disconnect</button>
+          <button type="button" id="disconnectWalletBtn" class="btn-disconnect">Disconnect</button>
         </div>
       </div>
       <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
       <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
     </div>
-    <!-- Row 3: From Token + Amount (non-collapsible, stays horizontal at 375px) -->
-    <div class="form-row-fixed">
-      <div class="form-group">
-        <label for="from">From Token</label>
-        <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
-        <div class="autocomplete-list" id="fromAutocomplete"></div>
-      </div>
-      <div class="form-group amount-group">
-        <label for="amount">Amount</label>
-        <input type="text" id="amount" value="1000">
-      </div>
+    <!-- Row 3: Amount (full-width for 20+ digit numbers) -->
+    <div class="form-group">
+      <label for="amount">Amount</label>
+      <input type="text" id="amount" value="1000">
     </div>
-    <!-- Row 4: To Token -->
+    <!-- Row 3b: Direction Toggle -->
+    <div class="direction-toggle-row">
+      <button type="button" id="directionExactIn" class="direction-btn active" aria-pressed="true">
+        Sell exact
+      </button>
+      <button type="button" id="directionTargetOut" class="direction-btn" aria-pressed="false">
+        Buy exact
+      </button>
+    </div>
+    <div id="targetOutNote" class="target-out-note" hidden>
+      <span class="target-out-note-icon">⚠️</span>
+      <span>Fewer providers support reverse quotes (3/7 Spandex providers)</span>
+    </div>
+    <!-- Row 4: From Token -->
+    <div class="form-group">
+      <label for="from">From Token</label>
+      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="autocomplete-list" id="fromAutocomplete"></div>
+      <div id="fromBalance" class="token-balance" hidden></div>
+    </div>
+    <!-- Row 5: To Token -->
     <div class="form-group">
       <label for="to">To Token</label>
       <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
+      <div id="toBalance" class="token-balance" hidden></div>
     </div>
-    <!-- Row 5: Slippage with presets -->
-    <div class="form-group slippage-section">
-      <div class="slippage-label-row">
-        <span class="slippage-label">Slippage</span>
-        <div class="slippage-presets">
-          <button type="button" class="slippage-preset-btn" data-bps="10">10</button>
-          <button type="button" class="slippage-preset-btn active" data-bps="50">50</button>
-          <button type="button" class="slippage-preset-btn" data-bps="100">100</button>
-          <button type="button" class="slippage-preset-btn" data-bps="300">300</button>
+    <!-- Row 6: Action Row with Submit + Compact Slippage -->
+    <div class="action-row">
+      <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
+      <div class="slippage-box">
+        <span class="slippage-box-label">Slippage</span>
+        <div class="slippage-box-presets">
+          <button type="button" class="slippage-preset-compact" data-bps="3">3</button>
+          <button type="button" class="slippage-preset-compact" data-bps="10">10</button>
+          <button type="button" class="slippage-preset-compact active" data-bps="50">50</button>
+          <button type="button" class="slippage-preset-compact" data-bps="100">100</button>
+          <button type="button" class="slippage-preset-compact" data-bps="300">300</button>
         </div>
-      </div>
-      <div class="slippage-input-row">
-        <input type="text" id="slippageBps" value="50" aria-label="Slippage (bps)">
-        <span class="slippage-hint">bps (1 bps = 0.01%)</span>
+        <input type="text" id="slippageBps" class="slippage-box-input" value="50" aria-label="Slippage (bps)">
+        <span class="slippage-box-hint">bps</span>
       </div>
     </div>
-    <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
   </form>
 
   <div id="result">
@@ -1515,7 +2124,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     <div class="tab-content active" id="recommendedContent"></div>
     <div class="tab-content" id="alternativeContent"></div>
     <!-- MEV Protection info button - positioned near swap action area -->
-    <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 2px solid #000;">
+    <div class="mev-button-row">
       <button type="button" id="mevInfoBtn" class="mev-info-btn" aria-haspopup="dialog">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -1575,7 +2184,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         <!-- Local Tokens Section -->
         <div class="settings-section">
           <div class="local-tokens-header">
-            <div class="settings-section-title" style="display: inline;">Local Tokens</div>
+            <div class="settings-section-title settings-section-title-inline">Local Tokens</div>
             <div id="localTokensToggle" class="tokenlist-toggle on" role="switch" aria-checked="true" aria-label="Toggle local tokens" tabindex="0"></div>
           </div>
           <div class="local-tokens-actions">
@@ -1702,7 +2311,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     const toInput = document.getElementById('to');
     const amountInput = document.getElementById('amount');
     const slippageInput = document.getElementById('slippageBps');
-    const slippagePresetBtns = document.querySelectorAll('.slippage-preset-btn');
+    const slippagePresetBtns = document.querySelectorAll('.slippage-preset-compact');
 
     // Update active state on slippage preset buttons
     function updateSlippagePresetActive(value) {
@@ -1727,6 +2336,36 @@ const INDEX_HTML = `<!DOCTYPE html>
     // On custom input, update preset active state
     slippageInput.addEventListener('input', () => {
       updateSlippagePresetActive(slippageInput.value);
+    });
+
+    // Direction Toggle - Sell exact (exactIn) / Buy exact (targetOut)
+    const directionExactInBtn = document.getElementById('directionExactIn');
+    const directionTargetOutBtn = document.getElementById('directionTargetOut');
+    const targetOutNote = document.getElementById('targetOutNote');
+
+    // Current mode state: 'exactIn' (default) or 'targetOut'
+    let currentQuoteMode = 'exactIn';
+
+    function setDirectionMode(mode) {
+      currentQuoteMode = mode;
+      const isExactIn = mode === 'exactIn';
+
+      directionExactInBtn.classList.toggle('active', isExactIn);
+      directionExactInBtn.setAttribute('aria-pressed', String(isExactIn));
+
+      directionTargetOutBtn.classList.toggle('active', !isExactIn);
+      directionTargetOutBtn.setAttribute('aria-pressed', String(!isExactIn));
+
+      // Show/hide the provider note for targetOut mode
+      targetOutNote.hidden = isExactIn;
+    }
+
+    directionExactInBtn.addEventListener('click', () => {
+      setDirectionMode('exactIn');
+    });
+
+    directionTargetOutBtn.addEventListener('click', () => {
+      setDirectionMode('targetOut');
     });
 
     const mevInfoBtn = document.getElementById('mevInfoBtn');
@@ -2307,6 +2946,13 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       // Refresh autocomplete to include the new token
       refreshAutocomplete();
+
+      // Update balance for this token field
+      if (input === fromInput) {
+        void updateFromTokenBalance();
+      } else if (input === toInput) {
+        void updateToTokenBalance();
+      }
     }
 
     // Event listeners for unrecognized token modal
@@ -2379,6 +3025,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         const token = findTokenByAddress(value, chainId);
         if (token) {
           input.value = formatTokenDisplay(token.symbol, token.address);
+        }
+        // Update balance for this token field
+        if (input === fromInput) {
+          void updateFromTokenBalance();
+        } else if (input === toInput) {
+          void updateToTokenBalance();
         }
         return;
       }
@@ -2625,6 +3277,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         updateWalletStateUi();
         updateTransactionActionStates();
         setWalletMessage('');
+        updateTokenBalances(); // Fetch balances for selected tokens
       } catch (err) {
         const code = err && typeof err === 'object' ? err.code : undefined;
         if (code === 4001) {
@@ -2644,6 +3297,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       closeWalletProviderMenu();
       updateWalletStateUi();
       updateTransactionActionStates();
+      clearTokenBalances(); // Hide balances when wallet disconnected
       setWalletMessage('Wallet disconnected.');
     }
 
@@ -2750,17 +3404,30 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
     }
 
-    // Load default tokenlist from server
-    async function loadDefaultTokenlist() {
+    // Load default tokenlist(s) from server
+    // Returns array of {name, tokens} objects (one per configured default)
+    async function loadDefaultTokenlists() {
       try {
         const res = await fetch('/tokenlist');
         if (!res.ok) {
           throw new Error('HTTP ' + res.status);
         }
         const data = await res.json();
-        const tokens = Array.isArray(data.tokens) ? data.tokens : [];
-        // Tag tokens with source
-        return tokens.map(t => ({ ...t, _source: DEFAULT_TOKENLIST_NAME }));
+        // Server now returns {tokenlists: [{name, tokens}, ...], tokens: merged}
+        const tokenlists = Array.isArray(data.tokenlists) ? data.tokenlists : [];
+        if (tokenlists.length === 0) {
+          // Fallback for old server response format
+          const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+          if (tokens.length > 0) {
+            return [{ name: DEFAULT_TOKENLIST_NAME, tokens: tokens.map(t => ({ ...t, _source: DEFAULT_TOKENLIST_NAME })) }];
+          }
+          return [];
+        }
+        // Tag tokens with their source name
+        return tokenlists.map(entry => ({
+          name: entry.name || DEFAULT_TOKENLIST_NAME,
+          tokens: (entry.tokens || []).map(t => ({ ...t, _source: entry.name || DEFAULT_TOKENLIST_NAME }))
+        }));
       } catch {
         return [];
       }
@@ -3188,6 +3855,12 @@ const INDEX_HTML = `<!DOCTYPE html>
             : currentAddress;
           otherInput.value = swappedDisplay;
           otherInput.dataset.address = currentAddress;
+          // Update balance for the swapped field
+          if (otherInput === fromInput) {
+            void updateFromTokenBalance();
+          } else if (otherInput === toInput) {
+            void updateToTokenBalance();
+          }
         }
         // If current field was empty or had non-address content, leave the other field unchanged
         // (no swap needed - just let the new value be set in the current field)
@@ -3216,6 +3889,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         // Store full address in data-address attribute
         input.dataset.address = token.address;
         hide();
+        // Update balance for this token field
+        if (input === fromInput) {
+          void updateFromTokenBalance();
+        } else if (input === toInput) {
+          void updateToTokenBalance();
+        }
       }
 
       function setActive(index) {
@@ -3368,6 +4047,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         amount: String(params.amount || '').trim(),
         slippageBps: String(params.slippageBps || '').trim(),
         sender: String(params.sender || '').trim(),
+        mode: String(params.mode || 'exactIn').trim(),
       };
     }
 
@@ -3379,6 +4059,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         amount: amountInput.value,
         slippageBps: slippageInput.value,
         sender: hasConnectedWallet() ? connectedWalletAddressValue : '',
+        mode: currentQuoteMode,
       });
     }
 
@@ -3390,6 +4071,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         to: normalized.to,
         amount: normalized.amount,
         slippageBps: normalized.slippageBps,
+        mode: normalized.mode,
       });
 
       if (normalized.sender) {
@@ -3407,6 +4089,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       url.searchParams.set('to', normalized.to);
       url.searchParams.set('amount', normalized.amount);
       url.searchParams.set('slippageBps', normalized.slippageBps);
+      // Only add mode to URL if it's not the default
+      if (normalized.mode && normalized.mode !== 'exactIn') {
+        url.searchParams.set('mode', normalized.mode);
+      } else {
+        url.searchParams.delete('mode');
+      }
       // Sender is never written to URL - it comes from wallet connection state
       url.searchParams.delete('sender');
       // Remove MEV protection param if it exists (no longer used)
@@ -3589,6 +4277,160 @@ const INDEX_HTML = `<!DOCTYPE html>
       return undefined;
     }
 
+    // Token Balance Display
+    const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+    const BALANCE_CACHE_TTL_MS = 30 * 1000; // 30 seconds
+    const balanceCache = new Map(); // key: chainId:tokenAddress:walletAddress -> { balance, timestamp }
+
+    function isNativeToken(address) {
+      const addr = String(address || '').toLowerCase();
+      return addr === '0x0000000000000000000000000000000000000000' ||
+             addr === NATIVE_TOKEN_ADDRESS.toLowerCase();
+    }
+
+    async function fetchTokenBalance(provider, tokenAddress, walletAddress, decimals, chainId) {
+      if (!provider || !walletAddress || !tokenAddress) return null;
+
+      const cacheKey = chainId + ':' + tokenAddress.toLowerCase() + ':' + walletAddress.toLowerCase();
+      const cached = balanceCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp) < BALANCE_CACHE_TTL_MS) {
+        return cached.balance;
+      }
+
+      try {
+        let balance;
+        if (isNativeToken(tokenAddress)) {
+          // Native ETH: use eth_getBalance
+          const result = await provider.request({
+            method: 'eth_getBalance',
+            params: [walletAddress, 'latest'],
+          });
+          balance = BigInt(result);
+        } else {
+          // ERC-20: use eth_call with balanceOf selector
+          const balanceOfSelector = '0x70a08231'; // balanceOf(address)
+          const paddedAddress = walletAddress.slice(2).padStart(64, '0');
+          const data = balanceOfSelector + paddedAddress;
+          const result = await provider.request({
+            method: 'eth_call',
+            params: [{ to: tokenAddress, data }, 'latest'],
+          });
+          balance = BigInt(result);
+        }
+
+        const formatted = formatBalance(balance, decimals);
+        balanceCache.set(cacheKey, { balance: formatted, timestamp: Date.now() });
+        return formatted;
+      } catch {
+        // Silently fail - don't show error UI
+        return null;
+      }
+    }
+
+    function formatBalance(balance, decimals) {
+      const dec = Number(decimals) || 18;
+      const divisor = BigInt(10 ** dec);
+      const wholePart = balance / divisor;
+      const fractionalPart = balance % divisor;
+
+      // Format fractional part with leading zeros
+      let fractionalStr = fractionalPart.toString().padStart(dec, '0');
+      // Remove trailing zeros
+      fractionalStr = fractionalStr.replace(/0+$/, '');
+      // Limit to 6 decimal places for display
+      if (fractionalStr.length > 6) fractionalStr = fractionalStr.slice(0, 6);
+
+      // Format whole part with thousand separators
+      const wholeStr = String(wholePart).replace(new RegExp('\\\\B(?=(\\\\d{3})+(?!\\\\d))', 'g'), ',');
+      
+      return fractionalStr ? wholeStr + '.' + fractionalStr : wholeStr;
+    }
+
+    const fromBalanceEl = document.getElementById('fromBalance');
+    const toBalanceEl = document.getElementById('toBalance');
+
+    function clearTokenBalances() {
+      fromBalanceEl.hidden = true;
+      fromBalanceEl.textContent = '';
+      toBalanceEl.hidden = true;
+      toBalanceEl.textContent = '';
+    }
+
+    async function updateFromTokenBalance() {
+      if (!hasConnectedWallet()) {
+        fromBalanceEl.hidden = true;
+        return;
+      }
+
+      const tokenAddress = fromInput.dataset.address;
+      if (!tokenAddress) {
+        fromBalanceEl.hidden = true;
+        return;
+      }
+
+      const chainId = getCurrentChainId();
+      const token = findTokenByAddress(tokenAddress, chainId);
+      const decimals = token ? token.decimals : 18;
+
+      fromBalanceEl.textContent = 'Balance: ...';
+      fromBalanceEl.hidden = false;
+
+      const balance = await fetchTokenBalance(
+        connectedWalletProvider,
+        tokenAddress,
+        connectedWalletAddressValue,
+        decimals,
+        chainId
+      );
+
+      if (balance !== null) {
+        fromBalanceEl.textContent = 'Balance: ' + balance;
+        fromBalanceEl.hidden = false;
+      } else {
+        fromBalanceEl.hidden = true;
+      }
+    }
+
+    async function updateToTokenBalance() {
+      if (!hasConnectedWallet()) {
+        toBalanceEl.hidden = true;
+        return;
+      }
+
+      const tokenAddress = toInput.dataset.address;
+      if (!tokenAddress) {
+        toBalanceEl.hidden = true;
+        return;
+      }
+
+      const chainId = getCurrentChainId();
+      const token = findTokenByAddress(tokenAddress, chainId);
+      const decimals = token ? token.decimals : 18;
+
+      toBalanceEl.textContent = 'Balance: ...';
+      toBalanceEl.hidden = false;
+
+      const balance = await fetchTokenBalance(
+        connectedWalletProvider,
+        tokenAddress,
+        connectedWalletAddressValue,
+        decimals,
+        chainId
+      );
+
+      if (balance !== null) {
+        toBalanceEl.textContent = 'Balance: ' + balance;
+        toBalanceEl.hidden = false;
+      } else {
+        toBalanceEl.hidden = true;
+      }
+    }
+
+    function updateTokenBalances() {
+      void updateFromTokenBalance();
+      void updateToTokenBalance();
+    }
+
     function applyDefaults(chainId) {
       const defaults = DEFAULT_TOKENS[chainId];
       if (defaults) {
@@ -3626,6 +4468,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (mevModal.classList.contains('show')) {
         renderMevChainContent();
       }
+      // Clear balance cache on chain change and refetch balances
+      balanceCache.clear();
+      updateTokenBalances();
     });
 
     // MEV Modal event listeners
@@ -3719,7 +4564,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       const details = [];
       
       details.push('<div class="field"><div class="field-label">Router Address</div><div class="field-value">' + data.router_address + '</div></div>');
-      details.push('<div class="field"><div class="field-label">Router Calldata</div><div class="field-value" style="font-size: 0.625rem; word-break: break-all;">' + data.router_calldata.slice(0, 100) + (data.router_calldata.length > 100 ? '...' : '') + '</div></div>');
+      details.push('<div class="field"><div class="field-label">Router Calldata</div><div class="field-value field-value-compact">' + data.router_calldata.slice(0, 100) + (data.router_calldata.length > 100 ? '...' : '') + '</div></div>');
       
       if (data.router_value) {
         details.push('<div class="field"><div class="field-label">Router Value (wei)</div><div class="field-value number">' + data.router_value + '</div></div>');
@@ -3730,9 +4575,24 @@ const INDEX_HTML = `<!DOCTYPE html>
         details.push('<div class="field"><div class="field-label">Approval Spender</div><div class="field-value">' + data.approval_spender + '</div></div>');
       }
       
-      // Always show Gas Used field - "N/A" if missing or zero
-      const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null;
-      details.push('<div class="field"><div class="field-label">Gas Used</div><div class="field-value number">' + (gasUsed || 'N/A') + '</div></div>');
+      // Show Gas Cost in ETH (preferred) or Gas Used (fallback)
+      if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
+        details.push('<div class="field"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>');
+        // Also show raw gas units as secondary info
+        const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null;
+        if (gasUsed) {
+          details.push('<div class="field"><div class="field-label">Gas Units</div><div class="field-value number">' + gasUsed + '</div></div>');
+        }
+      } else {
+        // Fallback to raw gas units if ETH cost not available
+        const gasUsed = data.gas_used && Number(data.gas_used) > 0 ? data.gas_used : null;
+        details.push('<div class="field"><div class="field-label">Gas Used</div><div class="field-value number">' + (gasUsed || 'N/A') + '</div></div>');
+      }
+      
+      // Show net value in ETH if available
+      if (data.net_value_eth && Number(data.net_value_eth) > 0) {
+        details.push('<div class="field"><div class="field-label">Net Value (after gas)</div><div class="field-value number">' + data.net_value_eth + ' ETH</div></div>');
+      }
       
       if (type === 'spandex' && data.slippage_bps) {
         details.push('<div class="field"><div class="field-label">Slippage</div><div class="field-value number">' + data.slippage_bps + ' bps</div></div>');
@@ -3745,14 +4605,29 @@ const INDEX_HTML = `<!DOCTYPE html>
       const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
       const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
       const providerLabel = 'Spandex' + (data.provider ? ' / ' + data.provider : '');
-      
+
+      // Handle mode-specific display
+      const isTargetOut = data.mode === 'targetOut';
+      // In targetOut mode: amount is the desired output, input_amount is what you pay
+      // In exactIn mode: amount is the input, output_amount is what you receive
+      const primaryAmount = isTargetOut ? data.input_amount : data.output_amount;
+      const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
+      const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
+
+      // Build gas info line for primary display
+      let gasInfoLine = '';
+      if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
+        gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>';
+      }
+
       // Primary section: output + buttons inline
-      const primary = 
+      const primary =
         '<div class="' + primaryClass + '">' +
           recommendationLabel +
-          '<div class="result-output-label">You receive (estimated)</div>' +
-          '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
-          '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via ' + providerLabel + '</div></div>' +
+          '<div class="result-output-label">' + primaryLabel + '</div>' +
+          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
+          '<div class="field field-spaced"><div class="field-label">Via ' + providerLabel + '</div></div>' +
+          gasInfoLine +
           renderQuoteActions({
             quoteChainId,
             routerAddress: data.router_address,
@@ -3762,17 +4637,18 @@ const INDEX_HTML = `<!DOCTYPE html>
             approvalSpender: data.approval_spender || '',
           }) +
         '</div>';
-      
+
       // Secondary details (collapsible)
-      const secondary = 
+      const secondary =
         '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
         '<div class="details-content">' +
           '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
           '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
-          '<div class="field"><div class="field-label">Input Amount</div><div class="field-value number">' + data.amount + (data.from_symbol ? ' ' + data.from_symbol : '') + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + data.from_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '')) + '</div></div>' +
           renderSecondaryDetails(data, 'spandex') +
         '</div>';
-      
+
       return primary + secondary;
     }
 
@@ -3797,17 +4673,30 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (data.route_symbols) {
         Object.entries(data.route_symbols).forEach(([k, v]) => { symbols[k.toLowerCase()] = v; });
       }
-      
+
       const recommendationLabel = isWinner ? '<span class="result-recommendation winner">RECOMMENDED</span>' : '<span class="result-recommendation alternative">ALTERNATIVE</span>';
       const primaryClass = isWinner ? 'result-primary winner' : 'result-primary alternative';
-      
+
+      // Handle mode-specific display
+      const isTargetOut = data.mode === 'targetOut';
+      const primaryAmount = isTargetOut ? data.input_amount : data.output_amount;
+      const primarySymbol = isTargetOut ? data.from_symbol : data.to_symbol;
+      const primaryLabel = isTargetOut ? 'You pay (required)' : 'You receive (estimated)';
+
+      // Build gas info line for primary display
+      let gasInfoLine = '';
+      if (data.gas_cost_eth && Number(data.gas_cost_eth) > 0) {
+        gasInfoLine = '<div class="field field-spaced"><div class="field-label">Gas Cost</div><div class="field-value number">' + data.gas_cost_eth + ' ETH</div></div>';
+      }
+
       // Primary section: output + buttons inline
-      const primary = 
+      const primary =
         '<div class="' + primaryClass + '">' +
           recommendationLabel +
-          '<div class="result-output-label">You receive (estimated)</div>' +
-          '<div class="result-output">' + data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '') + '</div>' +
-          '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via Curve</div></div>' +
+          '<div class="result-output-label">' + primaryLabel + '</div>' +
+          '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
+          '<div class="field field-spaced"><div class="field-label">Via Curve</div></div>' +
+          gasInfoLine +
           renderQuoteActions({
             quoteChainId,
             routerAddress: data.router_address,
@@ -3817,19 +4706,20 @@ const INDEX_HTML = `<!DOCTYPE html>
             approvalSpender: data.approval_target || '',
           }) +
         '</div>';
-      
+
       // Secondary details (collapsible)
-      const secondary = 
+      const secondary =
         '<button type="button" class="details-toggle" onclick="this.classList.toggle(\\'open\\'); this.nextElementSibling.classList.toggle(\\'open\\');">Details</button>' +
         '<div class="details-content">' +
           '<div class="field"><div class="field-label">From</div><div class="field-value">' + (data.from_symbol ? data.from_symbol + ' ' : '') + data.from + '</div></div>' +
           '<div class="field"><div class="field-label">To</div><div class="field-value">' + (data.to_symbol ? data.to_symbol + ' ' : '') + data.to + '</div></div>' +
-          '<div class="field"><div class="field-label">Input Amount</div><div class="field-value number">' + data.amount + (data.from_symbol ? ' ' + data.from_symbol : '') + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Output Amount (desired)' : 'Input Amount') + '</div><div class="field-value number">' + data.amount + (isTargetOut && data.to_symbol ? ' ' + data.to_symbol : (!isTargetOut && data.from_symbol ? ' ' + data.from_symbol : '')) + '</div></div>' +
+          '<div class="field"><div class="field-label">' + (isTargetOut ? 'Input Amount (required)' : 'Output Amount') + '</div><div class="field-value number">' + (isTargetOut ? data.input_amount + (data.from_symbol ? ' ' + data.from_symbol : '') : data.output_amount + (data.to_symbol ? ' ' + data.to_symbol : '')) + '</div></div>' +
           (data.route && data.route.length > 0 ? '<div class="field"><div class="field-label">Route (' + data.route.length + ' steps)</div>' + formatCurveRoute(data.route, symbols) + '</div>' : '') +
           (data.approval_target ? '<div class="field"><div class="field-label">Approval Target</div><div class="field-value">' + data.approval_target + '</div></div>' : '') +
           renderSecondaryDetails(data, 'curve') +
         '</div>';
-      
+
       return primary + secondary;
     }
 
@@ -3845,11 +4735,16 @@ const INDEX_HTML = `<!DOCTYPE html>
       const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || Number(chainIdInput.value);
 
       // Build comparison reason text with typography, not color
-      let reasonHtml = '<div style="padding: 0.5rem; border: 2px solid #000; margin-bottom: 0.5rem; background: #f8f8f8;">';
-      reasonHtml += '<div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Reason</div>';
-      reasonHtml += '<div style="font-size: 0.875rem;">' + data.recommendation_reason + '</div>';
+      let reasonHtml = '<div class="reason-box">';
+      reasonHtml += '<div class="reason-box-title">Reason</div>';
+      reasonHtml += '<div class="reason-box-content">' + data.recommendation_reason + '</div>';
       if (data.gas_price_gwei) {
-        reasonHtml += '<div class="field-value number" style="font-size: 0.75rem; margin-top: 0.25rem;">Gas: ' + data.gas_price_gwei + ' gwei</div>';
+        reasonHtml += '<div class="field-value number reason-box-gas">Gas: ' + data.gas_price_gwei + ' gwei</div>';
+      }
+      // Show output->ETH rate if available (for non-ETH outputs)
+      if (data.output_to_eth_rate) {
+        const outputSymbol = (data.spandex && data.spandex.to_symbol) || (data.curve && data.curve.to_symbol) || 'token';
+        reasonHtml += '<div class="field-value number reason-box-gas">Rate: 1 ' + outputSymbol + ' = ' + data.output_to_eth_rate + ' ETH</div>';
       }
       reasonHtml += '</div>';
 
@@ -4322,6 +5217,10 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     if (params.get('amount')) amountInput.value = params.get('amount');
     if (params.get('slippageBps')) slippageInput.value = params.get('slippageBps');
+    // Read mode from URL and set toggle state
+    if (params.get('mode') === 'targetOut') {
+      setDirectionMode('targetOut');
+    }
     // Sender param from URL is silently ignored - sender comes from wallet connection state
 
     // Remove any stale mevProtection param from URL
@@ -4337,10 +5236,11 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     // Initialize tokenlist sources on page load
     async function initializeTokenlistSources() {
-      // Step 1: Load default tokenlist first
-      const defaultTokens = await loadDefaultTokenlist();
-      
+      // Step 1: Load all default tokenlists from server
+      const defaultTokenlistEntries = await loadDefaultTokenlists();
+
       // Read default tokenlist enabled state from localStorage (default: true for new visitors)
+      // Note: single toggle applies to all default tokenlists
       let defaultEnabled = true;
       try {
         const stored = localStorage.getItem(DEFAULT_TOKENLIST_ENABLED_KEY);
@@ -4350,14 +5250,16 @@ const INDEX_HTML = `<!DOCTYPE html>
       } catch {
         // Ignore storage errors, use default
       }
-      
-      tokenlistSources = [{
-        url: null, // null indicates default
+
+      // Create one tokenlistSources entry per default tokenlist
+      // Each has url: null (marker for default) but distinct names
+      tokenlistSources = defaultTokenlistEntries.map((entry) => ({
+        url: null, // null indicates default (not a custom URL)
         enabled: defaultEnabled,
-        name: DEFAULT_TOKENLIST_NAME,
-        tokens: defaultTokens,
+        name: entry.name,
+        tokens: entry.tokens,
         error: null
-      }];
+      }));
 
       // Step 2: Check for migration from old single-URL format
       const migrated = migrateOldTokenlistUrl();
@@ -4444,6 +5346,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       // Render local tokens on page load
       renderLocalTokens();
+
+      // Fetch balances if wallet is already connected
+      updateTokenBalances();
     });
 
     // Update token counts when chain changes
@@ -4505,8 +5410,19 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
   if (url.pathname === "/tokenlist" && req.method === "GET") {
     try {
-      const tokenList = await loadTokenList();
-      sendJson(res, 200, tokenList);
+      const defaultTokenlists = await loadDefaultTokenlists();
+      // Return structured response with all default tokenlists
+      // For backward compatibility, merge all tokens into a single array
+      const allTokens = defaultTokenlists.flatMap((entry) => entry.tokens);
+      const names = defaultTokenlists.map((entry) => entry.name);
+      sendJson(res, 200, {
+        name: names.length === 1 ? names[0] : "Default Tokenlists",
+        tokenlists: defaultTokenlists.map((entry) => ({
+          name: entry.name,
+          tokens: entry.tokens,
+        })),
+        tokens: allTokens,
+      });
     } catch (err) {
       logError("Failed to load tokenlist", err);
       const details = err instanceof Error ? err.message : String(err);
@@ -4623,15 +5539,15 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       return;
     }
 
-    const { chainId, from, to, amount, slippageBps, sender } = parsed.data;
+    const { chainId, from, to, amount, slippageBps, sender, mode } = parsed.data;
 
     const startTime = Date.now();
     try {
-      const result = await findQuote(chainId, from, to, amount, slippageBps, sender);
+      const result = await findQuote(chainId, from, to, amount, slippageBps, sender, mode);
       const duration = Date.now() - startTime;
       log(
         `Quote: chain=${chainId} ${result.from_symbol || from.slice(0, 10)} -> ` +
-          `${result.to_symbol || to.slice(0, 10)}, amount=${amount}, ` +
+          `${result.to_symbol || to.slice(0, 10)}, amount=${amount}, mode=${mode}, ` +
           `output=${result.output_amount}, provider=${result.provider}, ${duration}ms`
       );
       recordRequest("/quote", duration, false);
@@ -4673,15 +5589,15 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       return;
     }
 
-    const { chainId, from, to, amount, slippageBps, sender } = parsed.data;
+    const { chainId, from, to, amount, slippageBps, sender, mode } = parsed.data;
 
     const startTime = Date.now();
     try {
-      const result = await compareQuotes(chainId, from, to, amount, slippageBps, sender);
+      const result = await compareQuotes(chainId, from, to, amount, slippageBps, sender, mode);
       const duration = Date.now() - startTime;
       log(
         `Compare: chain=${chainId} ${from.slice(0, 10)} -> ${to.slice(0, 10)}, ` +
-          `amount=${amount}, recommendation=${result.recommendation}, ${duration}ms`
+          `amount=${amount}, mode=${mode}, recommendation=${result.recommendation}, ${duration}ms`
       );
       recordRequest("/compare", duration, false);
       sendJson(res, 200, result);

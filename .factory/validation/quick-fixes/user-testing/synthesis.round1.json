@@ -1,0 +1,56 @@
+{
+  "milestone": "quick-fixes",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 35,
+    "passed": 34,
+    "failed": 1,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-AMT-001",
+    "VAL-AMT-002",
+    "VAL-BAL-001",
+    "VAL-BAL-002",
+    "VAL-BAL-003",
+    "VAL-CONV-001",
+    "VAL-CROSS-001",
+    "VAL-CROSS-002",
+    "VAL-CSS-001",
+    "VAL-CSS-002",
+    "VAL-CSS-003",
+    "VAL-CSS-004",
+    "VAL-CSS-005",
+    "VAL-CSS-006",
+    "VAL-CSS-007",
+    "VAL-CSS-008",
+    "VAL-CSS-009",
+    "VAL-CSS-011",
+    "VAL-GAS-001",
+    "VAL-GAS-002",
+    "VAL-GAS-003",
+    "VAL-GAS-004",
+    "VAL-HDR-001",
+    "VAL-REV-001",
+    "VAL-REV-002",
+    "VAL-REV-003",
+    "VAL-SLIP-001",
+    "VAL-SLIP-002",
+    "VAL-SLIP-003",
+    "VAL-SLIP-004",
+    "VAL-TL-001",
+    "VAL-TL-002",
+    "VAL-TL-003",
+    "VAL-TL-004"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-CSS-010",
+      "reason": "Button sizing issue: submitSizeStable=false (tolerance=false), hasMinWidth=true, before=177x41, after=144x41"
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}

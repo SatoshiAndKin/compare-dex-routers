@@ -1,0 +1,79 @@
+{
+  "featureId": "reverse-quote-targetout-support",
+  "reviewedAt": "2026-03-03T01:30:00.000Z",
+  "commitId": "7162801",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds targetOut (reverse quote) mode with a clean UI toggle, server-side Spandex TargetOutSwapParams construction, and Curve reverse quoting via curve.router.required(). Tests cover query parameter parsing. However, the comparison recommendation logic in compareQuotes() is fundamentally broken for targetOut mode: it always compares output_amount (higher is better), but in targetOut mode both providers target the same output — the correct comparison metric is input_amount (lower is better). Additionally, the test helper makeCurveQuote() was not updated with the new required fields (input_amount, mode), and no server-level integration tests cover targetOut mode at all.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 580,
+        "severity": "blocking",
+        "description": "compareQuotes() comparison logic does not account for targetOut mode. It compares output_amount (higher = better), but in targetOut mode the output is fixed (user's desired amount) so both providers return approximately the same output. The correct comparison in targetOut mode is input_amount (lower = better). This means recommendations are effectively random in targetOut mode. All three comparison tiers (gas-adjusted, rate-unavailable-with-gas, raw-output) have this same bug. The gas-adjusted comparison also computes netValueEth from output, which is meaningless when outputs are the same."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 599,
+        "severity": "blocking",
+        "description": "The recommendation_reason text always says 'returns X more output' which is misleading/wrong in targetOut mode. In targetOut, the reason should explain which provider requires less input (e.g. 'Curve requires 0.5 USDC less input')."
+      },
+      {
+        "file": "src/__tests__/server.quote-compare.test.ts",
+        "line": 121,
+        "severity": "non_blocking",
+        "description": "makeCurveQuote() helper was not updated with the new input_amount and mode fields added to CurveQuoteResult. While this doesn't cause test failures (the fields are just absent in mocks), it means mock data doesn't match the real interface shape, reducing test fidelity."
+      },
+      {
+        "file": "src/__tests__/server.quote-compare.test.ts",
+        "line": 0,
+        "severity": "non_blocking",
+        "description": "No integration tests for targetOut mode were added to server.quote-compare.test.ts. The only tests added are in quote.test.ts for parameter parsing. There should be tests verifying: (1) findQuote constructs TargetOutSwapParams correctly, (2) findCurveQuote calls curve.router.required() in targetOut mode, (3) compareQuotes returns correct recommendation in targetOut mode."
+      },
+      {
+        "file": "src/curve.ts",
+        "line": 101,
+        "severity": "non_blocking",
+        "description": "In targetOut mode, the code calls curve.router.required() to get input amount, then calls getBestRouteAndOutput(from, to, inputAmount) to get the route. But getBestRouteAndOutput runs a forward quote with that input, meaning the actual output may differ from the user's desired target. The route and output may not exactly match the targetOut request. This is a reasonable workaround (Curve API doesn't expose a direct targetOut route), but should be noted as an approximation."
+      },
+      {
+        "file": "openapi.yaml",
+        "line": 0,
+        "severity": "non_blocking",
+        "description": "The openapi.yaml API spec was not updated to document the new 'mode' query parameter for /compare and /quote endpoints, nor the new input_amount and mode fields in the response schema."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 333,
+        "severity": "non_blocking",
+        "description": "In findQuote(), the QuoteResult.amount field keeps the raw user-entered amount, but its meaning changes based on mode (input in exactIn, desired output in targetOut). This dual semantic is not documented and could confuse API consumers. Consider documenting this or adding a separate field."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The /compare and /quote endpoints now accept a 'mode' parameter, but AGENTS.md API Endpoints section doesn't mention it. The endpoint descriptions still only list 'chainId, from, to, amount, slippageBps, sender' as parameters.",
+      "evidence": "AGENTS.md line for /compare: 'GET /compare - Compare quotes from Spandex and Curve (chainId, from, to, amount, slippageBps, sender)'. The mode parameter is undocumented."
+    },
+    {
+      "area": "conventions",
+      "observation": "openapi.yaml was not updated alongside the API change. No convention exists in AGENTS.md requiring openapi.yaml to be kept in sync with endpoint changes.",
+      "evidence": "grep for 'mode' or 'targetOut' in openapi.yaml returns 0 matches, yet both /compare and /quote now accept this parameter."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed the skill procedure correctly: read context, implemented changes, ran typecheck/lint/test, did manual verification via playwright. The skill's test-first approach (step 2) was not strictly followed — tests were added after implementation rather than before (red-green-refactor). However, for inline HTML/JS changes this is expected per the skill's exception for client-side-only changes.",
+      "evidence": "Transcript skeleton shows: Read files -> Edit files (implementation) -> Run typecheck/lint/test -> Fix tests -> Manual verification. Tests were added/updated after implementation, not before."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The Curve API method for reverse quotes is curve.router.required() (not swapRequired as originally documented in the feature description). The worker discovered this via WebSearch and node_modules inspection. The mission AGENTS.md section on 'Reverse Quotes' says 'curve.router.swapRequired()' which is incorrect.",
+      "evidence": "Feature description says 'curve.router.swapRequired(inputCoin, outputCoin, outAmount)'. Mission AGENTS.md also says 'curve.router.swapRequired()'. Actual implementation uses 'curve.router.required(from, to, amount)' which was confirmed by worker via node_modules type inspection."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The feature implements the basic targetOut plumbing correctly (parameter parsing, Spandex TargetOutSwapParams, Curve reverse quote via required(), UI toggle with provider note), but has a blocking bug in the comparison logic: compareQuotes() always compares output amounts to determine the recommendation, which is meaningless in targetOut mode where outputs are identical. In targetOut mode, the comparison should favor the provider requiring less input. No integration tests cover targetOut mode in the /compare or /quote endpoints."
+}

@@ -1,0 +1,96 @@
+{
+  "milestone": "quick-fixes",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 11,
+    "passed": 10,
+    "failed": 1,
+    "failedFeatures": [
+      "reverse-quote-targetout-support"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "reverse-quote-targetout-support",
+      "severity": "blocking",
+      "description": "compareQuotes() recommendation logic compares output amounts in targetOut mode (higher output wins), but targetOut comparisons should optimize for lower required input. This makes provider recommendation incorrect in targetOut mode, including gas-adjusted branches."
+    },
+    {
+      "featureId": "reverse-quote-targetout-support",
+      "severity": "blocking",
+      "description": "recommendation_reason text always describes 'more output', which is incorrect for targetOut mode and should instead explain lower required input."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Added .factory/library/quick-fixes-scrutiny-notes.md capturing factual milestone updates (DEFAULT_TOKENLISTS/static tokenlist path, mode param, and Curve reverse-quote method name).",
+      "sourceFeature": "move-tokenlist-and-multi-default-support"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Update API endpoint parameter docs for /quote and /compare to include `mode` (`exactIn`/`targetOut`) and document targetOut semantics in recommendation wording expectations.",
+      "evidence": "Feature reverse-quote-targetout-support introduced mode support, but AGENTS.md endpoint docs still list only chainId/from/to/amount/slippageBps/sender.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a convention requiring OpenAPI updates whenever endpoint params or response fields change.",
+      "evidence": "reverse-quote-targetout-support changed API surface (mode, input_amount/mode usage) without openapi.yaml updates.",
+      "isSystemic": true
+    },
+    {
+      "target": "fullstack-worker skill",
+      "suggestion": "For CSS/UI changes, explicitly require checking .factory/library/color-system.md and preserving documented focus-outline and palette conventions.",
+      "evidence": "slippage-submit-row-redesign temporarily regressed focus outline width to 2px; corrected later by another feature.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Document dynamic-text button sizing convention: buttons that change label text must define min-width for the longest expected label.",
+      "evidence": "button-size-consistency had to retrofit min-width for primary/small/tx buttons to prevent visual resize jitter.",
+      "isSystemic": true
+    },
+    {
+      "target": "Mission AGENTS template",
+      "suggestion": "Avoid brittle absolute line-number references in monolithic files and prefer symbol/section anchors; also correct Curve reverse-quote method name to `curve.router.required(...)`.",
+      "evidence": "Multiple reviews reported line-number drift and reverse-quote docs referencing swapRequired instead of the actual required API.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Class-name coupling between .slippage-preset-btn and later .slippage-preset-compact rename.",
+      "reason": "already-documented"
+    },
+    {
+      "observation": "WETH_ADDRESSES extraction duplicates an older AGENTS.md note about ETH output helpers.",
+      "reason": "ambiguous"
+    },
+    {
+      "observation": "Two-session handoff pattern on amount-field-own-row indicates broken-state transfer.",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": null
+}

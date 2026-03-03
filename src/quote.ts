@@ -1,5 +1,7 @@
 import { SUPPORTED_CHAINS } from "./config.js";
 
+export type QuoteMode = "exactIn" | "targetOut";
+
 export interface QuoteParams {
   chainId: number;
   from: string;
@@ -7,6 +9,7 @@ export interface QuoteParams {
   amount: string;
   slippageBps: number;
   sender?: string;
+  mode: QuoteMode;
 }
 
 export type ParseResult = { success: true; data: QuoteParams } | { success: false; error: string };
@@ -24,6 +27,7 @@ export function parseQuoteParams(searchParams: URLSearchParams): ParseResult {
   const amount = searchParams.get("amount");
   const slippageBpsStr = searchParams.get("slippageBps") ?? "50";
   const sender = searchParams.get("sender") || undefined;
+  const modeStr = searchParams.get("mode") || "exactIn";
 
   if (!chainIdStr) {
     return { success: false, error: "Missing required param: chainId" };
@@ -70,5 +74,8 @@ export function parseQuoteParams(searchParams: URLSearchParams): ParseResult {
     return { success: false, error: `Invalid sender address: ${sender}` };
   }
 
-  return { success: true, data: { chainId, from, to, amount, slippageBps, sender } };
+  // Validate mode parameter
+  const mode: QuoteMode = modeStr === "targetOut" ? "targetOut" : "exactIn";
+
+  return { success: true, data: { chainId, from, to, amount, slippageBps, sender, mode } };
 }

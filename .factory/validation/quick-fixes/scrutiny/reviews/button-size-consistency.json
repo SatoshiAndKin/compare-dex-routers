@@ -1,0 +1,39 @@
+{
+  "featureId": "button-size-consistency",
+  "reviewedAt": "2026-03-03T01:15:00.000Z",
+  "commitId": "ec3f414719d4788b6056f5a004ee72fce3f5b3ba",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, focused CSS-only diff (8 insertions, 4 deletions in src/server.ts). Adds min-width to three button types with dynamic text (.btn-primary 140px, .btn-small 70px, .tx-btn 100px), aligns .btn-disconnect padding with .btn-small, and changes .btn-secondary from black fill to outlined white/black. All primary and success button colors match the spec (blue #0055FF for primary, green #007700 for success/done). Typecheck, lint, and all 129 tests pass. Visual verification via playwright screenshots confirmed consistent sizing.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 1273,
+        "severity": "non_blocking",
+        "description": "Disabled button styling uses three different approaches that weren't unified: generic `button:disabled` uses opacity:0.5, `.tx-btn.disabled` uses opacity:0.4 + explicit gray bg (#e0e0e0) + color:#666, and `.add-to-wallet-btn:disabled` uses bg:#ccc + color:#666 with no opacity. The expectedBehavior says 'Disabled buttons have consistent gray styling' but these remain inconsistent. Pre-existing issue not introduced by this commit, but the feature description asked the worker to address it."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 1653,
+        "severity": "non_blocking",
+        "description": "Pre-existing contrast bug: `.tx-checkmark` sets color:#007700 (green) which is invisible against the `.tx-btn.approved` background:#007700. The checkmark span should inherit `color: #fff` from the parent or use a distinct color. Not introduced by this commit, but the worker should have caught it during the button color audit."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Button sizing conventions (which buttons need min-width and why) aren't documented in AGENTS.md or the library. Future workers adding buttons with dynamic text may forget to apply min-width. The rule 'buttons with dynamic text must use min-width sized to the longest possible text' should be a documented convention.",
+      "evidence": "Worker added min-width to .btn-primary (140px), .btn-small (70px), .tx-btn (100px) in src/server.ts. These values and the pattern aren't captured in any shared doc."
+    },
+    {
+      "area": "conventions",
+      "observation": "The button color palette (blue for primary, green for success, outlined for tertiary) is only documented in the mission AGENTS.md under 'Button Consistency' but not in .factory/library/color-system.md which is the canonical color reference. The color-system.md lists accent colors but doesn't map them to button classes.",
+      "evidence": ".factory/library/color-system.md lists #0055FF, #007700, #CC0000 etc. but doesn't mention .btn-primary, .btn-secondary, .tx-btn.approved, or the button color assignment rules."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The worker delivered a clean, focused CSS change that addresses the core requirements: min-width on dynamic-text buttons to prevent resize, .btn-secondary recolored from black to outlined, and .btn-disconnect padding aligned with .btn-small. All automated checks pass and visual verification was thorough. Two non-blocking issues noted: disabled button styling remains inconsistent across three different approaches (pre-existing, but feature description asked for it), and a pre-existing contrast bug where .tx-checkmark green text is invisible on the green .tx-btn.approved background. Neither is blocking since the core sizing and color palette work is complete and correct."
+}

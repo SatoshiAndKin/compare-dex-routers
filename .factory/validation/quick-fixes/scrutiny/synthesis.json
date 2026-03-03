@@ -1,0 +1,46 @@
+{
+  "milestone": "quick-fixes",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm --prefix /Users/bryan/code/compare-dex-routers test",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm --prefix /Users/bryan/code/compare-dex-routers run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix /Users/bryan/code/compare-dex-routers run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated .factory/library/quick-fixes-scrutiny-notes.md with targetOut comparison semantics (lower required input and gas-adjusted total-cost logic) to preserve non-obvious behavior for future workers.",
+      "sourceFeature": "fix-targetout-comparison-logic"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Update API endpoint parameter docs for /quote and /compare to include `mode` (`exactIn`/`targetOut`) and document mode-dependent comparison semantics.",
+      "evidence": "openapi.yaml now documents `mode`, but AGENTS.md endpoint docs still list only chainId/from/to/amount/slippageBps/sender.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/quick-fixes/scrutiny/synthesis.round1.json"
+}

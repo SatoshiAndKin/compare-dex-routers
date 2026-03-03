@@ -1,0 +1,169 @@
+{
+  "groupId": "qf-g3-css-core",
+  "testedAt": "2026-03-03T03:20:00Z",
+  "credentials": {
+    "account": "validator_qf_g3",
+    "namespace": "qf_g3"
+  },
+  "toolsUsed": [
+    "grep",
+    "static-source-inspection"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CSS-001",
+      "title": "Unified border-left accent width",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect all border-left declarations in src/server.ts",
+          "expected": "Blue left accents use 4px consistently",
+          "observed": "All border-left declarations are 4px, including label, wallet-address, refresh/status cards, and warning/error accent blocks."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "css-brutalist-main-view.png"
+        ],
+        "terminalOutput": "grep border-left shows only 4px occurrences",
+        "sourceLines": [
+          "987: label ... border-left: 4px solid #0055FF",
+          "1714: .wallet-address ... border-left: 4px solid #0055FF",
+          "1996: result accent border-left: 4px solid #0055FF"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-002",
+      "title": "Consistent focus outlines",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Search outline declarations",
+          "expected": "Interactive elements use outline: 3px solid #0055FF",
+          "observed": "All focus styles found use 3px solid #0055FF (inputs, buttons, modal close, token remove buttons, slippage controls)."
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "grep outline: 3px solid #0055FF matched all focus declarations",
+        "sourceLines": [
+          "997: input/select focus outline",
+          "1119: .modal-close:focus",
+          "1325: .tokenlist-remove-btn:focus",
+          "1513: button:focus"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-003",
+      "title": "Collapsed background grays",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Search for eliminated gray backgrounds",
+          "expected": "#f8f8f8, #fafafa, #e8e8e8 removed",
+          "observed": "No matches for eliminated values; core UI backgrounds use #f0f0f0/#e0e0e0/#fff with body off-white #f5f5f5."
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "grep '#f8f8f8|#fafafa|#e8e8e8' src/server.ts -> 0 matches"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-004",
+      "title": "No pastel state backgrounds",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Search for pastel warning/error backgrounds",
+          "expected": "#fff0f0, #fff8f0, #FFF3CD removed",
+          "observed": "No pastel background values found; state boxes now use neutral background + colored border accents."
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "grep '#fff0f0|#fff8f0|#FFF3CD' src/server.ts -> 0 matches"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-005",
+      "title": "Consistent button variants",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Search for removed gray .btn-small.btn-secondary override",
+          "expected": "No legacy selector override remains",
+          "observed": "No .btn-small.btn-secondary override found in src/server.ts."
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "grep '.btn-small.btn-secondary' src/server.ts -> 0 matches"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-006",
+      "title": "No inline style attributes",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Search INDEX_HTML template for style= attributes",
+          "expected": "Inline styles removed",
+          "observed": "No style= attributes remain in src/server.ts template/JS-generated markup."
+        }
+      ],
+      "evidence": {
+        "terminalOutput": "grep 'style=' src/server.ts -> 0 matches"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-007",
+      "title": "Settings section uses black borders",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect .settings-section CSS",
+          "expected": "Border uses #000",
+          "observed": ".settings-section uses border-bottom: 2px solid #000."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "css-brutalist-settings-modal.png"
+        ],
+        "sourceLines": [
+          "1193: border-bottom: 2px solid #000"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-008",
+      "title": "Softer page background",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect body background color",
+          "expected": "Page background is not pure white",
+          "observed": "body background is #f5f5f5 (off-white/soft gray), not #fff."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "css-brutalist-main-view.png"
+        ],
+        "sourceLines": [
+          "971: background: #f5f5f5"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 CSS assertions (VAL-CSS-001..008): all passed via source inspection and existing visual evidence. Border accents and focus outlines are standardized, removed colors/inline styles are absent, settings borders are black, and the page uses a softer off-white background."
+}
