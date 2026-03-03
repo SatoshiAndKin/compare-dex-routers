@@ -2062,12 +2062,21 @@ const INDEX_HTML = `<!DOCTYPE html>
       <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
       <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
     </div>
-    <!-- Row 3: Amount (full-width for 20+ digit numbers) -->
+    <!-- Row 3: From Token -->
     <div class="form-group">
-      <label for="amount">Amount</label>
-      <input type="text" id="amount" value="1000">
+      <label for="from">From Token</label>
+      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="autocomplete-list" id="fromAutocomplete"></div>
+      <div id="fromBalance" class="token-balance" hidden></div>
     </div>
-    <!-- Row 3b: Direction Toggle -->
+    <!-- Row 4: To Token -->
+    <div class="form-group">
+      <label for="to">To Token</label>
+      <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="autocomplete-list" id="toAutocomplete"></div>
+      <div id="toBalance" class="token-balance" hidden></div>
+    </div>
+    <!-- Row 5: Direction Toggle -->
     <div class="direction-toggle-row">
       <button type="button" id="directionExactIn" class="direction-btn active" aria-pressed="true">
         Sell exact
@@ -2080,21 +2089,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       <span class="target-out-note-icon">⚠️</span>
       <span>Fewer providers support reverse quotes (3/7 Spandex providers)</span>
     </div>
-    <!-- Row 4: From Token -->
+    <!-- Row 6: Amount (full-width for 20+ digit numbers) -->
     <div class="form-group">
-      <label for="from">From Token</label>
-      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
-      <div class="autocomplete-list" id="fromAutocomplete"></div>
-      <div id="fromBalance" class="token-balance" hidden></div>
+      <label for="amount">Amount</label>
+      <input type="text" id="amount" value="1000">
     </div>
-    <!-- Row 5: To Token -->
-    <div class="form-group">
-      <label for="to">To Token</label>
-      <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
-      <div class="autocomplete-list" id="toAutocomplete"></div>
-      <div id="toBalance" class="token-balance" hidden></div>
-    </div>
-    <!-- Row 6: Action Row with Submit + Compact Slippage -->
+    <!-- Row 7: Action Row with Submit + Compact Slippage -->
     <div class="action-row">
       <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
       <div class="slippage-box">
