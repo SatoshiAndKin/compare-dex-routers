@@ -344,7 +344,8 @@ describe("server integration", () => {
 
   // VAL-FLOW-001 through VAL-FLOW-006: Form element order
   // VAL-AMT-001: Amount field on its own full-width row (above from/to tokens)
-  it("GET / has form elements in correct order (chain → wallet → amount → from → to → slippage → compare)", async () => {
+  // VAL-SLIP-003: Submit button first in action row, slippage box after
+  it("GET / has form elements in correct order (chain → wallet → amount → from → to → submit → slippage)", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
     const html = res.body;
@@ -355,18 +356,19 @@ describe("server integration", () => {
     const amountPos = html.indexOf('id="amount"');
     const fromPos = html.indexOf('id="from"');
     const toPos = html.indexOf('id="to"');
-    const slippagePos = html.indexOf('id="slippageBps"');
     const submitPos = html.indexOf('id="submit"');
+    const slippagePos = html.indexOf('id="slippageBps"');
 
-    // Verify order: chain < wallet < amount < from < to < slippage < submit
-    // Amount is now on its own row ABOVE from token (VAL-AMT-001)
+    // Verify order: chain < wallet < amount < from < to < submit < slippage
+    // Amount is on its own row ABOVE from token (VAL-AMT-001)
+    // Submit is FIRST in action row, slippage box after (VAL-SLIP-003)
     expect(chainPos).toBeGreaterThan(-1);
     expect(walletPos).toBeGreaterThan(chainPos);
     expect(amountPos).toBeGreaterThan(walletPos);
     expect(fromPos).toBeGreaterThan(amountPos);
     expect(toPos).toBeGreaterThan(fromPos);
-    expect(slippagePos).toBeGreaterThan(toPos);
-    expect(submitPos).toBeGreaterThan(slippagePos);
+    expect(submitPos).toBeGreaterThan(toPos);
+    expect(slippagePos).toBeGreaterThan(submitPos);
   });
 
   // VAL-WALLET-004: Wallet buttons must not submit form

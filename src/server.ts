@@ -1071,65 +1071,69 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .btn-secondary:hover { background: #333; }
 
-    /* Slippage Preset Buttons - Brutalist style */
-    .slippage-section { max-width: 300px; }
-    .slippage-label-row {
+    /* Action Row - Submit + Compact Slippage */
+    .action-row {
       display: flex;
-      align-items: baseline;
-      gap: 0.5rem;
-      margin-bottom: 0.25rem;
-    }
-    .slippage-label {
-      font-weight: 600;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      padding-left: 0.5rem;
-      border-left: 4px solid #0055FF;
-    }
-    .slippage-presets {
-      display: flex;
-      gap: 0.25rem;
+      align-items: center;
+      gap: 0.75rem;
       flex-wrap: wrap;
     }
-    .slippage-preset-btn {
-      font-size: 0.625rem;
+    .action-row .btn-primary {
+      flex-shrink: 0;
+    }
+    
+    /* Compact Slippage Box - bordered container next to submit */
+    .slippage-box {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      border: 2px solid #000;
+      background: #fff;
+    }
+    .slippage-box-label {
+      font-size: 0.5rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      padding: 0.25rem 0.5rem;
+      color: #666;
+      margin-right: 0.25rem;
+    }
+    .slippage-box-presets {
+      display: flex;
+      gap: 0.125rem;
+    }
+    .slippage-preset-compact {
+      font-size: 0.5rem;
+      font-weight: 600;
+      padding: 0.125rem 0.375rem;
       background: #fff;
       color: #000;
-      border: 2px solid #000;
+      border: 1px solid #000;
       cursor: pointer;
-      min-width: 40px;
+      min-width: 20px;
     }
-    .slippage-preset-btn:hover { background: #f0f0f0; }
-    .slippage-preset-btn.active {
+    .slippage-preset-compact:hover { background: #f0f0f0; }
+    .slippage-preset-compact.active {
       background: #000;
       color: #fff;
     }
-    .slippage-preset-btn:focus { outline: 3px solid #0055FF; outline-offset: 0; }
-    .slippage-input-row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .slippage-input-row input {
-      width: 80px;
-      padding: 0.5rem;
+    .slippage-preset-compact:focus { outline: 2px solid #0055FF; outline-offset: 0; }
+    .slippage-box-input {
+      width: 40px;
+      padding: 0.125rem 0.25rem;
       font-family: monospace;
-      font-size: 0.875rem;
+      font-size: 0.625rem;
       background: #fff;
       color: #000;
-      border: 2px solid #000;
+      border: 1px solid #000;
+      margin-left: 0.25rem;
     }
-    .slippage-input-row input:focus { outline: 3px solid #0055FF; outline-offset: 0; }
-    .slippage-hint {
-      font-size: 0.625rem;
+    .slippage-box-input:focus { outline: 2px solid #0055FF; outline-offset: 0; }
+    .slippage-box-hint {
+      font-size: 0.5rem;
       color: #666;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      margin-left: 0.125rem;
     }
 
     /* Tokenlist URL Input */
@@ -1526,24 +1530,22 @@ const INDEX_HTML = `<!DOCTYPE html>
       <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
     </div>
-    <!-- Row 6: Slippage with presets -->
-    <div class="form-group slippage-section">
-      <div class="slippage-label-row">
-        <span class="slippage-label">Slippage</span>
-        <div class="slippage-presets">
-          <button type="button" class="slippage-preset-btn" data-bps="3">3</button>
-          <button type="button" class="slippage-preset-btn" data-bps="10">10</button>
-          <button type="button" class="slippage-preset-btn active" data-bps="50">50</button>
-          <button type="button" class="slippage-preset-btn" data-bps="100">100</button>
-          <button type="button" class="slippage-preset-btn" data-bps="300">300</button>
+    <!-- Row 6: Action Row with Submit + Compact Slippage -->
+    <div class="action-row">
+      <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
+      <div class="slippage-box">
+        <span class="slippage-box-label">Slippage</span>
+        <div class="slippage-box-presets">
+          <button type="button" class="slippage-preset-compact" data-bps="3">3</button>
+          <button type="button" class="slippage-preset-compact" data-bps="10">10</button>
+          <button type="button" class="slippage-preset-compact active" data-bps="50">50</button>
+          <button type="button" class="slippage-preset-compact" data-bps="100">100</button>
+          <button type="button" class="slippage-preset-compact" data-bps="300">300</button>
         </div>
-      </div>
-      <div class="slippage-input-row">
-        <input type="text" id="slippageBps" value="50" aria-label="Slippage (bps)">
-        <span class="slippage-hint">bps (1 bps = 0.01%)</span>
+        <input type="text" id="slippageBps" class="slippage-box-input" value="50" aria-label="Slippage (bps)">
+        <span class="slippage-box-hint">bps</span>
       </div>
     </div>
-    <button type="submit" id="submit" class="btn-primary">Compare Quotes</button>
   </form>
 
   <div id="result">
@@ -1745,7 +1747,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     const toInput = document.getElementById('to');
     const amountInput = document.getElementById('amount');
     const slippageInput = document.getElementById('slippageBps');
-    const slippagePresetBtns = document.querySelectorAll('.slippage-preset-btn');
+    const slippagePresetBtns = document.querySelectorAll('.slippage-preset-compact');
 
     // Update active state on slippage preset buttons
     function updateSlippagePresetActive(value) {
