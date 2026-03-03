@@ -1365,6 +1365,15 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .autocomplete-item:last-child { border-bottom: none; }
     .autocomplete-item:hover, .autocomplete-item.active { background: #f0f0f0; }
+
+    /* Token Balance Display */
+    .token-balance {
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #666;
+      margin-top: 0.25rem;
+      padding-left: 0.25rem;
+    }
     .autocomplete-logo {
       width: 18px;
       height: 18px;
@@ -1654,12 +1663,14 @@ const INDEX_HTML = `<!DOCTYPE html>
       <label for="from">From Token</label>
       <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="fromAutocomplete"></div>
+      <div id="fromBalance" class="token-balance" hidden></div>
     </div>
     <!-- Row 5: To Token -->
     <div class="form-group">
       <label for="to">To Token</label>
       <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
+      <div id="toBalance" class="token-balance" hidden></div>
     </div>
     <!-- Row 6: Action Row with Submit + Compact Slippage -->
     <div class="action-row">
@@ -2513,6 +2524,13 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       // Refresh autocomplete to include the new token
       refreshAutocomplete();
+
+      // Update balance for this token field
+      if (input === fromInput) {
+        void updateFromTokenBalance();
+      } else if (input === toInput) {
+        void updateToTokenBalance();
+      }
     }
 
     // Event listeners for unrecognized token modal
@@ -2585,6 +2603,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         const token = findTokenByAddress(value, chainId);
         if (token) {
           input.value = formatTokenDisplay(token.symbol, token.address);
+        }
+        // Update balance for this token field
+        if (input === fromInput) {
+          void updateFromTokenBalance();
+        } else if (input === toInput) {
+          void updateToTokenBalance();
         }
         return;
       }
@@ -2831,6 +2855,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         updateWalletStateUi();
         updateTransactionActionStates();
         setWalletMessage('');
+        updateTokenBalances(); // Fetch balances for selected tokens
       } catch (err) {
         const code = err && typeof err === 'object' ? err.code : undefined;
         if (code === 4001) {
@@ -2850,6 +2875,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       closeWalletProviderMenu();
       updateWalletStateUi();
       updateTransactionActionStates();
+      clearTokenBalances(); // Hide balances when wallet disconnected
       setWalletMessage('Wallet disconnected.');
     }
 
@@ -3407,6 +3433,12 @@ const INDEX_HTML = `<!DOCTYPE html>
             : currentAddress;
           otherInput.value = swappedDisplay;
           otherInput.dataset.address = currentAddress;
+          // Update balance for the swapped field
+          if (otherInput === fromInput) {
+            void updateFromTokenBalance();
+          } else if (otherInput === toInput) {
+            void updateToTokenBalance();
+          }
         }
         // If current field was empty or had non-address content, leave the other field unchanged
         // (no swap needed - just let the new value be set in the current field)
@@ -3435,6 +3467,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         // Store full address in data-address attribute
         input.dataset.address = token.address;
         hide();
+        // Update balance for this token field
+        if (input === fromInput) {
+          void updateFromTokenBalance();
+        } else if (input === toInput) {
+          void updateToTokenBalance();
+        }
       }
 
       function setActive(index) {
@@ -3817,6 +3855,160 @@ const INDEX_HTML = `<!DOCTYPE html>
       return undefined;
     }
 
+    // Token Balance Display
+    const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+    const BALANCE_CACHE_TTL_MS = 30 * 1000; // 30 seconds
+    const balanceCache = new Map(); // key: chainId:tokenAddress:walletAddress -> { balance, timestamp }
+
+    function isNativeToken(address) {
+      const addr = String(address || '').toLowerCase();
+      return addr === '0x0000000000000000000000000000000000000000' ||
+             addr === NATIVE_TOKEN_ADDRESS.toLowerCase();
+    }
+
+    async function fetchTokenBalance(provider, tokenAddress, walletAddress, decimals, chainId) {
+      if (!provider || !walletAddress || !tokenAddress) return null;
+
+      const cacheKey = chainId + ':' + tokenAddress.toLowerCase() + ':' + walletAddress.toLowerCase();
+      const cached = balanceCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp) < BALANCE_CACHE_TTL_MS) {
+        return cached.balance;
+      }
+
+      try {
+        let balance;
+        if (isNativeToken(tokenAddress)) {
+          // Native ETH: use eth_getBalance
+          const result = await provider.request({
+            method: 'eth_getBalance',
+            params: [walletAddress, 'latest'],
+          });
+          balance = BigInt(result);
+        } else {
+          // ERC-20: use eth_call with balanceOf selector
+          const balanceOfSelector = '0x70a08231'; // balanceOf(address)
+          const paddedAddress = walletAddress.slice(2).padStart(64, '0');
+          const data = balanceOfSelector + paddedAddress;
+          const result = await provider.request({
+            method: 'eth_call',
+            params: [{ to: tokenAddress, data }, 'latest'],
+          });
+          balance = BigInt(result);
+        }
+
+        const formatted = formatBalance(balance, decimals);
+        balanceCache.set(cacheKey, { balance: formatted, timestamp: Date.now() });
+        return formatted;
+      } catch {
+        // Silently fail - don't show error UI
+        return null;
+      }
+    }
+
+    function formatBalance(balance, decimals) {
+      const dec = Number(decimals) || 18;
+      const divisor = BigInt(10 ** dec);
+      const wholePart = balance / divisor;
+      const fractionalPart = balance % divisor;
+
+      // Format fractional part with leading zeros
+      let fractionalStr = fractionalPart.toString().padStart(dec, '0');
+      // Remove trailing zeros
+      fractionalStr = fractionalStr.replace(/0+$/, '');
+      // Limit to 6 decimal places for display
+      if (fractionalStr.length > 6) fractionalStr = fractionalStr.slice(0, 6);
+
+      // Format whole part with thousand separators
+      const wholeStr = String(wholePart).replace(new RegExp('\\\\B(?=(\\\\d{3})+(?!\\\\d))', 'g'), ',');
+      
+      return fractionalStr ? wholeStr + '.' + fractionalStr : wholeStr;
+    }
+
+    const fromBalanceEl = document.getElementById('fromBalance');
+    const toBalanceEl = document.getElementById('toBalance');
+
+    function clearTokenBalances() {
+      fromBalanceEl.hidden = true;
+      fromBalanceEl.textContent = '';
+      toBalanceEl.hidden = true;
+      toBalanceEl.textContent = '';
+    }
+
+    async function updateFromTokenBalance() {
+      if (!hasConnectedWallet()) {
+        fromBalanceEl.hidden = true;
+        return;
+      }
+
+      const tokenAddress = fromInput.dataset.address;
+      if (!tokenAddress) {
+        fromBalanceEl.hidden = true;
+        return;
+      }
+
+      const chainId = getCurrentChainId();
+      const token = findTokenByAddress(tokenAddress, chainId);
+      const decimals = token ? token.decimals : 18;
+
+      fromBalanceEl.textContent = 'Balance: ...';
+      fromBalanceEl.hidden = false;
+
+      const balance = await fetchTokenBalance(
+        connectedWalletProvider,
+        tokenAddress,
+        connectedWalletAddressValue,
+        decimals,
+        chainId
+      );
+
+      if (balance !== null) {
+        fromBalanceEl.textContent = 'Balance: ' + balance;
+        fromBalanceEl.hidden = false;
+      } else {
+        fromBalanceEl.hidden = true;
+      }
+    }
+
+    async function updateToTokenBalance() {
+      if (!hasConnectedWallet()) {
+        toBalanceEl.hidden = true;
+        return;
+      }
+
+      const tokenAddress = toInput.dataset.address;
+      if (!tokenAddress) {
+        toBalanceEl.hidden = true;
+        return;
+      }
+
+      const chainId = getCurrentChainId();
+      const token = findTokenByAddress(tokenAddress, chainId);
+      const decimals = token ? token.decimals : 18;
+
+      toBalanceEl.textContent = 'Balance: ...';
+      toBalanceEl.hidden = false;
+
+      const balance = await fetchTokenBalance(
+        connectedWalletProvider,
+        tokenAddress,
+        connectedWalletAddressValue,
+        decimals,
+        chainId
+      );
+
+      if (balance !== null) {
+        toBalanceEl.textContent = 'Balance: ' + balance;
+        toBalanceEl.hidden = false;
+      } else {
+        toBalanceEl.hidden = true;
+      }
+    }
+
+    function updateTokenBalances() {
+      void updateFromTokenBalance();
+      void updateToTokenBalance();
+    }
+
     function applyDefaults(chainId) {
       const defaults = DEFAULT_TOKENS[chainId];
       if (defaults) {
@@ -3854,6 +4046,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (mevModal.classList.contains('show')) {
         renderMevChainContent();
       }
+      // Clear balance cache on chain change and refetch balances
+      balanceCache.clear();
+      updateTokenBalances();
     });
 
     // MEV Modal event listeners
@@ -4695,6 +4890,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       // Render local tokens on page load
       renderLocalTokens();
+
+      // Fetch balances if wallet is already connected
+      updateTokenBalances();
     });
 
     // Update token counts when chain changes
