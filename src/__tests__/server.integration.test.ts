@@ -343,7 +343,8 @@ describe("server integration", () => {
   });
 
   // VAL-FLOW-001 through VAL-FLOW-006: Form element order
-  it("GET / has form elements in correct order (chain → wallet → from+amount → to → slippage → compare)", async () => {
+  // VAL-AMT-001: Amount field on its own full-width row (above from/to tokens)
+  it("GET / has form elements in correct order (chain → wallet → amount → from → to → slippage → compare)", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
     const html = res.body;
@@ -351,18 +352,19 @@ describe("server integration", () => {
     // Find positions of key elements
     const chainPos = html.indexOf('id="chainId"');
     const walletPos = html.indexOf('id="connectWalletBtn"');
-    const fromPos = html.indexOf('id="from"');
     const amountPos = html.indexOf('id="amount"');
+    const fromPos = html.indexOf('id="from"');
     const toPos = html.indexOf('id="to"');
     const slippagePos = html.indexOf('id="slippageBps"');
     const submitPos = html.indexOf('id="submit"');
 
-    // Verify order: chain < wallet < from < amount < to < slippage < submit
+    // Verify order: chain < wallet < amount < from < to < slippage < submit
+    // Amount is now on its own row ABOVE from token (VAL-AMT-001)
     expect(chainPos).toBeGreaterThan(-1);
     expect(walletPos).toBeGreaterThan(chainPos);
-    expect(fromPos).toBeGreaterThan(walletPos);
-    expect(amountPos).toBeGreaterThan(fromPos);
-    expect(toPos).toBeGreaterThan(amountPos);
+    expect(amountPos).toBeGreaterThan(walletPos);
+    expect(fromPos).toBeGreaterThan(amountPos);
+    expect(toPos).toBeGreaterThan(fromPos);
     expect(slippagePos).toBeGreaterThan(toPos);
     expect(submitPos).toBeGreaterThan(slippagePos);
   });
@@ -396,18 +398,26 @@ describe("server integration", () => {
     expect(mevBtnPos).toBeGreaterThan(resultStartPos);
   });
 
-  // VAL-FLOW-003: From+Amount on same row
-  it("GET / has from token and amount in a non-collapsible row", async () => {
+  // VAL-AMT-001: Amount field on its own full-width row
+  it("GET / has amount field on its own full-width row (above from token)", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
     const html = res.body;
 
-    // Should use form-row-fixed class (non-collapsible)
-    expect(html).toContain('class="form-row-fixed"');
-    // From token should be in the fixed row
-    expect(html).toContain("form-row-fixed");
-    expect(html).toContain('id="from"');
-    expect(html).toContain('id="amount"');
+    // Amount should be in its own form-group (not in a row with from token)
+    const amountPos = html.indexOf('id="amount"');
+    const fromPos = html.indexOf('id="from"');
+
+    // Amount should appear BEFORE from token
+    expect(amountPos).toBeGreaterThan(-1);
+    expect(fromPos).toBeGreaterThan(amountPos);
+
+    // Amount should be in a standalone form-group div with a label
+    // Check that amount label exists (indicating its own form-group)
+    expect(html).toContain('<label for="amount">Amount</label>');
+
+    // From token should have its own form-group
+    expect(html).toContain('<label for="from">From Token</label>');
   });
 
   // VAL-WALLET-002: Wallet section integrated into form

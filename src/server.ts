@@ -1040,7 +1040,6 @@ const INDEX_HTML = `<!DOCTYPE html>
     /* Non-collapsible Form Row - stays horizontal even at 375px */
     .form-row-fixed { display: flex; gap: 0.5rem; }
     .form-row-fixed .form-group { flex: 1; min-width: 0; }
-    .form-row-fixed .form-group.amount-group { flex: 0 0 150px; }
     
     /* Buttons - Accent Color: Electric Blue #0055FF (color-blind safe) */
     button {
@@ -1510,25 +1509,24 @@ const INDEX_HTML = `<!DOCTYPE html>
       <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
       <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
     </div>
-    <!-- Row 3: From Token + Amount (non-collapsible, stays horizontal at 375px) -->
-    <div class="form-row-fixed">
-      <div class="form-group">
-        <label for="from">From Token</label>
-        <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
-        <div class="autocomplete-list" id="fromAutocomplete"></div>
-      </div>
-      <div class="form-group amount-group">
-        <label for="amount">Amount</label>
-        <input type="text" id="amount" value="1000">
-      </div>
+    <!-- Row 3: Amount (full-width for 20+ digit numbers) -->
+    <div class="form-group">
+      <label for="amount">Amount</label>
+      <input type="text" id="amount" value="1000">
     </div>
-    <!-- Row 4: To Token -->
+    <!-- Row 4: From Token -->
+    <div class="form-group">
+      <label for="from">From Token</label>
+      <input type="text" id="from" placeholder="Search symbol/name or enter address" autocomplete="off">
+      <div class="autocomplete-list" id="fromAutocomplete"></div>
+    </div>
+    <!-- Row 5: To Token -->
     <div class="form-group">
       <label for="to">To Token</label>
       <input type="text" id="to" placeholder="Search symbol/name or enter address" autocomplete="off">
       <div class="autocomplete-list" id="toAutocomplete"></div>
     </div>
-    <!-- Row 5: Slippage with presets -->
+    <!-- Row 6: Slippage with presets -->
     <div class="form-group slippage-section">
       <div class="slippage-label-row">
         <span class="slippage-label">Slippage</span>
