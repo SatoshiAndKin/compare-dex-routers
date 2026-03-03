@@ -1,22 +1,100 @@
-import curve from "@curvefi/api";
+import { createCurve } from "@curvefi/api";
 import type { PublicClient } from "viem";
 import type { QuoteMode } from "./quote.js";
 
-const CURVE_CHAIN_ID = 1;
+// All supported chains for Curve
+export const CURVE_SUPPORTED_CHAINS = [1, 8453, 42161, 10, 137, 56, 43114];
 
-let initialized = false;
-let initPromise: Promise<void> | null = null;
+// Type for curve instance - using `any` since @curvefi/api has complex types
+// and we use runtime checks for the fields we need
+type CurveInstance = {
+  init: (
+    providerType: "JsonRpc",
+    providerSettings: { url: string },
+    options: { chainId: number }
+  ) => Promise<void>;
+  factory: { fetchPools: () => Promise<void> };
+  crvUSDFactory: { fetchPools: () => Promise<void> };
+  cryptoFactory: { fetchPools: () => Promise<void> };
+  twocryptoFactory: { fetchPools: () => Promise<void> };
+  tricryptoFactory: { fetchPools: () => Promise<void> };
+  stableNgFactory: { fetchPools: () => Promise<void> };
+  getCoinsData: (addresses: string[]) => Promise<Array<{ symbol?: string }>>;
+  hasAllowance: (
+    coins: string[],
+    amounts: string[],
+    address: string,
+    spender: string
+  ) => Promise<boolean>;
+  router: {
+    getBestRouteAndOutput: (
+      from: string,
+      to: string,
+      amount: string
+    ) => Promise<{ route: CurveRouteStep[]; output: string }>;
+    populateSwap: (
+      from: string,
+      to: string,
+      amount: string
+    ) => Promise<{ to?: string | null; data?: string | null; value?: string | null }>;
+    populateApprove: (
+      coin: string,
+      amount: string,
+      isMax: boolean,
+      userAddress: string
+    ) => Promise<Array<{ to?: string | null; data?: string | null }>>;
+    required: (from: string, to: string, outputAmount: string) => Promise<string>;
+  };
+};
 
-export function isCurveSupported(chainId: number): boolean {
-  return chainId === CURVE_CHAIN_ID;
+interface CurveRouteStep {
+  poolId?: string;
+  poolName?: string;
+  poolAddress?: string;
+  inputCoinAddress?: string;
+  outputCoinAddress?: string;
 }
 
-export async function initCurve(rpcUrl: string): Promise<void> {
-  if (initialized) return;
-  if (initPromise) return initPromise;
+// Per-chain curve instances
+const curveInstances = new Map<number, CurveInstance>();
 
-  initPromise = (async () => {
-    await curve.init("JsonRpc", { url: rpcUrl }, { chainId: CURVE_CHAIN_ID });
+// Track which chains successfully initialized
+const initializedChains = new Set<number>();
+
+// Track initialization errors per chain
+const initErrors = new Map<number, string>();
+
+export function isCurveSupported(chainId: number): boolean {
+  return CURVE_SUPPORTED_CHAINS.includes(chainId);
+}
+
+export function isCurveInitialized(chainId: number): boolean {
+  return initializedChains.has(chainId);
+}
+
+export function getCurveInitError(chainId: number): string | undefined {
+  return initErrors.get(chainId);
+}
+
+/**
+ * Initialize a single Curve instance for a specific chain.
+ * Creates a new curve instance and initializes it with the chain's RPC URL.
+ */
+export async function initCurveInstance(
+  chainId: number,
+  rpcUrl: string
+): Promise<CurveInstance | null> {
+  // Already initialized
+  if (initializedChains.has(chainId)) {
+    const existing = curveInstances.get(chainId);
+    if (existing) return existing;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const curve = createCurve() as any;
+
+    await curve.init("JsonRpc", { url: rpcUrl }, { chainId });
 
     await Promise.all([
       curve.factory.fetchPools(),
@@ -27,15 +105,53 @@ export async function initCurve(rpcUrl: string): Promise<void> {
       curve.stableNgFactory.fetchPools(),
     ]);
 
-    initialized = true;
-  })();
+    curveInstances.set(chainId, curve);
+    initializedChains.add(chainId);
+    initErrors.delete(chainId);
 
-  return initPromise;
+    return curve;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    initErrors.set(chainId, errorMsg);
+    return null;
+  }
+}
+
+/**
+ * Initialize Curve instances for ALL supported chains in parallel.
+ * This is called at server startup to ensure all chains are ready.
+ * If one chain fails, others continue - errors are logged but don't block.
+ */
+export async function initAllCurveInstances(
+  getRpcUrl: (chainId: number) => string,
+  log: (message: string) => void,
+  logError: (message: string, err?: unknown) => void
+): Promise<void> {
+  const results = await Promise.allSettled(
+    CURVE_SUPPORTED_CHAINS.map(async (chainId) => {
+      const rpcUrl = getRpcUrl(chainId);
+      const result = await initCurveInstance(chainId, rpcUrl);
+      return { chainId, success: result !== null };
+    })
+  );
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      const { chainId, success } = result.value;
+      if (success) {
+        log(`Curve initialized for chain ${chainId}`);
+      } else {
+        logError(`Curve failed to initialize for chain ${chainId}: ${initErrors.get(chainId)}`);
+      }
+    } else {
+      logError("Curve initialization promise rejected", result.reason);
+    }
+  }
 }
 
 const symbolCache = new Map<string, string>();
 
-async function getCurveTokenSymbol(address: string): Promise<string> {
+async function getCurveTokenSymbol(curve: CurveInstance, address: string): Promise<string> {
   const lower = address.toLowerCase();
   const cached = symbolCache.get(lower);
   if (cached !== undefined) return cached;
@@ -49,14 +165,6 @@ async function getCurveTokenSymbol(address: string): Promise<string> {
     symbolCache.set(lower, "");
     return "";
   }
-}
-
-interface CurveRouteStep {
-  poolId?: string;
-  poolName?: string;
-  poolAddress?: string;
-  inputCoinAddress?: string;
-  outputCoinAddress?: string;
 }
 
 export interface CurveQuoteResult {
@@ -84,7 +192,12 @@ export interface CurveQuoteResult {
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
+/**
+ * Find a Curve quote for the given token pair.
+ * Uses the curve instance initialized for the specific chain.
+ */
 export async function findCurveQuote(
+  chainId: number,
   from: string,
   to: string,
   amount: string,
@@ -92,7 +205,14 @@ export async function findCurveQuote(
   client?: PublicClient,
   mode: QuoteMode = "exactIn"
 ): Promise<CurveQuoteResult> {
-  if (!initialized) throw new Error("Curve API not initialized");
+  const curve = curveInstances.get(chainId);
+  if (!curve) {
+    throw new Error(
+      `Curve not initialized for chain ${chainId}. ${
+        initErrors.get(chainId) || "Initialization may have failed."
+      }`
+    );
+  }
 
   // For targetOut mode, we need to first get the required input amount
   let inputAmount: string;
@@ -116,8 +236,8 @@ export async function findCurveQuote(
   }
 
   const [fromSymbol, toSymbol] = await Promise.all([
-    getCurveTokenSymbol(from),
-    getCurveTokenSymbol(to),
+    getCurveTokenSymbol(curve, from),
+    getCurveTokenSymbol(curve, to),
   ]);
 
   const typedRoute = route;
@@ -131,7 +251,7 @@ export async function findCurveQuote(
   const routeSymbols: Record<string, string> = {};
   await Promise.all(
     Array.from(tokenAddresses).map(async (addr) => {
-      const symbol = await getCurveTokenSymbol(addr);
+      const symbol = await getCurveTokenSymbol(curve, addr);
       if (symbol) routeSymbols[addr] = symbol;
     })
   );

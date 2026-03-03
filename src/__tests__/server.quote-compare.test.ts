@@ -43,6 +43,7 @@ vi.mock("../config.js", () => ({
   getTokenDecimals: getTokenDecimalsMock,
   getTokenSymbol: getTokenSymbolMock,
   getClient: getClientMock,
+  getRpcUrl: vi.fn().mockReturnValue("https://mock-rpc.example.com"),
   SUPPORTED_CHAINS: {
     1: { name: "Ethereum", alchemySubdomain: "eth-mainnet" },
     8453: { name: "Base", alchemySubdomain: "base-mainnet" },
@@ -54,9 +55,12 @@ vi.mock("../config.js", () => ({
 }));
 
 vi.mock("../curve.js", () => ({
-  initCurve: vi.fn(),
+  initAllCurveInstances: vi.fn(),
+  initCurveInstance: vi.fn(),
   findCurveQuote: findCurveQuoteMock,
   isCurveSupported: isCurveSupportedMock,
+  isCurveInitialized: vi.fn().mockReturnValue(true), // All chains initialized by default
+  getCurveInitError: vi.fn().mockReturnValue(undefined),
 }));
 
 vi.mock("../feature-flags.js", () => ({

@@ -14,10 +14,18 @@ import {
   getTokenSymbol,
   getTokenName,
   getClient,
+  getRpcUrl,
   SUPPORTED_CHAINS,
   DEFAULT_TOKENS,
 } from "./config.js";
-import { initCurve, findCurveQuote, isCurveSupported, type CurveQuoteResult } from "./curve.js";
+import {
+  initAllCurveInstances,
+  findCurveQuote,
+  isCurveSupported,
+  isCurveInitialized,
+  getCurveInitError,
+  type CurveQuoteResult,
+} from "./curve.js";
 import { logger } from "./logger.js";
 import { captureException, captureMessage } from "./sentry.js";
 import { getRequestId, setTraceHeaders } from "./tracing.js";
@@ -537,12 +545,20 @@ async function compareQuotes(
     .then((r) => ({ result: r, error: null }))
     .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }));
 
-  const curveAvailable = CURVE_ENABLED && isCurveSupported(chainId);
+  const curveAvailable = CURVE_ENABLED && isCurveSupported(chainId) && isCurveInitialized(chainId);
   const curvePromise = curveAvailable
-    ? findCurveQuote(from, to, amount, sender, getClient(chainId), mode)
+    ? findCurveQuote(chainId, from, to, amount, sender, getClient(chainId), mode)
         .then((r) => ({ result: r, error: null }))
         .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }))
-    : Promise.resolve({ result: null, error: "Curve only supports Ethereum (chainId 1)" });
+    : Promise.resolve({
+        result: null,
+        error:
+          isCurveSupported(chainId) && !isCurveInitialized(chainId)
+            ? `Curve initialization failed for chain ${chainId}: ${getCurveInitError(chainId) || "Unknown error"}`
+            : isCurveSupported(chainId)
+              ? "Curve is disabled"
+              : `Curve does not support chain ${chainId}`,
+      });
 
   let gasPriceGwei: string | null = null;
   try {
@@ -6122,23 +6138,10 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
 async function main() {
   if (CURVE_ENABLED) {
-    const rpcUrl =
-      process.env.RPC_URL_1 ||
-      (process.env.ALCHEMY_API_KEY
-        ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
-        : "");
-    if (rpcUrl) {
-      try {
-        log("Initializing Curve API...");
-        await initCurve(rpcUrl);
-        log("Curve API initialized");
-        captureMessage("Curve API initialized successfully");
-      } catch (err) {
-        logError("Curve initialization failed, continuing without Curve", err);
-      }
-    } else {
-      log("No RPC URL for Ethereum, Curve disabled");
-    }
+    log("Initializing Curve API for all supported chains...");
+    await initAllCurveInstances(getRpcUrl, log, logError);
+    log("Curve API initialization complete");
+    captureMessage("Curve API initialization complete");
   }
 
   const server = http.createServer(handleRequest);
