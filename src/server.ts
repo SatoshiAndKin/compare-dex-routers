@@ -550,7 +550,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     [hidden] { display: none !important; }
     body {
       font-family: system-ui, -apple-system, sans-serif;
-      background: #fff;
+      background: #f5f5f5;
       color: #000;
       max-width: 800px;
       margin: 0 auto;
@@ -684,7 +684,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       padding: 0 0.25rem;
     }
     .modal-close:hover { background: #333; }
-    .modal-close:focus { outline: 2px solid #0055FF; }
+    .modal-close:focus { outline: 3px solid #0055FF; }
     .modal-body {
       padding: 1rem;
     }
@@ -709,12 +709,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       border: 2px solid #000;
       padding: 0.75rem;
       margin-bottom: 0.75rem;
-      background: #f8f8f8;
+      background: #f0f0f0;
     }
     .mev-chain-message.ethereum { border-color: #0055FF; }
     .mev-chain-message.bsc { border-color: #F0B90B; }
     .mev-chain-message.l2 { border-color: #666; }
-    .mev-chain-message.other { border-color: #999; }
+    .mev-chain-message.other { border-color: #666; }
 
     .mev-chain-title {
       font-size: 0.75rem;
@@ -758,7 +758,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .settings-section {
       margin-bottom: 1.25rem;
       padding-bottom: 1rem;
-      border-bottom: 2px solid #e0e0e0;
+      border-bottom: 2px solid #000;
     }
     .settings-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
     .settings-section-title {
@@ -788,7 +788,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       color: #666;
       font-style: italic;
       padding: 0.5rem;
-      background: #f8f8f8;
+      background: #f0f0f0;
       border: 1px solid #e0e0e0;
     }
 
@@ -810,11 +810,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       padding: 0.5rem;
       border: 1px solid #e0e0e0;
       margin-bottom: 0.5rem;
-      background: #fafafa;
+      background: #f0f0f0;
     }
     .tokenlist-entry:last-child { margin-bottom: 0; }
     .tokenlist-entry.disabled { opacity: 0.5; background: #f0f0f0; }
-    .tokenlist-entry.error { border-color: #CC0000; background: #fff0f0; }
+    .tokenlist-entry.error { border-color: #CC0000; border-left: 4px solid #CC0000; background: #f0f0f0; }
     .tokenlist-entry-name {
       flex: 1;
       min-width: 0;
@@ -842,8 +842,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       margin-left: 0.25rem;
     }
     .tokenlist-trust-warning {
-      background: #FFF3CD;
+      background: #f0f0f0;
       border: 2px solid #CC7A00;
+      border-left: 4px solid #CC7A00;
       padding: 0.75rem;
       margin-bottom: 0.75rem;
       font-size: 0.8125rem;
@@ -851,7 +852,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .tokenlist-trust-warning strong {
       font-weight: 700;
-      color: #856404;
+      color: #CC7A00;
     }
     .tokenlist-toggle {
       position: relative;
@@ -889,7 +890,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       line-height: 1;
     }
     .tokenlist-remove-btn:hover { color: #CC0000; }
-    .tokenlist-remove-btn:focus { outline: 2px solid #0055FF; }
+    .tokenlist-remove-btn:focus { outline: 3px solid #0055FF; }
     .tokenlist-retry-btn {
       font-size: 0.625rem;
       padding: 0.125rem 0.25rem;
@@ -906,7 +907,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       padding: 0.5rem;
       border: 1px solid #e0e0e0;
       margin-bottom: 0.5rem;
-      background: #fafafa;
+      background: #f0f0f0;
     }
     .local-token-entry:last-child { margin-bottom: 0; }
     .local-token-symbol {
@@ -941,7 +942,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       line-height: 1;
     }
     .local-token-remove-btn:hover { color: #CC0000; }
-    .local-token-remove-btn:focus { outline: 2px solid #0055FF; }
+    .local-token-remove-btn:focus { outline: 3px solid #0055FF; }
 
     /* Local Tokens Actions Row */
     .local-tokens-actions {
@@ -963,9 +964,10 @@ const INDEX_HTML = `<!DOCTYPE html>
     /* Unrecognized Token Popup */
     .unrecognized-token-info {
       border: 2px solid #CC7A00;
+      border-left: 4px solid #CC7A00;
       padding: 0.75rem;
       margin-bottom: 0.75rem;
-      background: #fff8f0;
+      background: #f0f0f0;
     }
     .unrecognized-token-address {
       font-family: monospace;
@@ -999,7 +1001,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .unrecognized-token-metadata {
       padding: 0.75rem;
       border: 1px solid #e0e0e0;
-      background: #f8f8f8;
+      background: #f0f0f0;
     }
     .unrecognized-token-field {
       display: flex;
@@ -1025,7 +1027,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-weight: 600;
       padding: 0.75rem;
       border: 2px solid #CC0000;
-      background: #fff0f0;
+      border-left: 4px solid #CC0000;
+      background: #f0f0f0;
     }
     .unrecognized-token-actions {
       display: flex;
@@ -1090,6 +1093,37 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .btn-secondary:hover { background: #333; }
 
+    /* Utility classes for extracted inline styles */
+    .mev-button-row {
+      margin-top: 1rem;
+      padding-top: 0.75rem;
+      border-top: 2px solid #000;
+    }
+    .settings-section-title-inline { display: inline; }
+    .field-value-compact {
+      font-size: 0.625rem;
+      word-break: break-all;
+    }
+    .field-spaced { margin-top: 0.5rem; }
+    .reason-box {
+      padding: 0.5rem;
+      border: 2px solid #000;
+      margin-bottom: 0.5rem;
+      background: #f0f0f0;
+    }
+    .reason-box-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+    .reason-box-content { font-size: 0.875rem; }
+    .reason-box-gas {
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+    }
+
     /* Action Row - Submit + Compact Slippage */
     .action-row {
       display: flex;
@@ -1137,7 +1171,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #000;
       color: #fff;
     }
-    .slippage-preset-compact:focus { outline: 2px solid #0055FF; outline-offset: 0; }
+    .slippage-preset-compact:focus { outline: 3px solid #0055FF; outline-offset: 0; }
     .slippage-box-input {
       width: 40px;
       padding: 0.125rem 0.25rem;
@@ -1148,7 +1182,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       border: 1px solid #000;
       margin-left: 0.25rem;
     }
-    .slippage-box-input:focus { outline: 2px solid #0055FF; outline-offset: 0; }
+    .slippage-box-input:focus { outline: 3px solid #0055FF; outline-offset: 0; }
     .slippage-box-hint {
       font-size: 0.5rem;
       color: #666;
@@ -1219,12 +1253,6 @@ const INDEX_HTML = `<!DOCTYPE html>
       padding: 0.375rem 0.625rem;
       white-space: nowrap;
     }
-    .btn-small.btn-secondary {
-      background: #666;
-      color: #fff;
-      border-color: #666;
-    }
-    .btn-small.btn-secondary:hover { background: #555; }
     .tokenlist-message {
       font-size: 0.75rem;
       margin-top: 0.25rem;
@@ -1248,7 +1276,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       font-size: 0.875rem;
       font-weight: 600;
     }
-    .wallet-address { font-family: monospace; font-size: 0.75rem; padding-left: 0.375rem; border-left: 3px solid #0055FF; word-break: break-all; }
+    .wallet-address { font-family: monospace; font-size: 0.75rem; padding-left: 0.375rem; border-left: 4px solid #0055FF; word-break: break-all; }
+    .wallet-connected-row { gap: 0.5rem; }
+    .btn-disconnect {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+    }
     .wallet-message {
       font-size: 0.75rem;
       font-style: italic;
@@ -1338,7 +1371,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     /* Primary Result - Output Amount + Actions Inline */
     .result-primary {
       border: 2px solid #000;
-      border-left-width: 6px;
+      border-left-width: 4px;
       padding: 1rem;
       margin-bottom: 0.5rem;
       background: #fff;
@@ -1403,12 +1436,12 @@ const INDEX_HTML = `<!DOCTYPE html>
     .tx-btn.approve-btn:hover { background: #0046CC; }
     .tx-btn.approved { background: #007700; color: #fff; border-color: #007700; cursor: default; }
     .tx-btn.approved:hover { background: #007700; }
-    .tx-btn.disabled, .tx-btn.wallet-required { 
-      opacity: 0.4; 
-      cursor: not-allowed; 
+    .tx-btn.disabled, .tx-btn.wallet-required {
+      opacity: 0.4;
+      cursor: not-allowed;
       background: #e0e0e0;
       color: #666;
-      border-color: #999;
+      border-color: #666;
     }
     .tx-btn.disabled:hover, .tx-btn.wallet-required:hover { background: #e0e0e0; }
     .tx-checkmark {
@@ -1429,7 +1462,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .tx-status.success::before { content: "SUCCESS: "; }
     .tx-status.error::before { content: "FAILED: "; }
     .tx-status.pending { color: #666; }
-    .tx-status.success { color: #007700; background: #e8e8e8; padding: 0.125rem 0.25rem; }
+    .tx-status.success { color: #007700; background: #f0f0f0; padding: 0.125rem 0.25rem; }
     .tx-status.error { color: #CC0000; background: #f0f0f0; padding: 0.125rem 0.25rem; border: 1px solid #CC0000; }
     
     /* Tabs - Compact */
@@ -1480,7 +1513,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       border: 2px solid #000;
       border-top: none;
       padding: 0.75rem;
-      background: #f8f8f8;
+      background: #f0f0f0;
     }
     .details-content.open { display: block; }
     
@@ -1515,8 +1548,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       color: #666;
       padding: 0.25rem 0.5rem;
       border: 1px solid #e0e0e0;
-      border-left: 3px solid #0055FF;
-      background: #fafafa;
+      border-left: 4px solid #0055FF;
+      background: #f0f0f0;
       margin-bottom: 0.5rem;
       display: flex;
       justify-content: space-between;
@@ -1529,7 +1562,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .error-message {
       border: 2px solid #000;
       padding: 0.75rem;
-      background: #f8f8f8;
+      background: #f0f0f0;
       font-weight: 600;
     }
     
@@ -1570,12 +1603,12 @@ const INDEX_HTML = `<!DOCTYPE html>
     <!-- Row 2: Wallet (integrated into form flow) -->
     <div class="form-group wallet-group">
       <div class="wallet-row">
-        <button type="button" id="connectWalletBtn">Connect Wallet</button>
-        <div id="walletConnected" class="wallet-row" hidden style="gap: 0.5rem;">
+        <button type="button" id="connectWalletBtn" class="btn-primary">Connect Wallet</button>
+        <div id="walletConnected" class="wallet-row wallet-connected-row" hidden>
           <img id="walletConnectedIcon" class="wallet-connected-icon" alt="" hidden>
           <span id="walletConnectedName" class="wallet-status"></span>
           <span id="walletConnectedAddress" class="wallet-address"></span>
-          <button type="button" id="disconnectWalletBtn" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Disconnect</button>
+          <button type="button" id="disconnectWalletBtn" class="btn-disconnect">Disconnect</button>
         </div>
       </div>
       <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
@@ -1641,7 +1674,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     <div class="tab-content active" id="recommendedContent"></div>
     <div class="tab-content" id="alternativeContent"></div>
     <!-- MEV Protection info button - positioned near swap action area -->
-    <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 2px solid #000;">
+    <div class="mev-button-row">
       <button type="button" id="mevInfoBtn" class="mev-info-btn" aria-haspopup="dialog">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -1701,7 +1734,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         <!-- Local Tokens Section -->
         <div class="settings-section">
           <div class="local-tokens-header">
-            <div class="settings-section-title" style="display: inline;">Local Tokens</div>
+            <div class="settings-section-title settings-section-title-inline">Local Tokens</div>
             <div id="localTokensToggle" class="tokenlist-toggle on" role="switch" aria-checked="true" aria-label="Toggle local tokens" tabindex="0"></div>
           </div>
           <div class="local-tokens-actions">
@@ -3897,7 +3930,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       const details = [];
       
       details.push('<div class="field"><div class="field-label">Router Address</div><div class="field-value">' + data.router_address + '</div></div>');
-      details.push('<div class="field"><div class="field-label">Router Calldata</div><div class="field-value" style="font-size: 0.625rem; word-break: break-all;">' + data.router_calldata.slice(0, 100) + (data.router_calldata.length > 100 ? '...' : '') + '</div></div>');
+      details.push('<div class="field"><div class="field-label">Router Calldata</div><div class="field-value field-value-compact">' + data.router_calldata.slice(0, 100) + (data.router_calldata.length > 100 ? '...' : '') + '</div></div>');
       
       if (data.router_value) {
         details.push('<div class="field"><div class="field-label">Router Value (wei)</div><div class="field-value number">' + data.router_value + '</div></div>');
@@ -3938,7 +3971,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           recommendationLabel +
           '<div class="result-output-label">' + primaryLabel + '</div>' +
           '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
-          '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via ' + providerLabel + '</div></div>' +
+          '<div class="field field-spaced"><div class="field-label">Via ' + providerLabel + '</div></div>' +
           renderQuoteActions({
             quoteChainId,
             routerAddress: data.router_address,
@@ -4000,7 +4033,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           recommendationLabel +
           '<div class="result-output-label">' + primaryLabel + '</div>' +
           '<div class="result-output">' + primaryAmount + (primarySymbol ? ' ' + primarySymbol : '') + '</div>' +
-          '<div class="field" style="margin-top: 0.5rem;"><div class="field-label">Via Curve</div></div>' +
+          '<div class="field field-spaced"><div class="field-label">Via Curve</div></div>' +
           renderQuoteActions({
             quoteChainId,
             routerAddress: data.router_address,
@@ -4039,11 +4072,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       const quoteChainId = currentQuoteChainId || (data.spandex && data.spandex.chainId) || Number(chainIdInput.value);
 
       // Build comparison reason text with typography, not color
-      let reasonHtml = '<div style="padding: 0.5rem; border: 2px solid #000; margin-bottom: 0.5rem; background: #f8f8f8;">';
-      reasonHtml += '<div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Reason</div>';
-      reasonHtml += '<div style="font-size: 0.875rem;">' + data.recommendation_reason + '</div>';
+      let reasonHtml = '<div class="reason-box">';
+      reasonHtml += '<div class="reason-box-title">Reason</div>';
+      reasonHtml += '<div class="reason-box-content">' + data.recommendation_reason + '</div>';
       if (data.gas_price_gwei) {
-        reasonHtml += '<div class="field-value number" style="font-size: 0.75rem; margin-top: 0.25rem;">Gas: ' + data.gas_price_gwei + ' gwei</div>';
+        reasonHtml += '<div class="field-value number reason-box-gas">Gas: ' + data.gas_price_gwei + ' gwei</div>';
       }
       reasonHtml += '</div>';
 
