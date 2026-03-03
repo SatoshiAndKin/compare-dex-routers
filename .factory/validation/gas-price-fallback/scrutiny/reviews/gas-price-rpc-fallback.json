@@ -1,0 +1,62 @@
+{
+  "featureId": "gas-price-rpc-fallback",
+  "reviewedAt": "2026-03-03T09:20:00.000Z",
+  "commitId": "1196b4e88131aca0cafdc3e278952528cbbdefa6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation is solid and meets all feature requirements. Gas price RPC fallback with per-block caching works correctly. Cache keyed by (chainId, blockNumber) provides proper isolation. Graceful degradation handles both block number and gas price fetch failures. server.ts integration is clean — gas price fetch runs in parallel with quote fetches via Promise.all. All 157 tests pass (16 new). No regressions. Several non-blocking code quality issues noted below.",
+    "issues": [
+      {
+        "file": "src/gas-price.ts",
+        "line": 33,
+        "severity": "non_blocking",
+        "description": "Unbounded cache growth: gasPriceCache Map grows without limit. Every new (chainId, blockNumber) pair adds an entry, but old entries are never evicted. invalidateChainCache() and clearGasPriceCache() exist but are only called from tests, never from production code. For a long-running server, this is a slow memory leak (one entry per chain per block, ~100 bytes each). Should add a max-size eviction or TTL-based cleanup."
+      },
+      {
+        "file": "src/gas-price.ts",
+        "line": 1,
+        "severity": "non_blocking",
+        "description": "No logging: the module silently swallows RPC errors in catch blocks (lines 77, 100) without logging. Project convention requires using logger from src/logger.ts. Other modules (analytics.ts, error-insights.ts, server.ts) all import and use the logger. RPC failures should be logged at warn/debug level for observability."
+      },
+      {
+        "file": "src/gas-price.ts",
+        "line": 66,
+        "severity": "non_blocking",
+        "description": "No in-flight request deduplication: concurrent requests for the same (chainId, blockNumber) before the first completes will each make separate RPC calls. A promise-based dedup pattern (caching the pending Promise, not just the result) would reduce redundant RPC calls under load. The test at line 245 of gas-price.test.ts acknowledges this limitation."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 75,
+        "severity": "non_blocking",
+        "description": "gas_price_gwei field added to QuoteResult interface but never populated in the QuoteResult construction (line 344-362). The spandex.result?.gas_price_gwei check at line 580 is always undefined currently. The comment says 'future-proofing' which is acceptable, but the unused interface field could be confusing to future contributors."
+      },
+      {
+        "file": "src/gas-price.ts",
+        "line": 130,
+        "severity": "non_blocking",
+        "description": "getCachedGasPrice(), getGasPriceCacheStats(), and invalidateChainCache() are exported but have no production consumers — only used in tests. They add API surface without utility. Not flagged by knip since they're exports, but worth noting for future cleanup."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker created a new module (src/gas-price.ts) without importing or using the logger from src/logger.ts. All other non-trivial modules in the project (server.ts, error-insights.ts, analytics.ts) use the logger. The AGENTS.md says 'No direct console.log' but doesn't explicitly say 'all modules must use logger for error handling'. The convention could be strengthened to say 'all catch blocks in production code should log at appropriate level'.",
+      "evidence": "src/gas-price.ts has zero logger usage. Catch blocks at lines 77 and 100 silently return null without logging. Compare to src/error-insights.ts:1 and src/analytics.ts:1 which both import logger."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The architecture.md in .factory/library/ should document the gas price fallback pattern: Spandex gas_price_gwei (if provided) → RPC fallback with per-block caching → null graceful degradation. This three-tier strategy is important for future workers modifying the gas comparison logic.",
+      "evidence": "architecture.md documents gas-adjusted comparison branching but doesn't mention the gas price sourcing strategy. The new getGasPriceWithCache + effectiveGasPriceGwei pattern in server.ts (lines 567-580) is not documented."
+    },
+    {
+      "area": "conventions",
+      "observation": "The gas price cache uses a module-level Map (singleton state) without any eviction strategy. For a server that runs continuously, this pattern needs a documented convention about cache lifecycle management. Other workers might copy this pattern without considering memory implications.",
+      "evidence": "src/gas-price.ts:33 — gasPriceCache is a module-level Map that grows unbounded. No production code calls clearGasPriceCache() or invalidateChainCache()."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The gas price RPC fallback with per-block caching is correctly implemented and meets all requirements: cache keyed by (chainId, blockNumber), per-chain isolation, block advancement invalidation, and graceful degradation when both sources fail. Server integration runs the gas price fetch in parallel with quote fetches. 16 comprehensive unit tests added. All 157 tests pass, typecheck and lint clean. Non-blocking issues: unbounded cache growth (memory leak risk for long-running processes), missing logger usage in error paths, no in-flight request deduplication for concurrent calls, and unused QuoteResult.gas_price_gwei field. None of these block the feature."
+}
