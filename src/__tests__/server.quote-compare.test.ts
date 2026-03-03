@@ -14,6 +14,7 @@ const getQuoteMock = vi.fn();
 const getTokenDecimalsMock = vi.fn();
 const getTokenSymbolMock = vi.fn();
 const getGasPriceMock = vi.fn();
+const getBlockNumberMock = vi.fn();
 const getClientMock = vi.fn();
 const findCurveQuoteMock = vi.fn();
 const isCurveSupportedMock = vi.fn();
@@ -193,8 +194,10 @@ describe("server /quote and /compare", () => {
       token.toLowerCase() === ADDR_FROM.toLowerCase() ? "USDC" : "WETH"
     );
     getGasPriceMock.mockResolvedValue(1_000_000_000n);
+    getBlockNumberMock.mockResolvedValue(1000n);
     getClientMock.mockReturnValue({
       getGasPrice: getGasPriceMock,
+      getBlockNumber: getBlockNumberMock,
     });
     isCurveSupportedMock.mockReturnValue(true);
 

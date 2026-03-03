@@ -33,6 +33,7 @@ import { recordRequest, getMetrics } from "./metrics.js";
 import { isEnabled, getAllFlags } from "./feature-flags.js";
 import { trackQuote, getAnalyticsSummary } from "./analytics.js";
 import { trackError, getErrorInsights } from "./error-insights.js";
+import { getGasPriceWithCache } from "./gas-price.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -70,6 +71,8 @@ interface QuoteResult {
   router_value?: string;
   approval_token?: string;
   approval_spender?: string;
+  // Gas price field - may be provided by Spandex or fetched from RPC
+  gas_price_gwei?: string;
   // Gas-adjusted comparison fields
   gas_cost_eth?: string; // Gas cost in ETH (gas_used * gas_price / 1e18)
   output_value_eth?: string; // Output converted to ETH
@@ -560,16 +563,21 @@ async function compareQuotes(
               : `Curve does not support chain ${chainId}`,
       });
 
-  let gasPriceGwei: string | null = null;
-  try {
-    const client = getClient(chainId);
-    const gasPrice = await client.getGasPrice();
-    gasPriceGwei = (Number(gasPrice) / 1e9).toFixed(4);
-  } catch {
-    // Gas price fetch failed, skip
-  }
+  // Fetch gas price with per-block caching via RPC fallback
+  // This runs in parallel with the Spandex/Curve quote fetches
+  const gasPricePromise = getGasPriceWithCache(chainId, getClient(chainId))
+    .then((result) => result.gasPriceGwei)
+    .catch(() => null);
 
-  const [spandex, curveResult] = await Promise.all([spandexPromise, curvePromise]);
+  const [spandex, curveResult, gasPriceGwei] = await Promise.all([
+    spandexPromise,
+    curvePromise,
+    gasPricePromise,
+  ]);
+
+  // Prefer Spandex's gas_price_gwei if provided (future-proofing)
+  // Otherwise use the RPC fallback value
+  const effectiveGasPriceGwei = spandex.result?.gas_price_gwei ?? gasPriceGwei;
 
   let recommendation: "spandex" | "curve" | null = null;
   let reason: string;
@@ -685,12 +693,12 @@ async function compareQuotes(
     quote.net_value_eth = formatEthValue(netValueEth);
   }
 
-  const gasPriceWei = gasPriceGwei ? Number(gasPriceGwei) * 1e9 : 0;
+  const gasPriceWei = effectiveGasPriceGwei ? Number(effectiveGasPriceGwei) * 1e9 : 0;
 
   if (spandex.result && curveResult.result) {
     const spandexGas = Number(spandex.result.gas_used || "0");
     const curveGas = Number(curveResult.result.gas_used || "0");
-    const bothHaveGas = spandexGas > 0 && curveGas > 0 && gasPriceGwei !== null;
+    const bothHaveGas = spandexGas > 0 && curveGas > 0 && effectiveGasPriceGwei !== null;
 
     if (mode === "targetOut") {
       // === TARGET_OUT MODE ===
@@ -775,8 +783,8 @@ async function compareQuotes(
       } else {
         // Fall back to raw input comparison with a note about missing gas
         const missingGas: string[] = [];
-        if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
-        if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
+        if (spandexGas === 0 || effectiveGasPriceGwei === null) missingGas.push("Spandex");
+        if (curveGas === 0 || effectiveGasPriceGwei === null) missingGas.push("Curve");
         const missingGasNote =
           missingGas.length > 0
             ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw input only.`
@@ -863,8 +871,8 @@ async function compareQuotes(
       } else {
         // Fall back to raw output comparison with a note about missing gas
         const missingGas: string[] = [];
-        if (spandexGas === 0 || gasPriceGwei === null) missingGas.push("Spandex");
-        if (curveGas === 0 || gasPriceGwei === null) missingGas.push("Curve");
+        if (spandexGas === 0 || effectiveGasPriceGwei === null) missingGas.push("Spandex");
+        if (curveGas === 0 || effectiveGasPriceGwei === null) missingGas.push("Curve");
         const missingGasNote =
           missingGas.length > 0
             ? ` Gas estimates unavailable for ${missingGas.join(" and ")}, comparing raw output only.`
@@ -947,7 +955,7 @@ async function compareQuotes(
     curve_error: curveResult.error,
     recommendation,
     recommendation_reason: reason,
-    gas_price_gwei: gasPriceGwei,
+    gas_price_gwei: effectiveGasPriceGwei,
     output_to_eth_rate: outputToEthRateStr,
     input_to_eth_rate: inputToEthRateStr,
     mode,
