@@ -7,8 +7,6 @@ cd /Users/bryan/code/compare-dex-routers
 npm install --prefer-offline --no-audit 2>/dev/null || npm install
 
 # Ensure default tokenlist exists in static/
-# The committed static/tokenlist.json should already be present.
-# Only download if missing (e.g., fresh checkout with incomplete clone).
 if [ ! -f static/tokenlist.json ]; then
   mkdir -p static
   echo "Downloading Uniswap default tokenlist..."

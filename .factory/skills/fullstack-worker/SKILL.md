@@ -12,8 +12,9 @@ NOTE: Startup and cleanup are handled by `worker-base`. This skill defines the W
 Use for features that modify:
 - Server-side endpoint handlers in `src/server.ts`
 - The inline HTML/JS UI template (`INDEX_HTML` in `src/server.ts`)
-- Supporting source files (config, tokenlist serving, etc.)
+- Supporting source files (config, curve, quote, etc.)
 - Test files in `src/__tests__/`
+- Docker/infrastructure files (Dockerfile, docker-compose, .dockerignore)
 
 ## Architecture Context
 
@@ -23,6 +24,15 @@ Use for features that modify:
 - Token data model: `tokenlistSources` array of `{url, enabled, name, tokens, error?}` objects. Each token carries `_source` field. `getTokensForChain()` merges from all enabled sources with dedup. `findTokenMatches()` sets `_needsDisambiguation` flag for same-symbol disambiguation.
 - localStorage keys: `customTokenlists` (JSON array of `{url, enabled, name}`) for remote lists. `localTokenList` for local tokens. Always wrap in try/catch for corrupt data.
 - The `/tokenlist/proxy?url=` endpoint proxies remote tokenlist URLs (HTTPS-only, 5MB limit, 30s timeout).
+- Curve library: use `createCurve()` from `@curvefi/api` for per-chain instances (NOT the default singleton). Each instance needs separate init() with chainId and RPC URL.
+
+## Conventions (ALWAYS FOLLOW)
+
+- **Node.js LTS**: Always use the latest Node.js LTS release. Currently Node 24 (Krypton). Dockerfile must use `node:24-slim`. Never downgrade to an older version.
+- **NEVER truncate addresses.** Always display full 0x addresses in the UI and API responses. No `0xABCD...1234` patterns.
+- No direct `console.log` in source code; use the logger from `src/logger.ts`
+- ESM modules with TypeScript strict mode
+- Pre-commit hooks enforce linting and formatting via Husky + lint-staged
 
 ## Work Procedure
 
@@ -39,17 +49,19 @@ For server-side changes:
 
 For client-side-only changes (inline JS):
 - Testing is done via manual verification (step 4) since the UI is inline HTML
-- Still write server-side tests for any new endpoints
+- Still write server-side tests for any new endpoints or server-side logic
+
+For infrastructure changes (Dockerfile, docker-compose, etc.):
+- Verify by building and running containers
 
 ### 3. Implement
 
-- Make changes to `src/server.ts` and/or other source files
+- Make changes to source files
 - For the inline HTML template: be careful with template literal escaping (backticks, `${}`). The HTML is inside a tagged template string.
 - Keep client-side JS clean — use `const`/`let`, proper error handling, no global namespace pollution
 - Follow the existing brutalist UI style (thick borders, high contrast, monospace elements for addresses)
-- **NEVER truncate addresses.** Always display full 0x addresses. This is a project convention.
 - For modals: follow the MEV modal pattern (overlay click closes, Escape closes, body scroll lock, aria attributes)
-- For localStorage: always wrap reads in try/catch, handle corrupt JSON gracefully by treating as empty/default
+- For localStorage: always wrap reads in try/catch, handle corrupt JSON gracefully
 
 ### 4. Verify
 
@@ -82,25 +94,29 @@ curl -sf http://localhost:3002/health
 
 ```json
 {
-  "salientSummary": "Implemented settings gear modal replacing inline tokenlist URL input. Modal opens/closes with gear click, X button, Escape, and backdrop click. Focus management follows MEV modal pattern. All 5 GEAR assertions verified via playwright: gear visible, panel opens, closes correctly, keyboard accessible, state preserved on reopen.",
-  "whatWasImplemented": "Settings gear icon (SVG cog) in form header row. Settings modal following .modal-overlay + .modal pattern from MEV modal. Tokenlist URL input, Load/Reset buttons, and status message all relocated inside modal. Gear icon has aria-expanded, aria-haspopup attributes. Focus trapped in modal on open, returns to gear on close. Body scroll locked when modal open.",
+  "salientSummary": "Implemented Curve multi-chain support using createCurve() factory for per-chain instances. All 7 chains init eagerly at startup in parallel. Updated isCurveSupported() and findCurveQuote() to route to correct instance. Removed 'Curve only supports Ethereum' error. Ran npm test (all 142 tests pass), typecheck clean, lint clean. Verified via curl: /compare on Base returns Curve quote, /compare on Ethereum still works.",
+  "whatWasImplemented": "Per-chain Curve instances via createCurve() stored in Map<number, CurveInstance>. Eager parallel init at startup for all 7 chains (1, 8453, 42161, 10, 137, 56, 43114). Updated isCurveSupported() to check against CURVE_SUPPORTED_CHAINS array. findCurveQuote() now accepts chainId and uses getCurveInstance(chainId). Init failure on one chain logged but doesn't block others. 8 new tests for multi-chain init, per-chain routing, and error isolation.",
   "whatWasLeftUndone": "",
   "verification": {
     "commandsRun": [
       { "command": "npm run typecheck", "exitCode": 0, "observation": "No type errors" },
       { "command": "npm run lint", "exitCode": 0, "observation": "No lint errors" },
-      { "command": "npm test", "exitCode": 0, "observation": "All 32 tests pass" }
+      { "command": "npm test", "exitCode": 0, "observation": "All 142 tests pass including 8 new multi-chain tests" }
     ],
     "interactiveChecks": [
-      { "action": "Navigated to http://localhost:3002/, looked for settings gear", "observed": "Gear icon visible in form header row, no inline tokenlist URL input present" },
-      { "action": "Clicked gear icon", "observed": "Settings modal opened with tokenlist URL input, Load button. Focus moved to close button." },
-      { "action": "Pressed Escape", "observed": "Modal closed, focus returned to gear icon" },
-      { "action": "Tabbed to gear, pressed Enter", "observed": "Modal opened via keyboard" },
-      { "action": "Added tokenlist URL, closed modal, reopened", "observed": "URL input still showed the entered URL, state preserved" }
+      { "action": "curl /compare on Base with USDC/WETH", "observed": "Curve quote present with output amount, no Ethereum-only error" },
+      { "action": "curl /compare on Ethereum with USDC/WETH", "observed": "Curve quote still works as before" },
+      { "action": "Checked server startup logs", "observed": "Curve init messages for all 7 chains" }
     ]
   },
   "tests": {
-    "added": []
+    "added": [
+      { "file": "src/__tests__/curve.test.ts", "cases": [
+        { "name": "initializes for all supported chains", "verifies": "createCurve called 7 times with correct chainIds" },
+        { "name": "returns quote on non-Ethereum chain", "verifies": "findCurveQuote routes to correct instance" },
+        { "name": "init failure isolation", "verifies": "one chain failing doesn't block others" }
+      ]}
+    ]
   },
   "discoveredIssues": []
 }
@@ -113,3 +129,4 @@ curl -sf http://localhost:3002/health
 - Dev server won't start or tests fail for reasons unrelated to this feature
 - Requirements are ambiguous about a specific UI behavior or data model choice
 - A precondition is not met (e.g., expected function or data structure doesn't exist yet)
+- Docker build fails for infrastructure reasons (OrbStack down, disk full, etc.)
