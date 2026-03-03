@@ -63,6 +63,10 @@ Tests are in `src/__tests__/`. Run with `npm test`. Tests use Vitest with mocked
 
 ## Conventions
 
+### Git Workflow
+
+**All work must be done on feature branches.** Use the `/commit-push-pr` command to create commits and PRs. **Never commit directly to main.** This ensures all changes are reviewed before merging.
+
 - **NEVER truncate addresses.** Always display full 0x addresses in the UI and API responses. No `0xABCD...1234` patterns.
 - All source files in `src/` directory
 - Test files: `src/__tests__/*.test.ts`
