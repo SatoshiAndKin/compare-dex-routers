@@ -1,0 +1,39 @@
+{
+  "featureId": "ui-token-icons-results",
+  "reviewedAt": "2026-03-03T06:35:00.000Z",
+  "commitId": "64f96f4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, focused implementation adding 16px token icons to both Spandex and Curve comparison results. The diff is 47 additions / 10 deletions in src/server.ts. A new CSS class `.result-token-icon` provides consistent styling (16px, circular, flex-shrink: 0 for layout stability, background placeholder). The `renderResultTokenIcon()` helper reuses the existing `findTokenByAddress()` infrastructure and returns empty string when no logoURI exists. The onerror handler (`this.style.display='none'`) gracefully hides broken images. Icons are inserted in both the primary output line and the collapsible details section (From, To, Input Amount, Output Amount) for both Spandex and Curve. The implementation is symmetric between the two render functions. All verification checks passed (typecheck, lint, 136 tests, browser verification).",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 4143,
+        "severity": "non_blocking",
+        "description": "logoURI is inserted into HTML via string concatenation without sanitization: `'<img ... src=\"' + token.logoURI + '\"...'`. A malicious tokenlist could craft a logoURI containing quote characters to inject HTML attributes. This is a pre-existing pattern (autocomplete logos use the same approach), not introduced by this feature, but worth noting for a future hardening pass."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 4142,
+        "severity": "non_blocking",
+        "description": "The alt text uses `(token.symbol || 'token') + ' logo'` without HTML-escaping the symbol. A symbol containing `<` or `\"` could produce invalid HTML. Again, this follows the pre-existing convention for symbol display throughout the codebase."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "No documented convention for HTML-escaping user-supplied token data (logoURI, symbol, name) when injecting into inline HTML templates. Multiple features now insert these values via string concatenation. A shared escapeHtml() utility or convention note would prevent future XSS vectors.",
+      "evidence": "src/server.ts:4143 — renderResultTokenIcon inserts token.logoURI into src attribute. Same pattern in autocomplete rendering around line 3920+. Neither location sanitizes the input."
+    },
+    {
+      "area": "conventions",
+      "observation": "Token icon rendering logic is now split across two patterns: (1) autocomplete-logo for dropdown items, (2) result-token-icon for comparison results, and (3) token-input-icon for form inputs. Each has its own CSS class and rendering approach. No documented pattern for 'how to render a token icon' that future features could reference.",
+      "evidence": "CSS classes: .autocomplete-logo (line ~1850), .token-input-icon (line ~1860), .result-token-icon (line ~1870). JS: renderResultTokenIcon (line ~4137) vs inline img tags in autocomplete rendering."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The feature correctly adds 16px token icons next to token symbols in both Spandex and Curve comparison results, with graceful fallback for missing/broken logoURIs. The implementation is clean, consistent between both quote renderers, and reuses existing token lookup infrastructure. Two non-blocking issues noted around HTML sanitization of user-supplied token data, which are pre-existing patterns in the codebase rather than regressions introduced by this feature."
+}

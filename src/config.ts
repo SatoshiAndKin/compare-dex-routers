@@ -26,7 +26,7 @@ export const SUPPORTED_CHAINS: Record<number, { name: string; alchemySubdomain: 
 export const DEFAULT_TOKENS: Record<number, { from: string; to: string }> = {
   1: {
     from: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-    to: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    to: "0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E", // crvUSD
   },
   8453: {
     from: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -45,7 +45,7 @@ export const DEFAULT_TOKENS: Record<number, { from: string; to: string }> = {
     to: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
   },
   56: {
-    from: "0x55d398326f99059fF775485246999027B3197955",
+    from: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", // USDC
     to: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
   },
   43114: {

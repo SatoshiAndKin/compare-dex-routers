@@ -1,0 +1,185 @@
+{
+  "groupId": "group-css-dock-cross",
+  "testedAt": "2026-03-04T02:40:31Z",
+  "credentials": {
+    "account": "core_polish_validator_cssdock_01@example.test",
+    "namespace": "core-polish-cssdock"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "curl",
+    "shell"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CSS-004",
+      "title": "Brutalist aesthetic preserved",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Open http://localhost:3002/ and capture desktop form screenshot",
+          "expected": "Brutalist visual baseline visible in form",
+          "observed": "Form shows thick black borders, uppercase labels, and black/white styling"
+        },
+        {
+          "action": "Submit comparison and capture results screenshot",
+          "expected": "Results area keeps brutalist styling",
+          "observed": "Results area preserves strong borders and accent styling"
+        },
+        {
+          "action": "Inspect computed styles via browser eval",
+          "expected": "#f5f5f5 background, uppercase labels, monospace data, >=2px black borders, #0055FF accent",
+          "observed": "bodyBg=rgb(245, 245, 245); label textTransform=uppercase; border widths sampled at 2px; monospace fonts detected; accent rgb(0, 85, 255) present"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-cssdock-001-form-desktop.png",
+          "val-cssdock-002-results-desktop.png"
+        ],
+        "consoleErrors": "agent-browser errors --json => []",
+        "network": "N/A (style/UI assertion)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-005",
+      "title": "Touch targets >= 44px on mobile",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Set viewport to 375x812 and capture screenshot",
+          "expected": "Mobile layout at 375px is testable for touch target sizing",
+          "observed": "Mobile layout rendered correctly at 375px"
+        },
+        {
+          "action": "Inspect visible interactive element dimensions via browser eval",
+          "expected": "All buttons and interactive elements are >=44px in touch-target dimensions",
+          "observed": "Several visible inputs are 39px tall (Chain, From Token, To Token, Amount), below 44px"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-cssdock-003-mobile-375.png"
+        ],
+        "consoleErrors": "agent-browser errors --json => []",
+        "network": "N/A (size/layout assertion)"
+      },
+      "issues": "Measured under-44px interactive elements at 375px: Chain input 351x39, From input 351x39, To input 351x39, Amount input 351x39."
+    },
+    {
+      "id": "VAL-DOCK-001",
+      "title": "docker-compose.yml service renamed to flashprofits",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect docker-compose.yml services block",
+          "expected": "Service key is flashprofits",
+          "observed": "services -> flashprofits"
+        },
+        {
+          "action": "Search docker-compose.yml for 'spandex-router'",
+          "expected": "No occurrences remain",
+          "observed": "No matches found"
+        },
+        {
+          "action": "Run terminal parse check",
+          "expected": "service='flashprofits', contains_spandex_router=False",
+          "observed": "docker-compose.yml: service='flashprofits', contains_spandex_router=False"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A",
+        "network": "Read/Grep/terminal output: docker-compose.yml service='flashprofits'; no spandex-router matches"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOCK-002",
+      "title": "docker-stack.yml service renamed to flashprofits",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect docker-stack.yml services block",
+          "expected": "Service key is flashprofits",
+          "observed": "services -> flashprofits"
+        },
+        {
+          "action": "Search docker-stack.yml for 'spandex-router' (including comments)",
+          "expected": "No occurrences remain",
+          "observed": "No matches found"
+        },
+        {
+          "action": "Run terminal parse check",
+          "expected": "service='flashprofits', contains_spandex_router=False",
+          "observed": "docker-stack.yml: service='flashprofits', contains_spandex_router=False"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A",
+        "network": "Read/Grep/terminal output: docker-stack.yml service='flashprofits'; no spandex-router matches"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Save preferences -> reload -> form restored",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Change chain to Base (8453)",
+          "expected": "Chain selection changes from default",
+          "observed": "Chain field value became 'Base (8453)'"
+        },
+        {
+          "action": "Verify tokens/amount were changed before submit",
+          "expected": "Form reflects changed tokens and amount",
+          "observed": "From=USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), To=WETH (0x4200000000000000000000000000000000000006), Amount=2.75"
+        },
+        {
+          "action": "Submit comparison",
+          "expected": "Comparison request succeeds and preferences can be persisted",
+          "observed": "Compare succeeded; endpoint validation also returned HTTP 200 for same params"
+        },
+        {
+          "action": "Open base URL without query params after save",
+          "expected": "Form restores saved chain/tokens/amount/slippage",
+          "observed": "Restored values: Base (8453), USDC->WETH addresses above, Amount=2.75, Slippage=50"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-cssdock-004-cross-before-reload.png",
+          "val-cssdock-005-cross-after-reload.png"
+        ],
+        "consoleErrors": "agent-browser errors --json => []",
+        "network": "GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0x4200000000000000000000000000000000000006&amount=2.75&slippageBps=50 -> 200; localStorage flashprofits-preferences includes matching chainId/from/to/amount/slippage"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Playwright MCP browser launch was blocked by an existing Chrome profile lock ('Opening in existing browser session').",
+      "resolved": true,
+      "resolution": "Switched to the prescribed agent-browser tool with isolated session id suffix 6aadfdbb751f__cssdock.",
+      "affectedAssertions": [
+        "VAL-CSS-004",
+        "VAL-CSS-005",
+        "VAL-CROSS-002"
+      ]
+    },
+    {
+      "description": "agent-browser network request log returned an empty request list during this run.",
+      "resolved": true,
+      "resolution": "Captured API evidence for the compared request using curl with HTTP status and response-shape checks.",
+      "affectedAssertions": [
+        "VAL-CROSS-002"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assertions: 4 passed (VAL-CSS-004, VAL-DOCK-001, VAL-DOCK-002, VAL-CROSS-002) and 1 failed (VAL-CSS-005: several interactive inputs are 39px tall at 375px, below the 44px target)."
+}

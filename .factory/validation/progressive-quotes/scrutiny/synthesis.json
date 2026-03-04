@@ -1,0 +1,45 @@
+{
+  "milestone": "progressive-quotes",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test -- --maxWorkers=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Update shared modal implementation guidance (especially fullstack-worker) to explicitly require Tab/Shift+Tab focus trap and focus restoration when modal parity/accessibility is required.",
+      "evidence": "The original swap-confirmation-modal failed review due to missing focus trap, and the fix review again identified this as an under-specified skill guidance gap.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Re-apply previously suggested skill updates for non-UI verification exemptions and stricter TDD wording.",
+      "reason": "already-captured-in-previous-round: these recommendations were documented in round 1 and were not newly introduced by this re-run fix review."
+    }
+  ],
+  "previousRound": ".factory/validation/progressive-quotes/scrutiny/synthesis.round1.json"
+}

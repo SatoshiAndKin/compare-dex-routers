@@ -1,0 +1,39 @@
+{
+  "featureId": "wei-and-address-display",
+  "reviewedAt": "2026-03-04T00:21:26Z",
+  "commitId": "pending",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The UI-side implementation in src/server.ts correctly adds wei fields in expandable details and token-reference formatting/copy behavior for quote errors, but the Curve-side wei data generation introduces an unguarded token-decimals dependency that can fail the entire Curve quote path. Because of that regression risk, the feature does not reliably satisfy the requirement that both Spandex and Curve sections show wei values.",
+    "issues": [
+      {
+        "file": "src/curve.ts",
+        "line": 289,
+        "severity": "blocking",
+        "description": "`findCurveQuote` now depends on two `getTokenDecimals(...)` RPC calls (lines 289-290) and immediately converts via `parseUnits(...)` (lines 324-325) without fallback handling. If either decimals read fails (RPC/transient token metadata issue), the function throws and Curve quote rendering fails entirely, so VAL-WEI-002/VAL-WEI-003 are not reliably met."
+      },
+      {
+        "file": "src/__tests__/curve.test.ts",
+        "line": 43,
+        "severity": "non_blocking",
+        "description": "Feature-specific assertions are missing: the test update only mocks `getTokenDecimals` and does not verify emitted `input_amount_raw`/`output_amount_raw` values or token-reference formatting behavior in errors."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Feature isolation/commit hygiene is inconsistent for this feature: the handoff has `commitId: pending`, while part of the feature (server.ts wei rendering and token-ref formatter) landed inside another feature commit.",
+      "evidence": "Handoff file `2026-03-04T00-12-04-041Z__wei-and-address-display__83ebc1ea-140f-4153-bc79-b222fbcc7fb5.json` shows `commitId: pending`; `git show 5e23b81 -- src/server.ts` contains wei/detail and token-ref formatter changes; remaining Curve updates are still visible in `git diff -- src/curve.ts src/__tests__/curve.test.ts`."
+    },
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill prescribes tests-first (red phase), but this run implemented most code before adding any feature test assertions, and the later test edit only introduced a mock.",
+      "evidence": "Skill file `.factory/skills/fullstack-worker/SKILL.md` (Work Procedure step 2) requires tests-first; transcript skeleton for worker session `83ebc1ea-140f-4153-bc79-b222fbcc7fb5` shows multiple `Edit` calls in `src/curve.ts`/`src/server.ts` before any test-file edit, with the only test edit being a `getTokenDecimals` mock in `src/__tests__/curve.test.ts`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed with one blocking issue: Curve wei raw-field generation is not fault-tolerant and can fail the entire Curve quote path when token-decimals lookup fails. Report written after reviewing the transcript skeleton and feature diff artifacts."
+}

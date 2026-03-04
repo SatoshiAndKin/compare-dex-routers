@@ -1,0 +1,46 @@
+{
+  "groupId": "group-prog-errors",
+  "surface": "web-ui",
+  "assertions": [
+    {
+      "id": "VAL-PROG-004",
+      "status": "pass",
+      "reason": "Validated one-router-fail/other-success behavior: Spandex quote rendered while Curve showed an error tab/message.",
+      "evidence": [
+        "Screenshot: /Users/bryan/code/compare-dex-routers/val-prog-004-one-router-fails-other-succeeds.png",
+        "Screenshot: /Users/bryan/code/compare-dex-routers/val-prog-004-curve-error-tab-final.png",
+        "Playwright DOM snapshot showed tabs Spandex/Curve with Curve error text: 'Curve failed: No route found for test pair'.",
+        "Real endpoint check via curl: /compare-stream emitted curve error + spandex quote + complete(recommendation=spandex)."
+      ]
+    },
+    {
+      "id": "VAL-PROG-005",
+      "status": "pass",
+      "reason": "Validated both-fail behavior: combined error message included both Spandex and Curve failures and loading state cleared.",
+      "evidence": [
+        "Screenshot: /Users/bryan/code/compare-dex-routers/val-prog-005-both-fail-combined-error.png",
+        "UI text showed: 'No quotes available. Spandex: ... Curve: ...' with results finalized (no loading indicator).",
+        "Real endpoint check via curl: /compare-stream emitted both error events then complete(recommendation=null)."
+      ]
+    },
+    {
+      "id": "VAL-PROG-012",
+      "status": "pass",
+      "reason": "Validated stale-stream cancellation: starting comparison B while A streamed resulted in only B data rendering; late A data did not appear.",
+      "evidence": [
+        "Screenshot: /Users/bryan/code/compare-dex-routers/val-prog-012-new-comparison-cancels-previous-stream.png",
+        "Playwright evaluate result after A->B rapid submits: hasNewReason=true, hasOldReason=false, hasNewSpandexValue=true, hasNewCurveValue=true, hasOldSpandexValue=false, hasOldCurveValue=false.",
+        "Final UI reason text: 'NEW comparison amount=2 complete'."
+      ]
+    }
+  ],
+  "frictions": [
+    "Playwright MCP EventSource handling intermittently produced 'Failed to connect to quote stream' despite 200 /compare-stream responses; used deterministic EventSource mocking/interception for progressive-flow assertions.",
+    "15s auto-refresh can race assertion timing and switch views mid-capture; explicitly stopped auto-refresh before taking final evidence screenshots."
+  ],
+  "blockers": [],
+  "toolsUsed": [
+    "playwright-mcp",
+    "curl"
+  ]
+}

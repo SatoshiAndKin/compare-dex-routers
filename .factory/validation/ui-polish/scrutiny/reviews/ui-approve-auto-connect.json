@@ -1,0 +1,33 @@
+{
+  "featureId": "ui-approve-auto-connect",
+  "reviewedAt": "2026-03-03T06:45:00.000Z",
+  "commitId": "eb6c435",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Clean, well-structured implementation of the auto-connect flow for Approve/Swap buttons. The diff is focused (39 additions, 9 deletions in a single file) and follows existing patterns. Key design decisions are sound: extracting triggerWalletConnectionFlow as a reusable function, using isConnectingProvider flag to distinguish menu dismiss from active connection, and storing pendingPostConnectAction with enough context to re-invoke the correct handler. The happy path (click Approve → wallet menu → connect → auto-approve) and cancel path (dismiss menu → clear pending action) are both correctly handled. One non-blocking issue found in error handling.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 3609,
+        "severity": "non_blocking",
+        "description": "pendingPostConnectAction is not cleared on non-4001 wallet connection errors. In the catch block, only the code===4001 branch clears pendingPostConnectAction. If connectToWalletProvider fails for other reasons (e.g., provider throws a network error, 'No account returned'), the pending action lingers. A subsequent manual wallet connection (via Connect Wallet button) would then unexpectedly auto-fire the stale approve/swap action. Fix: add 'pendingPostConnectAction = null;' after the generic error message on line 3609."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The inline JS uses 'void' keyword to fire-and-forget async calls (void onApproveClick(...), void onSwapClick(...)). This is a pattern used throughout the codebase for async event handlers but is not documented in AGENTS.md or the skill. Could be worth noting for consistency.",
+      "evidence": "src/server.ts:3594 'void onApproveClick(action.card, action.button)' and :3596 'void onSwapClick(action.card)'"
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed the skill procedure correctly: understood feature, implemented, ran typecheck/lint/test, then did manual browser verification. The skill's guidance on client-side testing ('Testing is done via manual verification since the UI is inline HTML') was followed. Worker verified button clickability, wallet menu opening, and pending action state via browser evaluation. End-to-end verification of auto-approve after actual wallet connection was noted as not fully testable without a real/mock wallet, which is an honest limitation.",
+      "evidence": "Handoff interactiveChecks show 3 manual browser checks. Handoff notes VAL-UI-031/032 need actual wallet for full E2E. skillFeedback.followedProcedure=true with no deviations."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The auto-connect flow implementation passes review. The code is well-structured with clear state management (pendingPostConnectAction + isConnectingProvider flags), proper extraction of triggerWalletConnectionFlow for reuse, and correct handling of the primary user flows (auto-connect on Approve/Swap click, menu dismiss cancellation, user-cancel via wallet). One non-blocking issue: pendingPostConnectAction is not cleared on non-4001 connection errors, which could cause a stale action to fire on a later manual connect. All verification commands passed (typecheck, lint, 136 tests). The diff is minimal and focused."
+}

@@ -1,0 +1,63 @@
+{
+  "groupId": "group-r2-addr-copy",
+  "testedAt": "2026-03-04T04:00:01.792617+00:00",
+  "credentials": {
+    "account": "not applicable",
+    "namespace": "core-polish-r2-addr-copy"
+  },
+  "toolsUsed": [
+    "agent-browser"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-ADDR-003",
+      "title": "Clicking token reference copies address",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Open app with Optimism unsupported pair URL params to render token-reference error message",
+          "expected": "Error message includes clickable token references",
+          "observed": "Error rendered with clickable `USDC.e` and `WETH` token references"
+        },
+        {
+          "action": "Click token reference (`USDC.e`) and capture UI state",
+          "expected": "Clipboard copy succeeds and brief `Copied!` visual confirmation appears",
+          "observed": "No `Copied!` confirmation visible in UI screenshot; DOM check showed no `.copied-feedback` and no `.token-ref.copied`"
+        },
+        {
+          "action": "Directly test clipboard write capability in the browser session",
+          "expected": "`navigator.clipboard.writeText(...)` succeeds",
+          "observed": "Clipboard write failed with `Failed to execute 'writeText' on 'Clipboard': Write permission denied.`"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-r2-addr-003-copied-feedback.png"
+        ],
+        "consoleErrors": "none observed (`agent-browser errors` and `agent-browser console` returned no entries)",
+        "network": "N/A (client-side clipboard interaction; no network calls required for the assertion)"
+      },
+      "issues": "Blocked by clipboard permission denial in the headless automation context, which prevents end-to-end confirmation of the `Copied!` feedback path."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Clipboard writes are denied in this automation context despite the page running on localhost, so copy-feedback could not be validated through the full user-visible success path.",
+      "resolved": false,
+      "resolution": "Retried by clicking token reference and by directly executing clipboard write in page context; both remained denied.",
+      "affectedAssertions": [
+        "VAL-ADDR-003"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Browser clipboard write permission denied (`writeText`), preventing verification of the expected `Copied!` confirmation.",
+      "affectedAssertions": [
+        "VAL-ADDR-003"
+      ],
+      "quickFixAttempted": "Retried click flow, inspected DOM for feedback markers, and tested direct `navigator.clipboard.writeText` call; permission denial persisted."
+    }
+  ],
+  "summary": "Tested 1 assertion (VAL-ADDR-003): blocked due to clipboard write permission denial in automation, so `Copied!` confirmation could not be observed."
+}

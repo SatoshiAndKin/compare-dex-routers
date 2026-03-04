@@ -1,0 +1,151 @@
+{
+  "groupId": "group-form-reorder",
+  "testedAt": "2026-03-03T07:15:00.000Z",
+  "credentials": {
+    "account": "ui_form_validator_01@example.test",
+    "namespace": "ui-polish-form-reorder"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-UI-001",
+      "title": "Form field visual order",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/",
+          "expected": "Form loads with fields in order: Chain → Wallet → From Token → To Token → Direction Toggle → Amount → Action Row",
+          "observed": "Accessibility snapshot confirms DOM order: Chain (combobox) → Connect Wallet (button) → From Token (textbox with USDC logo) → To Token (textbox with WETH logo) → Sell exact / Buy exact (buttons) → Amount (textbox) → Compare Quotes (button) + Slippage (presets + input)"
+        },
+        {
+          "action": "Take screenshot at desktop width (1280x800)",
+          "expected": "All fields visible in correct vertical order",
+          "observed": "Desktop screenshot val-ui-001-desktop.png confirms correct visual order"
+        },
+        {
+          "action": "Resize viewport to 375x812 and take screenshot",
+          "expected": "Fields remain in same order at mobile width",
+          "observed": "375px screenshot val-ui-001-375px.png confirms same vertical order with responsive stacking"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-001-desktop.png", "val-ui-001-375px.png"],
+        "consoleErrors": "favicon.ico 404 only (known cosmetic issue)",
+        "network": "GET / -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-002",
+      "title": "Tab order matches visual order",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Focus Chain combobox and press Tab repeatedly",
+          "expected": "Tab order: Chain → Wallet → From Token → To Token → Sell exact → Buy exact → Amount → Slippage presets → Submit",
+          "observed": "Tab order: Chain → Connect Wallet → From Token → To Token → Sell exact → Buy exact → Amount → Compare Quotes (Submit) → Slippage preset 3 → 10 → 50 → 100 → 300 → Slippage input"
+        },
+        {
+          "action": "Verify each focus state via accessibility snapshot [active] marker",
+          "expected": "Focus ring moves in specified order",
+          "observed": "Focus ring confirmed at each step via [active] attribute in snapshots. Screenshot val-ui-002-focus-chain.png shows focus on Chain, val-ui-002-focus-wallet.png shows focus on Connect Wallet."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-002-focus-chain.png", "val-ui-002-focus-wallet.png"],
+        "consoleErrors": "none (favicon.ico 404 excluded per known issue)",
+        "network": "N/A"
+      },
+      "issues": "Tab order places Compare Quotes (Submit) BEFORE Slippage presets. Spec requires Slippage presets → Submit, but actual order is Submit → Slippage presets. This follows natural left-to-right reading order since the Submit button is visually left of the Slippage controls in the action row. The overall form field order (Chain through Amount) is correct."
+    },
+    {
+      "id": "VAL-UI-003",
+      "title": "URL param restore respects new layout",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1000",
+          "expected": "Chain=Ethereum, From=USDC (Ethereum), To=WETH (Ethereum), Amount=1000",
+          "observed": "Chain combobox shows 'Ethereum (1)', From Token shows 'USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)' with logo, To Token shows 'WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)' with logo, Amount shows '1000'. Auto-comparison triggered ('Comparing...' button state)."
+        },
+        {
+          "action": "Take screenshot of populated form",
+          "expected": "All fields correctly populated in reordered layout",
+          "observed": "Screenshot val-ui-003-url-params.png confirms all fields populated correctly"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-003-url-params.png"],
+        "consoleErrors": "favicon.ico 404 only (known cosmetic issue)",
+        "network": "GET /?chainId=1&from=...&to=...&amount=1000 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-004",
+      "title": "Direction toggle works after reorder",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/ and verify default state",
+          "expected": "Sell exact is pressed (default)",
+          "observed": "Sell exact button has [pressed] attribute, Buy exact does not"
+        },
+        {
+          "action": "Click 'Buy exact' button",
+          "expected": "Buy exact becomes pressed, targetOut note appears",
+          "observed": "Buy exact gains [pressed] attribute. Warning note appears: '⚠️ Fewer providers support reverse quotes (3/7 Spandex providers)' in a yellow-bordered box between direction toggle and Amount field."
+        },
+        {
+          "action": "Click 'Sell exact' button",
+          "expected": "Sell exact becomes pressed, targetOut note disappears",
+          "observed": "Sell exact regains [pressed] attribute. Warning note is removed from DOM. Form returns to normal layout."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-004-buy-exact.png", "val-ui-004-sell-exact.png"],
+        "consoleErrors": "none (favicon.ico 404 excluded per known issue)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-005",
+      "title": "Responsive layout at 375px",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Resize viewport to 375x812",
+          "expected": "All form fields usable without horizontal overflow",
+          "observed": "All form fields visible in stacked vertical layout. Token addresses clip naturally within input borders (text-overflow behavior)."
+        },
+        {
+          "action": "Check for horizontal overflow via JavaScript",
+          "expected": "No horizontal scrollbar, documentWidth === viewportWidth",
+          "observed": "document.documentElement.scrollWidth = 375, clientWidth = 375, hasHorizontalOverflow = false"
+        },
+        {
+          "action": "Take full-page screenshot at 375px",
+          "expected": "Complete form visible without issues",
+          "observed": "Screenshot val-ui-005-375px.png shows complete form: Chain, Connect Wallet, From Token, To Token, Sell/Buy toggle, Amount, Compare Quotes, and Slippage controls all visible and properly stacked"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-005-375px.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Auto-refresh timer (15s) can interfere with testing by resetting page state. Pausing via clearInterval(window._refreshTimer) is recommended in user-testing.md but was not needed for these form-structure assertions.",
+      "resolved": true,
+      "resolution": "Not applicable for form layout assertions — no auto-refresh interference observed",
+      "affectedAssertions": []
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assertions: 4 passed, 1 failed. VAL-UI-002 fails because tab order places Compare Quotes (Submit) before Slippage presets, whereas the spec expects Slippage presets before Submit. The remaining assertions (form visual order, URL param restore, direction toggle, 375px responsive) all pass correctly."
+}

@@ -16,9 +16,9 @@
 # Rollback is automatic if the new container fails to become healthy within the configured window.
 
 services:
-  spandex-router:
+  flashprofits:
     # Image: configurable via DOCKER_IMAGE env var, or defaults to locally-built image
-    # To use a registry image: DOCKER_IMAGE=myregistry/spandex-router:v1.2.3 docker stack deploy -c docker-stack.yml spandex
+    # To use a registry image: DOCKER_IMAGE=myregistry/flashprofits:v1.2.3 docker stack deploy -c docker-stack.yml spandex
     image: ${DOCKER_IMAGE:-compare-dex-routers:latest}
 
     # Port mapping: app port from env (default 3000)

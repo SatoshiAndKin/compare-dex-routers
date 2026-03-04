@@ -1,0 +1,223 @@
+{
+  "groupId": "group-prog-stream",
+  "testedAt": "2026-03-04T05:27:19.775903+00:00",
+  "credentials": {
+    "account": "none",
+    "namespace": "pq_stream"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "curl"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-PROG-001",
+      "title": "First quote renders immediately",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Open app with Ethereum USDC->USDT URL params (auto-compare starts)",
+          "expected": "First arriving router quote renders before second finishes",
+          "observed": "Curve quote rendered while the other tab still showed Loading..."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "pq_stream-val-prog-001-002-first-quote-loading.png"
+        ],
+        "consoleErrors": "none (favicon 404 ignored)",
+        "network": "GET /compare-stream (chainId=1, USDC->USDT) emitted quote events independently (curve first, then spandex)."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROG-002",
+      "title": "Loading indicator for pending router",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Observe tab row during progressive load",
+          "expected": "Pending router tab shows loading indicator after first quote",
+          "observed": "Tab bar showed one router tab populated and the other tab labeled Loading..."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "pq_stream-val-prog-001-002-first-quote-loading.png"
+        ],
+        "consoleErrors": "none (favicon 404 ignored)",
+        "network": "SSE stream remained open while pending router response arrived later."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROG-003",
+      "title": "Recommendation recalculated after both arrive",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Wait for second quote to arrive",
+          "expected": "UI reorders/relabels to Recommended/Alternative with reason box",
+          "observed": "Results showed both Spandex and Curve tabs with reason box and recommended winner after completion."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "pq_stream-val-prog-003-both-quotes-recommended.png"
+        ],
+        "consoleErrors": "none (favicon 404 ignored)",
+        "network": "SSE emitted complete + done after both quote events."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROG-004",
+      "title": "One router fails, other succeeds",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Run Base USDC->WETH flow in UI",
+          "expected": "Successful quote renders and failed router tab shows error",
+          "observed": "UI displayed only 'Failed to connect to quote stream' generic message."
+        },
+        {
+          "action": "Verify backend stream directly with curl",
+          "expected": "One quote + one router error from SSE",
+          "observed": "curl showed curve error event plus spandex quote event and complete/done."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "pq_stream-val-prog-004-one-fail-expected-ui-state.png"
+        ],
+        "consoleErrors": "none (favicon 404 ignored)",
+        "network": "curl /compare-stream (chainId=8453 USDC->WETH): event:error router=curve, event:quote router=spandex, then complete/done."
+      },
+      "issues": "Frontend surfaced generic stream failure instead of rendering mixed success/error tabs."
+    },
+    {
+      "id": "VAL-PROG-005",
+      "title": "Both routers fail \u2014 combined error",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Run invalid token pair in UI",
+          "expected": "Combined Spandex + Curve errors shown with no loading left",
+          "observed": "UI displayed generic 'Failed to connect to quote stream' message."
+        },
+        {
+          "action": "Verify backend stream directly with curl",
+          "expected": "Both router errors emitted",
+          "observed": "curl showed curve error and spandex error before complete/done."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "pq_stream-val-prog-005-both-fail-ui-state.png"
+        ],
+        "consoleErrors": "none (favicon 404 ignored)",
+        "network": "curl /compare-stream (invalid addresses on chainId=1): both error events present, complete reason 'Neither source returned a quote'."
+      },
+      "issues": "Frontend did not render combined router errors in the results panel."
+    },
+    {
+      "id": "VAL-PROG-010",
+      "title": "Auto-refresh triggers progressive cycle",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Load completed comparison and wait for auto-refresh",
+          "expected": "15s auto-refresh starts new progressive stream",
+          "observed": "New /compare-stream cycles were created automatically and each cycle emitted independent quote events."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "pq_stream-val-prog-010-011-countdown-near-refresh.png",
+          "pq_stream-val-prog-010-refreshing-state.png"
+        ],
+        "consoleErrors": "none (favicon 404 ignored)",
+        "network": "Instrumented EventSource log: two auto-refresh cycles captured, each with quote->quote->complete->done sequence."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROG-011",
+      "title": "Auto-refresh countdown resets after all quotes arrive",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Track EventSource timestamps across consecutive refresh cycles",
+          "expected": "Next countdown begins only after current cycle finishes",
+          "observed": "Second cycle started ~15s after prior cycle completed; countdown showed reset value after completion."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "pq_stream-val-prog-010-refreshing-state.png"
+        ],
+        "consoleErrors": "none (favicon 404 ignored)",
+        "network": "EventSource logs showed complete/done before next cycle creation; interval from completion to next stream was ~15s."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROG-012",
+      "title": "New comparison cancels in-progress stream",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Start compare request (amount=1) then immediately trigger second submit (amount=2)",
+          "expected": "Older stream discarded; only latest comparison fully renders",
+          "observed": "First stream only emitted an initial quote and never completed; second stream completed and UI showed amount=2 results."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "pq_stream-val-prog-012-cancelled-old-stream-final-ui.png"
+        ],
+        "consoleErrors": "none (favicon 404 ignored)",
+        "network": "Instrumented EventSource log: amount=1 stream had partial events (no complete/done) after amount=2 request started; amount=2 stream completed normally."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PROG-013",
+      "title": "Single-router chain renders without progressive flow",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Probe single_router_mode across all supported chains via /compare-stream",
+          "expected": "At least one supported chain reports single_router_mode=true (Curve unsupported)",
+          "observed": "All supported chains returned single_router_mode=false in this environment."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none (favicon 404 ignored)",
+        "network": "API sweep for chainIds [1,10,56,137,8453,42161,43114] returned single_router_mode=false for each."
+      },
+      "issues": "No non-Curve chain was available to execute the required UI scenario."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "VAL-PROG-012 overlap path is hard to trigger with normal clicks because Compare button is disabled while loading.",
+      "resolved": true,
+      "resolution": "Used browser-side submit event dispatch to trigger a second comparison during an active stream and verify cancellation behavior.",
+      "affectedAssertions": [
+        "VAL-PROG-012"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "No supported chain in this runtime exposed single_router_mode=true, so the non-Curve-chain scenario could not be exercised.",
+      "affectedAssertions": [
+        "VAL-PROG-013"
+      ],
+      "quickFixAttempted": "Queried /compare-stream across all supported chain IDs and inspected complete event single_router_mode flags."
+    }
+  ],
+  "summary": "Tested 9 assertions in namespace pq_stream: 6 passed, 2 failed (VAL-PROG-004/005), and 1 blocked (VAL-PROG-013)."
+}

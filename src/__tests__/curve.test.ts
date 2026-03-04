@@ -40,6 +40,15 @@ vi.mock("@curvefi/api", () => ({
   },
 }));
 
+// Mock getTokenDecimals to avoid RPC calls during tests
+vi.mock("../config.js", async () => {
+  const actual = await vi.importActual<typeof import("../config.js")>("../config.js");
+  return {
+    ...actual,
+    getTokenDecimals: vi.fn().mockResolvedValue(18),
+  };
+});
+
 describe("curve multi-chain integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -416,5 +425,63 @@ describe("curve multi-chain integration", () => {
     expect(ethResult.output_amount).toBe("100.00");
     expect(ethereumInstance.router.getBestRouteAndOutput).toHaveBeenCalledTimes(1);
     expect(baseInstance.router.getBestRouteAndOutput).not.toHaveBeenCalled();
+  });
+
+  it("findCurveQuote succeeds with empty wei fields when getTokenDecimals throws", async () => {
+    vi.resetModules();
+
+    // Import the mocked config to configure getTokenDecimals to throw
+    const config = await import("../config.js");
+    const mockedGetTokenDecimals = vi.mocked(config.getTokenDecimals);
+    // Make getTokenDecimals throw for this test
+    mockedGetTokenDecimals.mockRejectedValueOnce(new Error("decimals lookup failed"));
+
+    const instance = createMockCurveInstance();
+    configureMockInstance(instance);
+    instanceQueue.push(instance);
+
+    const { initCurveInstance, findCurveQuote } = await import("../curve.js");
+    await initCurveInstance(1, "https://eth-mainnet.example.com");
+
+    // Should NOT throw - quote should succeed despite decimals lookup failure
+    const result = await findCurveQuote(1, ADDR_FROM, ADDR_TO, "10");
+
+    // Quote should have all expected fields
+    expect(result.source).toBe("curve");
+    expect(result.from).toBe(ADDR_FROM);
+    expect(result.to).toBe(ADDR_TO);
+    expect(result.input_amount).toBe("10");
+    expect(result.output_amount).toBe("123.45");
+    expect(result.router_address).toBe(ADDR_ROUTER);
+    expect(result.router_calldata).toBe("0xabcdef");
+
+    // Wei fields should be empty strings when decimals unavailable
+    expect(result.input_amount_raw).toBe("");
+    expect(result.output_amount_raw).toBe("");
+  });
+
+  it("findCurveQuote populates wei fields correctly when decimals available", async () => {
+    vi.resetModules();
+
+    // Import the mocked config to configure getTokenDecimals
+    const config = await import("../config.js");
+    const mockedGetTokenDecimals = vi.mocked(config.getTokenDecimals);
+    // Return 18 decimals for both tokens
+    mockedGetTokenDecimals.mockResolvedValue(18);
+
+    const instance = createMockCurveInstance();
+    configureMockInstance(instance);
+    instanceQueue.push(instance);
+
+    const { initCurveInstance, findCurveQuote } = await import("../curve.js");
+    await initCurveInstance(1, "https://eth-mainnet.example.com");
+
+    const result = await findCurveQuote(1, ADDR_FROM, ADDR_TO, "10");
+
+    // Wei fields should be populated with correct values
+    // parseUnits("10", 18) = 10000000000000000000 (10 * 10^18)
+    expect(result.input_amount_raw).toBe("10000000000000000000");
+    // parseUnits("123.45", 18) = 123450000000000000000 (123.45 * 10^18)
+    expect(result.output_amount_raw).toBe("123450000000000000000");
   });
 });

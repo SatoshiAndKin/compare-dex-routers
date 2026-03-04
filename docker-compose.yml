@@ -1,5 +1,5 @@
 services:
-  spandex-router:
+  flashprofits:
     build: .
     ports:
       - "${PORT:-3000}:${PORT:-3000}"

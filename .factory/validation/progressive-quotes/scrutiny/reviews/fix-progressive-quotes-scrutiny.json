@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-progressive-quotes-scrutiny",
+  "reviewedAt": "2026-03-04T05:04:59Z",
+  "commitId": "75ac7ab2bd495dac9f7c796934e60f5d7c0b79ed",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix commit addresses the two blocking failures from swap-confirmation-modal and the blocking auto-refresh regression from progressive-quotes-implementation. The progressive flow now resolves with a payload for auto-refresh gating, single-router mode is set before streaming begins (so swap bypasses modal on unsupported Curve chains), and the swap confirmation modal now traps Tab/Shift+Tab focus while restoring focus to the originating swap button on close.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Shared modal implementation guidance still under-specifies accessibility behavior: it documents overlay/Escape/body-scroll/aria, but not focus trapping. This gap likely contributed to the original missing focus-trap defect.",
+      "evidence": ".factory/skills/fullstack-worker/SKILL.md (Modal pattern section) and mission AGENTS.md (Modal pattern section) both omit explicit Tab/Shift+Tab focus-loop guidance, while prior review .factory/validation/progressive-quotes/scrutiny/reviews/swap-confirmation-modal.json failed on missing focus trap."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/progressive-quotes/scrutiny/reviews/progressive-quotes-implementation.json; .factory/validation/progressive-quotes/scrutiny/reviews/swap-confirmation-modal.json",
+  "summary": "Pass: fix-progressive-quotes-scrutiny adequately resolves the previously reported blocking failures across both referenced features, and transcript/diff evidence is consistent with the intended remediation."
+}

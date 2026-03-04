@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-curve-wei-fault-tolerance",
+  "reviewedAt": "2026-03-04T02:30:36Z",
+  "commitId": "e9df0ce",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix resolves the original blocking failure: Curve quote generation no longer fails when token decimals lookup errors. In `src/curve.ts`, decimals lookup is now fault-tolerant and wei fields fall back to empty strings; tests were added to cover both failure and normal paths. I reviewed both the failed feature diffs (including prior-reviewed `wei-and-address-display` changes and related server-side diff) and the fix commit diff, and the prior failure condition is addressed.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": ".factory/validation/core-polish/scrutiny/reviews/wei-and-address-display.json",
+  "summary": "Pass. The fix commit (`e9df0ce`) adequately addresses the prior blocking issue from `wei-and-address-display` by preventing decimals lookup failures from crashing `findCurveQuote`, while preserving normal wei computation behavior with explicit test coverage for both paths."
+}

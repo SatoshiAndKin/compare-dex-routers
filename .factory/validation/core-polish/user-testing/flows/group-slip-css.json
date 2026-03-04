@@ -1,0 +1,218 @@
+{
+  "groupId": "group-slip-css",
+  "testedAt": "2026-03-04T02:44:35Z",
+  "credentials": {
+    "account": "core_polish_validator_slipcss_01@example.test",
+    "namespace": "core-polish-slipcss"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "playwright-mcp"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-SLIP-001",
+      "title": "Presets visually distinct from text input",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/ at desktop viewport (1280x900)",
+          "expected": "Slippage presets render as grouped toggle-style buttons distinct from custom text input",
+          "observed": "Presets rendered as grouped bordered buttons (3/10/50/100/300), while custom bps value rendered in a separate text input with its own field styling and trailing 'bps' label"
+        },
+        {
+          "action": "Capture slippage section screenshot",
+          "expected": "Visual distinction is clearly visible",
+          "observed": "Screenshot shows preset button group visually separated from rectangular text field"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "slipcss-val-slip-001-desktop.png"
+        ],
+        "consoleErrors": "none (excluding known cosmetic favicon.ico 404)",
+        "network": "GET / -> 200, GET /tokenlist -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SLIP-002",
+      "title": "Clicking preset updates text input value",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Click preset button '100'",
+          "expected": "Input value updates to 100 and clicked preset becomes active",
+          "observed": "Input changed to '100'; '100' button received active class styling"
+        },
+        {
+          "action": "Verify state via DOM inspection",
+          "expected": "inputValue=100 and activePreset=100",
+          "observed": "Inspection returned inputValue '100' and activePresetText '100'"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "slipcss-val-slip-002-click-100.png"
+        ],
+        "consoleErrors": "none (excluding known cosmetic favicon.ico 404)",
+        "network": "No failing API calls during interaction"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SLIP-003",
+      "title": "Active preset highlights when value matches",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Type '100' in slippage input",
+          "expected": "Matching preset (100) is active",
+          "observed": "Active preset list contained only '100'"
+        },
+        {
+          "action": "Type '42' in slippage input",
+          "expected": "No preset is active when value doesn't match presets",
+          "observed": "Active preset count became 0"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "slipcss-val-slip-003-match-100-typed.png",
+          "slipcss-val-slip-003-nonmatch-42.png"
+        ],
+        "consoleErrors": "none (excluding known cosmetic favicon.ico 404)",
+        "network": "No failing API calls during interaction"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SLIP-004",
+      "title": "Slippage area usable at 375px",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Resize viewport to 375x812",
+          "expected": "Slippage label, controls, and input remain usable without horizontal overflow",
+          "observed": "Slippage box remained within viewport bounds; label and interactive controls visible and tappable"
+        },
+        {
+          "action": "Measure overflow and touch targets",
+          "expected": "No horizontal overflow and touch targets >=32px",
+          "observed": "documentElement.scrollWidth=375 and clientWidth=375 (no overflow); visible slippage buttons/input measured 44px tall"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "slipcss-val-slip-004-375-slippage.png"
+        ],
+        "consoleErrors": "none (excluding known cosmetic favicon.ico 404)",
+        "network": "No failing API calls during responsive check"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-001",
+      "title": "Font sizes readable (>= 0.75rem for labels/presets)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect computed styles for form/slippage labels and preset buttons",
+          "expected": "Font sizes are at least 12px (0.75rem)",
+          "observed": "Computed font sizes measured at 12px for slippage label and preset buttons; form labels measured 12px in responsive view"
+        },
+        {
+          "action": "Cross-check in desktop and mobile viewports",
+          "expected": "Readable threshold preserved across layouts",
+          "observed": "12px minimum observed in tested views"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "slipcss-val-slip-001-desktop.png",
+          "slipcss-val-css-002-003-375-fullpage.png"
+        ],
+        "consoleErrors": "none (excluding known cosmetic favicon.ico 404)",
+        "network": "N/A (style validation)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-002",
+      "title": "No horizontal overflow at 375px",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Set viewport to 375x812 and capture full-page screenshot",
+          "expected": "No horizontal scrollbar; full layout fits width",
+          "observed": "Full-page screenshot shows layout fitting viewport width"
+        },
+        {
+          "action": "Check scroll metrics",
+          "expected": "scrollWidth equals clientWidth",
+          "observed": "documentElement.scrollWidth=375 and clientWidth=375"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "slipcss-val-css-002-003-375-fullpage.png"
+        ],
+        "consoleErrors": "none (excluding known cosmetic favicon.ico 404)",
+        "network": "N/A (layout validation)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-003",
+      "title": "Form elements visible and usable at 375px",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review all primary form controls at 375x812 (chain, wallet, token inputs, direction toggle, amount, submit, slippage)",
+          "expected": "Controls are visible, non-overlapping, and tappable",
+          "observed": "Controls rendered within viewport with no overlap observed in screenshot"
+        },
+        {
+          "action": "Measure visible control boxes",
+          "expected": "Controls remain usable on mobile",
+          "observed": "All visible controls were inside viewport and had height >=32px; major buttons and slippage controls were 44px tall"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "slipcss-val-css-002-003-375-fullpage.png"
+        ],
+        "consoleErrors": "none (excluding known cosmetic favicon.ico 404)",
+        "network": "N/A (layout validation)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Playwright MCP created extra about:blank tabs during iterative interactions/screenshots.",
+      "resolved": true,
+      "resolution": "Closed all extra tabs and continued in a single browser tab/session.",
+      "affectedAssertions": [
+        "VAL-SLIP-002",
+        "VAL-SLIP-003"
+      ]
+    },
+    {
+      "description": "Known cosmetic favicon.ico 404 appears in console and can be mistaken for assertion failures.",
+      "resolved": true,
+      "resolution": "Ignored favicon 404 per validation guidance; no other console errors observed.",
+      "affectedAssertions": [
+        "VAL-SLIP-001",
+        "VAL-SLIP-002",
+        "VAL-SLIP-003",
+        "VAL-SLIP-004",
+        "VAL-CSS-001",
+        "VAL-CSS-002",
+        "VAL-CSS-003"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 7 assigned assertions (VAL-SLIP-001..004, VAL-CSS-001..003): 7 passed, 0 failed, 0 blocked. Screenshots and runtime evidence captured for desktop and 375px responsive checks."
+}

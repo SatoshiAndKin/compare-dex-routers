@@ -976,12 +976,377 @@ function sendHtml(res: http.ServerResponse, html: string) {
   res.end(html);
 }
 
+/**
+ * Send SSE event to client
+ */
+function sendSSE(res: http.ServerResponse, event: string, data: object) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+/**
+ * Stream compare quotes via Server-Sent Events.
+ * Sends each router's quote as it arrives, then sends recommendation after both complete.
+ */
+async function streamCompareQuotes(
+  res: http.ServerResponse,
+  chainId: number,
+  from: string,
+  to: string,
+  amount: string,
+  slippageBps: number,
+  sender?: string,
+  mode: QuoteMode = "exactIn"
+): Promise<void> {
+  // Set SSE headers
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no", // Disable nginx buffering
+  });
+
+  let curveResult: { result: CurveQuoteResult | null; error: string | null } | null = null;
+
+  // Check if Curve is available for this chain
+  const curveAvailable = CURVE_ENABLED && isCurveSupported(chainId) && isCurveInitialized(chainId);
+  const singleRouterMode = !curveAvailable;
+
+  // If Curve is not available, send its unavailability immediately
+  if (!curveAvailable) {
+    const curveError =
+      isCurveSupported(chainId) && !isCurveInitialized(chainId)
+        ? `Curve initialization failed for chain ${chainId}: ${getCurveInitError(chainId) || "Unknown error"}`
+        : isCurveSupported(chainId)
+          ? "Curve is disabled"
+          : `Curve does not support chain ${chainId}`;
+    curveResult = { result: null, error: curveError };
+    sendSSE(res, "error", { router: "curve", error: curveError });
+  }
+
+  // Start gas price fetch in parallel
+  const gasPricePromise = getGasPriceWithCache(chainId, getClient(chainId))
+    .then((result) => result.gasPriceGwei)
+    .catch(() => null);
+
+  // Create Spandex promise
+  const spandexPromise = findQuote(chainId, from, to, amount, slippageBps, sender, mode)
+    .then((r) => ({ result: r, error: null }))
+    .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }));
+
+  // Create Curve promise if available - use pre-set curveResult for unavailable case
+  const curvePromise = curveAvailable
+    ? findCurveQuote(chainId, from, to, amount, sender, getClient(chainId), mode)
+        .then((r) => ({ result: r, error: null }))
+        .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }))
+    : Promise.resolve(curveResult ?? { result: null, error: "Curve not available" });
+
+  // Process quotes as they arrive
+  const processSpandex = spandexPromise.then(async (spandex) => {
+    if (spandex.result) {
+      sendSSE(res, "quote", { router: "spandex", data: spandex.result });
+    } else {
+      sendSSE(res, "error", { router: "spandex", error: spandex.error || "No quote available" });
+    }
+    return spandex;
+  });
+
+  const processCurve = curvePromise.then(async (curve) => {
+    curveResult = curve;
+    if (curve.result) {
+      sendSSE(res, "quote", { router: "curve", data: curve.result });
+    } else if (curve.error) {
+      // Only send error event if not already sent (curve unavailable case)
+      if (curveAvailable) {
+        sendSSE(res, "error", { router: "curve", error: curve.error });
+      }
+    }
+    return curve;
+  });
+
+  // Wait for both quotes and gas price
+  const [spandex, curveResolved, gasPriceGwei] = await Promise.all([
+    processSpandex,
+    processCurve,
+    gasPricePromise,
+  ]);
+
+  // Update curveResult with the resolved value
+  curveResult = curveResolved;
+
+  // Now compute recommendation and metadata
+  const effectiveGasPriceGwei = spandex.result?.gas_price_gwei ?? gasPriceGwei;
+
+  // Fetch output->ETH or input->ETH rate for gas-adjusted comparison
+  let outputToEthRate: number | null = null;
+  let outputToEthRateStr: string | null = null;
+  let inputToEthRate: number | null = null;
+  let inputToEthRateStr: string | null = null;
+
+  const outputIsEth = spandex.result
+    ? isEthOutput(spandex.result.to_symbol, spandex.result.to, chainId)
+    : curveResult?.result
+      ? isEthOutput(curveResult.result.to_symbol, curveResult.result.to, chainId)
+      : false;
+
+  const inputIsEth = spandex.result
+    ? isEthOutput(spandex.result.from_symbol, spandex.result.from, chainId)
+    : curveResult?.result
+      ? isEthOutput(curveResult.result.from_symbol, curveResult.result.from, chainId)
+      : false;
+
+  const outputSymbol = spandex.result?.to_symbol || curveResult?.result?.to_symbol || "tokens";
+  const inputSymbol = spandex.result?.from_symbol || curveResult?.result?.from_symbol || "tokens";
+
+  if (mode === "exactIn" && !outputIsEth && (spandex.result || curveResult?.result)) {
+    const outputToken = spandex.result?.to || curveResult?.result?.to;
+    const outputDecimals = await getTokenDecimals(chainId, outputToken || "");
+    outputToEthRate = await fetchOutputToEthRate(chainId, outputToken || "", outputDecimals);
+    if (outputToEthRate !== null) {
+      outputToEthRateStr = outputToEthRate.toFixed(6);
+    }
+  }
+
+  if (mode === "targetOut" && !inputIsEth && (spandex.result || curveResult?.result)) {
+    const inputToken = spandex.result?.from || curveResult?.result?.from;
+    const inputDecimals = await getTokenDecimals(chainId, inputToken || "");
+    inputToEthRate = await fetchInputToEthRate(chainId, inputToken || "", inputDecimals);
+    if (inputToEthRate !== null) {
+      inputToEthRateStr = inputToEthRate.toFixed(6);
+    }
+  }
+
+  // Compute gas-adjusted values for each quote
+  const gasPriceWei = effectiveGasPriceGwei ? Number(effectiveGasPriceGwei) * 1e9 : 0;
+
+  function computeGasAdjustedValuesExactIn(
+    outputAmount: number,
+    gasUsed: number,
+    gasPriceWeiVal: number
+  ): { gasCostEth: number; outputValueEth: number; netValueEth: number } {
+    const gasCostEth = gasUsed > 0 && gasPriceWeiVal > 0 ? (gasUsed * gasPriceWeiVal) / 1e18 : 0;
+    const outputValueEth = outputIsEth
+      ? outputAmount
+      : outputToEthRate !== null
+        ? outputAmount * outputToEthRate
+        : 0;
+    const netValueEth = outputValueEth - gasCostEth;
+    return { gasCostEth, outputValueEth, netValueEth };
+  }
+
+  function computeGasAdjustedValuesTargetOut(
+    inputAmount: number,
+    gasUsed: number,
+    gasPriceWeiVal: number
+  ): { gasCostEth: number; inputValueEth: number; totalCostEth: number } {
+    const gasCostEth = gasUsed > 0 && gasPriceWeiVal > 0 ? (gasUsed * gasPriceWeiVal) / 1e18 : 0;
+    const inputValueEth = inputIsEth
+      ? inputAmount
+      : inputToEthRate !== null
+        ? inputAmount * inputToEthRate
+        : 0;
+    const totalCostEth = inputValueEth + gasCostEth;
+    return { gasCostEth, inputValueEth, totalCostEth };
+  }
+
+  // Enrich quotes with gas fields and determine recommendation
+  let recommendation: "spandex" | "curve" | null = null;
+  let reason: string;
+
+  if (spandex.result && curveResult?.result) {
+    const spandexGas = Number(spandex.result.gas_used || "0");
+    const curveGas = Number(curveResult.result.gas_used || "0");
+    const bothHaveGas = spandexGas > 0 && curveGas > 0 && effectiveGasPriceGwei !== null;
+
+    if (mode === "targetOut") {
+      const spandexInput = Number(spandex.result.input_amount);
+      const curveInput = Number(curveResult.result.input_amount);
+      const spandexValues = computeGasAdjustedValuesTargetOut(
+        spandexInput,
+        spandexGas,
+        gasPriceWei
+      );
+      const curveValues = computeGasAdjustedValuesTargetOut(curveInput, curveGas, gasPriceWei);
+      const canDoGasAdjusted = inputIsEth || inputToEthRate !== null;
+
+      // Enrich quotes
+      if (spandex.result) {
+        spandex.result.gas_cost_eth = formatEthValue(spandexValues.gasCostEth);
+        spandex.result.output_value_eth = formatEthValue(spandexValues.inputValueEth);
+        spandex.result.net_value_eth = formatEthValue(spandexValues.totalCostEth);
+      }
+      if (curveResult.result) {
+        curveResult.result.gas_cost_eth = formatEthValue(curveValues.gasCostEth);
+        curveResult.result.output_value_eth = formatEthValue(curveValues.inputValueEth);
+        curveResult.result.net_value_eth = formatEthValue(curveValues.totalCostEth);
+      }
+
+      if (canDoGasAdjusted && bothHaveGas) {
+        if (curveValues.totalCostEth < spandexValues.totalCostEth) {
+          recommendation = "curve";
+          const inputDiff = spandexInput - curveInput;
+          const inputDiffNote =
+            inputDiff > 0.000001
+              ? ` Curve requires ${inputDiff.toFixed(6)} ${inputSymbol} less input.`
+              : "";
+          if (inputIsEth) {
+            reason = `Curve requires ${curveInput.toFixed(6)} ETH (${curveValues.totalCostEth.toFixed(6)} ETH total with gas) vs Spandex ${spandexInput.toFixed(6)} ETH (${spandexValues.totalCostEth.toFixed(6)} ETH total).${inputDiffNote} Curve recommended.`;
+          } else {
+            reason = `Curve requires ${curveInput.toFixed(6)} ${inputSymbol} (~${curveValues.inputValueEth.toFixed(6)} ETH, ${curveValues.totalCostEth.toFixed(6)} ETH total with gas) vs Spandex ${spandexInput.toFixed(6)} ${inputSymbol} (~${spandexValues.inputValueEth.toFixed(6)} ETH, ${spandexValues.totalCostEth.toFixed(6)} ETH total). Rate: 1 ${inputSymbol} = ${inputToEthRateStr} ETH.${inputDiffNote} Curve recommended.`;
+          }
+        } else if (spandexValues.totalCostEth < curveValues.totalCostEth) {
+          recommendation = "spandex";
+          const inputDiff = curveInput - spandexInput;
+          const inputDiffNote =
+            inputDiff > 0.000001
+              ? ` Spandex requires ${inputDiff.toFixed(6)} ${inputSymbol} less input.`
+              : "";
+          if (inputIsEth) {
+            reason = `Spandex (${spandex.result.provider}) requires ${spandexInput.toFixed(6)} ETH (${spandexValues.totalCostEth.toFixed(6)} ETH total with gas) vs Curve ${curveInput.toFixed(6)} ETH (${curveValues.totalCostEth.toFixed(6)} ETH total).${inputDiffNote} Spandex recommended.`;
+          } else {
+            reason = `Spandex (${spandex.result.provider}) requires ${spandexInput.toFixed(6)} ${inputSymbol} (~${spandexValues.inputValueEth.toFixed(6)} ETH, ${spandexValues.totalCostEth.toFixed(6)} ETH total with gas) vs Curve ${curveInput.toFixed(6)} ${inputSymbol} (~${curveValues.inputValueEth.toFixed(6)} ETH, ${curveValues.totalCostEth.toFixed(6)} ETH total). Rate: 1 ${inputSymbol} = ${inputToEthRateStr} ETH.${inputDiffNote} Spandex recommended.`;
+          }
+        } else {
+          recommendation = "spandex";
+          reason = `Equal total cost: ${spandexValues.totalCostEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        }
+      } else {
+        // Fall back to raw input comparison
+        if (curveInput < spandexInput) {
+          recommendation = "curve";
+          const diff = spandexInput - curveInput;
+          const pct = ((diff / spandexInput) * 100).toFixed(3);
+          reason = `Curve requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%).`;
+        } else if (spandexInput < curveInput) {
+          recommendation = "spandex";
+          const diff = curveInput - spandexInput;
+          const pct = ((diff / curveInput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%).`;
+        } else {
+          recommendation = "spandex";
+          reason = `Equal input amounts; defaulting to Spandex for multi-provider coverage.`;
+        }
+      }
+    } else {
+      // exactIn mode
+      const spandexOutput = Number(spandex.result.output_amount);
+      const curveOutput = Number(curveResult.result.output_amount);
+      const spandexValues = computeGasAdjustedValuesExactIn(spandexOutput, spandexGas, gasPriceWei);
+      const curveValues = computeGasAdjustedValuesExactIn(curveOutput, curveGas, gasPriceWei);
+      const canDoGasAdjusted = outputIsEth || outputToEthRate !== null;
+
+      // Enrich quotes
+      if (spandex.result) {
+        spandex.result.gas_cost_eth = formatEthValue(spandexValues.gasCostEth);
+        spandex.result.output_value_eth = formatEthValue(spandexValues.outputValueEth);
+        spandex.result.net_value_eth = formatEthValue(spandexValues.netValueEth);
+      }
+      if (curveResult.result) {
+        curveResult.result.gas_cost_eth = formatEthValue(curveValues.gasCostEth);
+        curveResult.result.output_value_eth = formatEthValue(curveValues.outputValueEth);
+        curveResult.result.net_value_eth = formatEthValue(curveValues.netValueEth);
+      }
+
+      if (canDoGasAdjusted && bothHaveGas) {
+        if (curveValues.netValueEth > spandexValues.netValueEth) {
+          recommendation = "curve";
+          if (outputIsEth) {
+            reason = `Curve returns ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas). Curve recommended.`;
+          } else {
+            reason = `Curve returns ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas) vs Spandex ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Curve recommended.`;
+          }
+        } else if (spandexValues.netValueEth > curveValues.netValueEth) {
+          recommendation = "spandex";
+          if (outputIsEth) {
+            reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ETH (${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ETH (${curveValues.netValueEth.toFixed(6)} ETH after gas). Spandex recommended.`;
+          } else {
+            reason = `Spandex (${spandex.result.provider}) returns ${spandexOutput.toFixed(6)} ${outputSymbol} (~${spandexValues.outputValueEth.toFixed(6)} ETH, ${spandexValues.netValueEth.toFixed(6)} ETH after gas) vs Curve ${curveOutput.toFixed(6)} ${outputSymbol} (~${curveValues.outputValueEth.toFixed(6)} ETH, ${curveValues.netValueEth.toFixed(6)} ETH after gas). Rate: 1 ${outputSymbol} = ${outputToEthRateStr} ETH. Spandex recommended.`;
+          }
+        } else {
+          recommendation = "spandex";
+          reason = `Equal gas-adjusted net value: ${spandexValues.netValueEth.toFixed(6)} ETH. Defaulting to Spandex for multi-provider coverage.`;
+        }
+      } else {
+        // Fall back to raw output comparison
+        if (curveOutput > spandexOutput) {
+          recommendation = "curve";
+          const diff = curveOutput - spandexOutput;
+          const pct = ((diff / spandexOutput) * 100).toFixed(3);
+          reason = `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).`;
+        } else if (spandexOutput > curveOutput) {
+          recommendation = "spandex";
+          const diff = spandexOutput - curveOutput;
+          const pct = ((diff / curveOutput) * 100).toFixed(3);
+          reason = `Spandex (${spandex.result.provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).`;
+        } else {
+          recommendation = "spandex";
+          reason = `Equal output amounts; defaulting to Spandex for multi-provider coverage.`;
+        }
+      }
+    }
+  } else if (spandex.result) {
+    recommendation = "spandex";
+    reason = "Only Spandex returned a quote";
+
+    const spandexGas = Number(spandex.result.gas_used || "0");
+    if (mode === "targetOut") {
+      const spandexInput = Number(spandex.result.input_amount);
+      const values = computeGasAdjustedValuesTargetOut(spandexInput, spandexGas, gasPriceWei);
+      spandex.result.gas_cost_eth = formatEthValue(values.gasCostEth);
+      spandex.result.output_value_eth = formatEthValue(values.inputValueEth);
+      spandex.result.net_value_eth = formatEthValue(values.totalCostEth);
+    } else {
+      const spandexOutput = Number(spandex.result.output_amount);
+      const values = computeGasAdjustedValuesExactIn(spandexOutput, spandexGas, gasPriceWei);
+      spandex.result.gas_cost_eth = formatEthValue(values.gasCostEth);
+      spandex.result.output_value_eth = formatEthValue(values.outputValueEth);
+      spandex.result.net_value_eth = formatEthValue(values.netValueEth);
+    }
+  } else if (curveResult?.result) {
+    recommendation = "curve";
+    reason = "Only Curve returned a quote";
+
+    const curveGas = Number(curveResult.result.gas_used || "0");
+    if (mode === "targetOut") {
+      const curveInput = Number(curveResult.result.input_amount);
+      const values = computeGasAdjustedValuesTargetOut(curveInput, curveGas, gasPriceWei);
+      curveResult.result.gas_cost_eth = formatEthValue(values.gasCostEth);
+      curveResult.result.output_value_eth = formatEthValue(values.inputValueEth);
+      curveResult.result.net_value_eth = formatEthValue(values.totalCostEth);
+    } else {
+      const curveOutput = Number(curveResult.result.output_amount);
+      const values = computeGasAdjustedValuesExactIn(curveOutput, curveGas, gasPriceWei);
+      curveResult.result.gas_cost_eth = formatEthValue(values.gasCostEth);
+      curveResult.result.output_value_eth = formatEthValue(values.outputValueEth);
+      curveResult.result.net_value_eth = formatEthValue(values.netValueEth);
+    }
+  } else {
+    reason = "Neither source returned a quote";
+  }
+
+  // Send 'complete' event with recommendation and metadata
+  sendSSE(res, "complete", {
+    recommendation,
+    recommendation_reason: reason,
+    gas_price_gwei: effectiveGasPriceGwei,
+    output_to_eth_rate: outputToEthRateStr,
+    input_to_eth_rate: inputToEthRateStr,
+    mode,
+    single_router_mode: singleRouterMode,
+  });
+
+  // Send 'done' event
+  sendSSE(res, "done", {});
+  res.end();
+}
+
 const INDEX_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Compare DEX Routers</title>
+  <meta name="fc:miniapp" content='{"version":"1","imageUrl":"","button":{"title":"Compare DEX","action":{"type":"launch_frame","name":"FlashProfits","url":""}}}' />
   <style>
     /* BRUTALIST DESIGN: High contrast, no border-radius, max 2 fonts */
     /* Color Palette: Black/White + Blue accent (#0055FF) + Orange accent (#CC2900) + Green (#007700) + Red (#CC0000) */
@@ -1495,6 +1860,19 @@ const INDEX_HTML = `<!DOCTYPE html>
       flex: 1;
     }
     .unrecognized-token-actions .btn-secondary {
+      flex: 1;
+    }
+
+    /* Swap Confirmation Modal Actions */
+    .swap-confirm-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .swap-confirm-actions .btn-primary {
+      flex: 1;
+    }
+    .swap-confirm-actions .btn-secondary {
       flex: 1;
     }
 
@@ -2226,30 +2604,37 @@ const INDEX_HTML = `<!DOCTYPE html>
       /* Reduce body padding to maximize usable space */
       body { padding: 12px; }
       /* Slippage area mobile - ensure no overflow */
+      /* Hide outer presets at 375px to fit within viewport while maintaining 44px touch targets */
       .slippage-box {
         gap: 0.25rem;
         padding: 0.25rem 0.375rem;
       }
       .slippage-preset-compact {
-        min-width: 40px;
+        min-width: 44px;
         min-height: 44px;
         padding: 0.5rem 0.375rem;
-        font-size: 0.6875rem;
+        font-size: 0.75rem; /* VAL-CSS-001: >= 0.75rem */
+      }
+      /* Hide outer preset buttons (3 and 300) at 375px to prevent overflow */
+      .slippage-preset-compact[data-bps="3"],
+      .slippage-preset-compact[data-bps="300"] {
+        display: none;
       }
       .slippage-box-input {
-        width: 44px;
+        width: 50px;
         min-height: 44px;
-        font-size: 0.6875rem;
+        font-size: 0.75rem; /* VAL-CSS-001: >= 0.75rem */
       }
       .slippage-box-label {
-        font-size: 0.6875rem;
+        font-size: 0.75rem; /* VAL-CSS-001: >= 0.75rem */
       }
       .slippage-box-hint {
-        font-size: 0.6875rem;
+        font-size: 0.75rem; /* VAL-CSS-001: >= 0.75rem */
       }
       /* Prevent form elements from causing overflow */
       input, select {
         font-size: 1rem; /* Prevent iOS zoom on focus */
+        min-height: 44px; /* VAL-CSS-005: touch targets >= 44px */
       }
       /* Primary button should be full width on very small screens */
       .action-row {
@@ -2260,9 +2645,9 @@ const INDEX_HTML = `<!DOCTYPE html>
         width: 100%;
         min-width: 0;
       }
-      /* Direction toggle needs smaller font to fit */
+      /* Direction toggle - keep readable font at 0.75rem */
       .direction-btn {
-        font-size: 0.6875rem;
+        font-size: 0.75rem;
         padding: 0.5rem 0.5rem;
       }
     }
@@ -2340,7 +2725,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     <!-- Row 6: Amount (full-width for 20+ digit numbers) -->
     <div class="form-group">
       <label for="amount">Amount</label>
-      <input type="text" id="amount" value="1000">
+      <input type="text" id="amount" value="1">
     </div>
     <!-- Row 7: Action Row with Submit + Compact Slippage -->
     <div class="action-row">
@@ -2489,8 +2874,30 @@ const INDEX_HTML = `<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Swap Confirmation Modal (appears when clicking Swap while quotes still loading) -->
+  <div id="swapConfirmModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="swapConfirmModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="swapConfirmModalTitle" class="modal-title">Confirm Swap</h2>
+        <button type="button" id="swapConfirmModalClose" class="modal-close" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <p class="modal-text" id="swapConfirmModalText">
+            <strong>Another quote is still loading.</strong> A better price may arrive soon.
+          </p>
+        </div>
+        <div class="swap-confirm-actions">
+          <button type="button" id="swapConfirmWaitBtn" class="btn-secondary">Wait</button>
+          <button type="button" id="swapConfirmProceedBtn" class="btn-primary">Swap Anyway</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
+    const WALLETCONNECT_PROJECT_ID = '${process.env.WALLETCONNECT_PROJECT_ID || ""}';
     const DEFAULT_TOKENLIST_NAME = 'Default Tokenlist';
 
     // Multi-tokenlist data model:
@@ -2529,7 +2936,351 @@ const INDEX_HTML = `<!DOCTYPE html>
       inFlight: false,
       errorMessage: '',
     };
+    // Chains where Curve is supported - used to determine single-router mode upfront
+    const CURVE_SUPPORTED_CHAINS = [1, 8453, 42161, 10, 137, 56, 43114];
     let compareRequestSequence = 0;
+    let currentEventSource = null; // Track in-progress SSE connection
+    let progressiveQuoteState = {
+      spandex: null,
+      spandexError: null,
+      curve: null,
+      curveError: null,
+      recommendation: null,
+      recommendationReason: null,
+      gasPriceGwei: null,
+      outputToEthRate: null,
+      inputToEthRate: null,
+      mode: null,
+      complete: false,
+      singleRouterMode: false,
+    };
+
+    // Reset progressive quote state for new comparison
+    function resetProgressiveQuoteState(singleRouterMode = false) {
+      progressiveQuoteState = {
+        spandex: null,
+        spandexError: null,
+        curve: null,
+        curveError: null,
+        recommendation: null,
+        recommendationReason: null,
+        gasPriceGwei: null,
+        outputToEthRate: null,
+        inputToEthRate: null,
+        mode: null,
+        complete: false,
+        singleRouterMode: singleRouterMode,
+      };
+    }
+
+    // Cancel any in-progress EventSource
+    function cancelInProgressEventSource() {
+      if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+      }
+    }
+
+    // Show loading state in results area
+    function showProgressiveLoadingState() {
+      result.className = 'show';
+      recommendedContent.innerHTML = '<div class="result-header">Querying Spandex + Curve for best price...</div>';
+      tabRecommended.textContent = 'Loading...';
+      tabAlternative.style.display = '';
+      alternativeContent.innerHTML = '<div class="result-header loading-indicator">Waiting for quotes...</div>';
+      tabAlternative.textContent = 'Loading...';
+      setActiveTab('recommended');
+    }
+
+    // Render a single quote in progressive mode (without recommendation info yet)
+    function renderProgressiveQuote(router, data, quoteChainId, gasPriceGwei) {
+      if (router === 'spandex') {
+        tabRecommended.textContent = 'Spandex';
+        recommendedContent.innerHTML = renderSpandexQuote(data, false, quoteChainId, gasPriceGwei);
+      } else if (router === 'curve') {
+        tabAlternative.textContent = 'Curve';
+        tabAlternative.style.display = '';
+        alternativeContent.innerHTML = renderCurveQuote(data, false, quoteChainId, gasPriceGwei);
+      }
+      result.className = 'show';
+    }
+
+    // Render a single error in progressive mode
+    function renderProgressiveError(router, error, quoteChainId) {
+      const errorHtml = '<div class="error-message">' + formatErrorWithTokenRefs(error, quoteChainId) + '</div>';
+      if (router === 'spandex') {
+        tabRecommended.textContent = 'Spandex';
+        recommendedContent.innerHTML = errorHtml;
+      } else if (router === 'curve') {
+        tabAlternative.textContent = 'Curve';
+        tabAlternative.style.display = '';
+        alternativeContent.innerHTML = errorHtml;
+      }
+      result.className = 'show';
+    }
+
+    // Update UI with recommendation after both quotes arrived
+    function showProgressiveRecommendation(data, quoteChainId) {
+      const { recommendation, recommendation_reason, gas_price_gwei, output_to_eth_rate, input_to_eth_rate } = data;
+
+      // Build reason box
+      let reasonHtml = '<div class="reason-box">';
+      reasonHtml += '<div class="reason-box-title">Reason</div>';
+      reasonHtml += '<div class="reason-box-content">' + recommendation_reason + '</div>';
+      if (gas_price_gwei) {
+        reasonHtml += '<div class="field-value number reason-box-gas">Gas Price: ' + gas_price_gwei + ' gwei</div>';
+      }
+      if (output_to_eth_rate) {
+        const outputSymbol = (progressiveQuoteState.spandex && progressiveQuoteState.spandex.to_symbol) ||
+                             (progressiveQuoteState.curve && progressiveQuoteState.curve.to_symbol) || 'token';
+        reasonHtml += '<div class="field-value number reason-box-gas">Rate: 1 ' + outputSymbol + ' = ' + output_to_eth_rate + ' ETH</div>';
+      }
+      reasonHtml += '</div>';
+
+      // Re-render with recommendation
+      if (recommendation === 'spandex' && progressiveQuoteState.spandex) {
+        tabRecommended.textContent = 'Spandex';
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(progressiveQuoteState.spandex, true, quoteChainId, gas_price_gwei);
+        if (progressiveQuoteState.curve) {
+          tabAlternative.textContent = 'Curve';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = renderCurveQuote(progressiveQuoteState.curve, false, quoteChainId, gas_price_gwei);
+        } else if (progressiveQuoteState.curveError) {
+          tabAlternative.textContent = 'Curve';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = '<div class="error-message">' + formatErrorWithTokenRefs(progressiveQuoteState.curveError, quoteChainId) + '</div>';
+        }
+      } else if (recommendation === 'curve' && progressiveQuoteState.curve) {
+        tabRecommended.textContent = 'Curve';
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(progressiveQuoteState.curve, true, quoteChainId, gas_price_gwei);
+        if (progressiveQuoteState.spandex) {
+          tabAlternative.textContent = 'Spandex';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = renderSpandexQuote(progressiveQuoteState.spandex, false, quoteChainId, gas_price_gwei);
+        } else if (progressiveQuoteState.spandexError) {
+          tabAlternative.textContent = 'Spandex';
+          tabAlternative.style.display = '';
+          alternativeContent.innerHTML = '<div class="error-message">' + formatErrorWithTokenRefs(progressiveQuoteState.spandexError, quoteChainId) + '</div>';
+        }
+      } else if (progressiveQuoteState.spandex) {
+        // Only spandex available
+        tabRecommended.textContent = 'Spandex';
+        recommendedContent.innerHTML = reasonHtml + renderSpandexQuote(progressiveQuoteState.spandex, false, quoteChainId, gas_price_gwei);
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
+      } else if (progressiveQuoteState.curve) {
+        // Only curve available
+        tabRecommended.textContent = 'Curve';
+        recommendedContent.innerHTML = reasonHtml + renderCurveQuote(progressiveQuoteState.curve, false, quoteChainId, gas_price_gwei);
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
+      } else {
+        // Both failed
+        const combinedError = 'No quotes available. ' +
+          (progressiveQuoteState.spandexError ? 'Spandex: ' + progressiveQuoteState.spandexError + '. ' : '') +
+          (progressiveQuoteState.curveError ? 'Curve: ' + progressiveQuoteState.curveError : '');
+        tabRecommended.textContent = 'Results';
+        recommendedContent.innerHTML = '<div class="error-message">' + formatErrorWithTokenRefs(combinedError, quoteChainId) + '</div>';
+        tabAlternative.style.display = 'none';
+        alternativeContent.innerHTML = '';
+      }
+
+      setActiveTab('recommended');
+      updateTransactionActionStates();
+      updateRefreshIndicator();
+    }
+
+    // Fetch and render quotes progressively via SSE
+    async function fetchAndRenderCompareProgressive(compareParams, options = {}) {
+      const normalizedParams = cloneCompareParams(compareParams);
+      const showLoading = options.showLoading === true;
+      const preserveUiState = options.preserveUiState === true;
+      const updateUrl = options.updateUrl !== false;
+      const requestId = Number.isFinite(options.requestId) ? Number(options.requestId) : ++compareRequestSequence;
+
+      if (requestId > compareRequestSequence) {
+        compareRequestSequence = requestId;
+      }
+
+      currentQuoteChainId = Number(normalizedParams.chainId);
+
+      // Cancel any in-progress EventSource
+      cancelInProgressEventSource();
+
+      // Determine single-router mode upfront based on Curve support for this chain
+      const isSingleRouterChain = !CURVE_SUPPORTED_CHAINS.includes(currentQuoteChainId);
+
+      // Reset progressive state with pre-computed single-router mode
+      resetProgressiveQuoteState(isSingleRouterChain);
+
+      if (showLoading) {
+        submit.disabled = true;
+        submit.textContent = 'Comparing...';
+        showProgressiveLoadingState();
+      }
+
+      const query = compareParamsToSearchParams(normalizedParams);
+      const eventSource = new EventSource('/compare-stream?' + query.toString());
+      currentEventSource = eventSource;
+
+      const quoteChainId = currentQuoteChainId;
+
+      return new Promise((resolve) => {
+        let resolved = false;
+
+        const cleanup = () => {
+          if (eventSource === currentEventSource) {
+            currentEventSource = null;
+          }
+          eventSource.close();
+        };
+
+        const checkStale = () => {
+          if (requestId !== compareRequestSequence) {
+            cleanup();
+            if (!resolved) {
+              resolved = true;
+              resolve({ ok: false, stale: true, params: normalizedParams });
+            }
+            return true;
+          }
+          return false;
+        };
+
+        eventSource.addEventListener('quote', (event) => {
+          if (checkStale()) return;
+
+          try {
+            const payload = JSON.parse(event.data);
+            const router = payload.router;
+            const data = payload.data;
+
+            if (router === 'spandex') {
+              progressiveQuoteState.spandex = data;
+            } else if (router === 'curve') {
+              progressiveQuoteState.curve = data;
+            }
+
+            // Render this quote immediately
+            renderProgressiveQuote(router, data, quoteChainId, progressiveQuoteState.gasPriceGwei);
+
+            // Update swap confirmation modal if open (may change text or auto-dismiss)
+            if (swapConfirmModal.classList.contains('show')) {
+              updateSwapConfirmModalText();
+            }
+          } catch (e) {
+            console.error('Failed to parse quote event:', e);
+          }
+        });
+
+        eventSource.addEventListener('error', (event) => {
+          if (checkStale()) return;
+
+          try {
+            const payload = JSON.parse(event.data);
+            const router = payload.router;
+            const error = payload.error;
+
+            if (router === 'spandex') {
+              progressiveQuoteState.spandexError = error;
+              // Show error only if we haven't received a quote yet
+              if (!progressiveQuoteState.spandex) {
+                renderProgressiveError(router, error, quoteChainId);
+              }
+            } else if (router === 'curve') {
+              progressiveQuoteState.curveError = error;
+              // Show error in alternative tab
+              tabAlternative.textContent = 'Curve';
+              tabAlternative.style.display = '';
+              alternativeContent.innerHTML = '<div class="error-message">' + formatErrorWithTokenRefs(error, quoteChainId) + '</div>';
+            } else if (router === 'server') {
+              // Server error - show in results
+              showError(error);
+            }
+
+            // Update swap confirmation modal if open (may change text or auto-dismiss)
+            if (swapConfirmModal.classList.contains('show')) {
+              updateSwapConfirmModalText();
+            }
+          } catch (e) {
+            console.error('Failed to parse error event:', e);
+          }
+        });
+
+        eventSource.addEventListener('complete', (event) => {
+          if (checkStale()) return;
+
+          try {
+            const payload = JSON.parse(event.data);
+            progressiveQuoteState.recommendation = payload.recommendation;
+            progressiveQuoteState.recommendationReason = payload.recommendation_reason;
+            progressiveQuoteState.gasPriceGwei = payload.gas_price_gwei;
+            progressiveQuoteState.outputToEthRate = payload.output_to_eth_rate;
+            progressiveQuoteState.inputToEthRate = payload.input_to_eth_rate;
+            progressiveQuoteState.mode = payload.mode;
+            progressiveQuoteState.singleRouterMode = payload.single_router_mode;
+            progressiveQuoteState.complete = true;
+
+            // Update swap confirmation modal if open (auto-dismiss if all quotes arrived)
+            if (swapConfirmModal.classList.contains('show')) {
+              updateSwapConfirmModalText();
+            }
+
+            // Update UI with recommendation
+            showProgressiveRecommendation(payload, quoteChainId);
+
+            if (updateUrl) {
+              updateUrlFromCompareParams(normalizedParams);
+            }
+            saveUserPreferences(normalizedParams);
+          } catch (e) {
+            console.error('Failed to parse complete event:', e);
+          }
+        });
+
+        eventSource.addEventListener('done', () => {
+          cleanup();
+          if (!resolved) {
+            resolved = true;
+            if (progressiveQuoteState.spandex || progressiveQuoteState.curve) {
+              // Build payload for auto-refresh compatibility
+              const payload = {
+                spandex: progressiveQuoteState.spandex,
+                curve: progressiveQuoteState.curve,
+                recommendation: progressiveQuoteState.recommendation,
+                recommendation_reason: progressiveQuoteState.recommendationReason,
+                gas_price_gwei: progressiveQuoteState.gasPriceGwei,
+                output_to_eth_rate: progressiveQuoteState.outputToEthRate,
+                input_to_eth_rate: progressiveQuoteState.inputToEthRate,
+                mode: progressiveQuoteState.mode,
+                single_router_mode: progressiveQuoteState.singleRouterMode,
+              };
+              resolve({ ok: true, params: normalizedParams, payload });
+            } else {
+              const errorMsg = progressiveQuoteState.spandexError || progressiveQuoteState.curveError || 'No quotes available';
+              resolve({ ok: false, error: errorMsg, params: normalizedParams });
+            }
+          }
+        });
+
+        eventSource.onerror = (err) => {
+          cleanup();
+          if (!resolved) {
+            resolved = true;
+            const message = 'Failed to connect to quote stream';
+            if (!options.keepExistingResultsOnError) {
+              showError(message);
+            }
+            resolve({ ok: false, error: message, params: normalizedParams });
+          }
+        };
+      }).finally(() => {
+        if (showLoading) {
+          submit.disabled = false;
+          submit.textContent = 'Compare Quotes';
+        }
+      });
+    }
 
     const CHAIN_ID_HEX_MAP = Object.freeze({
       '1': '0x1',
@@ -2925,6 +3676,16 @@ const INDEX_HTML = `<!DOCTYPE html>
     const settingsModal = document.getElementById('settingsModal');
     const settingsModalClose = document.getElementById('settingsModalClose');
 
+    // Swap Confirmation Modal Elements
+    const swapConfirmModal = document.getElementById('swapConfirmModal');
+    const swapConfirmModalClose = document.getElementById('swapConfirmModalClose');
+    const swapConfirmModalText = document.getElementById('swapConfirmModalText');
+    const swapConfirmWaitBtn = document.getElementById('swapConfirmWaitBtn');
+    const swapConfirmProceedBtn = document.getElementById('swapConfirmProceedBtn');
+
+    // State for pending swap action (when user clicks "Swap Anyway")
+    let pendingSwapCard = null; // HTMLElement - the card to swap
+
     function hasConnectedWallet() {
       return Boolean(connectedWalletProvider && connectedWalletAddressValue);
     }
@@ -3055,6 +3816,102 @@ const INDEX_HTML = `<!DOCTYPE html>
       unlockBodyScroll();
       // Return focus to the button that opened the modal
       settingsBtn.focus();
+    }
+
+    // Swap Confirmation Modal Functions
+    function openSwapConfirmModal(card) {
+      pendingSwapCard = card;
+      updateSwapConfirmModalText();
+      swapConfirmModal.classList.add('show');
+      lockBodyScroll();
+      // Focus the first focusable element (Wait button) for accessibility
+      swapConfirmWaitBtn.focus();
+    }
+
+    function closeSwapConfirmModal() {
+      swapConfirmModal.classList.remove('show');
+      unlockBodyScroll();
+      // Save the card reference before clearing
+      const cardToFocus = pendingSwapCard;
+      pendingSwapCard = null;
+      // Return focus to the swap button
+      if (cardToFocus) {
+        const swapBtn = cardToFocus.querySelector('.swap-btn');
+        if (swapBtn) swapBtn.focus();
+      }
+    }
+
+    // Focus trap for swap confirmation modal
+    function handleSwapConfirmModalKeydown(event) {
+      if (event.key !== 'Tab') return;
+
+      // Get all focusable elements in the modal
+      const focusableElements = swapConfirmModal.querySelectorAll(
+        'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey) {
+        // Shift+Tab: if on first element, wrap to last
+        if (document.activeElement === firstElement) {
+          event.preventDefault();
+          lastElement.focus();
+        }
+      } else {
+        // Tab: if on last element, wrap to first
+        if (document.activeElement === lastElement) {
+          event.preventDefault();
+          firstElement.focus();
+        }
+      }
+    }
+
+    function updateSwapConfirmModalText() {
+      // Check if quotes are still loading
+      const isLoading = !progressiveQuoteState.complete &&
+                        ((progressiveQuoteState.spandex === null && progressiveQuoteState.spandexError === null) ||
+                         (progressiveQuoteState.curve === null && progressiveQuoteState.curveError === null && !progressiveQuoteState.singleRouterMode));
+
+      if (!isLoading) {
+        // All quotes arrived while modal was open - auto-dismiss
+        closeSwapConfirmModal();
+        return;
+      }
+
+      // Update text based on current state
+      const routerName = progressiveQuoteState.spandex === null && progressiveQuoteState.spandexError === null ? 'Spandex' : 'Curve';
+      swapConfirmModalText.innerHTML = '<strong>The ' + routerName + ' quote is still loading.</strong> A better price may arrive soon.';
+    }
+
+    function handleSwapConfirmWait() {
+      closeSwapConfirmModal();
+      // No swap executed - user chose to wait
+    }
+
+    async function handleSwapConfirmProceed() {
+      const card = pendingSwapCard;
+      closeSwapConfirmModal();
+
+      if (!card) return;
+
+      // Proceed with the swap
+      await executeSwapFromCard(card);
+    }
+
+    // Check if quotes are still loading
+    function areQuotesStillLoading() {
+      // If complete flag is true, no quotes are loading
+      if (progressiveQuoteState.complete) return false;
+
+      // If in single router mode, only one router applies
+      if (progressiveQuoteState.singleRouterMode) return false;
+
+      // Check if any router hasn't responded yet (no quote and no error)
+      const spandexPending = progressiveQuoteState.spandex === null && progressiveQuoteState.spandexError === null;
+      const curvePending = progressiveQuoteState.curve === null && progressiveQuoteState.curveError === null;
+
+      return spandexPending || curvePending;
     }
 
     // Local Tokenlist Management
@@ -3940,6 +4797,62 @@ const INDEX_HTML = `<!DOCTYPE html>
       setWalletMessage('Wallet disconnected.');
     }
 
+    // WalletConnect icon (official blue logo as data URI)
+    const WALLETCONNECT_ICON = 'data:image/svg+xml,' + encodeURIComponent('<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="6" fill="#3B99FC"/><path d="M10.05 12.36c3.28-3.21 8.62-3.21 11.9 0l.4.39a.41.41 0 0 1 0 .58l-1.35 1.32a.21.21 0 0 1-.3 0l-.54-.53c-2.29-2.24-6.01-2.24-8.3 0l-.58.57a.21.21 0 0 1-.3 0l-1.35-1.32a.41.41 0 0 1 0-.58l.42-.43Zm14.7 2.74 1.2 1.18a.41.41 0 0 1 0 .58l-5.43 5.31a.42.42 0 0 1-.6 0l-3.85-3.77a.1.1 0 0 0-.15 0l-3.85 3.77a.42.42 0 0 1-.6 0l-5.42-5.31a.41.41 0 0 1 0-.58l1.2-1.18a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0Z" fill="#fff"/></svg>');
+
+    const WALLETCONNECT_INFO = {
+      uuid: 'walletconnect',
+      name: 'WalletConnect',
+      icon: WALLETCONNECT_ICON,
+      rdns: 'walletconnect',
+    };
+
+    // Connect via WalletConnect
+    async function connectViaWalletConnect() {
+      const EthereumProvider = window.__WalletConnectEthereumProvider;
+      if (!EthereumProvider) {
+        setWalletMessage('WalletConnect module is not available. Try refreshing.', true);
+        return;
+      }
+      if (!WALLETCONNECT_PROJECT_ID) {
+        setWalletMessage('WalletConnect is not configured (missing project ID).', true);
+        return;
+      }
+      try {
+        const wcProvider = await EthereumProvider.init({
+          projectId: WALLETCONNECT_PROJECT_ID,
+          optionalChains: [1, 8453, 42161, 10, 137, 56, 43114],
+          metadata: {
+            name: 'FlashProfits',
+            description: 'Compare DEX Router Quotes',
+            url: location.origin,
+            icons: [],
+          },
+          showQrModal: true,
+        });
+
+        wcProvider.on('disconnect', () => {
+          disconnectWallet();
+        });
+
+        await wcProvider.connect();
+        await connectToWalletProvider(wcProvider, WALLETCONNECT_INFO);
+      } catch (err) {
+        const code = err && typeof err === 'object' ? err.code : undefined;
+        if (code === 4001) {
+          setWalletMessage('WalletConnect connection was canceled.', true);
+          pendingPostConnectAction = null;
+          return;
+        }
+        const detail = err instanceof Error ? err.message : String(err);
+        setWalletMessage('WalletConnect failed: ' + detail, true);
+      }
+    }
+
+    function isWalletConnectAvailable() {
+      return !!(WALLETCONNECT_PROJECT_ID && window.__WalletConnectEthereumProvider);
+    }
+
     function openWalletProviderMenu(providers) {
       walletProviderMenu.innerHTML = '';
 
@@ -3965,7 +4878,29 @@ const INDEX_HTML = `<!DOCTYPE html>
         walletProviderMenu.appendChild(option);
       });
 
-      walletProviderMenu.hidden = providers.length === 0;
+      // Add WalletConnect option if available
+      if (isWalletConnectAvailable()) {
+        const wcOption = document.createElement('button');
+        wcOption.type = 'button';
+        wcOption.className = 'wallet-provider-option';
+
+        const wcIcon = createWalletIcon(WALLETCONNECT_INFO.icon, 'WalletConnect icon', 'wallet-provider-icon');
+        const wcName = document.createElement('span');
+        wcName.className = 'wallet-provider-name';
+        wcName.textContent = 'WalletConnect';
+
+        wcOption.appendChild(wcIcon);
+        wcOption.appendChild(wcName);
+
+        wcOption.addEventListener('click', () => {
+          void connectViaWalletConnect();
+        });
+
+        walletProviderMenu.appendChild(wcOption);
+      }
+
+      const totalOptions = providers.length + (isWalletConnectAvailable() ? 1 : 0);
+      walletProviderMenu.hidden = totalOptions === 0;
     }
 
     function getAnnouncedWalletProviders() {
@@ -3997,7 +4932,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       setWalletMessage('');
       window.dispatchEvent(new Event('eip6963:requestProvider'));
       const announcedProviders = getAnnouncedWalletProviders();
-      if (announcedProviders.length > 0) {
+      const wcAvailable = isWalletConnectAvailable();
+
+      if (announcedProviders.length > 0 || wcAvailable) {
         openWalletProviderMenu(announcedProviders);
         return;
       }
@@ -5202,6 +6139,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (event.key === 'Escape' && settingsModal.classList.contains('show')) {
         closeSettingsModal();
       }
+      if (event.key === 'Escape' && swapConfirmModal.classList.contains('show')) {
+        closeSwapConfirmModal();
+      }
     });
 
     // Settings Modal event listeners
@@ -5215,6 +6155,24 @@ const INDEX_HTML = `<!DOCTYPE html>
         closeSettingsModal();
       }
     });
+
+    // Swap Confirmation Modal event listeners
+    swapConfirmModalClose.addEventListener('click', closeSwapConfirmModal);
+
+    // Close swap confirmation modal on overlay click (outside the modal)
+    swapConfirmModal.addEventListener('click', (event) => {
+      if (event.target === swapConfirmModal) {
+        closeSwapConfirmModal();
+      }
+    });
+
+    swapConfirmWaitBtn.addEventListener('click', handleSwapConfirmWait);
+    swapConfirmProceedBtn.addEventListener('click', () => {
+      void handleSwapConfirmProceed();
+    });
+
+    // Focus trap for swap confirmation modal (Tab/Shift+Tab)
+    swapConfirmModal.addEventListener('keydown', handleSwapConfirmModalKeydown);
 
     // Tab switching
     document.querySelectorAll('.tab').forEach(tab => {
@@ -5634,59 +6592,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
 
     async function requestAndRenderCompare(compareParams, options = {}) {
-      const normalizedParams = cloneCompareParams(compareParams);
-      const showLoading = options.showLoading === true;
-      const preserveUiState = options.preserveUiState === true;
-      const keepExistingResultsOnError = options.keepExistingResultsOnError === true;
-      const updateUrl = options.updateUrl !== false;
-      const requestId = Number.isFinite(options.requestId) ? Number(options.requestId) : ++compareRequestSequence;
-
-      if (requestId > compareRequestSequence) {
-        compareRequestSequence = requestId;
-      }
-
-      currentQuoteChainId = Number(normalizedParams.chainId);
-
-      if (showLoading) {
-        submit.disabled = true;
-        submit.textContent = 'Comparing...';
-        result.className = 'show';
-        recommendedContent.innerHTML = '<div class="result-header">Querying Spandex + Curve for best price...</div>';
-        tabRecommended.textContent = 'Loading...';
-        tabAlternative.style.display = 'none';
-        alternativeContent.innerHTML = '';
-        setActiveTab('recommended');
-      }
-
-      try {
-        const payload = await fetchComparePayload(normalizedParams);
-        if (requestId !== compareRequestSequence) {
-          return { ok: false, stale: true, params: normalizedParams };
-        }
-
-        showCompareResult(payload, { preserveUiState });
-        if (updateUrl) {
-          updateUrlFromCompareParams(normalizedParams);
-        }
-        // Save user preferences after successful comparison
-        saveUserPreferences(normalizedParams);
-        return { ok: true, payload, params: normalizedParams };
-      } catch (err) {
-        if (requestId !== compareRequestSequence) {
-          return { ok: false, stale: true, params: normalizedParams };
-        }
-
-        const message = err instanceof Error ? err.message : String(err);
-        if (!keepExistingResultsOnError) {
-          showError(message);
-        }
-        return { ok: false, error: message, params: normalizedParams };
-      } finally {
-        if (showLoading) {
-          submit.disabled = false;
-          submit.textContent = 'Compare Quotes';
-        }
-      }
+      // Use progressive SSE-based fetching for better UX
+      return fetchAndRenderCompareProgressive(compareParams, options);
     }
 
     async function runAutoRefreshCycle() {
@@ -5934,6 +6841,18 @@ const INDEX_HTML = `<!DOCTYPE html>
         return;
       }
 
+      // Check if quotes are still loading - show confirmation modal if so
+      if (areQuotesStillLoading()) {
+        openSwapConfirmModal(card);
+        return;
+      }
+
+      // All quotes arrived - proceed directly
+      await executeSwapFromCard(card);
+    }
+
+    // Execute the swap transaction from a card element
+    async function executeSwapFromCard(card) {
       const routerAddress = String(card.dataset.routerAddress || '').trim();
       const routerCalldata = String(card.dataset.routerCalldata || '').trim();
       const routerValue = String(card.dataset.routerValue || '0x0');
@@ -6248,6 +7167,59 @@ const INDEX_HTML = `<!DOCTYPE html>
       renderTokenlistSources();
     });
   </script>
+  <script type="module">
+    // Load WalletConnect EthereumProvider via ESM CDN
+    try {
+      const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2');
+      window.__WalletConnectEthereumProvider = EthereumProvider;
+    } catch (err) {
+      // WalletConnect module failed to load - WC option will be hidden
+      window.__WalletConnectEthereumProvider = null;
+    }
+
+    // Farcaster miniapp SDK — conditional loading
+    // Only loads when ?miniApp=true is in the URL (set by Farcaster client)
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('miniApp') === 'true') {
+        const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+
+        // Signal to Farcaster client that the app is ready (dismiss splash screen)
+        sdk.actions.ready();
+
+        // Get the Farcaster wallet provider and store it globally
+        const farcasterProvider = sdk.wallet.getEthereumProvider();
+        window.__farcasterWalletProvider = farcasterProvider;
+        window.__isFarcasterMiniApp = true;
+
+        // Auto-connect using the Farcaster wallet provider (bypass ERC-6963/WalletConnect menu)
+        if (farcasterProvider && typeof farcasterProvider.request === 'function') {
+          const accounts = await farcasterProvider.request({ method: 'eth_requestAccounts' });
+          const account = Array.isArray(accounts) ? accounts[0] : null;
+          if (typeof account === 'string' && account) {
+            // Set globals directly for miniapp wallet
+            window.__selectedWalletProvider = farcasterProvider;
+            window.__selectedWalletAddress = account;
+            window.__selectedWalletInfo = { name: 'Farcaster', icon: '', uuid: 'farcaster', rdns: 'farcaster' };
+
+            // Update UI elements
+            const connectBtn = document.getElementById('connectWalletBtn');
+            const walletConnected = document.getElementById('walletConnected');
+            const walletName = document.getElementById('walletConnectedName');
+            const walletAddr = document.getElementById('walletConnectedAddress');
+            if (connectBtn) connectBtn.hidden = true;
+            if (walletConnected) walletConnected.hidden = false;
+            if (walletName) walletName.textContent = 'Farcaster';
+            if (walletAddr) walletAddr.textContent = account;
+          }
+        }
+      }
+    } catch (err) {
+      // Farcaster SDK failed to load — graceful degradation, all existing behavior unchanged
+      window.__farcasterWalletProvider = null;
+      window.__isFarcasterMiniApp = false;
+    }
+  </script>
 </body>
 </html>`;
 
@@ -6270,6 +7242,27 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
   if (url.pathname === "/" && req.method === "GET") {
     sendHtml(res, INDEX_HTML);
+    return;
+  }
+
+  if (url.pathname === "/.well-known/farcaster.json" && req.method === "GET") {
+    const host = req.headers.host || "localhost:3000";
+    const protocol = req.headers["x-forwarded-proto"] || "http";
+    const baseUrl = `${protocol}://${host}`;
+    sendJson(res, 200, {
+      accountAssociation: {
+        header: process.env.FARCASTER_ACCOUNT_ASSOCIATION_HEADER || "",
+        payload: process.env.FARCASTER_ACCOUNT_ASSOCIATION_PAYLOAD || "",
+        signature: process.env.FARCASTER_ACCOUNT_ASSOCIATION_SIGNATURE || "",
+      },
+      miniapp: {
+        version: "1",
+        name: "FlashProfits",
+        homeUrl: `${baseUrl}/?miniApp=true`,
+        iconUrl: `${baseUrl}/icon.png`,
+        primaryCategory: "finance",
+      },
+    });
     return;
   }
 
@@ -6502,6 +7495,48 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       recordRequest("/compare", duration, true);
       trackError(err, `compare:${chainId}:${from.slice(0, 10)}-${to.slice(0, 10)}`);
       sendError(res, 500, err instanceof Error ? err.message : "Unknown error");
+    }
+    return;
+  }
+
+  if (url.pathname === "/compare-stream" && req.method === "GET" && isEnabled("compare_endpoint")) {
+    const parsed = parseQuoteParams(url.searchParams);
+    if (!parsed.success) {
+      sendError(res, 400, parsed.error);
+      return;
+    }
+
+    const { chainId, from, to, amount, slippageBps, sender, mode } = parsed.data;
+
+    const startTime = Date.now();
+    try {
+      await streamCompareQuotes(res, chainId, from, to, amount, slippageBps, sender, mode);
+      const duration = Date.now() - startTime;
+      log(
+        `Compare-stream: chain=${chainId} ${from.slice(0, 10)} -> ${to.slice(0, 10)}, ` +
+          `amount=${amount}, mode=${mode}, ${duration}ms`
+      );
+      recordRequest("/compare-stream", duration, false);
+    } catch (err) {
+      const duration = Date.now() - startTime;
+      logError(
+        `Compare-stream failed: chain=${chainId} ${from.slice(0, 10)} -> ${to.slice(0, 10)}, ${duration}ms`,
+        err
+      );
+      recordRequest("/compare-stream", duration, true);
+      trackError(err, `compare-stream:${chainId}:${from.slice(0, 10)}-${to.slice(0, 10)}`);
+      // For SSE, we can't send a proper HTTP error after headers are sent
+      // Send an error event instead
+      if (!res.headersSent) {
+        sendError(res, 500, err instanceof Error ? err.message : "Unknown error");
+      } else {
+        sendSSE(res, "error", {
+          router: "server",
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+        sendSSE(res, "done", {});
+        res.end();
+      }
     }
     return;
   }

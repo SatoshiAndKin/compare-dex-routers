@@ -1,0 +1,45 @@
+{
+  "featureId": "ui-token-icons-inputs",
+  "reviewedAt": "2026-03-03T06:45:00.000Z",
+  "commitId": "3b14aec",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation is thorough and covers all required behavior: token icons in From/To inputs with proper lifecycle (show on select, hide on clear, update on change, onerror fallback, 375px safe). CSS uses clean wrapper/no-icon pattern. All 8 code paths where tokens are set or cleared have corresponding icon updates (selectToken, applyDefaults, handleTokenInputBlur, handleTokenSwapIfNeeded, URL param restoration, unrecognized token save, input clear in refresh). 109 insertions, 4 deletions in a single file. All tests pass (136), typecheck and lint clean.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 2391,
+        "severity": "non_blocking",
+        "description": "Variable shadowing: top-level `const fromIcon = document.getElementById('fromIcon')` and `const toIcon = document.getElementById('toIcon')` are shadowed by local `const fromIcon = renderResultTokenIcon(...)` / `const toIcon = renderResultTokenIcon(...)` inside renderSpandexResult (~line 4999) and renderCurveResult (~line 5079). No functional bug since the locals are HTML strings used only within their render functions, but the identical names could confuse future maintainers."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 4347,
+        "severity": "non_blocking",
+        "description": "Stale icon when typing over selection: The refresh() function only clears the icon when `!input.value.trim()`. If a user types a new address over a previously selected token (e.g., USDC icon showing, user types a raw 0x address), the old icon persists until input is fully cleared, a new token is selected from autocomplete, or blur triggers handleTokenInputBlur. Minor UX gap — icon shows stale token during the typing-to-blur transition."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2137,
+        "severity": "non_blocking",
+        "description": "Initial `src=\"\"` on img elements: Some browsers interpret an empty src attribute as a request to the page URL. The `.no-icon` class applies `display: none` which should prevent rendering, but omitting src entirely (or using a data URI placeholder) would be more defensive."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The token input icon pattern introduces a new UI component pattern (wrapper div + positioned img + no-icon toggle class) that's distinct from both the modal pattern and the autocomplete-logo pattern. This could be documented in the library for consistency in future icon-in-input implementations.",
+      "evidence": "src/server.ts lines 1841-1866: .token-input-wrapper, .token-input-icon, .no-icon pattern. Handoff documents the pattern but it's not captured in .factory/library/."
+    },
+    {
+      "area": "conventions",
+      "observation": "Worker reused the variable names fromIcon/toIcon for DOM refs at global scope, which shadows pre-existing local const declarations of the same name inside render functions. AGENTS.md and the skill don't mention avoiding variable shadowing in the inline JS template, though this is a general best practice.",
+      "evidence": "Line 2391: `const fromIcon = document.getElementById('fromIcon')` shadows line ~4999: `const fromIcon = renderResultTokenIcon(data.from, quoteChainId)` inside renderSpandexResult. Same for toIcon."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. The implementation correctly adds token icons to From/To input fields with comprehensive lifecycle management across all 8 code paths that set or clear tokens. CSS is clean and follows the existing pattern structure. Three non-blocking issues identified: variable shadowing of fromIcon/toIcon by pre-existing render functions, stale icon during type-over scenarios, and empty src attribute on initial img tags. None are functional bugs — all expectedBehavior items (VAL-UI-010 through VAL-UI-015) are fulfilled. Worker followed the fullstack-worker skill procedure correctly, ran all verification commands, and performed browser testing at both desktop and 375px widths."
+}

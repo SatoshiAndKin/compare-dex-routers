@@ -1,0 +1,128 @@
+{
+  "groupId": "group-token-icons-inputs",
+  "testedAt": "2026-03-03T07:01:00.000Z",
+  "credentials": {
+    "account": "ui_input_icons_01@example.test",
+    "namespace": "ui-polish-token-icons-inputs"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-UI-010",
+      "title": "Token icon in From input after selection",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "App loads with default tokens (USDC/WETH on Base)", "observed": "App loaded with USDC and WETH defaults, both showing token icons" },
+        { "action": "Clear From Token input", "expected": "Input clears and icon disappears", "observed": "Input cleared, icon hidden (no-icon class applied)" },
+        { "action": "Type 'USDC' in From Token input", "expected": "Autocomplete dropdown appears with USDC including logo", "observed": "Autocomplete appeared showing USDC with logo icon" },
+        { "action": "Click USDC autocomplete item", "expected": "USDC selected with icon rendered inline in From input", "observed": "USDC selected, img element with alt='USDC logo' rendered inline adjacent to input text" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-010-from-token-icon-default.png", "val-ui-010-from-token-icon-after-selection.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored per guidance)",
+        "network": "n/a",
+        "domState": "fromWrapper has img.token-input-icon with alt='USDC logo', wrapper does NOT have no-icon class"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-011",
+      "title": "Token icon in To input after selection",
+      "status": "pass",
+      "steps": [
+        { "action": "Clear To Token input", "expected": "Input clears and icon disappears", "observed": "Input cleared, icon hidden (wrapper has no-icon class, no img visible in snapshot)" },
+        { "action": "Type 'WETH' in To Token input", "expected": "Autocomplete shows WETH with logo", "observed": "Autocomplete dropdown showed WETH with img alt='WETH logo'" },
+        { "action": "Click WETH autocomplete item", "expected": "WETH selected with icon inline in To input", "observed": "WETH selected, img with alt='WETH logo' rendered inline in toWrapper" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-011-to-token-icon-after-selection.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "n/a",
+        "domState": "toWrapper has img.token-input-icon with alt='WETH logo', wrapper does NOT have no-icon class"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-012",
+      "title": "Icon fallback when logoURI missing",
+      "status": "pass",
+      "steps": [
+        { "action": "Set From input to a token object with no logoURI property", "expected": "Input shows token text without broken image", "observed": "Token text 'CUSTOM (0x1234...)' displayed cleanly, no broken image placeholder" },
+        { "action": "Verify DOM state", "expected": "wrapper has no-icon class, icon display is none", "observed": "wrapperHasNoIcon=true, iconDisplay='none', iconSrc is empty string (resolved to base URL)" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-012-no-logo-fallback.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "n/a",
+        "domState": "fromWrapper.classList.contains('no-icon')=true, fromIcon computed display='none'"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-013",
+      "title": "Icon fallback when logoURI fails to load",
+      "status": "pass",
+      "steps": [
+        { "action": "Set From input icon to a logoURI that returns 404 (https://example.com/nonexistent-logo-404.png)", "expected": "Icon initially shows, then onerror fires and hides icon gracefully", "observed": "After onerror fired, wrapper got no-icon class, icon display became 'none', no broken image visible" },
+        { "action": "Verify DOM state after failed load", "expected": "No broken image placeholder, clean text display", "observed": "wrapperHasNoIcon=true, iconDisplay='none', input text renders cleanly" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-013-broken-logo-fallback.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "n/a",
+        "domState": "onerror handler adds no-icon class and clears icon.src, computed display='none'"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-014",
+      "title": "Icon updates when token changes",
+      "status": "pass",
+      "steps": [
+        { "action": "Select USDC from autocomplete in From input", "expected": "USDC icon shows", "observed": "img with alt='USDC logo' visible in fromWrapper" },
+        { "action": "Screenshot before change", "expected": "USDC icon captured", "observed": "Screenshot val-ui-014-icon-before-change.png shows USDC coin icon" },
+        { "action": "Clear From input and type 'DAI', select DAI from autocomplete", "expected": "Icon changes from USDC to DAI", "observed": "img alt changed from 'USDC logo' to 'DAI logo', different icon visual (orange/yellow DAI icon vs blue USDC icon)" },
+        { "action": "Screenshot after change", "expected": "DAI icon captured", "observed": "Screenshot val-ui-014-icon-after-change-to-dai.png shows DAI coin icon" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-014-icon-before-change.png", "val-ui-014-icon-after-change-to-dai.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "n/a",
+        "domState": "img.token-input-icon alt changed from 'USDC logo' to 'DAI logo', src updated to DAI logoURI"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-015",
+      "title": "Icon clears when input cleared",
+      "status": "pass",
+      "steps": [
+        { "action": "With DAI selected (icon visible), clear the From input value and dispatch input event", "expected": "Icon disappears when input is cleared", "observed": "Icon hidden - wrapper got no-icon class, icon display='none'" },
+        { "action": "Verify DOM state", "expected": "No icon visible, placeholder text shown", "observed": "wrapperHasNoIcon=true, iconDisplay='none', inputValue='', placeholder visible: 'Search symbol/name or enter address'" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-015-icon-cleared-with-input.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored)",
+        "network": "n/a",
+        "domState": "fromWrapper.classList.contains('no-icon')=true, fromIcon computed display='none', input.value=''"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Browser launch required killing existing Chrome processes and removing lock files from the Playwright MCP user-data-dir before a fresh session could be started",
+      "resolved": true,
+      "resolution": "Removed SingletonLock/SingletonSocket/SingletonCookie files from ~/Library/Caches/ms-playwright/mcp-chrome/",
+      "affectedAssertions": []
+    },
+    {
+      "description": "Auto-refresh (15s interval) can interfere with testing; needed to clear it via window._refreshTimer",
+      "resolved": true,
+      "resolution": "Called clearInterval(window._refreshTimer) at start of testing session",
+      "affectedAssertions": ["VAL-UI-010", "VAL-UI-011", "VAL-UI-014"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 6 assertions (VAL-UI-010 through VAL-UI-015): all 6 passed. Token icons correctly render inline in From/To inputs after token selection, gracefully hide when logoURI is missing or fails to load, update when tokens change, and clear when inputs are cleared. No broken image placeholders observed in any scenario."
+}

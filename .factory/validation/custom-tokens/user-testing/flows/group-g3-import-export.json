@@ -1,0 +1,123 @@
+{
+  "groupId": "g3",
+  "testedAt": "2026-03-02T20:44:00.000Z",
+  "credentials": {
+    "account": "validator_ct_g3",
+    "namespace": "ct_g3"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-IO-001",
+      "title": "Export local tokenlist as JSON",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/", "expected": "App loads with form", "observed": "App loaded with Base chain selected, USDC/WETH prefilled" },
+        { "action": "Click settings gear icon", "expected": "Settings panel opens", "observed": "Settings panel opened showing Tokenlist Sources and Local Tokens sections" },
+        { "action": "Verify local tokens exist (DAI, SHIB on Ethereum)", "expected": "Local tokens visible in settings", "observed": "DAI (0x6B175474E89094C44Da98b954EedeAC495271d0F) and SHIB (0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE) shown under Local Tokens" },
+        { "action": "Click Export button", "expected": "JSON file downloaded in Uniswap tokenlist format", "observed": "File 'local-tokens.json' downloaded. Message 'Exported 2 tokens' shown. File contains valid Uniswap tokenlist format with name, version, timestamp, and tokens array" }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g3-val-io-001-pre-export.png", "ct_g3-val-io-001-export-clicked.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "File download triggered via Blob URL",
+        "exportedFileContent": {
+          "name": "Local Tokens",
+          "version": "1.0.0",
+          "timestamp": "2026-03-02T20:43:42.855Z",
+          "tokens": [
+            { "chainId": 1, "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F", "name": "Dai Stablecoin", "symbol": "DAI", "decimals": 18 },
+            { "chainId": 1, "address": "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE", "name": "SHIBA INU", "symbol": "SHIB", "decimals": 18 }
+          ]
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-IO-002",
+      "title": "Import tokenlist from JSON file",
+      "status": "pass",
+      "steps": [
+        { "action": "With empty local list (after clearing tokens), click Import button", "expected": "File picker opens accepting .json files", "observed": "File chooser dialog opened" },
+        { "action": "Select previously exported tokenlist JSON file", "expected": "Tokens merged into local list with success message", "observed": "Message 'Imported 2 new tokens' shown. DAI and SHIB restored with correct addresses and chain (Ethereum)" },
+        { "action": "Switch to Ethereum chain and search 'DAI' in autocomplete", "expected": "Imported token appears in autocomplete", "observed": "DAI (0x6B175474E89094C44Da98b954EedeAC495271d0F) appeared in autocomplete dropdown" }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g3-val-io-004-post-import.png", "ct_g3-val-cross-006-autocomplete-after-import.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "No network requests for import (local file read)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-IO-003",
+      "title": "Import invalid file shows error",
+      "status": "pass",
+      "steps": [
+        { "action": "Click Import and select a non-JSON file (ct_g3_invalid_not_json.txt)", "expected": "Error message shown, existing tokens unaffected", "observed": "Error message 'Import error: File is not valid JSON' shown in red. DAI and SHIB tokens remain in local list" },
+        { "action": "Click Import and select a JSON file without tokens array (ct_g3_malformed_json.json)", "expected": "Error message about missing tokens array, existing tokens unaffected", "observed": "Error message 'Import error: File must contain a tokens array' shown in red. DAI and SHIB tokens remain in local list" }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g3-val-io-003-import-error-not-json.png", "ct_g3-val-io-003-import-error-no-tokens.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "No network requests for import"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-IO-004",
+      "title": "Round-trip export then import preserves tokens",
+      "status": "pass",
+      "steps": [
+        { "action": "Verify tokens exist: DAI and SHIB on Ethereum in settings panel", "expected": "Tokens visible with full addresses", "observed": "DAI (0x6B175474E89094C44Da98b954EedeAC495271d0F) and SHIB (0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE) shown" },
+        { "action": "Click Export to download tokenlist JSON", "expected": "File downloaded with both tokens", "observed": "local-tokens.json downloaded with 2 tokens in Uniswap format" },
+        { "action": "Remove DAI token via remove button", "expected": "DAI removed from list", "observed": "DAI removed, only SHIB remains" },
+        { "action": "Remove SHIB token via remove button", "expected": "SHIB removed, list empty", "observed": "SHIB removed. 'No custom tokens saved' message shown. Export button disabled" },
+        { "action": "Click Import and select the exported file", "expected": "Both tokens restored with identical metadata", "observed": "'Imported 2 new tokens' message. DAI and SHIB restored with same addresses and chain (Ethereum)" },
+        { "action": "Search 'DAI' in autocomplete (Ethereum chain)", "expected": "DAI appears in autocomplete", "observed": "DAI Stablecoin (0x6B175474E89094C44Da98b954EedeAC495271d0F) appears in autocomplete" }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g3-val-io-001-pre-export.png", "ct_g3-val-io-004-post-clear.png", "ct_g3-val-io-004-post-import.png", "ct_g3-val-cross-006-autocomplete-after-import.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "No network requests for local import/export"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-IO-005",
+      "title": "Export with empty local list handled",
+      "status": "pass",
+      "steps": [
+        { "action": "Remove all local tokens (DAI and SHIB)", "expected": "Local token list empty", "observed": "'No custom tokens saved' placeholder message shown" },
+        { "action": "Check Export button state", "expected": "Export button disabled with visual indicator", "observed": "Export button is disabled (grayed out, not clickable). No error or empty file download occurs" }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g3-val-io-004-post-clear.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "title": "Export, clear, import restores tokens",
+      "status": "pass",
+      "steps": [
+        { "action": "Open settings panel with local tokens (DAI, SHIB on Ethereum)", "expected": "Settings panel shows local tokens", "observed": "DAI and SHIB shown in Local Tokens section with full addresses and Ethereum chain label" },
+        { "action": "Export local tokens to JSON file", "expected": "File downloaded", "observed": "local-tokens.json downloaded with 2 tokens, 'Exported 2 tokens' message shown" },
+        { "action": "Remove all local tokens via remove buttons", "expected": "All tokens cleared", "observed": "Both tokens removed. 'No custom tokens saved' shown. Export button disabled" },
+        { "action": "Import the previously exported file", "expected": "All tokens restored", "observed": "'Imported 2 new tokens' message. DAI and SHIB restored with identical metadata (same addresses, chain)" },
+        { "action": "Switch to Ethereum and verify tokens appear in autocomplete", "expected": "Imported tokens available in autocomplete", "observed": "DAI (0x6B175474E89094C44Da98b954EedeAC495271d0F) appeared in From Token autocomplete dropdown" }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g3-val-io-001-pre-export.png", "ct_g3-val-io-004-post-clear.png", "ct_g3-val-io-004-post-import.png", "ct_g3-val-cross-006-autocomplete-after-import.png"],
+        "consoleErrors": "none (only favicon.ico 404 — cosmetic)",
+        "network": "No network requests for local import/export"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: all 6 passed. Export produces valid Uniswap tokenlist JSON (VAL-IO-001). Import merges tokens from valid JSON files (VAL-IO-002). Invalid files (non-JSON, JSON without tokens array) show descriptive error messages without affecting existing tokens (VAL-IO-003). Round-trip export→clear→import preserves all token metadata (VAL-IO-004, VAL-CROSS-006). Export button is disabled when no local tokens exist (VAL-IO-005)."
+}

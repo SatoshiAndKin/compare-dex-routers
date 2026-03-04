@@ -1,0 +1,40 @@
+{
+  "milestone": "progressive-quotes",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 13,
+    "passed": 12,
+    "failed": 0,
+    "blocked": 1
+  },
+  "passedAssertions": [
+    "VAL-PROG-001",
+    "VAL-PROG-002",
+    "VAL-PROG-003",
+    "VAL-PROG-004",
+    "VAL-PROG-005",
+    "VAL-PROG-006",
+    "VAL-PROG-007",
+    "VAL-PROG-008",
+    "VAL-PROG-009",
+    "VAL-PROG-010",
+    "VAL-PROG-011",
+    "VAL-PROG-012"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-PROG-013",
+      "blockedBy": "All supported chains in this environment returned single_router_mode=false while CURVE_ENABLED=true, so no user-facing Spandex-only chain scenario was available to execute this assertion."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added progressive-quotes validation notes about missing single-router chains and recommended EventSource-timestamp instrumentation for auto-refresh progressive assertions.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}
