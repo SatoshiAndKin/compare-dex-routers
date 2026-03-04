@@ -1,6 +1,8 @@
 import { createCurve } from "@curvefi/api";
 import type { PublicClient } from "viem";
+import { parseUnits } from "viem";
 import type { QuoteMode } from "./quote.js";
+import { getTokenDecimals } from "./config.js";
 
 // All supported chains for Curve
 export const CURVE_SUPPORTED_CHAINS = [1, 8453, 42161, 10, 137, 56, 43114];
@@ -193,6 +195,8 @@ export interface CurveQuoteResult {
   amount: string;
   input_amount: string;
   output_amount: string;
+  input_amount_raw: string;
+  output_amount_raw: string;
   mode: QuoteMode;
   route: CurveRouteStep[];
   route_symbols: Record<string, string>;
@@ -262,7 +266,7 @@ export async function findCurveQuote(
     const errorMsg = err instanceof Error ? err.message : String(err);
     if (errorMsg.includes("This method exists only for L2 networks")) {
       throw new Error(
-        `No Curve route found for ${from.slice(0, 10)}...→${to.slice(0, 10)}... on chain ${chainId}. ` +
+        `No Curve route found for ${from}→${to} on chain ${chainId}. ` +
           `The pair may not be supported by Curve pools on this chain.`,
         { cause: err }
       );
@@ -274,15 +278,30 @@ export async function findCurveQuote(
   // Check if we got an empty route (no pools found)
   if (!route || route.length === 0) {
     throw new Error(
-      `No Curve route found for ${from.slice(0, 10)}...→${to.slice(0, 10)}... on chain ${chainId}. ` +
+      `No Curve route found for ${from}→${to} on chain ${chainId}. ` +
         `The pair may not be supported by Curve pools on this chain.`
     );
   }
 
+  // Fetch symbols and decimals - decimals lookup is wrapped in try/catch for fault tolerance
   const [fromSymbol, toSymbol] = await Promise.all([
     getCurveTokenSymbol(curve, fromLower),
     getCurveTokenSymbol(curve, toLower),
   ]);
+
+  // Fetch decimals with fault tolerance - if lookup fails, we continue with undefined
+  let fromDecimals: number | undefined;
+  let toDecimals: number | undefined;
+  try {
+    [fromDecimals, toDecimals] = await Promise.all([
+      getTokenDecimals(chainId, fromLower),
+      getTokenDecimals(chainId, toLower),
+    ]);
+  } catch {
+    // Decimals lookup failed - wei fields will be empty strings
+    fromDecimals = undefined;
+    toDecimals = undefined;
+  }
 
   const typedRoute = route;
 
@@ -306,6 +325,12 @@ export async function findCurveQuote(
     throw new Error("Failed to generate Curve swap transaction");
   }
 
+  // Compute wei amounts - empty string if decimals unavailable
+  const inputAmountRaw =
+    fromDecimals !== undefined ? parseUnits(inputAmount, fromDecimals).toString() : "";
+  const outputAmountRaw =
+    toDecimals !== undefined ? parseUnits(outputAmount, toDecimals).toString() : "";
+
   const result: CurveQuoteResult = {
     source: "curve",
     from: fromLower,
@@ -315,6 +340,8 @@ export async function findCurveQuote(
     amount,
     input_amount: inputAmount,
     output_amount: outputAmount,
+    input_amount_raw: inputAmountRaw,
+    output_amount_raw: outputAmountRaw,
     mode,
     route: typedRoute,
     route_symbols: routeSymbols,
