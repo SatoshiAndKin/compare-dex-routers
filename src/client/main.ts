@@ -16,6 +16,19 @@ import { initModals, lockBodyScroll, unlockBodyScroll, closeWalletProviderMenu }
 import type { ModalElements, ModalCallbacks } from "./modals.js";
 import { initWallet } from "./wallet.js";
 import type { WalletElements, WalletModalFunctions, WalletCallbacks } from "./wallet.js";
+import {
+  initTokenManagement,
+  renderLocalTokens,
+  fetchTokenMetadata,
+  handleUnrecognizedTokenSave,
+  getUnrecognizedTokenState,
+  setUnrecognizedTokenState,
+  findTokenByAddress,
+  getTokensForChain,
+} from "./token-management.js";
+import type { TokenManagementElements, TokenManagementCallbacks } from "./token-management.js";
+import { initAutocomplete, escapeHtml, refreshAutocomplete } from "./autocomplete.js";
+import type { AutocompleteElements, AutocompleteCallbacks } from "./autocomplete.js";
 
 console.log(
   "[client] bundle loaded, chains configured",
@@ -100,10 +113,7 @@ const modalCallbacks: ModalCallbacks = {
     typeof win.__cb_hasConnectedWallet === "function"
       ? (win.__cb_hasConnectedWallet as () => boolean)()
       : false,
-  renderLocalTokens: () => {
-    if (typeof win.__cb_renderLocalTokens === "function")
-      (win.__cb_renderLocalTokens as () => void)();
-  },
+  renderLocalTokens: () => renderLocalTokens(),
   addMevRpcToWallet: (type: string) => {
     if (typeof win.__cb_addMevRpcToWallet === "function")
       (win.__cb_addMevRpcToWallet as (t: string) => void)(type);
@@ -142,30 +152,17 @@ const modalCallbacks: ModalCallbacks = {
     if (typeof win.__cb_setPendingSwapCard === "function")
       (win.__cb_setPendingSwapCard as (c: HTMLElement | null) => void)(card);
   },
-  fetchTokenMetadata: (address: string, chainId: number) => {
-    if (typeof win.__cb_fetchTokenMetadata === "function")
-      (win.__cb_fetchTokenMetadata as (a: string, c: number) => void)(address, chainId);
-  },
-  handleUnrecognizedTokenSave: () => {
-    if (typeof win.__cb_handleUnrecognizedTokenSave === "function")
-      (win.__cb_handleUnrecognizedTokenSave as () => void)();
-  },
-  getFromInput: () =>
-    typeof win.__cb_getFromInput === "function"
-      ? (win.__cb_getFromInput as () => HTMLElement | null)()
-      : document.getElementById("fromToken"),
-  getToInput: () =>
-    typeof win.__cb_getToInput === "function"
-      ? (win.__cb_getToInput as () => HTMLElement | null)()
-      : document.getElementById("toToken"),
+  fetchTokenMetadata: (address: string, chainId: number) =>
+    void fetchTokenMetadata(address, chainId),
+  handleUnrecognizedTokenSave: () => handleUnrecognizedTokenSave(),
+  getFromInput: () => document.getElementById("from"),
+  getToInput: () => document.getElementById("to"),
   getUnrecognizedTokenState: () => {
-    if (typeof win.__cb_getUnrecognizedTokenState === "function")
-      return (win.__cb_getUnrecognizedTokenState as () => { targetInput: string | null })();
-    return { targetInput: null };
+    const state = getUnrecognizedTokenState();
+    return { targetInput: state.targetInput };
   },
   setUnrecognizedTokenState: (state) => {
-    if (typeof win.__cb_setUnrecognizedTokenState === "function")
-      (win.__cb_setUnrecognizedTokenState as (s: typeof state) => void)(state);
+    setUnrecognizedTokenState(state as { targetInput: "from" | "to" | null });
   },
   getConnectWalletBtn: () => document.getElementById("connectWalletBtn"),
   getIsConnectingProvider: () =>
@@ -229,5 +226,146 @@ const walletCallbacks: WalletCallbacks = {
 };
 
 initWallet(walletElements, walletModalFns, walletCallbacks);
+
+// ---------------------------------------------------------------------------
+// Token management initialization
+// ---------------------------------------------------------------------------
+
+const fromInput = document.getElementById("from") as HTMLInputElement;
+const toInput = document.getElementById("to") as HTMLInputElement;
+const fromWrapper = document.getElementById("fromWrapper") as HTMLElement;
+const toWrapper = document.getElementById("toWrapper") as HTMLElement;
+const fromIcon = document.getElementById("fromIcon") as HTMLImageElement;
+const toIcon = document.getElementById("toIcon") as HTMLImageElement;
+
+const tokenManagementElements: TokenManagementElements = {
+  tokenlistUrlInput: getEl("tokenlistUrlInput") as HTMLInputElement,
+  addTokenlistBtn: getEl("addTokenlistBtn") as HTMLButtonElement,
+  tokenlistMessage: getEl("tokenlistMessage"),
+  tokenlistSourcesList: getEl("tokenlistSourcesList"),
+  exportLocalTokensBtn: getEl("exportLocalTokensBtn") as HTMLButtonElement,
+  importLocalTokensInput: getEl("importLocalTokensInput") as HTMLInputElement,
+  localTokensToggle: getEl("localTokensToggle"),
+  localTokensMessage: getEl("localTokensMessage"),
+  localTokensContent: getEl("localTokensContent"),
+  unrecognizedTokenModal: modalElements.unrecognizedTokenModal,
+  unrecognizedTokenLoading: getEl("unrecognizedTokenLoading"),
+  unrecognizedTokenMetadata: getEl("unrecognizedTokenMetadata"),
+  unrecognizedTokenName: getEl("unrecognizedTokenName"),
+  unrecognizedTokenSymbol: getEl("unrecognizedTokenSymbol"),
+  unrecognizedTokenDecimals: getEl("unrecognizedTokenDecimals"),
+  unrecognizedTokenError: getEl("unrecognizedTokenError"),
+  unrecognizedTokenSaveBtn: getEl("unrecognizedTokenSaveBtn") as HTMLButtonElement,
+  fromInput,
+  toInput,
+};
+
+const tokenManagementCallbacks: TokenManagementCallbacks = {
+  getCurrentChainId: () => getCurrentChainId(),
+  escapeHtml: (str: string) => escapeHtml(str),
+  refreshAutocomplete: () => refreshAutocomplete(),
+  findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
+  formatTokenDisplay: (symbol: string, address: string) => {
+    if (typeof win.formatTokenDisplay === "function")
+      return (win.formatTokenDisplay as (s: string, a: string) => string)(symbol, address);
+    const sym = String(symbol || "").trim();
+    const addr = String(address || "").trim();
+    if (!addr) return sym || "";
+    return sym ? sym + " (" + addr + ")" : addr;
+  },
+  handleTokenSwapIfNeeded: (
+    currentInput: HTMLInputElement,
+    newAddress: string,
+    newDisplay: string
+  ) => {
+    if (typeof win.handleTokenSwapIfNeeded === "function")
+      (win.handleTokenSwapIfNeeded as (i: HTMLInputElement, a: string, d: string) => void)(
+        currentInput,
+        newAddress,
+        newDisplay
+      );
+  },
+  updateTokenInputIcon: (
+    input: HTMLInputElement,
+    icon: HTMLImageElement,
+    wrapper: HTMLElement,
+    token: unknown
+  ) => {
+    if (typeof win.updateTokenInputIcon === "function")
+      (
+        win.updateTokenInputIcon as (
+          i: HTMLInputElement,
+          ic: HTMLImageElement,
+          w: HTMLElement,
+          t: unknown
+        ) => void
+      )(input, icon, wrapper, token);
+  },
+  clearTokenInputIcon: (wrapper: HTMLElement, icon: HTMLImageElement) => {
+    if (typeof win.clearTokenInputIcon === "function")
+      (win.clearTokenInputIcon as (w: HTMLElement, i: HTMLImageElement) => void)(wrapper, icon);
+  },
+  updateFromTokenBalance: () => {
+    if (typeof win.updateFromTokenBalance === "function")
+      (win.updateFromTokenBalance as () => void)();
+  },
+  updateToTokenBalance: () => {
+    if (typeof win.updateToTokenBalance === "function") (win.updateToTokenBalance as () => void)();
+  },
+  updateAmountFieldLabels: () => {
+    if (typeof win.updateAmountFieldLabels === "function")
+      (win.updateAmountFieldLabels as () => void)();
+  },
+  isAddressLike: (address: string) => /^0x[a-fA-F0-9]{40}$/.test(String(address || "").trim()),
+  openUnrecognizedTokenModal: (address: string, chainId: number, targetInput: string) => {
+    if (typeof win.openUnrecognizedTokenModal === "function")
+      (win.openUnrecognizedTokenModal as (a: string, c: number, t: string) => void)(
+        address,
+        chainId,
+        targetInput
+      );
+  },
+  closeUnrecognizedTokenModal: () => {
+    if (typeof win.closeUnrecognizedTokenModal === "function")
+      (win.closeUnrecognizedTokenModal as () => void)();
+  },
+  getFromIcon: () => fromIcon,
+  getToIcon: () => toIcon,
+  getFromWrapper: () => fromWrapper,
+  getToWrapper: () => toWrapper,
+};
+
+initTokenManagement(tokenManagementElements, tokenManagementCallbacks);
+
+// ---------------------------------------------------------------------------
+// Autocomplete initialization
+// ---------------------------------------------------------------------------
+
+const autocompleteElements: AutocompleteElements = {
+  fromInput,
+  toInput,
+  fromAutocompleteList: getEl("fromAutocomplete"),
+  toAutocompleteList: getEl("toAutocomplete"),
+  fromWrapper,
+  toWrapper,
+  fromIcon,
+  toIcon,
+  chainIdInput: document.getElementById("chainId") as HTMLInputElement,
+};
+
+const autocompleteCallbacks: AutocompleteCallbacks = {
+  getCurrentChainId: () => getCurrentChainId(),
+  getTokensForChain: (chainId: number) => getTokensForChain(chainId),
+  formatTokenDisplay: tokenManagementCallbacks.formatTokenDisplay,
+  handleTokenSwapIfNeeded: tokenManagementCallbacks.handleTokenSwapIfNeeded,
+  updateTokenInputIcon: tokenManagementCallbacks.updateTokenInputIcon,
+  clearTokenInputIcon: tokenManagementCallbacks.clearTokenInputIcon,
+  updateFromTokenBalance: tokenManagementCallbacks.updateFromTokenBalance,
+  updateToTokenBalance: tokenManagementCallbacks.updateToTokenBalance,
+  updateAmountFieldLabels: tokenManagementCallbacks.updateAmountFieldLabels,
+  findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
+};
+
+initAutocomplete(autocompleteElements, autocompleteCallbacks);
 
 export {};
