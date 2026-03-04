@@ -7,11 +7,22 @@ Environment variables, external dependencies, and setup notes.
 
 ---
 
-- `ALCHEMY_API_KEY` required for RPC access
-- `ZEROX_API_KEY`, `FABRIC_API_KEY` optional for specific providers
-- `CURVE_ENABLED`, `COMPARE_ENABLED`, `METRICS_ENABLED` feature flags (default: true)
-- `TOKENLIST_PATH` optional override for the tokenlist file path (defaults to `data/tokenlist.json`)
-- `data/tokenlist.json` is **not tracked in git** (`data/` directory is untracked). It is downloaded by `init.sh` from tokens.uniswap.org on first run. The Docker image does NOT include `data/` (Dockerfile only COPYs package*.json, src/, tsconfig.json), so `/tokenlist` will return 500 in Docker unless `data/tokenlist.json` is volume-mounted. This is expected behavior — the native dev server (`PORT=3002 npm run dev`) works correctly since `data/` exists at the repo root after running `init.sh`.
-- Dev server runs with tsx (TypeScript execution, no build step)
-- viem ^2.46.3 already installed - use for server-side code; browser-side wallet interaction uses raw EIP-1193 provider.request() calls (no CDN import needed)
-- Flashbots Protect RPC URL: `https://rpc.flashbots.net` — hardcoded in client-side JS template (`FLASHBOTS_RPC_URL` constant in `src/server.ts`); used for MEV Protection swap flow on Ethereum mainnet via `wallet_addEthereumChain` + `wallet_switchEthereumChain`
+## Required Environment Variables
+
+- `PORT` — Server port (default: 3001, use 3000 to avoid OrbStack conflict)
+- `ALCHEMY_API_KEY` — Required for RPC access (Curve init will fail without it, but server still works)
+
+## Optional Environment Variables
+
+- `WALLETCONNECT_PROJECT_ID` — For WalletConnect integration
+- `ZEROX_API_KEY`, `FABRIC_API_KEY` — Provider API keys
+- `RPC_URL_<chainId>` — Per-chain RPC overrides
+- `DEFAULT_TOKENLISTS` — Comma-separated tokenlist file paths (defaults to `static/tokenlist.json`)
+- `CURVE_ENABLED`, `COMPARE_ENABLED`, `METRICS_ENABLED` — Feature flags
+- `SENTRY_DSN` — Error tracking
+- `LOG_LEVEL` — Logging level
+
+## Platform Notes
+
+- Port 3001 conflicts with OrbStack on this machine. Always use PORT=3000.
+- No Alchemy API key in .env — Curve Finance init logs errors but server starts fine.

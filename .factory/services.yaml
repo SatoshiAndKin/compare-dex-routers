@@ -1,21 +1,15 @@
 commands:
   install: npm install
   typecheck: npm run typecheck
-  build: echo "No build step - uses tsx"
+  build: npm run build:client
   test: npm test -- --maxWorkers=7
-  test_coverage: npm run test:coverage
   lint: npm run lint
-  lint_fix: npm run lint:fix
   format: npm run format
-  dead_code: npm run dead-code
-  docker_build_local: docker build -t compare-dex-routers-test .
-  docker_validate_compose: docker compose config
-  docker_validate_stack: docker compose -f docker-stack.yml config
 
 services:
   dev:
-    start: PORT=3002 npm run dev
-    stop: lsof -ti :3002 | xargs kill
-    healthcheck: curl -sf http://localhost:3002/health
-    port: 3002
+    start: PORT=3000 npm run dev
+    stop: lsof -ti :3000 | xargs kill
+    healthcheck: curl -sf http://localhost:3000/health
+    port: 3000
     depends_on: []
