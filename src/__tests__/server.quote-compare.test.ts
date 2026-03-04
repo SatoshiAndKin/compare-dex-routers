@@ -854,7 +854,9 @@ describe("server /quote and /compare", () => {
     // Should have complete event with recommendation
     const completeEvents = events.filter((e) => e.event === "complete");
     expect(completeEvents.length).toBe(1);
-    expect(completeEvents[0].data.recommendation).toBeDefined();
+    const completeEvent = completeEvents[0];
+    expect(completeEvent).toBeDefined();
+    expect(completeEvent?.data.recommendation).toBeDefined();
 
     // Should have done event
     const doneEvents = events.filter((e) => e.event === "done");
@@ -885,7 +887,9 @@ describe("server /quote and /compare", () => {
     // Should still have complete event
     const completeEvents = events.filter((e) => e.event === "complete");
     expect(completeEvents.length).toBe(1);
-    expect(completeEvents[0].data.single_router_mode).toBe(true);
+    const completeEvent = completeEvents[0];
+    expect(completeEvent).toBeDefined();
+    expect(completeEvent?.data.single_router_mode).toBe(true);
   });
 
   it("GET /compare-stream handles Spandex error", async () => {
@@ -908,7 +912,9 @@ describe("server /quote and /compare", () => {
 
     // Should still recommend Curve
     const completeEvents = events.filter((e) => e.event === "complete");
-    expect(completeEvents[0].data.recommendation).toBe("curve");
+    const completeEvent = completeEvents[0];
+    expect(completeEvent).toBeDefined();
+    expect(completeEvent?.data.recommendation).toBe("curve");
   });
 });
 
