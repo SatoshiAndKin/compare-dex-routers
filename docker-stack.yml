@@ -21,9 +21,9 @@ services:
     # To use a registry image: DOCKER_IMAGE=myregistry/flashprofits:v1.2.3 docker stack deploy -c docker-stack.yml spandex
     image: ${DOCKER_IMAGE:-compare-dex-routers:latest}
 
-    # Port mapping: app port from env (default 3000)
+    # Port mapping: hardcoded for Swarm reliability
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "3001:3001"
 
     # Load environment variables from .env file
     env_file:
@@ -65,7 +65,7 @@ services:
     # - retries: 3 consecutive failures = unhealthy
     # - start_period: 15s grace period for startup
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:' + (process.env.PORT||'3000') + '/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:' + (process.env.PORT||'3001') + '/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 3
