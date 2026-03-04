@@ -2123,6 +2123,49 @@ const INDEX_HTML = `<!DOCTYPE html>
       background: #f0f0f0;
       font-weight: 600;
     }
+
+    /* Copyable Token Reference in error messages */
+    .token-ref {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.125rem;
+      font-family: monospace;
+      font-weight: 600;
+      color: #0055FF;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-underline-offset: 2px;
+    }
+    .token-ref:hover {
+      color: #0046CC;
+    }
+    .token-ref:focus {
+      outline: 2px solid #0055FF;
+      outline-offset: 1px;
+    }
+    .token-ref.copied {
+      color: #007700;
+    }
+    .token-ref .copied-feedback {
+      position: absolute;
+      background: #007700;
+      color: #fff;
+      padding: 0.125rem 0.375rem;
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border: 1px solid #000;
+      white-space: nowrap;
+      margin-left: 0.25rem;
+      animation: fadeOut 1.5s forwards;
+    }
+    @keyframes fadeOut {
+      0% { opacity: 1; }
+      70% { opacity: 1; }
+      100% { opacity: 0; }
+    }
     
     /* Responsive */
     @media (max-width: 600px) {
@@ -2130,20 +2173,97 @@ const INDEX_HTML = `<!DOCTYPE html>
       .form-row .form-group.narrow { flex: 1; }
       /* Note: .form-row-fixed does NOT collapse - stays horizontal at all widths */
     }
+
+    /* Farcaster miniapp viewport (424x695px) */
+    @media (max-width: 424px) {
+      /* Ensure settings modal fits within narrow viewport */
+      .modal { max-width: 100%; margin: 0 0.5rem; }
+      .modal-body { padding: 0.75rem; }
+      /* Ensure autocomplete dropdowns don't overflow */
+      .autocomplete-list { max-width: 100%; min-width: 0; width: 100%; }
+      .chain-dropdown { max-width: 100%; min-width: 0; width: 100%; }
+    }
+
+    /* Mobile-first touch targets (44px minimum) */
+    @media (max-width: 600px) {
+      /* All buttons need adequate touch targets */
+      button {
+        min-height: 44px;
+      }
+      .btn-small, .btn-disconnect {
+        min-height: 44px;
+      }
+      /* Direction toggle buttons */
+      .direction-btn {
+        min-height: 44px;
+      }
+      /* Dropdown items need adequate touch targets */
+      .chain-item {
+        padding: 0.75rem 0.5rem;
+        min-height: 44px;
+      }
+      .autocomplete-item {
+        padding: 0.75rem 0.5rem;
+        min-height: 44px;
+      }
+      /* Wallet provider menu items */
+      .wallet-provider-option {
+        padding: 0.75rem 0.5rem;
+        min-height: 44px;
+      }
+      /* Slippage presets and input */
+      .slippage-preset-compact {
+        min-height: 44px;
+        min-width: 44px;
+      }
+      .slippage-box-input {
+        min-height: 44px;
+      }
+    }
+
+    /* Extra-small viewport (375px) - ensure no horizontal overflow */
     @media (max-width: 375px) {
+      /* Reduce body padding to maximize usable space */
+      body { padding: 12px; }
       /* Slippage area mobile - ensure no overflow */
       .slippage-box {
-        gap: 0.375rem;
+        gap: 0.25rem;
         padding: 0.25rem 0.375rem;
       }
       .slippage-preset-compact {
-        min-width: 32px;
-        min-height: 36px;
-        padding: 0.375rem 0.375rem;
+        min-width: 40px;
+        min-height: 44px;
+        padding: 0.5rem 0.375rem;
+        font-size: 0.6875rem;
       }
       .slippage-box-input {
-        width: 48px;
-        min-height: 36px;
+        width: 44px;
+        min-height: 44px;
+        font-size: 0.6875rem;
+      }
+      .slippage-box-label {
+        font-size: 0.6875rem;
+      }
+      .slippage-box-hint {
+        font-size: 0.6875rem;
+      }
+      /* Prevent form elements from causing overflow */
+      input, select {
+        font-size: 1rem; /* Prevent iOS zoom on focus */
+      }
+      /* Primary button should be full width on very small screens */
+      .action-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .action-row .btn-primary {
+        width: 100%;
+        min-width: 0;
+      }
+      /* Direction toggle needs smaller font to fit */
+      .direction-btn {
+        font-size: 0.6875rem;
+        padding: 0.5rem 0.5rem;
       }
     }
   </style>
@@ -5151,14 +5271,22 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Render secondary details (collapsible)
     function renderSecondaryDetails(data, type) {
       const details = [];
-      
+
       details.push('<div class="field"><div class="field-label">Router Address</div><div class="field-value">' + data.router_address + '</div></div>');
       details.push('<div class="field"><div class="field-label">Router Calldata</div><div class="field-value field-value-compact">' + data.router_calldata.slice(0, 100) + (data.router_calldata.length > 100 ? '...' : '') + '</div></div>');
-      
+
       if (data.router_value) {
         details.push('<div class="field"><div class="field-label">Router Value (wei)</div><div class="field-value number">' + data.router_value + '</div></div>');
       }
-      
+
+      // Show wei values for input and output amounts (raw integers from API)
+      if (data.input_amount_raw) {
+        details.push('<div class="field"><div class="field-label">Input Amount (wei)</div><div class="field-value number mono">' + data.input_amount_raw + '</div></div>');
+      }
+      if (data.output_amount_raw) {
+        details.push('<div class="field"><div class="field-label">Output Amount (wei)</div><div class="field-value number mono">' + data.output_amount_raw + '</div></div>');
+      }
+
       if (data.approval_token) {
         details.push('<div class="field"><div class="field-label">Approval Token</div><div class="field-value">' + data.approval_token + '</div></div>');
         details.push('<div class="field"><div class="field-label">Approval Spender</div><div class="field-value">' + data.approval_spender + '</div></div>');
@@ -5334,6 +5462,72 @@ const INDEX_HTML = `<!DOCTYPE html>
       return primary + secondary;
     }
 
+    // Format error message with clickable token references
+    // Finds addresses in the message and wraps them with symbol display + copy functionality
+    function formatErrorWithTokenRefs(message, chainId) {
+      // Regex to find Ethereum addresses (0x followed by 40 hex chars)
+      const addressRegex = /0x[a-fA-F0-9]{40}/g;
+      const tokens = getTokensForChain(chainId);
+
+      // Build a map of address -> symbol for quick lookup
+      const symbolByAddress = new Map();
+      for (const token of tokens) {
+        const addrLower = token.address.toLowerCase();
+        if (!symbolByAddress.has(addrLower)) {
+          symbolByAddress.set(addrLower, token.symbol || '');
+        }
+      }
+
+      // Replace addresses with clickable token refs
+      return message.replace(addressRegex, (match) => {
+        const addrLower = match.toLowerCase();
+        const symbol = symbolByAddress.get(addrLower) || '';
+        const displayText = symbol || match; // Show symbol if known, else full address
+
+        // If we have a symbol, show it with full address in title
+        // If no symbol, show the full address (still copyable)
+        if (symbol) {
+          return '<span class="token-ref" title="' + match + '" data-address="' + match + '" tabindex="0" role="button" onclick="handleTokenRefClick(this, \\'' + match + '\\')" onkeydown="if(event.key===\\'Enter\\'){handleTokenRefClick(this,\\'' + match + '\\');}">' + displayText + '</span>';
+        } else {
+          return '<span class="token-ref" title="Click to copy" data-address="' + match + '" tabindex="0" role="button" onclick="handleTokenRefClick(this, \\'' + match + '\\')" onkeydown="if(event.key===\\'Enter\\'){handleTokenRefClick(this,\\'' + match + '\\');}">' + match + '</span>';
+        }
+      });
+    }
+
+    // Handle click on token reference - copy address to clipboard
+    function handleTokenRefClick(element, address) {
+      navigator.clipboard.writeText(address).then(() => {
+        // Show copied feedback
+        element.classList.add('copied');
+
+        // Remove any existing feedback
+        const existingFeedback = element.querySelector('.copied-feedback');
+        if (existingFeedback) existingFeedback.remove();
+
+        // Add new feedback
+        const feedback = document.createElement('span');
+        feedback.className = 'copied-feedback';
+        feedback.textContent = 'Copied!';
+        feedback.style.position = 'relative';
+        element.appendChild(feedback);
+
+        // Remove the copied class and feedback after animation
+        setTimeout(() => {
+          element.classList.remove('copied');
+          if (feedback.parentNode) feedback.remove();
+        }, 1500);
+      }).catch(() => {
+        // Fallback: select the text
+        const range = document.createRange();
+        range.selectNode(element);
+        const selection = window.getSelection();
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      });
+    }
+
     function showCompareResult(data, options = {}) {
       const preserveUiState = options.preserveUiState === true;
       const priorUiState = preserveUiState ? captureResultUiState() : null;
@@ -5369,7 +5563,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         } else {
           tabAlternative.textContent = 'Curve';
           tabAlternative.style.display = '';
-          alternativeContent.innerHTML = '<div class="error-message">' + (data.curve_error || 'No quote available') + '</div>';
+          alternativeContent.innerHTML = '<div class="error-message">' + formatErrorWithTokenRefs(data.curve_error || 'No quote available', quoteChainId) + '</div>';
         }
       } else if (data.recommendation === 'curve' && data.curve) {
         tabRecommended.textContent = 'Curve';
@@ -5381,7 +5575,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         } else {
           tabAlternative.textContent = 'Spandex';
           tabAlternative.style.display = '';
-          alternativeContent.innerHTML = '<div class="error-message">' + (data.spandex_error || 'No quote available') + '</div>';
+          alternativeContent.innerHTML = '<div class="error-message">' + formatErrorWithTokenRefs(data.spandex_error || 'No quote available', quoteChainId) + '</div>';
         }
       } else if (data.spandex) {
         tabRecommended.textContent = 'Spandex';
@@ -5395,9 +5589,10 @@ const INDEX_HTML = `<!DOCTYPE html>
         alternativeContent.innerHTML = '';
       } else {
         tabRecommended.textContent = 'Results';
-        recommendedContent.innerHTML = '<div class="error-message">No quotes available. ' +
+        const combinedError = 'No quotes available. ' +
           (data.spandex_error ? 'Spandex: ' + data.spandex_error + '. ' : '') +
-          (data.curve_error ? 'Curve: ' + data.curve_error : '') + '</div>';
+          (data.curve_error ? 'Curve: ' + data.curve_error : '');
+        recommendedContent.innerHTML = '<div class="error-message">' + formatErrorWithTokenRefs(combinedError, quoteChainId) + '</div>';
         tabAlternative.style.display = 'none';
         alternativeContent.innerHTML = '';
       }
@@ -5415,7 +5610,8 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     function showError(msg) {
       result.className = 'show';
-      recommendedContent.innerHTML = '<div class="error-message">' + msg + '</div>';
+      const chainId = getCurrentChainId();
+      recommendedContent.innerHTML = '<div class="error-message">' + formatErrorWithTokenRefs(msg, chainId) + '</div>';
       tabRecommended.textContent = 'Results';
       tabAlternative.style.display = 'none';
       alternativeContent.innerHTML = '';
