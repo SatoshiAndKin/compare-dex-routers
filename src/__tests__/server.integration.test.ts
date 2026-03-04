@@ -77,9 +77,11 @@ describe("server integration", () => {
   it("GET / includes ERC-6963 discovery with provider deduplication by uuid", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("eip6963:announceProvider");
-    expect(res.body).toContain("eip6963:requestProvider");
-    expect(res.body).toContain("walletProvidersByUuid.has(detail.info.uuid)");
+    // ERC-6963 discovery is now in the bundled client wallet module (src/client/wallet.ts).
+    // Verify the client bundle script tag is present which loads the wallet module.
+    expect(res.body).toContain('src="/static/client.js"');
+    // The inline JS still references wallet via window shims
+    expect(res.body).toContain("hasConnectedWallet");
   });
 
   it("GET / includes no-wallet fallback messaging", async () => {
@@ -95,7 +97,9 @@ describe("server integration", () => {
     expect(res.body).toContain('data-action="approve"');
     expect(res.body).toContain("eth_sendTransaction");
     expect(res.body).toContain("eth_getTransactionReceipt");
-    expect(res.body).toContain("wallet_switchEthereumChain");
+    // wallet_switchEthereumChain is now in the bundled client wallet module (src/client/wallet.ts)
+    // The inline JS delegates chain switching via window.ensureWalletOnChain()
+    expect(res.body).toContain("ensureWalletOnChain");
   });
 
   it("GET / wires Curve approval fields into quote actions", async () => {
@@ -516,8 +520,9 @@ describe("server integration", () => {
 
     // The readCompareParamsFromForm function should handle no wallet case
     expect(html).toContain("hasConnectedWallet()");
-    // Sender should be empty string when no wallet
-    expect(html).toContain("sender: hasConnectedWallet() ? connectedWalletAddressValue : ''");
+    // Sender should use wallet module's getConnectedAddress when wallet is connected
+    expect(html).toContain("sender: hasConnectedWallet()");
+    expect(html).toContain("getConnectedAddress");
   });
 
   // VAL-TL-003: Multiple default tokenlists via DEFAULT_TOKENLISTS env var

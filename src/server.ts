@@ -1293,7 +1293,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Theme toggle is now in src/client/theme.ts (loaded via client.js bundle)
 
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
-    const WALLETCONNECT_PROJECT_ID = '${process.env.WALLETCONNECT_PROJECT_ID || ""}';
+    // WALLETCONNECT_PROJECT_ID is now in src/client/config.ts (injected via window.__config)
     const DEFAULT_TOKENLIST_NAME = 'Default Tokenlist';
 
     // Multi-tokenlist data model:
@@ -1320,14 +1320,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       localStorage.removeItem('flashprofits-preferences');
     }
 
-    const walletProvidersByUuid = new Map();
-    let fallbackWalletProvider = null;
-    let connectedWalletProvider = null;
-    let connectedWalletAddressValue = '';
-    let connectedWalletInfo = null;
-    // Post-connect callback for auto-approve/auto-swap flow
-    let pendingPostConnectAction = null; // null | { type: 'approve' | 'swap', card: HTMLElement, button?: HTMLButtonElement }
-    let isConnectingProvider = false; // flag to distinguish menu close vs cancel
+    // Wallet state is now managed by src/client/wallet.ts (loaded via client.js bundle).
+    // Inline JS accesses wallet state via window.hasConnectedWallet(), window.getConnectedProvider(),
+    // window.getConnectedAddress(), window.setWalletMessage(), etc.
     let currentQuoteChainId = null;
     const AUTO_REFRESH_SECONDS = 15;
     const autoRefreshState = {
@@ -1826,17 +1821,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     });
     const MAX_UINT256_HEX = 'f'.repeat(64);
 
-    const connectWalletBtn = document.getElementById('connectWalletBtn');
-    const walletConnected = document.getElementById('walletConnected');
-    const walletConnectedIcon = document.getElementById('walletConnectedIcon');
-    const walletConnectedName = document.getElementById('walletConnectedName');
-    const walletConnectedAddress = document.getElementById('walletConnectedAddress');
-    const disconnectWalletBtn = document.getElementById('disconnectWalletBtn');
-    const walletProviderModal = document.getElementById('walletProviderModal');
-    const walletProviderModalClose = document.getElementById('walletProviderModalClose');
-    const walletProviderList = document.getElementById('walletProviderList');
-    const walletProviderNoWallet = document.getElementById('walletProviderNoWallet');
-    const walletMessage = document.getElementById('walletMessage');
+    // Wallet DOM elements are now managed by src/client/wallet.ts (via initWallet)
     const chainIdInput = document.getElementById('chainId');
     const fromInput = document.getElementById('from');
     const toInput = document.getElementById('to');
@@ -2356,9 +2341,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     // State for pending swap action (when user clicks "Swap Anyway")
     let pendingSwapCard = null; // HTMLElement - the card to swap
 
-    function hasConnectedWallet() {
-      return Boolean(connectedWalletProvider && connectedWalletAddressValue);
-    }
+    // hasConnectedWallet is now in src/client/wallet.ts — access via window.hasConnectedWallet()
+    function hasConnectedWallet() { return typeof window.hasConnectedWallet === 'function' ? window.hasConnectedWallet() : false; }
 
     function getChainIdHex(chainId) {
       const id = String(chainId || '').trim();
@@ -2451,7 +2435,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Expose inline-JS state/functions to the modal module via window callbacks
     // Bridge callbacks for the modal module (prefixed to avoid shadowing global function declarations)
     window.__cb_getCurrentChainId = function() { return getCurrentChainId(); };
-    window.__cb_hasConnectedWallet = function() { return hasConnectedWallet(); };
+    // window.__cb_hasConnectedWallet is set by wallet.ts
     window.__cb_renderLocalTokens = function() { renderLocalTokens(); };
     window.__cb_addMevRpcToWallet = function(type) { addMevRpcToWallet(type); };
     window.__cb_getProgressiveQuoteState = function() { return progressiveQuoteState; };
@@ -2464,9 +2448,23 @@ const INDEX_HTML = `<!DOCTYPE html>
     window.__cb_getToInput = function() { return toInput; };
     window.__cb_getUnrecognizedTokenState = function() { return unrecognizedTokenState; };
     window.__cb_setUnrecognizedTokenState = function(state) { unrecognizedTokenState = state; };
-    window.__cb_getIsConnectingProvider = function() { return isConnectingProvider; };
-    window.__cb_getPendingPostConnectAction = function() { return pendingPostConnectAction; };
-    window.__cb_setPendingPostConnectAction = function(action) { pendingPostConnectAction = action; };
+    // window.__cb_getIsConnectingProvider is set by wallet.ts
+    // window.__cb_getPendingPostConnectAction is set by wallet.ts
+    // window.__cb_setPendingPostConnectAction is set by wallet.ts
+
+    // Bridge callbacks for the wallet module
+    window.__cb_updateTransactionActionStates = function() { updateTransactionActionStates(); };
+    window.__cb_updateTokenBalances = function() { updateTokenBalances(); };
+    window.__cb_onWalletConnected = function(pendingAction) {
+      if (pendingAction) {
+        if (pendingAction.type === 'approve' && pendingAction.card && pendingAction.button) {
+          void onApproveClick(pendingAction.card, pendingAction.button);
+        } else if (pendingAction.type === 'swap' && pendingAction.card) {
+          void onSwapClick(pendingAction.card);
+        }
+      }
+    };
+    window.__cb_onWalletDisconnected = function() { clearTokenBalances(); };
 
     // Local Tokenlist Management
     function loadLocalTokenList() {
@@ -3051,13 +3049,13 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Add MEV protection RPC to wallet via wallet_addEthereumChain
     async function addMevRpcToWallet(type) {
       if (!hasConnectedWallet()) {
-        setWalletMessage('Connect wallet first', true);
+        if (typeof window.setWalletMessage === 'function') window.setWalletMessage('Connect wallet first', true);
         return;
       }
 
-      const provider = connectedWalletProvider;
+      const provider = typeof window.getConnectedProvider === 'function' ? window.getConnectedProvider() : null;
       if (!provider || typeof provider.request !== 'function') {
-        setWalletMessage('Wallet provider is not available.', true);
+        if (typeof window.setWalletMessage === 'function') window.setWalletMessage('Wallet provider is not available.', true);
         return;
       }
 
@@ -3087,331 +3085,24 @@ const INDEX_HTML = `<!DOCTYPE html>
           method: 'wallet_addEthereumChain',
           params: [chainParams],
         });
-        setWalletMessage('MEV protection RPC added to your wallet. Switch to it for protected transactions.');
+        if (typeof window.setWalletMessage === 'function') window.setWalletMessage('MEV protection RPC added to your wallet. Switch to it for protected transactions.');
       } catch (err) {
         if (isUserRejectedError(err)) {
-          setWalletMessage('Request canceled.', true);
+          if (typeof window.setWalletMessage === 'function') window.setWalletMessage('Request canceled.', true);
           return;
         }
         const detail = err instanceof Error ? err.message : String(err);
-        setWalletMessage('Failed to add RPC: ' + detail, true);
+        if (typeof window.setWalletMessage === 'function') window.setWalletMessage('Failed to add RPC: ' + detail, true);
       }
     }
 
-    function setWalletGlobals() {
-      window.__selectedWalletProvider = connectedWalletProvider;
-      window.__selectedWalletAddress = connectedWalletAddressValue;
-      window.__selectedWalletInfo = connectedWalletInfo;
-    }
+    // Wallet functions are now in src/client/wallet.ts (loaded via client.js bundle).
+    // Inline JS shims delegate to window-exposed wallet module functions.
+    function setWalletMessage(message, isError) { if (typeof window.setWalletMessage === 'function') window.setWalletMessage(message, isError); }
+    function triggerWalletConnectionFlow() { if (typeof window.triggerWalletConnectionFlow === 'function') window.triggerWalletConnectionFlow(); }
+    function disconnectWallet() { if (typeof window.disconnectWallet === 'function') window.disconnectWallet(); }
 
-    // Never truncate addresses - always show full 0x... address
-    // This is a project convention in AGENTS.md
-    function truncateAddress(address) {
-      if (typeof address !== 'string') return address || '';
-      return address; // Return full address, no truncation
-    }
-
-    function walletName(info) {
-      if (!info || typeof info.name !== 'string' || !info.name.trim()) {
-        return 'Wallet';
-      }
-      return info.name.trim();
-    }
-
-    function setWalletMessage(message, isError = false) {
-      walletMessage.textContent = message;
-      walletMessage.classList.toggle('error', isError);
-    }
-
-    function updateWalletStateUi() {
-      if (connectedWalletProvider && connectedWalletAddressValue) {
-        connectWalletBtn.hidden = true;
-        walletConnected.hidden = false;
-        walletConnectedName.textContent = walletName(connectedWalletInfo);
-        walletConnectedAddress.textContent = truncateAddress(connectedWalletAddressValue);
-
-        const icon = connectedWalletInfo && typeof connectedWalletInfo.icon === 'string' ? connectedWalletInfo.icon : '';
-        if (icon) {
-          walletConnectedIcon.hidden = false;
-          walletConnectedIcon.src = icon;
-          walletConnectedIcon.onerror = () => {
-            walletConnectedIcon.src = ''; // Clear src to prevent broken icon from rendering
-            walletConnectedIcon.hidden = true;
-          };
-        } else {
-          walletConnectedIcon.hidden = true;
-          walletConnectedIcon.removeAttribute('src');
-          walletConnectedIcon.onerror = null;
-        }
-      } else {
-        connectWalletBtn.hidden = false;
-        walletConnected.hidden = true;
-        walletConnectedName.textContent = '';
-        walletConnectedAddress.textContent = '';
-        walletConnectedIcon.hidden = true;
-        walletConnectedIcon.removeAttribute('src');
-        walletConnectedIcon.onerror = null;
-      }
-    }
-
-    // closeWalletProviderMenu is now in src/client/modals.ts (loaded via client.js bundle)
-    function closeWalletProviderMenu() { if (typeof window.closeWalletProviderMenu === 'function') window.closeWalletProviderMenu(); }
-
-    function createWalletIcon(iconUri, altText, className) {
-      const icon = document.createElement('img');
-      icon.className = className;
-      icon.alt = altText;
-      if (typeof iconUri === 'string' && iconUri) {
-        icon.src = iconUri;
-      } else {
-        icon.style.display = 'none';
-      }
-      icon.onerror = () => {
-        icon.src = ''; // Clear src to prevent broken icon from rendering
-        icon.style.display = 'none';
-      };
-      return icon;
-    }
-
-    async function connectToWalletProvider(provider, info) {
-      if (!provider || typeof provider.request !== 'function') {
-        setWalletMessage('Wallet provider is not available.', true);
-        return;
-      }
-
-      // Mark that we're actively trying to connect (not just dismissing menu)
-      isConnectingProvider = true;
-
-      try {
-        const accounts = await provider.request({ method: 'eth_requestAccounts' });
-        const account = Array.isArray(accounts) ? accounts[0] : null;
-        if (typeof account !== 'string' || !account) {
-          throw new Error('No account returned by wallet');
-        }
-
-        connectedWalletProvider = provider;
-        connectedWalletAddressValue = account;
-        connectedWalletInfo = info || { name: 'Wallet', icon: '' };
-
-        setWalletGlobals();
-        closeWalletProviderMenu();
-        updateWalletStateUi();
-        updateTransactionActionStates();
-        setWalletMessage('');
-        updateTokenBalances(); // Fetch balances for selected tokens
-
-        // Execute pending post-connect action (auto-approve/auto-swap)
-        const action = pendingPostConnectAction;
-        pendingPostConnectAction = null; // Clear before executing to prevent re-trigger
-        isConnectingProvider = false; // Reset flag before action execution
-        if (action) {
-          if (action.type === 'approve' && action.card && action.button) {
-            void onApproveClick(action.card, action.button);
-          } else if (action.type === 'swap' && action.card) {
-            void onSwapClick(action.card);
-          }
-        }
-      } catch (err) {
-        isConnectingProvider = false; // Reset flag on error
-        const code = err && typeof err === 'object' ? err.code : undefined;
-        if (code === 4001) {
-          setWalletMessage('Wallet connection was canceled.', true);
-          // Clear pending action on user cancel
-          pendingPostConnectAction = null;
-          return;
-        }
-        const detail = err instanceof Error ? err.message : String(err);
-        setWalletMessage('Wallet connection failed: ' + detail, true);
-      }
-    }
-
-    function disconnectWallet() {
-      connectedWalletProvider = null;
-      connectedWalletAddressValue = '';
-      connectedWalletInfo = null;
-      setWalletGlobals();
-      closeWalletProviderMenu();
-      updateWalletStateUi();
-      updateTransactionActionStates();
-      clearTokenBalances(); // Hide balances when wallet disconnected
-      setWalletMessage('Wallet disconnected.');
-    }
-
-    // WalletConnect icon (official blue logo as data URI)
-    const WALLETCONNECT_ICON = 'data:image/svg+xml,' + encodeURIComponent('<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="6" fill="#3B99FC"/><path d="M10.05 12.36c3.28-3.21 8.62-3.21 11.9 0l.4.39a.41.41 0 0 1 0 .58l-1.35 1.32a.21.21 0 0 1-.3 0l-.54-.53c-2.29-2.24-6.01-2.24-8.3 0l-.58.57a.21.21 0 0 1-.3 0l-1.35-1.32a.41.41 0 0 1 0-.58l.42-.43Zm14.7 2.74 1.2 1.18a.41.41 0 0 1 0 .58l-5.43 5.31a.42.42 0 0 1-.6 0l-3.85-3.77a.1.1 0 0 0-.15 0l-3.85 3.77a.42.42 0 0 1-.6 0l-5.42-5.31a.41.41 0 0 1 0-.58l1.2-1.18a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0Z" fill="#fff"/></svg>');
-
-    const WALLETCONNECT_INFO = {
-      uuid: 'walletconnect',
-      name: 'WalletConnect',
-      icon: WALLETCONNECT_ICON,
-      rdns: 'walletconnect',
-    };
-
-    // Connect via WalletConnect
-    async function connectViaWalletConnect() {
-      const EthereumProvider = window.__WalletConnectEthereumProvider;
-      if (!EthereumProvider) {
-        setWalletMessage('WalletConnect module is not available. Try refreshing.', true);
-        return;
-      }
-      if (!WALLETCONNECT_PROJECT_ID) {
-        setWalletMessage('WalletConnect is not configured (missing project ID).', true);
-        return;
-      }
-      try {
-        const wcProvider = await EthereumProvider.init({
-          projectId: WALLETCONNECT_PROJECT_ID,
-          optionalChains: [1, 8453, 42161, 10, 137, 56, 43114],
-          metadata: {
-            name: 'Compare DEX Routers',
-            description: 'Compare DEX Router Quotes',
-            url: location.origin,
-            icons: [],
-          },
-          showQrModal: true,
-        });
-
-        wcProvider.on('disconnect', () => {
-          disconnectWallet();
-        });
-
-        await wcProvider.connect();
-        await connectToWalletProvider(wcProvider, WALLETCONNECT_INFO);
-      } catch (err) {
-        const code = err && typeof err === 'object' ? err.code : undefined;
-        if (code === 4001) {
-          setWalletMessage('WalletConnect connection was canceled.', true);
-          pendingPostConnectAction = null;
-          return;
-        }
-        const detail = err instanceof Error ? err.message : String(err);
-        setWalletMessage('WalletConnect failed: ' + detail, true);
-      }
-    }
-
-    function isWalletConnectAvailable() {
-      return !!(WALLETCONNECT_PROJECT_ID && window.__WalletConnectEthereumProvider);
-    }
-
-    // openWalletProviderMenu stays inline due to complex wallet rendering dependencies.
-    // Exposed on window.__openWalletProviderMenuImpl for the modals module to delegate to.
-    function openWalletProviderMenuImpl(providers) {
-      walletProviderList.innerHTML = '';
-      walletProviderNoWallet.hidden = true;
-
-      providers.forEach((detail) => {
-        const option = document.createElement('button');
-        option.type = 'button';
-        option.className = 'wallet-provider-option';
-
-        const providerInfo = detail.info || {};
-        const providerName = walletName(providerInfo);
-        const icon = createWalletIcon(providerInfo.icon, providerName + ' icon', 'wallet-provider-icon');
-        const name = document.createElement('span');
-        name.className = 'wallet-provider-name';
-        name.textContent = providerName;
-
-        option.appendChild(icon);
-        option.appendChild(name);
-
-        option.addEventListener('click', () => {
-          void connectToWalletProvider(detail.provider, providerInfo);
-        });
-
-        walletProviderList.appendChild(option);
-      });
-
-      // Add WalletConnect option if available
-      if (isWalletConnectAvailable()) {
-        const wcOption = document.createElement('button');
-        wcOption.type = 'button';
-        wcOption.className = 'wallet-provider-option';
-
-        const wcIcon = createWalletIcon(WALLETCONNECT_INFO.icon, 'WalletConnect icon', 'wallet-provider-icon');
-        const wcName = document.createElement('span');
-        wcName.className = 'wallet-provider-name';
-        wcName.textContent = 'WalletConnect';
-
-        wcOption.appendChild(wcIcon);
-        wcOption.appendChild(wcName);
-
-        wcOption.addEventListener('click', () => {
-          void connectViaWalletConnect();
-        });
-
-        walletProviderList.appendChild(wcOption);
-      }
-
-      walletProviderModal.classList.add('show');
-      lockBodyScroll();
-      walletProviderModalClose.focus();
-    }
-    window.__openWalletProviderMenuImpl = openWalletProviderMenuImpl;
-    function openWalletProviderMenu(providers) { openWalletProviderMenuImpl(providers); }
-
-    function getAnnouncedWalletProviders() {
-      return Array.from(walletProvidersByUuid.values());
-    }
-
-    function onAnnounceProvider(event) {
-      const detail = event.detail;
-      if (!detail || !detail.provider || !detail.info || typeof detail.info.uuid !== 'string') {
-        return;
-      }
-
-      if (walletProvidersByUuid.has(detail.info.uuid)) {
-        return;
-      }
-
-      walletProvidersByUuid.set(detail.info.uuid, detail);
-    }
-
-    window.addEventListener('eip6963:announceProvider', onAnnounceProvider);
-    window.dispatchEvent(new Event('eip6963:requestProvider'));
-
-    if (typeof window.ethereum !== 'undefined') {
-      fallbackWalletProvider = window.ethereum;
-    }
-
-    // Trigger wallet connection flow programmatically (used by auto-approve/auto-swap)
-    function triggerWalletConnectionFlow() {
-      setWalletMessage('');
-      window.dispatchEvent(new Event('eip6963:requestProvider'));
-      const announcedProviders = getAnnouncedWalletProviders();
-      const wcAvailable = isWalletConnectAvailable();
-
-      if (announcedProviders.length > 0 || wcAvailable) {
-        openWalletProviderMenu(announcedProviders);
-        return;
-      }
-
-      if (fallbackWalletProvider) {
-        void connectToWalletProvider(fallbackWalletProvider, {
-          uuid: 'window.ethereum',
-          name: 'Injected Wallet',
-          icon: '',
-          rdns: 'window.ethereum',
-        });
-        return;
-      }
-
-      // No providers found - show the modal with "no wallet" message
-      walletProviderList.innerHTML = '';
-      walletProviderNoWallet.hidden = false;
-      walletProviderModal.classList.add('show');
-      lockBodyScroll();
-      walletProviderModalClose.focus();
-    }
-
-    connectWalletBtn.addEventListener('click', triggerWalletConnectionFlow);
-
-    disconnectWalletBtn.addEventListener('click', disconnectWallet);
-
-    // Wallet provider modal event listeners are now in src/client/modals.ts (via initModals)
-
-    updateWalletStateUi();
-    setWalletGlobals();
-    updateTransactionActionStates();
+    // Wallet initialization, ERC-6963 discovery, and event listeners are handled by wallet.ts
 
     function normalizeAddress(value) {
       const lower = value.toLowerCase();
@@ -4141,7 +3832,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         to: extractAddressFromInput(toInput),
         amount: amount,
         slippageBps: slippageInput.value,
-        sender: hasConnectedWallet() ? connectedWalletAddressValue : '',
+        sender: hasConnectedWallet() ? (typeof window.getConnectedAddress === 'function' ? window.getConnectedAddress() : '') : '',
         mode: currentQuoteMode,
       });
     }
@@ -4297,7 +3988,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       const params = cloneCompareParams(autoRefreshState.lastParams);
       if (hasConnectedWallet()) {
-        params.sender = connectedWalletAddressValue;
+        params.sender = typeof window.getConnectedAddress === 'function' ? window.getConnectedAddress() : '';
       }
 
       return params;
@@ -4459,9 +4150,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       fromBalanceEl.hidden = false;
 
       const balance = await fetchTokenBalance(
-        connectedWalletProvider,
+        typeof window.getConnectedProvider === 'function' ? window.getConnectedProvider() : null,
         tokenAddress,
-        connectedWalletAddressValue,
+        typeof window.getConnectedAddress === 'function' ? window.getConnectedAddress() : '',
         decimals,
         chainId
       );
@@ -4494,9 +4185,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       toBalanceEl.hidden = false;
 
       const balance = await fetchTokenBalance(
-        connectedWalletProvider,
+        typeof window.getConnectedProvider === 'function' ? window.getConnectedProvider() : null,
         tokenAddress,
-        connectedWalletAddressValue,
+        typeof window.getConnectedAddress === 'function' ? window.getConnectedAddress() : '',
         decimals,
         chainId
       );
@@ -5094,21 +4785,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
     }
 
+    // ensureWalletOnChain is now in src/client/wallet.ts — access via window.ensureWalletOnChain()
     async function ensureWalletOnChain(provider, chainId) {
-      const targetChainIdHex = getChainIdHex(chainId).toLowerCase();
-      if (targetChainIdHex === '0x0') {
-        throw new Error('Invalid chain ID');
-      }
-
-      const activeChainId = await provider.request({ method: 'eth_chainId' });
-      if (String(activeChainId || '').toLowerCase() === targetChainIdHex) {
-        return;
-      }
-
-      await provider.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: targetChainIdHex }],
-      });
+      if (typeof window.ensureWalletOnChain === 'function') return window.ensureWalletOnChain(provider, chainId);
     }
 
     async function waitForTransactionReceipt(provider, txHash) {
@@ -5140,7 +4819,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         return;
       }
 
-      const provider = connectedWalletProvider;
+      const provider = typeof window.getConnectedProvider === 'function' ? window.getConnectedProvider() : null;
       if (!provider || typeof provider.request !== 'function') {
         setWalletMessage('Wallet provider is not available.', true);
         setTxStatus(card, 'Failed', 'error');
@@ -5193,7 +4872,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     async function onApproveClick(card, button) {
       if (!hasConnectedWallet()) {
         // Store pending action and trigger wallet connection flow
-        pendingPostConnectAction = { type: 'approve', card, button };
+        if (typeof window.setPendingPostConnectAction === 'function') window.setPendingPostConnectAction({ type: 'approve', card, button });
         triggerWalletConnectionFlow();
         return;
       }
@@ -5219,7 +4898,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           to: approvalToken,
           data: calldata,
           value: '0x0',
-          from: connectedWalletAddressValue,
+          from: typeof window.getConnectedAddress === 'function' ? window.getConnectedAddress() : '',
         },
         () => {
           // Show checkmark and mark as approved
@@ -5241,7 +4920,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     async function onSwapClick(card) {
       if (!hasConnectedWallet()) {
         // Store pending action and trigger wallet connection flow
-        pendingPostConnectAction = { type: 'swap', card };
+        if (typeof window.setPendingPostConnectAction === 'function') window.setPendingPostConnectAction({ type: 'swap', card });
         triggerWalletConnectionFlow();
         return;
       }
@@ -5270,7 +4949,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         to: routerAddress,
         data: routerCalldata,
         value: toHexQuantity(routerValue || '0x0'),
-        from: connectedWalletAddressValue,
+        from: typeof window.getConnectedAddress === 'function' ? window.getConnectedAddress() : '',
       });
     }
 

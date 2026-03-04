@@ -10,8 +10,10 @@ declare global {
 import "./types.js";
 import { DEFAULT_TOKENS, WALLETCONNECT_PROJECT_ID } from "./config.js";
 import { initTheme } from "./theme.js";
-import { initModals } from "./modals.js";
+import { initModals, lockBodyScroll, unlockBodyScroll, closeWalletProviderMenu } from "./modals.js";
 import type { ModalElements, ModalCallbacks } from "./modals.js";
+import { initWallet } from "./wallet.js";
+import type { WalletElements, WalletModalFunctions, WalletCallbacks } from "./wallet.js";
 
 console.log(
   "[client] bundle loaded, chains configured",
@@ -164,5 +166,54 @@ const modalCallbacks: ModalCallbacks = {
 };
 
 initModals(modalElements, modalCallbacks);
+
+// ---------------------------------------------------------------------------
+// Wallet initialization
+// ---------------------------------------------------------------------------
+
+const walletElements: WalletElements = {
+  connectWalletBtn: getEl("connectWalletBtn"),
+  walletConnected: getEl("walletConnected"),
+  walletConnectedIcon: getEl("walletConnectedIcon") as HTMLImageElement,
+  walletConnectedName: getEl("walletConnectedName"),
+  walletConnectedAddress: getEl("walletConnectedAddress"),
+  disconnectWalletBtn: getEl("disconnectWalletBtn"),
+  walletMessage: getEl("walletMessage"),
+  walletProviderModal: modalElements.walletProviderModal,
+  walletProviderModalClose: modalElements.walletProviderModalClose,
+  walletProviderList: modalElements.walletProviderList,
+  walletProviderNoWallet: modalElements.walletProviderNoWallet,
+};
+
+const walletModalFns: WalletModalFunctions = {
+  lockBodyScroll,
+  unlockBodyScroll,
+  closeWalletProviderMenu,
+};
+
+const walletCallbacks: WalletCallbacks = {
+  getCurrentChainId: () =>
+    typeof win.__cb_getCurrentChainId === "function"
+      ? (win.__cb_getCurrentChainId as () => number)()
+      : 1,
+  onConnected: (pendingAction) => {
+    if (typeof win.__cb_onWalletConnected === "function")
+      (win.__cb_onWalletConnected as (a: typeof pendingAction) => void)(pendingAction);
+  },
+  onDisconnected: () => {
+    if (typeof win.__cb_onWalletDisconnected === "function")
+      (win.__cb_onWalletDisconnected as () => void)();
+  },
+  updateTransactionActionStates: () => {
+    if (typeof win.__cb_updateTransactionActionStates === "function")
+      (win.__cb_updateTransactionActionStates as () => void)();
+  },
+  updateTokenBalances: () => {
+    if (typeof win.__cb_updateTokenBalances === "function")
+      (win.__cb_updateTokenBalances as () => void)();
+  },
+};
+
+initWallet(walletElements, walletModalFns, walletCallbacks);
 
 export {};
