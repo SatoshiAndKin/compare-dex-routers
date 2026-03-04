@@ -11,38 +11,46 @@ NOTE: Startup and cleanup are handled by `worker-base`. This skill defines the W
 
 Use for features that modify:
 - Server-side endpoint handlers in `src/server.ts`
-- The inline HTML/JS UI template (`INDEX_HTML` in `src/server.ts`)
+- Client-side TypeScript modules in `src/client/`
+- The HTML template (`INDEX_HTML` in `src/server.ts`)
+- CSS in `src/client/styles.css`
+- Build pipeline configuration (esbuild, package.json scripts)
 - Supporting source files (config, curve, quote, etc.)
 - Test files in `src/__tests__/`
-- Docker/infrastructure files (Dockerfile, docker-compose, .dockerignore)
 
 ## Architecture Context
 
-- `src/server.ts` contains EVERYTHING: HTTP server, route handlers, and the entire UI as an inline HTML template literal (`INDEX_HTML`). The HTML includes inline `<style>` and `<script>` blocks.
-- The app uses vanilla JS — no React, no bundler, no build step. All client-side code is inline in the template.
-- Modal pattern exists (MEV modal, settings modal): `.modal-overlay` + `.modal` with open/close/focus/aria handling. Reuse this pattern for new modals.
-- Token data model: `tokenlistSources` array of `{url, enabled, name, tokens, error?}` objects. Each token carries `_source` field. `getTokensForChain()` merges from all enabled sources with dedup. `findTokenMatches()` sets `_needsDisambiguation` flag for same-symbol disambiguation.
-- localStorage keys: `customTokenlists` (JSON array of `{url, enabled, name}`) for remote lists. `localTokenList` for local tokens. Always wrap in try/catch for corrupt data.
-- The `/tokenlist/proxy?url=` endpoint proxies remote tokenlist URLs (HTTPS-only, 5MB limit, 30s timeout).
-- Curve library: use `createCurve()` from `@curvefi/api` for per-chain instances (NOT the default singleton). Each instance needs separate init() with chainId and RPC URL.
+### Server Side
+- `src/server.ts` contains the HTTP server, route handlers, and the HTML template (`INDEX_HTML`)
+- Runtime: `tsx` (TypeScript execution without build step)
+- ESM modules with TypeScript strict mode
+- Pre-commit hooks enforce linting and formatting via Husky + lint-staged
 
-### Client-Side CDN Libraries (No npm install needed)
-- **WalletConnect**: `@walletconnect/ethereum-provider` loaded via `https://esm.sh/@walletconnect/ethereum-provider@2` in a `<script type="module">`. Returns EIP-1193 provider that drops into existing `connectToWalletProvider()` flow. Uses `showQrModal: true` for built-in QR. Needs `WALLETCONNECT_PROJECT_ID` env var injected into template.
-- **Farcaster SDK**: `@farcaster/miniapp-sdk` loaded via `https://esm.sh/@farcaster/miniapp-sdk` conditionally (only when in miniapp context). Use `sdk.isInMiniApp()` for detection. Call `sdk.actions.ready()` to dismiss splash. Use `sdk.wallet.getEthereumProvider()` for wallet inside Farcaster.
+### Client Side (target architecture)
+- `src/client/main.ts` — Entry point, initialization, event wiring
+- `src/client/types.ts` — Shared interfaces and type definitions
+- `src/client/styles.css` — All application CSS (extracted from inline `<style>`)
+- `src/client/*.ts` — Focused modules (wallet, autocomplete, chain-selector, etc.)
+- Build: esbuild compiles TypeScript to JS bundle + copies CSS to output directory
+- Server serves built files from `/static/` route
+- Server-side config injected via `window.__config` inline script (only `DEFAULT_TOKENS` and `WALLETCONNECT_PROJECT_ID`)
 
-### Progressive Quotes Pattern
-Progressive quotes use parallel client-side fetch() to /quote (Spandex) and /quote-curve (Curve) with AbortController for cancellation. First quote renders immediately, second updates tabs/recommendation. Use `cancelInProgressFetches()` to abort in-flight requests before starting new ones.
-
-### Two-Field Amount UX Pattern
-The form has two amount fields: #sellAmount (exactIn) and #receiveAmount (targetOut). Only one is "active" (user-typed) at a time. The other is "computed" (populated by quote result). Use an `isProgrammaticUpdate` flag when setting the computed field's value to prevent circular input event re-triggering. Auto-quoting uses a debounce timer (400ms) on input events.
+### Key Patterns
+- **Progressive quotes**: Parallel client-side fetch() to /quote and /quote-curve with AbortController. First quote renders immediately, second updates tabs/recommendation.
+- **Two-field amount UX**: #sellAmount (exactIn) and #receiveAmount (targetOut). Use `isProgrammaticUpdate` flag when setting computed field to prevent circular input events. 400ms debounce on auto-quote.
+- **Modal pattern**: `.modal-overlay` + `.modal` with open/close/focus/aria handling, body scroll lock via ref-counting.
+- **Token data model**: `tokenlistSources` array of `{url, enabled, name, tokens, error?}`. Each token carries `_source` field. `getTokensForChain()` merges from all enabled sources with dedup.
+- **localStorage persistence**: `customTokenlists`, `localTokenList`, `localTokensEnabled`, `defaultTokenlistEnabled`, `compare-dex-preferences`, `compare-dex-theme`. Always try/catch reads for corrupt data.
+- **ERC-6963 wallet discovery**: Standards-based wallet provider detection. WalletConnect via ESM CDN import. Farcaster miniapp via conditional CDN import.
 
 ## Conventions (ALWAYS FOLLOW)
 
-- **Node.js LTS**: Always use the latest Node.js LTS release. Currently Node 24 (Krypton). Dockerfile must use `node:24-slim`. Never downgrade to an older version.
-- **NEVER truncate addresses.** Always display full 0x addresses in the UI and API responses. No `0xABCD...1234` patterns.
-- No direct `console.log` in source code; use the logger from `src/logger.ts`
-- ESM modules with TypeScript strict mode
-- Pre-commit hooks enforce linting and formatting via Husky + lint-staged
+- **NEVER truncate addresses.** Always display full 0x addresses. No `0xABCD...1234` patterns.
+- No direct `console.log` in source code; use the logger from `src/logger.ts` for server code.
+- No `any` types in client modules. Use `unknown` and narrow, or define proper interfaces.
+- All functions must have explicit parameter and return types.
+- kebab-case for file names, camelCase for functions/variables, PascalCase for interfaces/types.
+- DOM elements passed to module init functions (dependency injection), not looked up globally within modules.
 
 ## Work Procedure
 
@@ -54,24 +62,27 @@ Read the feature description, preconditions, expectedBehavior, and verificationS
 
 For server-side changes:
 - Add/update test cases in `src/__tests__/` using vitest
-- Mock external dependencies (viem, @spandex/core) as established in existing tests
+- Mock external dependencies as established in existing tests
 - Run `npm test` to confirm new tests fail (red)
 
-For client-side-only changes (inline JS):
-- Testing is done via manual verification (step 4) since the UI is inline HTML
-- Still write server-side tests for any new endpoints or server-side logic
+For client TypeScript modules:
+- If the module has pure logic (e.g., recommendation computation, URL param parsing), write unit tests
+- For DOM-dependent code, testing is done via manual verification (step 4)
 
-For infrastructure changes (Dockerfile, docker-compose, etc.):
-- Verify by building and running containers
+For build pipeline changes:
+- Test by running the build and verifying output
 
 ### 3. Implement
 
 - Make changes to source files
-- For the inline HTML template: be careful with template literal escaping (backticks, `${}`). The HTML is inside a tagged template string.
-- Keep client-side JS clean — use `const`/`let`, proper error handling, no global namespace pollution
-- Follow the existing brutalist UI style (thick borders, high contrast, monospace elements for addresses)
-- For modals: follow the MEV modal pattern (overlay click closes, Escape closes, body scroll lock, aria attributes)
-- For localStorage: always wrap reads in try/catch, handle corrupt JSON gracefully
+- For extraction work: carefully move code from inline `<script>` blocks to TypeScript modules
+  - Preserve ALL behavior — this is a refactoring, not a rewrite
+  - Add proper TypeScript types as you extract
+  - Replace template literal interpolations with `window.__config` reads
+  - Convert global variables to module-scoped state or exports
+  - Ensure initialization order is preserved
+- For the HTML template: update `<script>` and `<style>` tags to reference external files
+- Keep CSS changes minimal — extract as-is, don't redesign
 
 ### 4. Verify
 
@@ -83,50 +94,47 @@ npm run lint        # Must pass (run lint:fix if needed)
 npm test            # All tests must pass
 ```
 
-Then manually verify via playwright browser tools:
-- Navigate to http://localhost:3002/
-- Take a snapshot to verify UI renders correctly
-- Test the specific user interactions this feature adds
-- Check console for errors
+If the feature involves build pipeline:
+```bash
+npm run build:client  # Must succeed
+ls -la <output-dir>   # Verify output files exist
+```
+
+Then manually verify with the dev server running:
+- Start: `PORT=3000 npm run dev`
+- Use browser tools to verify page loads correctly
+- Test specific interactions this feature affects
+- Check browser console for JS errors
 
 Each interactive check = one entry in `interactiveChecks` with the full action sequence and observed result.
 
-### 5. Restart Dev Server If Needed
+### 5. Commit
 
-If you modified server-side code, the dev server (running with tsx --watch) should auto-reload. If it doesn't respond, restart it:
-```bash
-lsof -ti :3002 | xargs kill 2>/dev/null; PORT=3002 npm run dev &
-sleep 3
-curl -sf http://localhost:3002/health
-```
+Commit with a descriptive message. Use feature branches — never commit to main.
 
 ## Example Handoff
 
 ```json
 {
-  "salientSummary": "Implemented Curve multi-chain support using createCurve() factory for per-chain instances. All 7 chains init eagerly at startup in parallel. Updated isCurveSupported() and findCurveQuote() to route to correct instance. Removed 'Curve only supports Ethereum' error. Ran npm test (all 142 tests pass), typecheck clean, lint clean. Verified via curl: /compare on Base returns Curve quote, /compare on Ethereum still works.",
-  "whatWasImplemented": "Per-chain Curve instances via createCurve() stored in Map<number, CurveInstance>. Eager parallel init at startup for all 7 chains (1, 8453, 42161, 10, 137, 56, 43114). Updated isCurveSupported() to check against CURVE_SUPPORTED_CHAINS array. findCurveQuote() now accepts chainId and uses getCurveInstance(chainId). Init failure on one chain logged but doesn't block others. 8 new tests for multi-chain init, per-chain routing, and error isolation.",
+  "salientSummary": "Extracted wallet connection code (~300 lines) from inline JS into src/client/wallet.ts with full TypeScript types. Defined WalletProviderInfo, WalletState, and ConnectOptions interfaces. All 168 tests pass, typecheck clean, lint clean. Verified wallet modal opens and displays correctly in browser.",
+  "whatWasImplemented": "Created src/client/wallet.ts with: WalletProviderInfo and WalletState interfaces, initWallet() function that takes DOM elements + callbacks, ERC-6963 discovery logic, connect/disconnect functions, triggerWalletConnectionFlow() for auto-approve/swap pending actions, setWalletGlobals() for window.__selectedWalletProvider. Removed corresponding code from inline script in server.ts. Updated main.ts to import and initialize wallet module.",
   "whatWasLeftUndone": "",
   "verification": {
     "commandsRun": [
+      { "command": "npm run build:client", "exitCode": 0, "observation": "Bundle built, 145KB" },
       { "command": "npm run typecheck", "exitCode": 0, "observation": "No type errors" },
       { "command": "npm run lint", "exitCode": 0, "observation": "No lint errors" },
-      { "command": "npm test", "exitCode": 0, "observation": "All 142 tests pass including 8 new multi-chain tests" }
+      { "command": "npm test", "exitCode": 0, "observation": "All 168 tests pass" }
     ],
     "interactiveChecks": [
-      { "action": "curl /compare on Base with USDC/WETH", "observed": "Curve quote present with output amount, no Ethereum-only error" },
-      { "action": "curl /compare on Ethereum with USDC/WETH", "observed": "Curve quote still works as before" },
-      { "action": "Checked server startup logs", "observed": "Curve init messages for all 7 chains" }
+      { "action": "Loaded http://localhost:3000 in browser", "observed": "Page loads, no console errors, wallet section visible" },
+      { "action": "Clicked Connect Wallet button", "observed": "Wallet provider modal opens with close button, overlay backdrop" },
+      { "action": "Pressed Escape", "observed": "Modal closes, focus returns to Connect Wallet button" },
+      { "action": "Verified bundle includes wallet module", "observed": "grep 'initWallet' in bundle output confirms inclusion" }
     ]
   },
   "tests": {
-    "added": [
-      { "file": "src/__tests__/curve.test.ts", "cases": [
-        { "name": "initializes for all supported chains", "verifies": "createCurve called 7 times with correct chainIds" },
-        { "name": "returns quote on non-Ethereum chain", "verifies": "findCurveQuote routes to correct instance" },
-        { "name": "init failure isolation", "verifies": "one chain failing doesn't block others" }
-      ]}
-    ]
+    "added": []
   },
   "discoveredIssues": []
 }
@@ -134,9 +142,9 @@ curl -sf http://localhost:3002/health
 
 ## When to Return to Orchestrator
 
-- Feature requires a new npm dependency not already in package.json
-- The inline HTML template needs structural refactoring beyond the feature scope
-- Dev server won't start or tests fail for reasons unrelated to this feature
-- Requirements are ambiguous about a specific UI behavior or data model choice
-- A precondition is not met (e.g., expected function or data structure doesn't exist yet)
-- Docker build fails for infrastructure reasons (OrbStack down, disk full, etc.)
+- Feature requires a new npm dependency not listed in AGENTS.md as allowed
+- Circular dependency detected between client modules that can't be resolved without architectural change
+- Existing tests fail for reasons unrelated to this feature
+- Dev server won't start or build fails for infrastructure reasons
+- Requirements are ambiguous about behavioral preservation
+- A precondition is not met (e.g., expected module or build pipeline doesn't exist yet)

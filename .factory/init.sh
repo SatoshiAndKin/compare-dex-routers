@@ -1,23 +1,19 @@
 #!/bin/bash
 set -e
 
-cd /Users/bryan/code/compare-dex-routers
-
 # Install dependencies (idempotent)
-npm install --prefer-offline --no-audit 2>/dev/null || npm install
-
-# Ensure default tokenlist exists in static/
-if [ ! -f static/tokenlist.json ]; then
-  mkdir -p static
-  echo "Downloading Uniswap default tokenlist..."
-  curl -sf https://tokens.uniswap.org -o static/tokenlist.json
-fi
+npm install
 
 # Ensure .env exists
 if [ ! -f .env ]; then
   cp env.example .env
-  echo "Created .env from env.example - fill in ALCHEMY_API_KEY"
+  # Set port to 3000 (3001 conflicts with OrbStack)
+  sed -i '' 's/^PORT=.*/PORT=3000/' .env 2>/dev/null || true
 fi
 
-# Kill any existing dev server on port 3002 (idempotent)
-lsof -ti :3002 | xargs kill 2>/dev/null || true
+# Build client if build script exists
+if npm run --silent build:client 2>/dev/null; then
+  echo "Client built successfully"
+else
+  echo "No build:client script yet (pipeline milestone not started)"
+fi
