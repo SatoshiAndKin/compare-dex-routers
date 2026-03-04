@@ -30,20 +30,11 @@ Use for features that modify:
 - **WalletConnect**: `@walletconnect/ethereum-provider` loaded via `https://esm.sh/@walletconnect/ethereum-provider@2` in a `<script type="module">`. Returns EIP-1193 provider that drops into existing `connectToWalletProvider()` flow. Uses `showQrModal: true` for built-in QR. Needs `WALLETCONNECT_PROJECT_ID` env var injected into template.
 - **Farcaster SDK**: `@farcaster/miniapp-sdk` loaded via `https://esm.sh/@farcaster/miniapp-sdk` conditionally (only when in miniapp context). Use `sdk.isInMiniApp()` for detection. Call `sdk.actions.ready()` to dismiss splash. Use `sdk.wallet.getEthereumProvider()` for wallet inside Farcaster.
 
-### SSE (Server-Sent Events) Pattern
-For progressive quotes, use Node.js native response streaming:
-```typescript
-res.writeHead(200, {
-  'Content-Type': 'text/event-stream',
-  'Cache-Control': 'no-cache',
-  'Connection': 'keep-alive'
-});
-res.write(`data: ${JSON.stringify(payload)}\n\n`);
-// ... more events ...
-res.write('event: done\ndata: {}\n\n');
-res.end();
-```
-On the client, use `EventSource` or `fetch` with `ReadableStream`.
+### Progressive Quotes Pattern
+Progressive quotes use parallel client-side fetch() to /quote (Spandex) and /quote-curve (Curve) with AbortController for cancellation. First quote renders immediately, second updates tabs/recommendation. Use `cancelInProgressFetches()` to abort in-flight requests before starting new ones.
+
+### Two-Field Amount UX Pattern
+The form has two amount fields: #sellAmount (exactIn) and #receiveAmount (targetOut). Only one is "active" (user-typed) at a time. The other is "computed" (populated by quote result). Use an `isProgrammaticUpdate` flag when setting the computed field's value to prevent circular input event re-triggering. Auto-quoting uses a debounce timer (400ms) on input events.
 
 ## Conventions (ALWAYS FOLLOW)
 
