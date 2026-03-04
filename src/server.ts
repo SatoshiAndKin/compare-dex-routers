@@ -2256,6 +2256,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       /* Prevent form elements from causing overflow */
       input, select {
         font-size: 1rem; /* Prevent iOS zoom on focus */
+        min-height: 44px; /* VAL-CSS-005: touch targets >= 44px */
       }
       /* Primary button should be full width on very small screens */
       .action-row {
@@ -2346,7 +2347,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     <!-- Row 6: Amount (full-width for 20+ digit numbers) -->
     <div class="form-group">
       <label for="amount">Amount</label>
-      <input type="text" id="amount" value="1000">
+      <input type="text" id="amount" value="1">
     </div>
     <!-- Row 7: Action Row with Submit + Compact Slippage -->
     <div class="action-row">
