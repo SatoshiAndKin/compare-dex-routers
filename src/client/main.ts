@@ -29,6 +29,44 @@ import {
 import type { TokenManagementElements, TokenManagementCallbacks } from "./token-management.js";
 import { initAutocomplete, escapeHtml, refreshAutocomplete } from "./autocomplete.js";
 import type { AutocompleteElements, AutocompleteCallbacks } from "./autocomplete.js";
+import {
+  initAmountFields,
+  updateAmountFieldLabels,
+  formatQuoteAmount,
+  setDirectionMode,
+  getActiveMode,
+  scheduleAutoQuote,
+  populateNonActiveField,
+  setComputedAmount,
+  getActiveAmount,
+  isProgrammatic,
+  setProgrammatic,
+  getBestQuoteFromState,
+} from "./amount-fields.js";
+import type { AmountFieldElements, AmountFieldCallbacks } from "./amount-fields.js";
+import {
+  initSlippage,
+  getSlippageBps,
+  setSlippageBps,
+  updateSlippagePresetActive,
+} from "./slippage.js";
+import type { SlippageElements } from "./slippage.js";
+import {
+  initUrlSync,
+  readCompareParamsFromForm,
+  saveUserPreferences,
+  loadPreferences,
+  getSavedTokensForChain,
+  applyDefaults,
+  cloneCompareParams,
+  compareParamsToSearchParams,
+  updateUrlFromCompareParams,
+  restoreFromUrlAndPreferences,
+  applyTokenFormattingAfterLoad,
+} from "./url-sync.js";
+import type { UrlSyncElements, UrlSyncCallbacks } from "./url-sync.js";
+import { formatChainDisplay } from "./chain-selector.js";
+import { CHAIN_NAMES } from "./config.js";
 
 console.log(
   "[client] bundle loaded, chains configured",
@@ -367,5 +405,155 @@ const autocompleteCallbacks: AutocompleteCallbacks = {
 };
 
 initAutocomplete(autocompleteElements, autocompleteCallbacks);
+
+// ---------------------------------------------------------------------------
+// Amount fields initialization
+// ---------------------------------------------------------------------------
+
+const sellAmountInput = document.getElementById("sellAmount") as HTMLInputElement;
+const receiveAmountInput = document.getElementById("receiveAmount") as HTMLInputElement;
+const sellAmountLabel = document.getElementById("sellAmountLabel") as HTMLElement;
+const receiveAmountLabel = document.getElementById("receiveAmountLabel") as HTMLElement;
+const sellAmountGroup = document.getElementById("sellAmountGroup") as HTMLElement;
+const receiveAmountGroup = document.getElementById("receiveAmountGroup") as HTMLElement;
+const targetOutNote = document.getElementById("targetOutNote") as HTMLElement;
+
+const amountFieldElements: AmountFieldElements = {
+  sellAmountInput,
+  receiveAmountInput,
+  sellAmountLabel,
+  receiveAmountLabel,
+  sellAmountGroup,
+  receiveAmountGroup,
+  targetOutNote,
+  fromInput,
+  toInput,
+};
+
+const amountFieldCallbacks: AmountFieldCallbacks = {
+  scheduleAutoQuote: () => scheduleAutoQuote(),
+  cancelInProgressFetches: () => {
+    if (typeof win.__cb_cancelInProgressFetches === "function")
+      (win.__cb_cancelInProgressFetches as () => void)();
+  },
+  readCompareParamsFromForm: () => readCompareParamsFromForm(),
+  runCompareAndMaybeStartAutoRefresh: async (params, options) => {
+    if (typeof win.__cb_runCompareAndMaybeStartAutoRefresh === "function")
+      await (
+        win.__cb_runCompareAndMaybeStartAutoRefresh as (
+          p: typeof params,
+          o: typeof options
+        ) => Promise<void>
+      )(params, options);
+  },
+  findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
+  getCurrentChainId: () => getCurrentChainId(),
+  getBestQuoteFromState: () => {
+    if (typeof win.__cb_getBestQuoteFromState === "function")
+      return (
+        win.__cb_getBestQuoteFromState as () => {
+          output_amount?: string;
+          input_amount?: string;
+        } | null
+      )();
+    return null;
+  },
+  clearNonActiveField: () => {
+    if (typeof win.__cb_clearNonActiveField === "function")
+      (win.__cb_clearNonActiveField as () => void)();
+  },
+};
+
+initAmountFields(amountFieldElements, amountFieldCallbacks);
+
+// ---------------------------------------------------------------------------
+// Slippage initialization
+// ---------------------------------------------------------------------------
+
+const slippageElements: SlippageElements = {
+  slippageInput: document.getElementById("slippageBps") as HTMLInputElement,
+  slippagePresetBtns: document.querySelectorAll(
+    ".slippage-preset-compact"
+  ) as NodeListOf<HTMLElement>,
+};
+
+initSlippage(slippageElements);
+
+// ---------------------------------------------------------------------------
+// URL sync initialization
+// ---------------------------------------------------------------------------
+
+const urlSyncElements: UrlSyncElements = {
+  fromInput,
+  toInput,
+  sellAmountInput,
+  receiveAmountInput,
+  chainIdInput: document.getElementById("chainId") as HTMLInputElement,
+  fromIcon,
+  toIcon,
+  fromWrapper,
+  toWrapper,
+};
+
+const urlSyncCallbacks: UrlSyncCallbacks = {
+  getCurrentChainId: () => getCurrentChainId(),
+  hasConnectedWallet: () =>
+    typeof win.__cb_hasConnectedWallet === "function"
+      ? (win.__cb_hasConnectedWallet as () => boolean)()
+      : false,
+  getConnectedAddress: () =>
+    typeof win.getConnectedAddress === "function"
+      ? (win.getConnectedAddress as () => string)()
+      : "",
+  getActiveMode: () => getActiveMode(),
+  getSlippageBps: () => getSlippageBps(),
+  findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
+  formatTokenDisplay: tokenManagementCallbacks.formatTokenDisplay,
+  updateTokenInputIcon: tokenManagementCallbacks.updateTokenInputIcon as (
+    input: HTMLInputElement,
+    icon: HTMLImageElement,
+    wrapper: HTMLElement,
+    token: import("./types.js").Token | undefined
+  ) => void,
+  clearTokenInputIcon: tokenManagementCallbacks.clearTokenInputIcon,
+  updateAmountFieldLabels: () => updateAmountFieldLabels(),
+  setDirectionMode: (mode: "exactIn" | "targetOut") => setDirectionMode(mode),
+  updateSlippagePresetActive: (value: string) => updateSlippagePresetActive(value),
+  setSlippageBps: (value: string) => setSlippageBps(value),
+  formatChainDisplay: (chainId: string, chainName: string) =>
+    formatChainDisplay(chainId, chainName),
+  getChainName: (chainId: string) => CHAIN_NAMES[chainId] ?? "",
+  extractAddressFromInput: (input: HTMLInputElement) => {
+    if (typeof win.extractAddressFromInput === "function")
+      return (win.extractAddressFromInput as (i: HTMLInputElement) => string)(input);
+    // Fallback: check data-address then value
+    const dataAddr = input.dataset.address;
+    if (dataAddr && /^0x[a-fA-F0-9]{40}$/.test(dataAddr)) return dataAddr;
+    const value = String(input.value || "").trim();
+    if (/^0x[a-fA-F0-9]{40}$/.test(value)) return value;
+    if (dataAddr) return dataAddr;
+    return value;
+  },
+};
+
+initUrlSync(urlSyncElements, urlSyncCallbacks);
+
+// Re-export for inline JS compatibility (avoid dead-code detection issues)
+void formatQuoteAmount;
+void populateNonActiveField;
+void setComputedAmount;
+void getActiveAmount;
+void isProgrammatic;
+void setProgrammatic;
+void getBestQuoteFromState;
+void loadPreferences;
+void getSavedTokensForChain;
+void applyDefaults;
+void cloneCompareParams;
+void compareParamsToSearchParams;
+void updateUrlFromCompareParams;
+void restoreFromUrlAndPreferences;
+void applyTokenFormattingAfterLoad;
+void saveUserPreferences;
 
 export {};

@@ -409,9 +409,8 @@ describe("server integration", () => {
     expect(html).toContain('class="chain-dropdown"');
 
     // Chain dropdown JS logic is now in src/client/chain-selector.ts (loaded via client.js bundle)
-    // The inline JS references getCurrentChainId and formatChainDisplay via window globals
+    // The inline JS references getCurrentChainId via window globals
     expect(html).toContain("getCurrentChainId");
-    expect(html).toContain("formatChainDisplay");
   });
 
   // VAL-FLOW-008: MEV info button in results area
@@ -482,8 +481,9 @@ describe("server integration", () => {
     expect(res.status).toBe(200);
     const html = res.body;
 
-    // The updateUrlFromCompareParams function should delete sender from URL
-    expect(html).toContain("url.searchParams.delete('sender')");
+    // The updateUrlFromCompareParams function (now in url-sync.ts module) deletes sender from URL
+    // The inline JS still references the shim that delegates to the module
+    expect(html).toContain("updateUrlFromCompareParams");
   });
 
   // VAL-SENDER-006: No JS errors from removed sender input
@@ -504,10 +504,10 @@ describe("server integration", () => {
     expect(res.status).toBe(200);
     const html = res.body;
 
-    // The readCompareParamsFromForm function should handle no wallet case
+    // The readCompareParamsFromForm function (now in url-sync.ts module) handles no wallet case
+    // The inline JS still references hasConnectedWallet and readCompareParamsFromForm via shims
     expect(html).toContain("hasConnectedWallet()");
-    // Sender should use wallet module's getConnectedAddress when wallet is connected
-    expect(html).toContain("sender: hasConnectedWallet()");
+    expect(html).toContain("readCompareParamsFromForm");
     expect(html).toContain("getConnectedAddress");
   });
 

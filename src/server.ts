@@ -1299,14 +1299,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Inline JS accesses them via window-exposed functions from the module.
     const DEFAULT_TOKENLIST_NAME = 'Default Tokenlist';
     const LOCAL_TOKENS_SOURCE_NAME = 'Local Tokens';
-    // User preferences key - stores form selections (chain, tokens, amount, slippage)
-    const USER_PREFERENCES_KEY = 'compare-dex-preferences';
-    // Migrate old localStorage key
-    const oldPrefs = localStorage.getItem('flashprofits-preferences');
-    if (oldPrefs && !localStorage.getItem(USER_PREFERENCES_KEY)) {
-      localStorage.setItem(USER_PREFERENCES_KEY, oldPrefs);
-      localStorage.removeItem('flashprofits-preferences');
-    }
+    // User preferences (compare-dex-preferences) and old key migration are now in
+    // src/client/url-sync.ts (loaded via client.js bundle).
 
     // Wallet state is now managed by src/client/wallet.ts (loaded via client.js bundle).
     // Inline JS accesses wallet state via window.hasConnectedWallet(), window.getConnectedProvider(),
@@ -1819,12 +1813,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     const toIcon = document.getElementById('toIcon');
     const sellAmountInput = document.getElementById('sellAmount');
     const receiveAmountInput = document.getElementById('receiveAmount');
-    const sellAmountLabel = document.getElementById('sellAmountLabel');
-    const receiveAmountLabel = document.getElementById('receiveAmountLabel');
-    const sellAmountGroup = document.getElementById('sellAmountGroup');
-    const receiveAmountGroup = document.getElementById('receiveAmountGroup');
     const slippageInput = document.getElementById('slippageBps');
-    const slippagePresetBtns = document.querySelectorAll('.slippage-preset-compact');
 
     // Update token input icon based on token data
     function updateTokenInputIcon(input, icon, wrapper, token) {
@@ -1851,198 +1840,32 @@ const INDEX_HTML = `<!DOCTYPE html>
       icon.alt = '';
     }
 
-    // Update active state on slippage preset buttons
-    function updateSlippagePresetActive(value) {
-      const bpsValue = String(value || '').trim();
-      slippagePresetBtns.forEach((btn) => {
-        const btnBps = btn.dataset.bps;
-        btn.classList.toggle('active', btnBps === bpsValue);
-      });
-    }
+    // Slippage controls are now in src/client/slippage.ts (loaded via client.js bundle).
+    // Inline JS accesses them via window-exposed shim functions.
+    function updateSlippagePresetActive(value) { if (typeof window.updateSlippagePresetActive === 'function') window.updateSlippagePresetActive(value); }
+    function getSlippageBps() { return typeof window.getSlippageBps === 'function' ? window.getSlippageBps() : slippageInput.value; }
 
-    // Slippage preset button click handler
-    slippagePresetBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const bps = btn.dataset.bps;
-        if (bps) {
-          slippageInput.value = bps;
-          updateSlippagePresetActive(bps);
-        }
-      });
-    });
-
-    // On custom input, update preset active state
-    slippageInput.addEventListener('input', () => {
-      updateSlippagePresetActive(slippageInput.value);
-    });
-
-    // Two-field amount: active field tracking
-    const targetOutNote = document.getElementById('targetOutNote');
-
-    // Current mode state: 'exactIn' (default) or 'targetOut'
-    let currentQuoteMode = 'exactIn';
-    // Which amount field is active: 'sell' or 'receive'
-    let activeAmountField = 'sell';
-    // Auto-quote debounce and programmatic update tracking
-    let isProgrammaticUpdate = false;
-    let autoQuoteDebounceTimer = null;
-
-    function setDirectionMode(mode) {
-      currentQuoteMode = mode;
-      const isExactIn = mode === 'exactIn';
-      activeAmountField = isExactIn ? 'sell' : 'receive';
-
-      // Update visual state of fields
-      sellAmountGroup.classList.toggle('active', isExactIn);
-      sellAmountGroup.classList.toggle('computed', !isExactIn);
-      receiveAmountGroup.classList.toggle('active', !isExactIn);
-      receiveAmountGroup.classList.toggle('computed', isExactIn);
-
-      // Show/hide the provider note for targetOut mode
-      targetOutNote.hidden = isExactIn;
-    }
-
-    // Update labels to include token symbols
-    function updateAmountFieldLabels() {
-      const fromAddr = fromInput.dataset.address || '';
-      const toAddr = toInput.dataset.address || '';
-      const chainId = getCurrentChainId();
-      const fromToken = fromAddr ? findTokenByAddress(fromAddr, chainId) : null;
-      const toToken = toAddr ? findTokenByAddress(toAddr, chainId) : null;
-      const fromSymbol = fromToken ? fromToken.symbol : '';
-      const toSymbol = toToken ? toToken.symbol : '';
-      sellAmountLabel.textContent = fromSymbol ? 'YOU SELL ' + fromSymbol : 'YOU SELL';
-      receiveAmountLabel.textContent = toSymbol ? 'YOU RECEIVE ' + toSymbol : 'YOU RECEIVE';
-    }
-
-    // Format a quote amount for display (≤8 decimals, trim trailing zeros)
-    function formatQuoteAmount(value) {
-      const num = Number(value);
-      if (!Number.isFinite(num) || num <= 0) return '';
-      let formatted = num.toFixed(8);
-      if (formatted.includes('.')) {
-        formatted = formatted.replace(/0+$/, '').replace(/[.]$/, '');
-      }
-      return formatted;
-    }
-
-    // Check if a value is valid for auto-quoting (>0, numeric)
-    function isValidAutoQuoteAmount(value) {
-      const trimmed = String(value || '').trim();
-      if (!trimmed || trimmed === '0') return false;
-      const num = Number(trimmed);
-      return Number.isFinite(num) && num > 0;
-    }
-
-    // Get the best quote from progressive state (recommended or first available)
+    // Amount field handling (direction mode, labels, auto-quote, populate) is now in
+    // src/client/amount-fields.ts (loaded via client.js bundle).
+    // Inline JS accesses them via window-exposed shim functions.
+    function setDirectionMode(mode) { if (typeof window.setDirectionMode === 'function') window.setDirectionMode(mode); }
+    function updateAmountFieldLabels() { if (typeof window.updateAmountFieldLabels === 'function') window.updateAmountFieldLabels(); }
+    function formatQuoteAmount(value) { return typeof window.formatQuoteAmount === 'function' ? window.formatQuoteAmount(value) : ''; }
     function getBestQuoteFromState() {
       const rec = progressiveQuoteState.recommendation;
       if (rec === 'spandex' && progressiveQuoteState.spandex) return progressiveQuoteState.spandex;
       if (rec === 'curve' && progressiveQuoteState.curve) return progressiveQuoteState.curve;
       return progressiveQuoteState.spandex || progressiveQuoteState.curve || null;
     }
+    function populateNonActiveField(quote) { if (typeof window.populateNonActiveField === 'function') window.populateNonActiveField(quote); }
+    function clearNonActiveField() { if (typeof window.setComputedAmount === 'function') window.setComputedAmount(''); }
+    function scheduleAutoQuote() { if (typeof window.scheduleAutoQuote === 'function') window.scheduleAutoQuote(); }
 
-    // Populate the non-active field with the best quote amount
-    function populateNonActiveField(quote) {
-      if (!quote) {
-        clearNonActiveField();
-        return;
-      }
-      let amount;
-      if (activeAmountField === 'sell') {
-        // exactIn mode: populate receive field with output amount
-        amount = formatQuoteAmount(quote.output_amount);
-        if (amount) {
-          isProgrammaticUpdate = true;
-          receiveAmountInput.value = amount;
-          isProgrammaticUpdate = false;
-        }
-      } else {
-        // targetOut mode: populate sell field with input amount
-        amount = formatQuoteAmount(quote.input_amount);
-        if (amount) {
-          isProgrammaticUpdate = true;
-          sellAmountInput.value = amount;
-          isProgrammaticUpdate = false;
-        }
-      }
-    }
-
-    // Clear the non-active field to placeholder
-    function clearNonActiveField() {
-      isProgrammaticUpdate = true;
-      if (activeAmountField === 'sell') {
-        receiveAmountInput.value = '';
-      } else {
-        sellAmountInput.value = '';
-      }
-      isProgrammaticUpdate = false;
-    }
-
-    // Schedule an auto-quote with 400ms debounce
-    function scheduleAutoQuote() {
-      if (autoQuoteDebounceTimer !== null) {
-        clearTimeout(autoQuoteDebounceTimer);
-        autoQuoteDebounceTimer = null;
-      }
-      cancelInProgressFetches();
-
-      const currentValue = activeAmountField === 'sell' ? sellAmountInput.value : receiveAmountInput.value;
-      if (!isValidAutoQuoteAmount(currentValue)) {
-        clearNonActiveField();
-        return;
-      }
-
-      autoQuoteDebounceTimer = setTimeout(function() {
-        autoQuoteDebounceTimer = null;
-        const compareParams = readCompareParamsFromForm();
-        // Need both from and to tokens to be set
-        if (!compareParams.from || !compareParams.to) return;
-        void runCompareAndMaybeStartAutoRefresh(compareParams, { showLoading: false });
-      }, 400);
-    }
-
-    // Clicking/focusing the sell field switches back to exactIn mode
-    sellAmountInput.addEventListener('focus', () => {
-      if (isProgrammaticUpdate) return;
-      if (activeAmountField !== 'sell') {
-        setDirectionMode('exactIn');
-      }
-    });
-
-    // Clicking/focusing the receive field switches to targetOut mode
-    receiveAmountInput.addEventListener('focus', () => {
-      if (isProgrammaticUpdate) return;
-      if (activeAmountField !== 'receive') {
-        setDirectionMode('targetOut');
-      }
-    });
-
-    // When user types in sell field, set mode to exactIn and trigger auto-quote
-    sellAmountInput.addEventListener('input', () => {
-      if (isProgrammaticUpdate) return;
-      if (activeAmountField !== 'sell') {
-        setDirectionMode('exactIn');
-      }
-      scheduleAutoQuote();
-    });
-
-    // When user types in receive field, set mode to targetOut and trigger auto-quote
-    receiveAmountInput.addEventListener('input', () => {
-      if (isProgrammaticUpdate) return;
-      if (activeAmountField !== 'receive') {
-        setDirectionMode('targetOut');
-      }
-      scheduleAutoQuote();
-    });
-
-    // Re-trigger auto-quote when tokens change via autocomplete
-    fromInput.addEventListener('tokenselected', function() {
-      scheduleAutoQuote();
-    });
-    toInput.addEventListener('tokenselected', function() {
-      scheduleAutoQuote();
-    });
+    // Expose callbacks for the amount-fields module
+    window.__cb_cancelInProgressFetches = function() { cancelInProgressFetches(); };
+    window.__cb_runCompareAndMaybeStartAutoRefresh = function(params, options) { return runCompareAndMaybeStartAutoRefresh(params, options); };
+    window.__cb_getBestQuoteFromState = function() { return getBestQuoteFromState(); };
+    window.__cb_clearNonActiveField = function() { clearNonActiveField(); };
 
     // Chain Selector Dropdown is now in src/client/chain-selector.ts (via initChainSelector)
 
@@ -2198,7 +2021,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     window.clearTokenInputIcon = function(wrapper, icon) { clearTokenInputIcon(wrapper, icon); };
     window.updateFromTokenBalance = function() { void updateFromTokenBalance(); };
     window.updateToTokenBalance = function() { void updateToTokenBalance(); };
-    window.updateAmountFieldLabels = function() { updateAmountFieldLabels(); };
+    // updateAmountFieldLabels is now in src/client/amount-fields.ts (exposed on window)
 
     // Local Tokenlist Management, tokenlist sources, and autocomplete are now in
     // src/client/token-management.ts and src/client/autocomplete.ts (loaded via client.js bundle).
@@ -2209,59 +2032,11 @@ const INDEX_HTML = `<!DOCTYPE html>
     function addTokenToLocalList(token) { if (typeof window.addTokenToLocalList === 'function') window.addTokenToLocalList(token); }
     function removeTokenFromLocalList(address, chainId) { if (typeof window.removeTokenFromLocalList === 'function') window.removeTokenFromLocalList(address, chainId); }
 
-    // User Preferences Management
-    // Saves user form selections after successful comparison
-    // Structure: { chainId, amount, slippageBps, mode, perChainTokens: { [chainId]: { from, to } } }
-    function loadUserPreferences() {
-      try {
-        const data = localStorage.getItem(USER_PREFERENCES_KEY);
-        if (data) {
-          const parsed = JSON.parse(data);
-          if (parsed && typeof parsed === 'object') {
-            return parsed;
-          }
-        }
-      } catch {
-        // Corrupt data, treat as empty
-      }
-      return null;
-    }
-
-    function saveUserPreferences(params) {
-      try {
-        // Load existing preferences to merge perChainTokens
-        const existing = loadUserPreferences() || {};
-        const perChainTokens = existing.perChainTokens || {};
-
-        // Update per-chain tokens for the current chain
-        perChainTokens[String(params.chainId)] = {
-          from: String(params.from || '').trim(),
-          to: String(params.to || '').trim(),
-        };
-
-        const preferences = {
-          chainId: String(params.chainId || '').trim(),
-          amount: String(params.amount || '').trim(),
-          slippageBps: String(params.slippageBps || '').trim(),
-          mode: String(params.mode || 'exactIn').trim(),
-          sellAmount: sellAmountInput.value,
-          receiveAmount: receiveAmountInput.value,
-          perChainTokens,
-        };
-
-        localStorage.setItem(USER_PREFERENCES_KEY, JSON.stringify(preferences));
-      } catch {
-        // Ignore storage errors
-      }
-    }
-
-    function getSavedTokensForChain(chainId) {
-      const prefs = loadUserPreferences();
-      if (prefs && prefs.perChainTokens && prefs.perChainTokens[String(chainId)]) {
-        return prefs.perChainTokens[String(chainId)];
-      }
-      return null;
-    }
+    // User Preferences Management is now in src/client/url-sync.ts (loaded via client.js bundle).
+    // Inline JS accesses them via window-exposed shim functions.
+    function loadUserPreferences() { return typeof window.loadUserPreferences === 'function' ? window.loadUserPreferences() : null; }
+    function saveUserPreferences(params) { if (typeof window.saveUserPreferences === 'function') window.saveUserPreferences(params); }
+    function getSavedTokensForChain(chainId) { return typeof window.getSavedTokensForChain === 'function' ? window.getSavedTokensForChain(chainId) : null; }
 
     // renderMevChainContent is now in src/client/modals.ts
 
@@ -2439,72 +2214,16 @@ const INDEX_HTML = `<!DOCTYPE html>
     const tabRecommended = document.getElementById('tabRecommended');
     const tabAlternative = document.getElementById('tabAlternative');
 
-    function cloneCompareParams(params) {
-      return {
-        chainId: String(params.chainId || '').trim(),
-        from: String(params.from || '').trim(),
-        to: String(params.to || '').trim(),
-        amount: String(params.amount || '').trim(),
-        slippageBps: String(params.slippageBps || '').trim(),
-        sender: String(params.sender || '').trim(),
-        mode: String(params.mode || 'exactIn').trim(),
-      };
-    }
+    // cloneCompareParams, readCompareParamsFromForm, compareParamsToSearchParams,
+    // and updateUrlFromCompareParams are now in src/client/url-sync.ts (loaded via client.js bundle).
+    // Inline JS accesses them via window-exposed shim functions.
+    function cloneCompareParams(params) { return typeof window.cloneCompareParams === 'function' ? window.cloneCompareParams(params) : params; }
+    function readCompareParamsFromForm() { return typeof window.readCompareParamsFromForm === 'function' ? window.readCompareParamsFromForm() : {}; }
+    function compareParamsToSearchParams(params) { return typeof window.compareParamsToSearchParams === 'function' ? window.compareParamsToSearchParams(params) : new URLSearchParams(); }
+    function updateUrlFromCompareParams(params) { if (typeof window.updateUrlFromCompareParams === 'function') window.updateUrlFromCompareParams(params); }
 
-    function readCompareParamsFromForm() {
-      // Read amount from the active field (sell for exactIn, receive for targetOut)
-      const amount = currentQuoteMode === 'targetOut'
-        ? receiveAmountInput.value
-        : sellAmountInput.value;
-      return cloneCompareParams({
-        chainId: String(getCurrentChainId()),
-        from: extractAddressFromInput(fromInput),
-        to: extractAddressFromInput(toInput),
-        amount: amount,
-        slippageBps: slippageInput.value,
-        sender: hasConnectedWallet() ? (typeof window.getConnectedAddress === 'function' ? window.getConnectedAddress() : '') : '',
-        mode: currentQuoteMode,
-      });
-    }
-
-    function compareParamsToSearchParams(params) {
-      const normalized = cloneCompareParams(params);
-      const query = new URLSearchParams({
-        chainId: normalized.chainId,
-        from: normalized.from,
-        to: normalized.to,
-        amount: normalized.amount,
-        slippageBps: normalized.slippageBps,
-        mode: normalized.mode,
-      });
-
-      if (normalized.sender) {
-        query.set('sender', normalized.sender);
-      }
-
-      return query;
-    }
-
-    function updateUrlFromCompareParams(params) {
-      const normalized = cloneCompareParams(params);
-      const url = new URL(window.location.href);
-      url.searchParams.set('chainId', normalized.chainId);
-      url.searchParams.set('from', normalized.from);
-      url.searchParams.set('to', normalized.to);
-      url.searchParams.set('amount', normalized.amount);
-      url.searchParams.set('slippageBps', normalized.slippageBps);
-      // Only add mode to URL if it's not the default
-      if (normalized.mode && normalized.mode !== 'exactIn') {
-        url.searchParams.set('mode', normalized.mode);
-      } else {
-        url.searchParams.delete('mode');
-      }
-      // Sender is never written to URL - it comes from wallet connection state
-      url.searchParams.delete('sender');
-      // Remove MEV protection param if it exists (no longer used)
-      url.searchParams.delete('mevProtection');
-      window.history.replaceState({}, '', url.toString());
-    }
+    // Expose extractAddressFromInput on window for url-sync module
+    window.extractAddressFromInput = function(input) { return extractAddressFromInput(input); };
 
     function clearAutoRefreshTimer() {
       if (autoRefreshState.timerId !== null) {
@@ -2816,50 +2535,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       void updateToTokenBalance();
     }
 
-    function applyDefaults(chainId, options = {}) {
-      const skipSavedTokens = options.skipSavedTokens === true;
-      const defaults = DEFAULT_TOKENS[chainId];
-      if (defaults) {
-        // Check for saved per-chain tokens first (unless skipped)
-        let fromAddr = defaults.from;
-        let toAddr = defaults.to;
-
-        if (!skipSavedTokens) {
-          const saved = getSavedTokensForChain(chainId);
-          if (saved) {
-            if (saved.from) fromAddr = saved.from;
-            if (saved.to) toAddr = saved.to;
-          }
-        }
-
-        const fromToken = findTokenByAddress(fromAddr, chainId);
-        const toToken = findTokenByAddress(toAddr, chainId);
-
-        // Set from input with display format and data-address
-        if (fromToken) {
-          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
-          fromInput.dataset.address = fromToken.address;
-          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
-        } else {
-          fromInput.value = fromAddr;
-          fromInput.dataset.address = fromAddr;
-          clearTokenInputIcon(fromWrapper, fromIcon);
-        }
-
-        // Set to input with display format and data-address
-        if (toToken) {
-          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
-          toInput.dataset.address = toToken.address;
-          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
-        } else {
-          toInput.value = toAddr;
-          toInput.dataset.address = toAddr;
-          clearTokenInputIcon(toWrapper, toIcon);
-        }
-      }
-      // Update amount field labels with token symbols
-      updateAmountFieldLabels();
-    }
+    // applyDefaults is now in src/client/url-sync.ts (loaded via client.js bundle).
+    function applyDefaults(chainId, options) { if (typeof window.applyDefaults === 'function') window.applyDefaults(chainId, options); }
 
     chainIdInput.addEventListener('change', () => {
       stopAutoRefresh();
@@ -3624,169 +3301,19 @@ const INDEX_HTML = `<!DOCTYPE html>
     });
 
     // Restore from URL params or apply chain defaults
-    const params = new URLSearchParams(window.location.search);
-    // Load user preferences for fallback when URL params are missing
-    const savedPrefs = loadUserPreferences();
-
-    // Chain: URL param > localStorage > default (Base)
-    if (params.get('chainId')) {
-      const chainId = params.get('chainId');
-      const chainName = CHAIN_NAMES[chainId] || '';
-      chainIdInput.dataset.chainId = chainId;
-      chainIdInput.value = formatChainDisplay(chainId, chainName);
-    } else if (savedPrefs && savedPrefs.chainId) {
-      const chainId = savedPrefs.chainId;
-      const chainName = CHAIN_NAMES[chainId] || '';
-      chainIdInput.dataset.chainId = chainId;
-      chainIdInput.value = formatChainDisplay(chainId, chainName);
-    }
-    if (params.get('from')) {
-      const fromAddr = params.get('from');
-      fromInput.dataset.address = fromAddr;
-      // Will format with symbol after tokenlist loads
-    } else {
-      // Will apply defaults or saved preferences after tokenlist loads
-    }
-    if (params.get('to')) {
-      const toAddr = params.get('to');
-      toInput.dataset.address = toAddr;
-      // Will format with symbol after tokenlist loads
-    } else {
-      // Will apply defaults or saved preferences after tokenlist loads
-    }
-    // Amount + Mode: URL param > localStorage > default
-    // ?amount=X (no mode or mode=exactIn) populates sell field
-    // ?amount=X&mode=targetOut populates receive field
-    {
-      const urlMode = params.get('mode');
-      const urlAmount = params.get('amount');
-      if (urlAmount && urlMode === 'targetOut') {
-        receiveAmountInput.value = urlAmount;
-        sellAmountInput.value = '';
-        setDirectionMode('targetOut');
-      } else if (urlAmount) {
-        sellAmountInput.value = urlAmount;
-        setDirectionMode('exactIn');
-      } else if (savedPrefs && savedPrefs.amount) {
-        // Restore from localStorage
-        const savedMode = (savedPrefs.mode === 'targetOut') ? 'targetOut' : 'exactIn';
-        if (savedMode === 'targetOut') {
-          receiveAmountInput.value = savedPrefs.amount;
-          sellAmountInput.value = savedPrefs.sellAmount || '';
-        } else {
-          sellAmountInput.value = savedPrefs.amount;
-          receiveAmountInput.value = savedPrefs.receiveAmount || '';
-        }
-        setDirectionMode(savedMode);
-      }
-    }
-    // Slippage: URL param > localStorage > default ("50")
-    if (params.get('slippageBps')) {
-      slippageInput.value = params.get('slippageBps');
-      updateSlippagePresetActive(params.get('slippageBps'));
-    } else if (savedPrefs && savedPrefs.slippageBps) {
-      slippageInput.value = savedPrefs.slippageBps;
-      updateSlippagePresetActive(savedPrefs.slippageBps);
-    }
-    // Sender param from URL is silently ignored - sender comes from wallet connection state
-
-    // Remove any stale mevProtection param from URL
-    if (params.has('mevProtection')) {
-      const cleanUrl = new URL(window.location.href);
-      cleanUrl.searchParams.delete('mevProtection');
-      window.history.replaceState({}, '', cleanUrl.toString());
-    }
-
-    const shouldLoadFromUrlParams = Boolean(
-      params.get('chainId') && params.get('from') && params.get('to') && params.get('amount')
-    );
+    // URL/preferences restore is now in src/client/url-sync.ts (loaded via client.js bundle).
+    const urlRestoreResult = typeof window.restoreFromUrlAndPreferences === 'function'
+      ? window.restoreFromUrlAndPreferences()
+      : { shouldLoadFromUrlParams: false, savedPrefs: null };
+    const shouldLoadFromUrlParams = urlRestoreResult.shouldLoadFromUrlParams;
+    const savedPrefs = urlRestoreResult.savedPrefs;
 
     // initializeTokenlistSources is now in src/client/token-management.ts (shim delegates to module)
     // Load tokenlists and then initialize the UI
     initializeTokenlistSources().then(() => {
-      // Now we can format tokens with symbols from the loaded tokenlist
-      const chainId = getCurrentChainId();
-      const saved = getSavedTokensForChain(chainId);
-
-      if (params.get('from')) {
-        const fromAddr = params.get('from');
-        const fromToken = findTokenByAddress(fromAddr, chainId);
-        if (fromToken) {
-          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
-          fromInput.dataset.address = fromToken.address;
-          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
-        } else {
-          fromInput.value = fromAddr;
-          fromInput.dataset.address = fromAddr;
-          clearTokenInputIcon(fromWrapper, fromIcon);
-        }
-      } else if (saved && saved.from) {
-        // No URL param - use saved preference for this chain
-        const fromToken = findTokenByAddress(saved.from, chainId);
-        if (fromToken) {
-          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
-          fromInput.dataset.address = fromToken.address;
-          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
-        } else {
-          fromInput.value = saved.from;
-          fromInput.dataset.address = saved.from;
-          clearTokenInputIcon(fromWrapper, fromIcon);
-        }
-      }
-
-      if (params.get('to')) {
-        const toAddr = params.get('to');
-        const toToken = findTokenByAddress(toAddr, chainId);
-        if (toToken) {
-          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
-          toInput.dataset.address = toToken.address;
-          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
-        } else {
-          toInput.value = toAddr;
-          toInput.dataset.address = toAddr;
-          clearTokenInputIcon(toWrapper, toIcon);
-        }
-      } else if (saved && saved.to) {
-        // No URL param - use saved preference for this chain
-        const toToken = findTokenByAddress(saved.to, chainId);
-        if (toToken) {
-          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
-          toInput.dataset.address = toToken.address;
-          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
-        } else {
-          toInput.value = saved.to;
-          toInput.dataset.address = saved.to;
-          clearTokenInputIcon(toWrapper, toIcon);
-        }
-      }
-
-      // Apply defaults if no URL params AND no saved preferences for from/to
-      // Note: applyDefaults now checks getSavedTokensForChain internally,
-      // but we use skipSavedTokens=true since we already handled saved prefs above
-      const defaults = DEFAULT_TOKENS[chainId];
-      if (!params.get('from') && !(saved && saved.from) && defaults) {
-        const fromToken = findTokenByAddress(defaults.from, chainId);
-        if (fromToken) {
-          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
-          fromInput.dataset.address = fromToken.address;
-          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
-        } else {
-          fromInput.value = defaults.from;
-          fromInput.dataset.address = defaults.from;
-          clearTokenInputIcon(fromWrapper, fromIcon);
-        }
-      }
-      if (!params.get('to') && !(saved && saved.to) && defaults) {
-        const toToken = findTokenByAddress(defaults.to, chainId);
-        if (toToken) {
-          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
-          toInput.dataset.address = toToken.address;
-          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
-        } else {
-          toInput.value = defaults.to;
-          toInput.dataset.address = defaults.to;
-          clearTokenInputIcon(toWrapper, toIcon);
-        }
+      // Apply token formatting after tokenlists are loaded (delegates to url-sync module)
+      if (typeof window.applyTokenFormattingAfterLoad === 'function') {
+        window.applyTokenFormattingAfterLoad(savedPrefs);
       }
 
       const activeElement = document.activeElement;
