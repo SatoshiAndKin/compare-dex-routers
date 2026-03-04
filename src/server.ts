@@ -2388,6 +2388,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     const LOCAL_TOKENS_SOURCE_NAME = 'Local Tokens';
     // Local tokens enabled state (toggle in settings panel)
     const LOCAL_TOKENS_ENABLED_KEY = 'localTokensEnabled';
+    // User preferences key - stores form selections (chain, tokens, amount, slippage)
+    const USER_PREFERENCES_KEY = 'flashprofits-preferences';
 
     const walletProvidersByUuid = new Map();
     let fallbackWalletProvider = null;
@@ -2990,6 +2992,58 @@ const INDEX_HTML = `<!DOCTYPE html>
       } catch {
         // Ignore storage errors
       }
+    }
+
+    // User Preferences Management
+    // Saves user form selections after successful comparison
+    // Structure: { chainId, amount, slippageBps, mode, perChainTokens: { [chainId]: { from, to } } }
+    function loadUserPreferences() {
+      try {
+        const data = localStorage.getItem(USER_PREFERENCES_KEY);
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (parsed && typeof parsed === 'object') {
+            return parsed;
+          }
+        }
+      } catch {
+        // Corrupt data, treat as empty
+      }
+      return null;
+    }
+
+    function saveUserPreferences(params) {
+      try {
+        // Load existing preferences to merge perChainTokens
+        const existing = loadUserPreferences() || {};
+        const perChainTokens = existing.perChainTokens || {};
+
+        // Update per-chain tokens for the current chain
+        perChainTokens[String(params.chainId)] = {
+          from: String(params.from || '').trim(),
+          to: String(params.to || '').trim(),
+        };
+
+        const preferences = {
+          chainId: String(params.chainId || '').trim(),
+          amount: String(params.amount || '').trim(),
+          slippageBps: String(params.slippageBps || '').trim(),
+          mode: String(params.mode || 'exactIn').trim(),
+          perChainTokens,
+        };
+
+        localStorage.setItem(USER_PREFERENCES_KEY, JSON.stringify(preferences));
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
+    function getSavedTokensForChain(chainId) {
+      const prefs = loadUserPreferences();
+      if (prefs && prefs.perChainTokens && prefs.perChainTokens[String(chainId)]) {
+        return prefs.perChainTokens[String(chainId)];
+      }
+      return null;
     }
 
     function addTokenToLocalList(token) {
@@ -4949,11 +5003,24 @@ const INDEX_HTML = `<!DOCTYPE html>
       void updateToTokenBalance();
     }
 
-    function applyDefaults(chainId) {
+    function applyDefaults(chainId, options = {}) {
+      const skipSavedTokens = options.skipSavedTokens === true;
       const defaults = DEFAULT_TOKENS[chainId];
       if (defaults) {
-        const fromToken = findTokenByAddress(defaults.from, chainId);
-        const toToken = findTokenByAddress(defaults.to, chainId);
+        // Check for saved per-chain tokens first (unless skipped)
+        let fromAddr = defaults.from;
+        let toAddr = defaults.to;
+
+        if (!skipSavedTokens) {
+          const saved = getSavedTokensForChain(chainId);
+          if (saved) {
+            if (saved.from) fromAddr = saved.from;
+            if (saved.to) toAddr = saved.to;
+          }
+        }
+
+        const fromToken = findTokenByAddress(fromAddr, chainId);
+        const toToken = findTokenByAddress(toAddr, chainId);
 
         // Set from input with display format and data-address
         if (fromToken) {
@@ -4961,8 +5028,8 @@ const INDEX_HTML = `<!DOCTYPE html>
           fromInput.dataset.address = fromToken.address;
           updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
         } else {
-          fromInput.value = defaults.from;
-          fromInput.dataset.address = defaults.from;
+          fromInput.value = fromAddr;
+          fromInput.dataset.address = fromAddr;
           clearTokenInputIcon(fromWrapper, fromIcon);
         }
 
@@ -4972,8 +5039,8 @@ const INDEX_HTML = `<!DOCTYPE html>
           toInput.dataset.address = toToken.address;
           updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
         } else {
-          toInput.value = defaults.to;
-          toInput.dataset.address = defaults.to;
+          toInput.value = toAddr;
+          toInput.dataset.address = toAddr;
           clearTokenInputIcon(toWrapper, toIcon);
         }
       }
@@ -5405,6 +5472,8 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (updateUrl) {
           updateUrlFromCompareParams(normalizedParams);
         }
+        // Save user preferences after successful comparison
+        saveUserPreferences(normalizedParams);
         return { ok: true, payload, params: normalizedParams };
       } catch (err) {
         if (requestId !== compareRequestSequence) {
@@ -5746,8 +5815,17 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     // Restore from URL params or apply chain defaults
     const params = new URLSearchParams(window.location.search);
+    // Load user preferences for fallback when URL params are missing
+    const savedPrefs = loadUserPreferences();
+
+    // Chain: URL param > localStorage > default (Base)
     if (params.get('chainId')) {
       const chainId = params.get('chainId');
+      const chainName = CHAIN_NAMES[chainId] || '';
+      chainIdInput.dataset.chainId = chainId;
+      chainIdInput.value = formatChainDisplay(chainId, chainName);
+    } else if (savedPrefs && savedPrefs.chainId) {
+      const chainId = savedPrefs.chainId;
       const chainName = CHAIN_NAMES[chainId] || '';
       chainIdInput.dataset.chainId = chainId;
       chainIdInput.value = formatChainDisplay(chainId, chainName);
@@ -5757,17 +5835,33 @@ const INDEX_HTML = `<!DOCTYPE html>
       fromInput.dataset.address = fromAddr;
       // Will format with symbol after tokenlist loads
     } else {
-      // Will apply defaults after tokenlist loads
+      // Will apply defaults or saved preferences after tokenlist loads
     }
     if (params.get('to')) {
       const toAddr = params.get('to');
       toInput.dataset.address = toAddr;
       // Will format with symbol after tokenlist loads
+    } else {
+      // Will apply defaults or saved preferences after tokenlist loads
     }
-    if (params.get('amount')) amountInput.value = params.get('amount');
-    if (params.get('slippageBps')) slippageInput.value = params.get('slippageBps');
-    // Read mode from URL and set toggle state
+    // Amount: URL param > localStorage > default ("1")
+    if (params.get('amount')) {
+      amountInput.value = params.get('amount');
+    } else if (savedPrefs && savedPrefs.amount) {
+      amountInput.value = savedPrefs.amount;
+    }
+    // Slippage: URL param > localStorage > default ("50")
+    if (params.get('slippageBps')) {
+      slippageInput.value = params.get('slippageBps');
+      updateSlippagePresetActive(params.get('slippageBps'));
+    } else if (savedPrefs && savedPrefs.slippageBps) {
+      slippageInput.value = savedPrefs.slippageBps;
+      updateSlippagePresetActive(savedPrefs.slippageBps);
+    }
+    // Mode: URL param > localStorage > default ("exactIn")
     if (params.get('mode') === 'targetOut') {
+      setDirectionMode('targetOut');
+    } else if (savedPrefs && savedPrefs.mode === 'targetOut') {
       setDirectionMode('targetOut');
     }
     // Sender param from URL is silently ignored - sender comes from wallet connection state
@@ -5848,6 +5942,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     initializeTokenlistSources().then(() => {
       // Now we can format tokens with symbols from the loaded tokenlist
       const chainId = getCurrentChainId();
+      const saved = getSavedTokensForChain(chainId);
 
       if (params.get('from')) {
         const fromAddr = params.get('from');
@@ -5859,6 +5954,18 @@ const INDEX_HTML = `<!DOCTYPE html>
         } else {
           fromInput.value = fromAddr;
           fromInput.dataset.address = fromAddr;
+          clearTokenInputIcon(fromWrapper, fromIcon);
+        }
+      } else if (saved && saved.from) {
+        // No URL param - use saved preference for this chain
+        const fromToken = findTokenByAddress(saved.from, chainId);
+        if (fromToken) {
+          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
+          fromInput.dataset.address = fromToken.address;
+          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
+        } else {
+          fromInput.value = saved.from;
+          fromInput.dataset.address = saved.from;
           clearTokenInputIcon(fromWrapper, fromIcon);
         }
       }
@@ -5875,11 +5982,47 @@ const INDEX_HTML = `<!DOCTYPE html>
           toInput.dataset.address = toAddr;
           clearTokenInputIcon(toWrapper, toIcon);
         }
+      } else if (saved && saved.to) {
+        // No URL param - use saved preference for this chain
+        const toToken = findTokenByAddress(saved.to, chainId);
+        if (toToken) {
+          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
+          toInput.dataset.address = toToken.address;
+          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
+        } else {
+          toInput.value = saved.to;
+          toInput.dataset.address = saved.to;
+          clearTokenInputIcon(toWrapper, toIcon);
+        }
       }
 
-      // Apply defaults if no URL params for from/to
-      if (!params.get('from') && !params.get('to')) {
-        applyDefaults(chainId);
+      // Apply defaults if no URL params AND no saved preferences for from/to
+      // Note: applyDefaults now checks getSavedTokensForChain internally,
+      // but we use skipSavedTokens=true since we already handled saved prefs above
+      const defaults = DEFAULT_TOKENS[chainId];
+      if (!params.get('from') && !(saved && saved.from) && defaults) {
+        const fromToken = findTokenByAddress(defaults.from, chainId);
+        if (fromToken) {
+          fromInput.value = formatTokenDisplay(fromToken.symbol, fromToken.address);
+          fromInput.dataset.address = fromToken.address;
+          updateTokenInputIcon(fromInput, fromIcon, fromWrapper, fromToken);
+        } else {
+          fromInput.value = defaults.from;
+          fromInput.dataset.address = defaults.from;
+          clearTokenInputIcon(fromWrapper, fromIcon);
+        }
+      }
+      if (!params.get('to') && !(saved && saved.to) && defaults) {
+        const toToken = findTokenByAddress(defaults.to, chainId);
+        if (toToken) {
+          toInput.value = formatTokenDisplay(toToken.symbol, toToken.address);
+          toInput.dataset.address = toToken.address;
+          updateTokenInputIcon(toInput, toIcon, toWrapper, toToken);
+        } else {
+          toInput.value = defaults.to;
+          toInput.dataset.address = defaults.to;
+          clearTokenInputIcon(toWrapper, toIcon);
+        }
       }
 
       const activeElement = document.activeElement;
