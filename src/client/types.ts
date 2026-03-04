@@ -113,23 +113,6 @@ export interface CurveRouteStep {
   outputCoinAddress?: string;
 }
 
-/** Pending wallet action (for auto-approve/swap after connect) */
-export interface PendingPostConnectAction {
-  type: "approve" | "swap";
-  card: HTMLElement;
-  button?: HTMLButtonElement;
-}
-
-/** Auto-refresh state for periodic quote updates */
-export interface AutoRefreshState {
-  timerId: ReturnType<typeof setTimeout> | null;
-  secondsRemaining: number;
-  lastParams: CompareParams | null;
-  paused: boolean;
-  inFlight: boolean;
-  errorMessage: string;
-}
-
 /** Progressive quote state tracking both router quotes */
 export interface ProgressiveQuoteState {
   spandex: QuoteResponse | null;
@@ -152,20 +135,6 @@ export interface ChainDefinition {
   name: string;
 }
 
-/** Compare response from /compare endpoint */
-export interface CompareResponse {
-  spandex: QuoteResponse | null;
-  spandex_error: string | null;
-  curve: CurveQuoteResponse | null;
-  curve_error: string | null;
-  recommendation: "spandex" | "curve" | null;
-  recommendation_reason: string;
-  gas_price_gwei: string | null;
-  output_to_eth_rate: string | null;
-  input_to_eth_rate: string | null;
-  mode: string;
-}
-
 /** EIP-6963 wallet provider info */
 export interface WalletProviderInfo {
   uuid: string;
@@ -185,22 +154,4 @@ export interface EIP1193Provider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
   on?(event: string, handler: (...args: unknown[]) => void): void;
   removeListener?(event: string, handler: (...args: unknown[]) => void): void;
-}
-
-/** Unrecognized token modal state */
-export interface UnrecognizedTokenState {
-  targetInput: "from" | "to" | null;
-  address: string;
-  chainId: number;
-  name: string;
-  symbol: string;
-  decimals: number;
-}
-
-/** Token metadata response from /token-metadata endpoint */
-export interface TokenMetadataResponse {
-  name: string;
-  symbol: string;
-  decimals: number;
-  error?: string;
 }

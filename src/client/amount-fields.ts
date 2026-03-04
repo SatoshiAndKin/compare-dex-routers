@@ -74,27 +74,6 @@ export function getActiveMode(): "exactIn" | "targetOut" {
   return currentQuoteMode;
 }
 
-/** Get which amount field is currently active */
-export function getActiveField(): "sell" | "receive" {
-  return activeAmountField;
-}
-
-/** Get the active amount value from the active input field */
-export function getActiveAmount(): string {
-  if (!els) return "";
-  return activeAmountField === "sell" ? els.sellAmountInput.value : els.receiveAmountInput.value;
-}
-
-/** Check whether we are in a programmatic update */
-export function isProgrammatic(): boolean {
-  return isProgrammaticUpdateFlag;
-}
-
-/** Set the programmatic update flag */
-export function setProgrammatic(val: boolean): void {
-  isProgrammaticUpdateFlag = val;
-}
-
 // ---------------------------------------------------------------------------
 // Core functions
 // ---------------------------------------------------------------------------
@@ -245,18 +224,6 @@ export function scheduleAutoQuote(): void {
   }, 400);
 }
 
-/**
- * Get the best quote from progressive quote state.
- * Delegates to the callback provided by inline JS.
- */
-export function getBestQuoteFromState(): {
-  output_amount?: string;
-  input_amount?: string;
-} | null {
-  if (!cbs) return null;
-  return cbs.getBestQuoteFromState();
-}
-
 // ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
@@ -315,20 +282,4 @@ export function initAmountFields(
   toInput.addEventListener("tokenselected", () => {
     scheduleAutoQuote();
   });
-
-  // Expose on window for inline JS backward compatibility
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  win.getActiveMode = getActiveMode;
-  win.getActiveField = getActiveField;
-  win.getActiveAmount = getActiveAmount;
-  win.isProgrammatic = isProgrammatic;
-  win.setProgrammatic = setProgrammatic;
-  win.setDirectionMode = setDirectionMode;
-  win.updateAmountFieldLabels = updateAmountFieldLabels;
-  win.formatQuoteAmount = formatQuoteAmount;
-  win.populateNonActiveField = populateNonActiveField;
-  win.setComputedAmount = setComputedAmount;
-  win.scheduleAutoQuote = scheduleAutoQuote;
-  win.getBestQuoteFromState_module = getBestQuoteFromState;
 }

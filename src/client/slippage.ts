@@ -85,11 +85,4 @@ export function initSlippage(elements: SlippageElements): void {
   slippageInput.addEventListener("input", () => {
     updateSlippagePresetActive(slippageInput.value);
   });
-
-  // Expose on window for inline JS backward compatibility
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  win.getSlippageBps = getSlippageBps;
-  win.setSlippageBps = setSlippageBps;
-  win.updateSlippagePresetActive = updateSlippagePresetActive;
 }

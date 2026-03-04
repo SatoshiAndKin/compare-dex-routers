@@ -4,7 +4,12 @@
  * connect/disconnect flows, chain switching, and auto-approve/swap pending actions.
  */
 
-import { WALLETCONNECT_PROJECT_ID, CHAIN_ID_HEX_MAP } from "./config.js";
+import {
+  WALLETCONNECT_PROJECT_ID,
+  CHAIN_ID_HEX_MAP,
+  FLASHBOTS_RPC_URL,
+  BLOXROUTE_BSC_RPC_URL,
+} from "./config.js";
 import type { EIP1193Provider, WalletProviderInfo, WalletProviderDetail } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -192,11 +197,8 @@ export function setWalletMessage(message: string, isError = false): void {
 // ---------------------------------------------------------------------------
 
 function setWalletGlobals(): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  win.__selectedWalletProvider = connectedWalletProvider;
-  win.__selectedWalletAddress = connectedWalletAddressValue;
-  win.__selectedWalletInfo = connectedWalletInfo;
+  // No-op: previously set window globals for inline JS. Now all state is accessed
+  // through exported functions (hasConnectedWallet, getConnectedProvider, etc.).
 }
 
 function updateWalletStateUi(): void {
@@ -493,6 +495,112 @@ export async function ensureWalletOnChain(
 }
 
 // ---------------------------------------------------------------------------
+// MEV Protection RPC
+// ---------------------------------------------------------------------------
+
+function isUserRejectedError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as Record<string, unknown>;
+  if (Number(e.code) === 4001) return true;
+  if (
+    e.data &&
+    typeof e.data === "object" &&
+    Number((e.data as Record<string, unknown>).code) === 4001
+  )
+    return true;
+  if (
+    e.error &&
+    typeof e.error === "object" &&
+    Number((e.error as Record<string, unknown>).code) === 4001
+  )
+    return true;
+  return false;
+}
+
+/**
+ * Add an MEV protection RPC to the user's wallet via wallet_addEthereumChain.
+ * Supports 'ethereum' (Flashbots Protect) and 'bsc' (bloXroute Protect).
+ */
+export async function addMevRpcToWallet(type: string): Promise<void> {
+  if (!hasConnectedWallet()) {
+    setWalletMessage("Connect wallet first", true);
+    return;
+  }
+
+  const provider = getConnectedProvider();
+  if (!provider || typeof provider.request !== "function") {
+    setWalletMessage("Wallet provider is not available.", true);
+    return;
+  }
+
+  let chainParams: {
+    chainId: string;
+    chainName: string;
+    rpcUrls: string[];
+    nativeCurrency: { name: string; symbol: string; decimals: number };
+    blockExplorerUrls: string[];
+  };
+  if (type === "ethereum") {
+    chainParams = {
+      chainId: "0x1",
+      chainName: "Ethereum (Flashbots Protect)",
+      rpcUrls: [FLASHBOTS_RPC_URL],
+      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      blockExplorerUrls: ["https://etherscan.io"],
+    };
+  } else if (type === "bsc") {
+    chainParams = {
+      chainId: "0x38",
+      chainName: "BSC (bloXroute Protect)",
+      rpcUrls: [BLOXROUTE_BSC_RPC_URL],
+      nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+      blockExplorerUrls: ["https://bscscan.com"],
+    };
+  } else {
+    return;
+  }
+
+  try {
+    await provider.request({
+      method: "wallet_addEthereumChain",
+      params: [chainParams],
+    });
+    setWalletMessage(
+      "MEV protection RPC added to your wallet. Switch to it for protected transactions."
+    );
+  } catch (err: unknown) {
+    if (isUserRejectedError(err)) {
+      setWalletMessage("Request canceled.", true);
+      return;
+    }
+    const detail = err instanceof Error ? err.message : String(err);
+    setWalletMessage("Failed to add RPC: " + detail, true);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// External wallet connection (Farcaster miniapp)
+// ---------------------------------------------------------------------------
+
+/**
+ * Set an externally-connected wallet (e.g., from Farcaster miniapp SDK).
+ * Updates internal state, UI, and triggers balance/transaction state updates.
+ */
+export function setExternalWallet(
+  provider: EIP1193Provider,
+  address: string,
+  info: WalletProviderInfo
+): void {
+  connectedWalletProvider = provider;
+  connectedWalletAddressValue = address;
+  connectedWalletInfo = info;
+  setWalletGlobals();
+  updateWalletStateUi();
+  callbacks.updateTransactionActionStates();
+  callbacks.updateTokenBalances();
+}
+
+// ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
 
@@ -540,24 +648,11 @@ export function initWallet(
   setWalletGlobals();
   callbacks.updateTransactionActionStates();
 
-  // --- Expose on window for inline JS compatibility ---
+  // Expose openWalletProviderMenuImpl for modals module
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  win.hasConnectedWallet = hasConnectedWallet;
-  win.getConnectedProvider = getConnectedProvider;
-  win.getConnectedAddress = getConnectedAddress;
-  win.triggerWalletConnectionFlow = triggerWalletConnectionFlow;
-  win.setPendingPostConnectAction = setPendingPostConnectAction;
-  win.ensureWalletOnChain = ensureWalletOnChain;
-  win.setWalletMessage = setWalletMessage;
-  win.disconnectWallet = disconnectWallet;
-  win.__openWalletProviderMenuImpl = openWalletProviderMenuImpl;
+  (window as any).__openWalletProviderMenuImpl = openWalletProviderMenuImpl;
 
-  // Bridge callbacks for the modals module (replaces inline JS's window.__cb_* setters)
-  win.__cb_hasConnectedWallet = hasConnectedWallet;
-  win.__cb_getIsConnectingProvider = () => isConnectingProvider;
-  win.__cb_getPendingPostConnectAction = () => pendingPostConnectAction;
-  win.__cb_setPendingPostConnectAction = (action: PendingPostConnectAction | null) => {
-    pendingPostConnectAction = action;
-  };
+  // Expose setExternalWallet for Farcaster ESM loader script
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__setExternalWallet = setExternalWallet;
 }

@@ -321,16 +321,6 @@ export function refreshAutocomplete(): void {
   if (elements.toInput.value.trim()) toAutocomplete.refresh();
 }
 
-/** Get the from autocomplete instance */
-export function getFromAutocomplete(): AutocompleteInstance {
-  return fromAutocomplete;
-}
-
-/** Get the to autocomplete instance */
-export function getToAutocomplete(): AutocompleteInstance {
-  return toAutocomplete;
-}
-
 /** Render a small token icon for result display (16px) */
 export function renderResultTokenIcon(address: string, chainId: number): string {
   const token = callbacks.findTokenByAddress(address, chainId);
@@ -358,14 +348,4 @@ export function initAutocomplete(els: AutocompleteElements, cbs: AutocompleteCal
 
   fromAutocomplete = setupAutocomplete(elements.fromInput, elements.fromAutocompleteList);
   toAutocomplete = setupAutocomplete(elements.toInput, elements.toAutocompleteList);
-
-  // Expose on window for inline JS compatibility
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  win.refreshAutocomplete = refreshAutocomplete;
-  win.findTokenMatches = findTokenMatches;
-  win.escapeHtml = escapeHtml;
-  win.renderResultTokenIcon = renderResultTokenIcon;
-  win.getFromAutocomplete = getFromAutocomplete;
-  win.getToAutocomplete = getToAutocomplete;
 }

@@ -105,11 +105,6 @@ const LOCAL_TOKENS_ENABLED_KEY = STORAGE_KEYS.localTokensEnabled;
 // Public getters
 // ---------------------------------------------------------------------------
 
-/** Get the current tokenlist sources array (read-only reference) */
-export function getTokenlistSources(): TokenlistSource[] {
-  return tokenlistSources;
-}
-
 /** Get the current unrecognized token state */
 export function getUnrecognizedTokenState(): typeof unrecognizedTokenState {
   return unrecognizedTokenState;
@@ -1213,28 +1208,4 @@ export function initTokenManagement(
       }, 100);
     }
   });
-
-  // Expose on window for inline JS compatibility
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  win.getTokenlistSources = getTokenlistSources;
-  win.getTokensForChain = getTokensForChain;
-  win.findTokenByAddress = findTokenByAddress;
-  win.isAddressInTokenlists = isAddressInTokenlists;
-  win.renderLocalTokens = renderLocalTokens;
-  win.renderTokenlistSources = renderTokenlistSources;
-  win.loadLocalTokenList = loadLocalTokenList;
-  win.saveLocalTokenList = saveLocalTokenList;
-  win.loadLocalTokensEnabled = loadLocalTokensEnabled;
-  win.addTokenToLocalList = addTokenToLocalList;
-  win.removeTokenFromLocalList = removeTokenFromLocalList;
-  win.fetchTokenMetadata = fetchTokenMetadata;
-  win.handleUnrecognizedTokenSave = handleUnrecognizedTokenSave;
-  win.getUnrecognizedTokenState = getUnrecognizedTokenState;
-  win.setUnrecognizedTokenState = setUnrecognizedTokenState;
-  win.initializeTokenlistSources = initializeTokenlistSources;
-  win.loadTokenlistSourcesFromStorage = loadTokenlistSourcesFromStorage;
-  win.saveTokenlistSources = saveTokenlistSources;
-  win.normalizeTokenlistUrl = normalizeTokenlistUrl;
-  win.handleTokenInputBlur = handleTokenInputBlur;
 }

@@ -80,8 +80,6 @@ describe("server integration", () => {
     // ERC-6963 discovery is now in the bundled client wallet module (src/client/wallet.ts).
     // Verify the client bundle script tag is present which loads the wallet module.
     expect(res.body).toContain('src="/static/client.js"');
-    // The inline JS still references wallet via window shims
-    expect(res.body).toContain("hasConnectedWallet");
   });
 
   it("GET / includes no-wallet fallback messaging", async () => {
@@ -108,17 +106,15 @@ describe("server integration", () => {
   it("GET / references ERC20 approve calldata in client bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    // Approve calldata encoding is now in src/client/transactions.ts (loaded via client.js)
-    // MAX_UINT256_HEX is still in inline JS config constants
-    expect(res.body).toContain("MAX_UINT256_HEX");
+    // Approve calldata encoding and MAX_UINT256_HEX are now in the client bundle
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / loads autocomplete data from /tokenlist on page load", async () => {
+  it("GET / loads autocomplete data from /tokenlist on page load via client bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
     // initializeTokenlistSources is now in the client bundle (token-management.ts)
-    // The inline JS calls it via a shim that delegates to the window-exposed module function
-    expect(res.body).toContain("initializeTokenlistSources()");
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
   it("GET / includes auto-refresh UI elements and client.js bundle", async () => {
@@ -403,8 +399,7 @@ describe("server integration", () => {
     expect(html).toContain('class="chain-dropdown"');
 
     // Chain dropdown JS logic is now in src/client/chain-selector.ts (loaded via client.js bundle)
-    // The inline JS references getCurrentChainId via window globals
-    expect(html).toContain("getCurrentChainId");
+    expect(html).toContain('src="/static/client.js"');
   });
 
   // VAL-FLOW-008: MEV info button in results area
@@ -499,8 +494,6 @@ describe("server integration", () => {
     const html = res.body;
 
     // readCompareParamsFromForm and getConnectedAddress are now in TypeScript modules (loaded via client.js)
-    // hasConnectedWallet is still accessible via inline JS shim
-    expect(html).toContain("hasConnectedWallet");
     expect(html).toContain('src="/static/client.js"');
   });
 
@@ -798,31 +791,11 @@ describe("server integration", () => {
       expect(res.body).toContain('aria-label="Toggle local tokens"');
     });
 
-    it("includes local tokens enabled state shims", async () => {
+    it("local token management is in the client bundle", async () => {
       const res = await request(`${baseUrl}/`);
       expect(res.status).toBe(200);
-      // Local tokens management is now in the client bundle (token-management.ts).
-      // Inline JS has shim functions that delegate to window-exposed module functions.
-      expect(res.body).toContain("function loadLocalTokensEnabled()");
-    });
-
-    it("includes loadLocalTokensEnabled function (shim or module)", async () => {
-      const res = await request(`${baseUrl}/`);
-      expect(res.status).toBe(200);
-      expect(res.body).toContain("loadLocalTokensEnabled");
-    });
-
-    it("includes saveLocalTokenList shim function", async () => {
-      const res = await request(`${baseUrl}/`);
-      expect(res.status).toBe(200);
-      expect(res.body).toContain("function saveLocalTokenList(tokens)");
-    });
-
-    it("getTokensForChain is available via window shim", async () => {
-      const res = await request(`${baseUrl}/`);
-      expect(res.status).toBe(200);
-      // getTokensForChain is now in the client bundle, accessible via window shim
-      expect(res.body).toContain("function getTokensForChain(chainId)");
+      // Local tokens management is now entirely in the client bundle (token-management.ts)
+      expect(res.body).toContain('src="/static/client.js"');
     });
 
     it("references local tokens toggle functionality", async () => {

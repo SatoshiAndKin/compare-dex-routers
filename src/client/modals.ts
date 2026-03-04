@@ -303,15 +303,6 @@ async function handleSwapConfirmProceed(): Promise<void> {
   await cbExecuteSwapFromCard(card);
 }
 
-export function areQuotesStillLoading(): boolean {
-  const state = cbGetProgressiveQuoteState();
-  if (state.complete) return false;
-  if (state.singleRouterMode) return false;
-  const spandexPending = state.spandex === null && state.spandexError === null;
-  const curvePending = state.curve === null && state.curveError === null;
-  return spandexPending || curvePending;
-}
-
 // ---------------------------------------------------------------------------
 // Wallet Provider Modal
 // ---------------------------------------------------------------------------
@@ -326,20 +317,6 @@ export function closeWalletProviderMenu(): void {
   }
   const btn = cbGetConnectWalletBtn();
   if (btn) btn.focus();
-}
-
-export function openWalletProviderMenu(
-  providers: Array<{ info?: Record<string, unknown>; provider: unknown }>
-): void {
-  // This function is complex and depends on wallet connection logic.
-  // It is called from inline JS which passes providers and handles rendering.
-  // For now, delegate to the window-exposed implementation set during initModals.
-  // The actual rendering is done inline until the wallet module is extracted.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  if (typeof win.__openWalletProviderMenuImpl === "function") {
-    win.__openWalletProviderMenuImpl(providers);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -576,23 +553,4 @@ export function initModals(elements: ModalElements, callbacks: ModalCallbacks): 
 
   // --- Global Escape key handler ---
   document.addEventListener("keydown", handleEscapeKey);
-
-  // --- Expose functions on window for inline JS compatibility ---
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  win.openMevModal = openMevModal;
-  win.closeMevModal = closeMevModal;
-  win.renderMevChainContent = renderMevChainContent;
-  win.openSettingsModal = openSettingsModal;
-  win.closeSettingsModal = closeSettingsModal;
-  win.openSwapConfirmModal = openSwapConfirmModal;
-  win.closeSwapConfirmModal = closeSwapConfirmModal;
-  win.updateSwapConfirmModalText = updateSwapConfirmModalText;
-  win.areQuotesStillLoading = areQuotesStillLoading;
-  win.openWalletProviderMenu = openWalletProviderMenu;
-  win.closeWalletProviderMenu = closeWalletProviderMenu;
-  win.openUnrecognizedTokenModal = openUnrecognizedTokenModal;
-  win.closeUnrecognizedTokenModal = closeUnrecognizedTokenModal;
-  win.lockBodyScroll = lockBodyScroll;
-  win.unlockBodyScroll = unlockBodyScroll;
 }

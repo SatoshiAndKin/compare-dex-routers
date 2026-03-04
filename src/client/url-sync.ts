@@ -505,18 +505,4 @@ export function initUrlSync(elements: UrlSyncElements, callbacks: UrlSyncCallbac
     localStorage.setItem(USER_PREFERENCES_KEY, oldPrefs);
     localStorage.removeItem(STORAGE_KEYS.oldPreferences);
   }
-
-  // Expose on window for inline JS backward compatibility
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  win.readCompareParamsFromForm = readCompareParamsFromForm;
-  win.saveUserPreferences = saveUserPreferences;
-  win.loadUserPreferences = loadPreferences;
-  win.getSavedTokensForChain = getSavedTokensForChain;
-  win.applyDefaults = applyDefaults;
-  win.cloneCompareParams = cloneCompareParams;
-  win.compareParamsToSearchParams = compareParamsToSearchParams;
-  win.updateUrlFromCompareParams = updateUrlFromCompareParams;
-  win.restoreFromUrlAndPreferences = restoreFromUrlAndPreferences;
-  win.applyTokenFormattingAfterLoad = applyTokenFormattingAfterLoad;
 }

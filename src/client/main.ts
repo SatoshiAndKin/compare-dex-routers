@@ -19,8 +19,9 @@ import {
   closeWalletProviderMenu,
   openSwapConfirmModal,
   updateSwapConfirmModalText,
-  openMevModal as modalsOpenMevModal,
   renderMevChainContent,
+  openUnrecognizedTokenModal,
+  closeUnrecognizedTokenModal,
 } from "./modals.js";
 import type { ModalElements, ModalCallbacks } from "./modals.js";
 import {
@@ -32,6 +33,9 @@ import {
   triggerWalletConnectionFlow,
   setPendingPostConnectAction,
   setWalletMessage,
+  addMevRpcToWallet,
+  getIsConnectingProvider,
+  getPendingPostConnectAction,
 } from "./wallet.js";
 import type { WalletElements, WalletModalFunctions, WalletCallbacks } from "./wallet.js";
 import {
@@ -52,16 +56,11 @@ import type { AutocompleteElements, AutocompleteCallbacks } from "./autocomplete
 import {
   initAmountFields,
   updateAmountFieldLabels,
-  formatQuoteAmount,
   setDirectionMode,
   getActiveMode,
   scheduleAutoQuote,
   populateNonActiveField,
   setComputedAmount,
-  getActiveAmount,
-  isProgrammatic,
-  setProgrammatic,
-  getBestQuoteFromState as amountGetBestQuoteFromState,
 } from "./amount-fields.js";
 import type { AmountFieldElements, AmountFieldCallbacks } from "./amount-fields.js";
 import {
@@ -75,8 +74,6 @@ import {
   initUrlSync,
   readCompareParamsFromForm,
   saveUserPreferences,
-  loadPreferences,
-  getSavedTokensForChain,
   applyDefaults,
   cloneCompareParams,
   compareParamsToSearchParams,
@@ -129,9 +126,17 @@ import {
   setupTabSwitching,
   resetCurrentQuoteChainId,
   formatErrorWithTokenRefs,
-  showError,
 } from "./quote-display.js";
 import type { QuoteDisplayElements, QuoteDisplayCallbacks } from "./quote-display.js";
+import {
+  formatTokenDisplay,
+  extractAddressFromInput,
+  updateTokenInputIcon,
+  clearTokenInputIcon,
+  handleTokenSwapIfNeeded,
+} from "./token-utils.js";
+import type { TokenSwapContext } from "./token-utils.js";
+import { renderResultTokenIcon } from "./autocomplete.js";
 
 console.log(
   "[client] bundle loaded, chains configured",
@@ -161,7 +166,7 @@ const chainSelectorElements: ChainSelectorElements = {
 
 const chainSelectorCallbacks: ChainSelectorCallbacks = {
   onChainChange: () => {
-    // Chain change side-effects are handled by the inline JS 'change' listener
+    // Chain change side-effects handled below via 'change' listener
   },
   getCurrentChainId: () => getCurrentChainId(),
 };
@@ -205,11 +210,6 @@ const modalElements: ModalElements = {
   unrecognizedTokenSaveBtn: getEl("unrecognizedTokenSaveBtn") as HTMLButtonElement,
 };
 
-// Bridge callbacks: the inline JS exposes these on window for us to wire up.
-// During init the inline script hasn't run yet, so we read at call time.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const win = window as any;
-
 // Pending swap card state (used by swap confirmation modal)
 let pendingSwapCard: HTMLElement | null = null;
 
@@ -217,10 +217,7 @@ const modalCallbacks: ModalCallbacks = {
   getCurrentChainId: () => getCurrentChainId(),
   hasConnectedWallet: () => hasConnectedWallet(),
   renderLocalTokens: () => renderLocalTokens(),
-  addMevRpcToWallet: (type: string) => {
-    if (typeof win.__cb_addMevRpcToWallet === "function")
-      (win.__cb_addMevRpcToWallet as (t: string) => void)(type);
-  },
+  addMevRpcToWallet: (type: string) => void addMevRpcToWallet(type),
   getProgressiveQuoteState: () => {
     const state = getProgressiveQuoteState();
     return {
@@ -252,17 +249,12 @@ const modalCallbacks: ModalCallbacks = {
     setUnrecognizedTokenState(state as { targetInput: "from" | "to" | null });
   },
   getConnectWalletBtn: () => document.getElementById("connectWalletBtn"),
-  getIsConnectingProvider: () =>
-    typeof win.__cb_getIsConnectingProvider === "function"
-      ? (win.__cb_getIsConnectingProvider as () => boolean)()
-      : false,
-  getPendingPostConnectAction: () =>
-    typeof win.__cb_getPendingPostConnectAction === "function"
-      ? (win.__cb_getPendingPostConnectAction as () => unknown)()
-      : null,
+  getIsConnectingProvider: () => getIsConnectingProvider(),
+  getPendingPostConnectAction: () => getPendingPostConnectAction(),
   setPendingPostConnectAction: (action: unknown) => {
-    if (typeof win.__cb_setPendingPostConnectAction === "function")
-      (win.__cb_setPendingPostConnectAction as (a: unknown) => void)(action);
+    setPendingPostConnectAction(
+      action as { type: "approve" | "swap"; card: HTMLElement; button?: HTMLButtonElement } | null
+    );
   },
 };
 
@@ -323,6 +315,20 @@ const toWrapper = document.getElementById("toWrapper") as HTMLElement;
 const fromIcon = document.getElementById("fromIcon") as HTMLImageElement;
 const toIcon = document.getElementById("toIcon") as HTMLImageElement;
 
+// Shared context for token swap detection
+const tokenSwapCtx: TokenSwapContext = {
+  fromInput,
+  toInput,
+  fromIcon,
+  toIcon,
+  fromWrapper,
+  toWrapper,
+  getCurrentChainId: () => getCurrentChainId(),
+  findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
+  updateFromTokenBalance: () => void updateFromTokenBalance(),
+  updateToTokenBalance: () => void updateToTokenBalance(),
+};
+
 const tokenManagementElements: TokenManagementElements = {
   tokenlistUrlInput: getEl("tokenlistUrlInput") as HTMLInputElement,
   addTokenlistBtn: getEl("addTokenlistBtn") as HTMLButtonElement,
@@ -350,66 +356,33 @@ const tokenManagementCallbacks: TokenManagementCallbacks = {
   escapeHtml: (str: string) => escapeHtml(str),
   refreshAutocomplete: () => refreshAutocomplete(),
   findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
-  formatTokenDisplay: (symbol: string, address: string) => {
-    if (typeof win.formatTokenDisplay === "function")
-      return (win.formatTokenDisplay as (s: string, a: string) => string)(symbol, address);
-    const sym = String(symbol || "").trim();
-    const addr = String(address || "").trim();
-    if (!addr) return sym || "";
-    return sym ? sym + " (" + addr + ")" : addr;
-  },
+  formatTokenDisplay: (symbol: string, address: string) => formatTokenDisplay(symbol, address),
   handleTokenSwapIfNeeded: (
     currentInput: HTMLInputElement,
     newAddress: string,
     newDisplay: string
-  ) => {
-    if (typeof win.handleTokenSwapIfNeeded === "function")
-      (win.handleTokenSwapIfNeeded as (i: HTMLInputElement, a: string, d: string) => void)(
-        currentInput,
-        newAddress,
-        newDisplay
-      );
-  },
+  ) => handleTokenSwapIfNeeded(currentInput, newAddress, newDisplay, tokenSwapCtx),
   updateTokenInputIcon: (
     input: HTMLInputElement,
     icon: HTMLImageElement,
     wrapper: HTMLElement,
     token: unknown
-  ) => {
-    if (typeof win.updateTokenInputIcon === "function")
-      (
-        win.updateTokenInputIcon as (
-          i: HTMLInputElement,
-          ic: HTMLImageElement,
-          w: HTMLElement,
-          t: unknown
-        ) => void
-      )(input, icon, wrapper, token);
-  },
-  clearTokenInputIcon: (wrapper: HTMLElement, icon: HTMLImageElement) => {
-    if (typeof win.clearTokenInputIcon === "function")
-      (win.clearTokenInputIcon as (w: HTMLElement, i: HTMLImageElement) => void)(wrapper, icon);
-  },
-  updateFromTokenBalance: () => {
-    void updateFromTokenBalance();
-  },
-  updateToTokenBalance: () => {
-    void updateToTokenBalance();
-  },
+  ) =>
+    updateTokenInputIcon(
+      input,
+      icon,
+      wrapper,
+      token as import("./types.js").Token | null | undefined
+    ),
+  clearTokenInputIcon: (wrapper: HTMLElement, icon: HTMLImageElement) =>
+    clearTokenInputIcon(wrapper, icon),
+  updateFromTokenBalance: () => void updateFromTokenBalance(),
+  updateToTokenBalance: () => void updateToTokenBalance(),
   updateAmountFieldLabels: () => updateAmountFieldLabels(),
   isAddressLike: (address: string) => isAddressLike(address),
-  openUnrecognizedTokenModal: (address: string, chainId: number, targetInput: string) => {
-    if (typeof win.openUnrecognizedTokenModal === "function")
-      (win.openUnrecognizedTokenModal as (a: string, c: number, t: string) => void)(
-        address,
-        chainId,
-        targetInput
-      );
-  },
-  closeUnrecognizedTokenModal: () => {
-    if (typeof win.closeUnrecognizedTokenModal === "function")
-      (win.closeUnrecognizedTokenModal as () => void)();
-  },
+  openUnrecognizedTokenModal: (address: string, chainId: number, targetInput: string) =>
+    openUnrecognizedTokenModal(address, chainId, targetInput),
+  closeUnrecognizedTokenModal: () => closeUnrecognizedTokenModal(),
   getFromIcon: () => fromIcon,
   getToIcon: () => toIcon,
   getFromWrapper: () => fromWrapper,
@@ -437,10 +410,26 @@ const autocompleteElements: AutocompleteElements = {
 const autocompleteCallbacks: AutocompleteCallbacks = {
   getCurrentChainId: () => getCurrentChainId(),
   getTokensForChain: (chainId: number) => getTokensForChain(chainId),
-  formatTokenDisplay: tokenManagementCallbacks.formatTokenDisplay,
-  handleTokenSwapIfNeeded: tokenManagementCallbacks.handleTokenSwapIfNeeded,
-  updateTokenInputIcon: tokenManagementCallbacks.updateTokenInputIcon,
-  clearTokenInputIcon: tokenManagementCallbacks.clearTokenInputIcon,
+  formatTokenDisplay: (symbol: string, address: string) => formatTokenDisplay(symbol, address),
+  handleTokenSwapIfNeeded: (
+    currentInput: HTMLInputElement,
+    newAddress: string,
+    newDisplay: string
+  ) => handleTokenSwapIfNeeded(currentInput, newAddress, newDisplay, tokenSwapCtx),
+  updateTokenInputIcon: (
+    input: HTMLInputElement,
+    icon: HTMLImageElement,
+    wrapper: HTMLElement,
+    token: unknown
+  ) =>
+    updateTokenInputIcon(
+      input,
+      icon,
+      wrapper,
+      token as import("./types.js").Token | null | undefined
+    ),
+  clearTokenInputIcon: (wrapper: HTMLElement, icon: HTMLImageElement) =>
+    clearTokenInputIcon(wrapper, icon),
   updateFromTokenBalance: () => void updateFromTokenBalance(),
   updateToTokenBalance: () => void updateToTokenBalance(),
   updateAmountFieldLabels: () => updateAmountFieldLabels(),
@@ -524,14 +513,20 @@ const urlSyncCallbacks: UrlSyncCallbacks = {
   getActiveMode: () => getActiveMode(),
   getSlippageBps: () => getSlippageBps(),
   findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
-  formatTokenDisplay: tokenManagementCallbacks.formatTokenDisplay,
-  updateTokenInputIcon: tokenManagementCallbacks.updateTokenInputIcon as (
+  formatTokenDisplay: (symbol: string, address: string) => formatTokenDisplay(symbol, address),
+  updateTokenInputIcon: ((
+    input: HTMLInputElement,
+    icon: HTMLImageElement,
+    wrapper: HTMLElement,
+    token: import("./types.js").Token | undefined
+  ) => updateTokenInputIcon(input, icon, wrapper, token ?? null)) as (
     input: HTMLInputElement,
     icon: HTMLImageElement,
     wrapper: HTMLElement,
     token: import("./types.js").Token | undefined
   ) => void,
-  clearTokenInputIcon: tokenManagementCallbacks.clearTokenInputIcon,
+  clearTokenInputIcon: (wrapper: HTMLElement, icon: HTMLImageElement) =>
+    clearTokenInputIcon(wrapper, icon),
   updateAmountFieldLabels: () => updateAmountFieldLabels(),
   setDirectionMode: (mode: "exactIn" | "targetOut") => setDirectionMode(mode),
   updateSlippagePresetActive: (value: string) => updateSlippagePresetActive(value),
@@ -539,17 +534,7 @@ const urlSyncCallbacks: UrlSyncCallbacks = {
   formatChainDisplay: (chainId: string, chainName: string) =>
     formatChainDisplay(chainId, chainName),
   getChainName: (chainId: string) => CHAIN_NAMES[chainId] ?? "",
-  extractAddressFromInput: (input: HTMLInputElement) => {
-    if (typeof win.extractAddressFromInput === "function")
-      return (win.extractAddressFromInput as (i: HTMLInputElement) => string)(input);
-    // Fallback: check data-address then value
-    const dataAddr = input.dataset.address;
-    if (dataAddr && /^0x[a-fA-F0-9]{40}$/.test(dataAddr)) return dataAddr;
-    const value = String(input.value || "").trim();
-    if (/^0x[a-fA-F0-9]{40}$/.test(value)) return value;
-    if (dataAddr) return dataAddr;
-    return value;
-  },
+  extractAddressFromInput: (input: HTMLInputElement) => extractAddressFromInput(input),
 };
 
 initUrlSync(urlSyncElements, urlSyncCallbacks);
@@ -591,10 +576,7 @@ const quoteDisplayElements: QuoteDisplayElements = {
 const quoteDisplayCallbacks: QuoteDisplayCallbacks = {
   hasConnectedWallet: () => hasConnectedWallet(),
   getCurrentChainId: () => getCurrentChainId(),
-  renderResultTokenIcon: (address, chainId) =>
-    typeof win.renderResultTokenIcon === "function"
-      ? (win.renderResultTokenIcon as (a: string, c: number | string) => string)(address, chainId)
-      : "",
+  renderResultTokenIcon: (address, chainId) => renderResultTokenIcon(address, Number(chainId)),
   getTokensForChain: (chainId: number) => getTokensForChain(chainId),
   handleTokenRefClick: (element, address) => handleTokenRefClick(element, address),
   formatErrorWithTokenRefs: (message, chainId) => formatErrorWithTokenRefs(message, chainId),
@@ -668,43 +650,6 @@ initAutoRefresh(autoRefreshElements, autoRefreshCallbacks);
 setupTabSwitching();
 
 // ---------------------------------------------------------------------------
-// Expose functions on window for inline JS shims (temporary bridge)
-// ---------------------------------------------------------------------------
-
-// These are still needed by inline JS in server.ts for functions not yet extracted.
-win.__cb_cancelInProgressFetches = () => cancelInProgressFetches();
-win.__cb_runCompareAndMaybeStartAutoRefresh = (
-  params: import("./types.js").CompareParams,
-  options: { showLoading?: boolean }
-) => runCompareAndMaybeStartAutoRefresh(params, options);
-win.__cb_getBestQuoteFromState = () => getBestQuoteFromState();
-win.__cb_clearNonActiveField = () => setComputedAmount("");
-win.__cb_getProgressiveQuoteState = () => getProgressiveQuoteState();
-win.__cb_executeSwapFromCard = (card: HTMLElement) => executeSwapFromCard(card);
-win.__cb_getPendingSwapCard = () => pendingSwapCard;
-win.__cb_setPendingSwapCard = (card: HTMLElement | null) => {
-  pendingSwapCard = card;
-};
-win.__cb_updateTransactionActionStates = () => updateTransactionActionStates();
-win.__cb_updateTokenBalances = () => updateTokenBalances();
-win.__cb_onWalletConnected = (
-  pendingAction: { type: string; card: HTMLElement; button?: HTMLButtonElement } | null
-) => {
-  if (pendingAction) {
-    if (pendingAction.type === "approve" && pendingAction.card && pendingAction.button) {
-      void onApproveClick(pendingAction.card, pendingAction.button);
-    } else if (pendingAction.type === "swap" && pendingAction.card) {
-      void onSwapClick(pendingAction.card);
-    }
-  }
-};
-win.__cb_onWalletDisconnected = () => clearBalances();
-win.updateFromTokenBalance = () => void updateFromTokenBalance();
-win.updateToTokenBalance = () => void updateToTokenBalance();
-win.handleTokenRefClick = (element: HTMLElement, address: string) =>
-  handleTokenRefClick(element, address);
-
-// ---------------------------------------------------------------------------
 // Chain change handler
 // ---------------------------------------------------------------------------
 
@@ -770,25 +715,5 @@ initializeTokenlistSources().then(() => {
   // Update amount field labels with token symbols from loaded tokens
   updateAmountFieldLabels();
 });
-
-// Re-export for inline JS compatibility (avoid dead-code detection issues)
-void formatQuoteAmount;
-void populateNonActiveField;
-void setComputedAmount;
-void getActiveAmount;
-void isProgrammatic;
-void setProgrammatic;
-void amountGetBestQuoteFromState;
-void loadPreferences;
-void getSavedTokensForChain;
-void applyDefaults;
-void cloneCompareParams;
-void compareParamsToSearchParams;
-void updateUrlFromCompareParams;
-void restoreFromUrlAndPreferences;
-void applyTokenFormattingAfterLoad;
-void saveUserPreferences;
-void showError;
-void modalsOpenMevModal;
 
 export {};

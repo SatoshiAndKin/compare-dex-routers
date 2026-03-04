@@ -368,11 +368,4 @@ export function initChainSelector(
   elChainIdInput.addEventListener("input", handleInput);
   elChainIdInput.addEventListener("keydown", handleKeydown);
   document.addEventListener("mousedown", handleDocumentMousedown);
-
-  // Expose on window for inline JS compatibility
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
-  win.getCurrentChainId = getCurrentChainId;
-  win.formatChainDisplay = formatChainDisplay;
-  win.__cb_getCurrentChainId = () => getCurrentChainId();
 }
