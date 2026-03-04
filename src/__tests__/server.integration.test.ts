@@ -343,9 +343,9 @@ describe("server integration", () => {
   });
 
   // VAL-FLOW-001 through VAL-FLOW-006: Form element order
-  // VAL-UI-001: Form field visual order - Chain → Wallet → From Token → To Token → Direction Toggle → Amount → Action Row
+  // VAL-UI-001: Form field visual order - Chain → Wallet → From Token → To Token → Sell Amount → Receive Amount → Action Row
   // VAL-SLIP-003: Submit button first in action row, slippage box after
-  it("GET / has form elements in correct order (chain → wallet → from → to → direction → amount → submit → slippage)", async () => {
+  it("GET / has form elements in correct order (chain → wallet → from → to → sellAmount → receiveAmount → submit → slippage)", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
     const html = res.body;
@@ -355,22 +355,21 @@ describe("server integration", () => {
     const walletPos = html.indexOf('id="connectWalletBtn"');
     const fromPos = html.indexOf('id="from"');
     const toPos = html.indexOf('id="to"');
-    const directionPos = html.indexOf('id="directionExactIn"');
-    const amountPos = html.indexOf('id="amount"');
+    const sellAmountPos = html.indexOf('id="sellAmount"');
+    const receiveAmountPos = html.indexOf('id="receiveAmount"');
     const submitPos = html.indexOf('id="submit"');
     const slippagePos = html.indexOf('id="slippageBps"');
 
-    // Verify order: chain < wallet < from < to < direction < amount < submit < slippage
-    // From/To tokens are BEFORE direction toggle and amount (VAL-UI-001)
-    // Amount is AFTER direction toggle (VAL-UI-001)
+    // Verify order: chain < wallet < from < to < sellAmount < receiveAmount < submit < slippage
+    // From/To tokens are BEFORE amount fields (VAL-UI-001)
     // Submit is FIRST in action row, slippage box after (VAL-SLIP-003)
     expect(chainPos).toBeGreaterThan(-1);
     expect(walletPos).toBeGreaterThan(chainPos);
     expect(fromPos).toBeGreaterThan(walletPos);
     expect(toPos).toBeGreaterThan(fromPos);
-    expect(directionPos).toBeGreaterThan(toPos);
-    expect(amountPos).toBeGreaterThan(directionPos);
-    expect(submitPos).toBeGreaterThan(amountPos);
+    expect(sellAmountPos).toBeGreaterThan(toPos);
+    expect(receiveAmountPos).toBeGreaterThan(sellAmountPos);
+    expect(submitPos).toBeGreaterThan(receiveAmountPos);
     expect(slippagePos).toBeGreaterThan(submitPos);
   });
 
@@ -442,30 +441,31 @@ describe("server integration", () => {
     expect(mevBtnPos).toBeGreaterThan(resultStartPos);
   });
 
-  // VAL-UI-001: Amount field on its own full-width row (after direction toggle)
-  it("GET / has amount field on its own full-width row (after from/to tokens and direction toggle)", async () => {
+  // VAL-UI-001: Two amount fields (sell/receive) after from/to tokens
+  it("GET / has sell and receive amount fields after from/to tokens", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
     const html = res.body;
 
-    // Amount should be in its own form-group (not in a row with from token)
     const fromPos = html.indexOf('id="from"');
     const toPos = html.indexOf('id="to"');
-    const directionPos = html.indexOf('id="directionExactIn"');
-    const amountPos = html.indexOf('id="amount"');
+    const sellAmountPos = html.indexOf('id="sellAmount"');
+    const receiveAmountPos = html.indexOf('id="receiveAmount"');
 
-    // Amount should appear AFTER from, to, and direction toggle
-    expect(amountPos).toBeGreaterThan(-1);
+    // Both amount fields should appear AFTER from and to
+    expect(sellAmountPos).toBeGreaterThan(-1);
+    expect(receiveAmountPos).toBeGreaterThan(-1);
     expect(fromPos).toBeGreaterThan(-1);
     expect(toPos).toBeGreaterThan(-1);
-    expect(directionPos).toBeGreaterThan(-1);
-    expect(amountPos).toBeGreaterThan(fromPos);
-    expect(amountPos).toBeGreaterThan(toPos);
-    expect(amountPos).toBeGreaterThan(directionPos);
+    expect(sellAmountPos).toBeGreaterThan(fromPos);
+    expect(sellAmountPos).toBeGreaterThan(toPos);
+    expect(receiveAmountPos).toBeGreaterThan(sellAmountPos);
 
-    // Amount should be in a standalone form-group div with a label
-    // Check that amount label exists (indicating its own form-group)
-    expect(html).toContain('<label for="amount">Amount</label>');
+    // Labels for the amount fields
+    expect(html).toContain('id="sellAmountLabel"');
+    expect(html).toContain('id="receiveAmountLabel"');
+    expect(html).toContain("YOU SELL");
+    expect(html).toContain("YOU RECEIVE");
 
     // From token should have its own form-group
     expect(html).toContain('<label for="from">From Token</label>');

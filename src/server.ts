@@ -1139,7 +1139,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     .modal {
       background: #fff;
       border: 4px solid #000;
-      max-width: 500px;
+      max-width: 640px;
       width: 100%;
       position: relative;
       margin: auto;
@@ -1697,37 +1697,49 @@ const INDEX_HTML = `<!DOCTYPE html>
       margin-left: 0.125rem;
     }
 
-    /* Direction Toggle - Sell exact / Buy exact */
-    .direction-toggle-row {
+    /* Two-field amount inputs: Sell / Receive */
+    .amount-fields-row {
       display: flex;
-      gap: 0;
+      gap: 0.75rem;
       margin-bottom: 0.75rem;
     }
-    .direction-btn {
+    .amount-field-group {
       flex: 1;
-      font-size: 0.75rem;
-      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+    }
+    .amount-field-label {
+      font-size: 0.7rem;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      padding: 0.5rem 1rem;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.25rem;
+      color: #000;
+      font-family: monospace;
+    }
+    .amount-field-input {
+      font-family: monospace;
+      font-size: 1rem;
+      padding: 0.625rem 0.75rem;
+      border: 3px solid #000;
       background: #fff;
       color: #000;
-      border: 2px solid #000;
-      cursor: pointer;
     }
-    .direction-btn:first-child {
-      border-right: none;
-    }
-    .direction-btn:hover {
-      background: #f0f0f0;
-    }
-    .direction-btn.active {
-      background: #000;
-      color: #fff;
-    }
-    .direction-btn:focus {
+    .amount-field-input:focus {
       outline: 3px solid #0055FF;
       outline-offset: 0;
+    }
+    .amount-field-group.active .amount-field-input {
+      border-color: #0055FF;
+      background: #fff;
+    }
+    .amount-field-group.computed .amount-field-input {
+      border-color: #999;
+      background: #f5f5f5;
+      color: #666;
+    }
+    .amount-field-group.computed .amount-field-label {
+      color: #666;
     }
 
     /* Target Out Note - provider coverage warning */
@@ -2235,9 +2247,13 @@ const INDEX_HTML = `<!DOCTYPE html>
       .btn-small, .btn-disconnect {
         min-height: 44px;
       }
-      /* Direction toggle buttons */
-      .direction-btn {
+      /* Amount field inputs */
+      .amount-field-input {
         min-height: 44px;
+      }
+      /* Stack amount fields vertically on mobile */
+      .amount-fields-row {
+        flex-direction: column;
       }
       /* Dropdown items need adequate touch targets */
       .chain-item {
@@ -2260,6 +2276,12 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
       .slippage-box-input {
         min-height: 44px;
+      }
+      /* Settings modal near-full-screen on mobile */
+      .modal {
+        width: 95vw;
+        max-width: 95vw;
+        margin: 0.5rem auto;
       }
     }
 
@@ -2309,10 +2331,10 @@ const INDEX_HTML = `<!DOCTYPE html>
         width: 100%;
         min-width: 0;
       }
-      /* Direction toggle - keep readable font at 0.75rem */
-      .direction-btn {
-        font-size: 0.75rem;
-        padding: 0.5rem 0.5rem;
+      /* Amount fields - ensure full-width stacking */
+      .amount-fields-row {
+        flex-direction: column;
+        gap: 0.5rem;
       }
     }
   </style>
@@ -2373,23 +2395,20 @@ const INDEX_HTML = `<!DOCTYPE html>
       <div class="autocomplete-list" id="toAutocomplete"></div>
       <div id="toBalance" class="token-balance" hidden></div>
     </div>
-    <!-- Row 5: Direction Toggle -->
-    <div class="direction-toggle-row">
-      <button type="button" id="directionExactIn" class="direction-btn active" aria-pressed="true">
-        Sell exact
-      </button>
-      <button type="button" id="directionTargetOut" class="direction-btn" aria-pressed="false">
-        Buy exact
-      </button>
+    <!-- Row 5: Two-field amount inputs (Sell / Receive) -->
+    <div class="amount-fields-row">
+      <div class="amount-field-group active" id="sellAmountGroup">
+        <label class="amount-field-label" for="sellAmount" id="sellAmountLabel">YOU SELL</label>
+        <input type="text" class="amount-field-input" id="sellAmount" value="1">
+      </div>
+      <div class="amount-field-group computed" id="receiveAmountGroup">
+        <label class="amount-field-label" for="receiveAmount" id="receiveAmountLabel">YOU RECEIVE</label>
+        <input type="text" class="amount-field-input" id="receiveAmount" placeholder="—">
+      </div>
     </div>
     <div id="targetOutNote" class="target-out-note" hidden>
       <span class="target-out-note-icon">⚠️</span>
       <span>Fewer providers support reverse quotes (3/7 Spandex providers)</span>
-    </div>
-    <!-- Row 6: Amount (full-width for 20+ digit numbers) -->
-    <div class="form-group">
-      <label for="amount">Amount</label>
-      <input type="text" id="amount" value="1">
     </div>
     <!-- Row 7: Action Row with Submit + Compact Slippage -->
     <div class="action-row">
@@ -2476,7 +2495,6 @@ const INDEX_HTML = `<!DOCTYPE html>
           <div id="tokenlistSourcesList">
             <!-- Tokenlist entries rendered by JS -->
           </div>
-        </div>
         </div>
         <!-- Local Tokens Section -->
         <div class="settings-section">
@@ -2916,6 +2934,8 @@ const INDEX_HTML = `<!DOCTYPE html>
         if (swapConfirmModal.classList.contains('show')) {
           updateSwapConfirmModalText();
         }
+        // Update non-active amount field with the best available quote so far
+        populateNonActiveField(getBestQuoteFromState());
       }
 
       function tryFinalize() {
@@ -2936,6 +2956,15 @@ const INDEX_HTML = `<!DOCTYPE html>
           showProgressiveRecommendation(recommendationData, quoteChainId);
         } else {
           progressiveQuoteState.complete = true;
+        }
+
+        // Final update of non-active field with recommended/best quote
+        const bestQuote = getBestQuoteFromState();
+        if (bestQuote) {
+          populateNonActiveField(bestQuote);
+        } else {
+          // Both routers failed - clear non-active field
+          clearNonActiveField();
         }
 
         if (updateUrl) {
@@ -3092,7 +3121,12 @@ const INDEX_HTML = `<!DOCTYPE html>
     const toWrapper = document.getElementById('toWrapper');
     const fromIcon = document.getElementById('fromIcon');
     const toIcon = document.getElementById('toIcon');
-    const amountInput = document.getElementById('amount');
+    const sellAmountInput = document.getElementById('sellAmount');
+    const receiveAmountInput = document.getElementById('receiveAmount');
+    const sellAmountLabel = document.getElementById('sellAmountLabel');
+    const receiveAmountLabel = document.getElementById('receiveAmountLabel');
+    const sellAmountGroup = document.getElementById('sellAmountGroup');
+    const receiveAmountGroup = document.getElementById('receiveAmountGroup');
     const slippageInput = document.getElementById('slippageBps');
     const slippagePresetBtns = document.querySelectorAll('.slippage-preset-compact');
 
@@ -3146,34 +3180,156 @@ const INDEX_HTML = `<!DOCTYPE html>
       updateSlippagePresetActive(slippageInput.value);
     });
 
-    // Direction Toggle - Sell exact (exactIn) / Buy exact (targetOut)
-    const directionExactInBtn = document.getElementById('directionExactIn');
-    const directionTargetOutBtn = document.getElementById('directionTargetOut');
+    // Two-field amount: active field tracking
     const targetOutNote = document.getElementById('targetOutNote');
 
     // Current mode state: 'exactIn' (default) or 'targetOut'
     let currentQuoteMode = 'exactIn';
+    // Which amount field is active: 'sell' or 'receive'
+    let activeAmountField = 'sell';
+    // Auto-quote debounce and programmatic update tracking
+    let isProgrammaticUpdate = false;
+    let autoQuoteDebounceTimer = null;
 
     function setDirectionMode(mode) {
       currentQuoteMode = mode;
       const isExactIn = mode === 'exactIn';
+      activeAmountField = isExactIn ? 'sell' : 'receive';
 
-      directionExactInBtn.classList.toggle('active', isExactIn);
-      directionExactInBtn.setAttribute('aria-pressed', String(isExactIn));
-
-      directionTargetOutBtn.classList.toggle('active', !isExactIn);
-      directionTargetOutBtn.setAttribute('aria-pressed', String(!isExactIn));
+      // Update visual state of fields
+      sellAmountGroup.classList.toggle('active', isExactIn);
+      sellAmountGroup.classList.toggle('computed', !isExactIn);
+      receiveAmountGroup.classList.toggle('active', !isExactIn);
+      receiveAmountGroup.classList.toggle('computed', isExactIn);
 
       // Show/hide the provider note for targetOut mode
       targetOutNote.hidden = isExactIn;
     }
 
-    directionExactInBtn.addEventListener('click', () => {
-      setDirectionMode('exactIn');
+    // Update labels to include token symbols
+    function updateAmountFieldLabels() {
+      const fromAddr = fromInput.dataset.address || '';
+      const toAddr = toInput.dataset.address || '';
+      const chainId = getCurrentChainId();
+      const fromToken = fromAddr ? findTokenByAddress(fromAddr, chainId) : null;
+      const toToken = toAddr ? findTokenByAddress(toAddr, chainId) : null;
+      const fromSymbol = fromToken ? fromToken.symbol : '';
+      const toSymbol = toToken ? toToken.symbol : '';
+      sellAmountLabel.textContent = fromSymbol ? 'YOU SELL ' + fromSymbol : 'YOU SELL';
+      receiveAmountLabel.textContent = toSymbol ? 'YOU RECEIVE ' + toSymbol : 'YOU RECEIVE';
+    }
+
+    // Format a quote amount for display (≤8 decimals, trim trailing zeros)
+    function formatQuoteAmount(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num) || num <= 0) return '';
+      let formatted = num.toFixed(8);
+      if (formatted.includes('.')) {
+        formatted = formatted.replace(/0+$/, '').replace(/[.]$/, '');
+      }
+      return formatted;
+    }
+
+    // Check if a value is valid for auto-quoting (>0, numeric)
+    function isValidAutoQuoteAmount(value) {
+      const trimmed = String(value || '').trim();
+      if (!trimmed || trimmed === '0') return false;
+      const num = Number(trimmed);
+      return Number.isFinite(num) && num > 0;
+    }
+
+    // Get the best quote from progressive state (recommended or first available)
+    function getBestQuoteFromState() {
+      const rec = progressiveQuoteState.recommendation;
+      if (rec === 'spandex' && progressiveQuoteState.spandex) return progressiveQuoteState.spandex;
+      if (rec === 'curve' && progressiveQuoteState.curve) return progressiveQuoteState.curve;
+      return progressiveQuoteState.spandex || progressiveQuoteState.curve || null;
+    }
+
+    // Populate the non-active field with the best quote amount
+    function populateNonActiveField(quote) {
+      if (!quote) {
+        clearNonActiveField();
+        return;
+      }
+      let amount;
+      if (activeAmountField === 'sell') {
+        // exactIn mode: populate receive field with output amount
+        amount = formatQuoteAmount(quote.output_amount);
+        if (amount) {
+          isProgrammaticUpdate = true;
+          receiveAmountInput.value = amount;
+          isProgrammaticUpdate = false;
+        }
+      } else {
+        // targetOut mode: populate sell field with input amount
+        amount = formatQuoteAmount(quote.input_amount);
+        if (amount) {
+          isProgrammaticUpdate = true;
+          sellAmountInput.value = amount;
+          isProgrammaticUpdate = false;
+        }
+      }
+    }
+
+    // Clear the non-active field to placeholder
+    function clearNonActiveField() {
+      isProgrammaticUpdate = true;
+      if (activeAmountField === 'sell') {
+        receiveAmountInput.value = '';
+      } else {
+        sellAmountInput.value = '';
+      }
+      isProgrammaticUpdate = false;
+    }
+
+    // Schedule an auto-quote with 400ms debounce
+    function scheduleAutoQuote() {
+      if (autoQuoteDebounceTimer !== null) {
+        clearTimeout(autoQuoteDebounceTimer);
+        autoQuoteDebounceTimer = null;
+      }
+      cancelInProgressFetches();
+
+      const currentValue = activeAmountField === 'sell' ? sellAmountInput.value : receiveAmountInput.value;
+      if (!isValidAutoQuoteAmount(currentValue)) {
+        clearNonActiveField();
+        return;
+      }
+
+      autoQuoteDebounceTimer = setTimeout(function() {
+        autoQuoteDebounceTimer = null;
+        const compareParams = readCompareParamsFromForm();
+        // Need both from and to tokens to be set
+        if (!compareParams.from || !compareParams.to) return;
+        void runCompareAndMaybeStartAutoRefresh(compareParams, { showLoading: false });
+      }, 400);
+    }
+
+    // When user types in sell field, set mode to exactIn and trigger auto-quote
+    sellAmountInput.addEventListener('input', () => {
+      if (isProgrammaticUpdate) return;
+      if (activeAmountField !== 'sell') {
+        setDirectionMode('exactIn');
+      }
+      scheduleAutoQuote();
     });
 
-    directionTargetOutBtn.addEventListener('click', () => {
-      setDirectionMode('targetOut');
+    // When user types in receive field, set mode to targetOut and trigger auto-quote
+    receiveAmountInput.addEventListener('input', () => {
+      if (isProgrammaticUpdate) return;
+      if (activeAmountField !== 'receive') {
+        setDirectionMode('targetOut');
+      }
+      scheduleAutoQuote();
+    });
+
+    // Re-trigger auto-quote when tokens change via autocomplete
+    fromInput.addEventListener('tokenselected', function() {
+      scheduleAutoQuote();
+    });
+    toInput.addEventListener('tokenselected', function() {
+      scheduleAutoQuote();
     });
 
     // Chain Selector Dropdown (searchable)
@@ -3781,6 +3937,8 @@ const INDEX_HTML = `<!DOCTYPE html>
           amount: String(params.amount || '').trim(),
           slippageBps: String(params.slippageBps || '').trim(),
           mode: String(params.mode || 'exactIn').trim(),
+          sellAmount: sellAmountInput.value,
+          receiveAmount: receiveAmountInput.value,
           perChainTokens,
         };
 
@@ -4189,6 +4347,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       } else if (input === toInput) {
         void updateToTokenBalance();
       }
+      // Update amount field labels with token symbols
+      updateAmountFieldLabels();
     }
 
     // Event listeners for unrecognized token modal
@@ -4274,6 +4434,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         } else if (input === toInput) {
           void updateToTokenBalance();
         }
+        updateAmountFieldLabels();
         return;
       }
 
@@ -5290,6 +5451,10 @@ const INDEX_HTML = `<!DOCTYPE html>
         } else if (input === toInput) {
           void updateToTokenBalance();
         }
+        // Update amount field labels with token symbols
+        updateAmountFieldLabels();
+        // Dispatch token change event for auto-quote
+        input.dispatchEvent(new CustomEvent('tokenselected'));
       }
 
       function setActive(index) {
@@ -5456,11 +5621,15 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
 
     function readCompareParamsFromForm() {
+      // Read amount from the active field (sell for exactIn, receive for targetOut)
+      const amount = currentQuoteMode === 'targetOut'
+        ? receiveAmountInput.value
+        : sellAmountInput.value;
       return cloneCompareParams({
         chainId: String(getCurrentChainId()),
         from: extractAddressFromInput(fromInput),
         to: extractAddressFromInput(toInput),
-        amount: amountInput.value,
+        amount: amount,
         slippageBps: slippageInput.value,
         sender: hasConnectedWallet() ? connectedWalletAddressValue : '',
         mode: currentQuoteMode,
@@ -5876,6 +6045,8 @@ const INDEX_HTML = `<!DOCTYPE html>
           clearTokenInputIcon(toWrapper, toIcon);
         }
       }
+      // Update amount field labels with token symbols
+      updateAmountFieldLabels();
     }
 
     chainIdInput.addEventListener('change', () => {
@@ -5892,6 +6063,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       // Clear balance cache on chain change and refetch balances
       balanceCache.clear();
       updateTokenBalances();
+      updateAmountFieldLabels();
     });
 
     // MEV Modal event listeners
@@ -6734,11 +6906,31 @@ const INDEX_HTML = `<!DOCTYPE html>
     } else {
       // Will apply defaults or saved preferences after tokenlist loads
     }
-    // Amount: URL param > localStorage > default ("1")
-    if (params.get('amount')) {
-      amountInput.value = params.get('amount');
-    } else if (savedPrefs && savedPrefs.amount) {
-      amountInput.value = savedPrefs.amount;
+    // Amount + Mode: URL param > localStorage > default
+    // ?amount=X (no mode or mode=exactIn) populates sell field
+    // ?amount=X&mode=targetOut populates receive field
+    {
+      const urlMode = params.get('mode');
+      const urlAmount = params.get('amount');
+      if (urlAmount && urlMode === 'targetOut') {
+        receiveAmountInput.value = urlAmount;
+        sellAmountInput.value = '';
+        setDirectionMode('targetOut');
+      } else if (urlAmount) {
+        sellAmountInput.value = urlAmount;
+        setDirectionMode('exactIn');
+      } else if (savedPrefs && savedPrefs.amount) {
+        // Restore from localStorage
+        const savedMode = (savedPrefs.mode === 'targetOut') ? 'targetOut' : 'exactIn';
+        if (savedMode === 'targetOut') {
+          receiveAmountInput.value = savedPrefs.amount;
+          sellAmountInput.value = savedPrefs.sellAmount || '';
+        } else {
+          sellAmountInput.value = savedPrefs.amount;
+          receiveAmountInput.value = savedPrefs.receiveAmount || '';
+        }
+        setDirectionMode(savedMode);
+      }
     }
     // Slippage: URL param > localStorage > default ("50")
     if (params.get('slippageBps')) {
@@ -6747,12 +6939,6 @@ const INDEX_HTML = `<!DOCTYPE html>
     } else if (savedPrefs && savedPrefs.slippageBps) {
       slippageInput.value = savedPrefs.slippageBps;
       updateSlippagePresetActive(savedPrefs.slippageBps);
-    }
-    // Mode: URL param > localStorage > default ("exactIn")
-    if (params.get('mode') === 'targetOut') {
-      setDirectionMode('targetOut');
-    } else if (savedPrefs && savedPrefs.mode === 'targetOut') {
-      setDirectionMode('targetOut');
     }
     // Sender param from URL is silently ignored - sender comes from wallet connection state
 
@@ -6935,6 +7121,8 @@ const INDEX_HTML = `<!DOCTYPE html>
 
       // Fetch balances if wallet is already connected
       updateTokenBalances();
+      // Update amount field labels with token symbols from loaded tokens
+      updateAmountFieldLabels();
     });
 
     // Update token counts when chain changes
