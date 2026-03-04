@@ -1876,34 +1876,26 @@ const INDEX_HTML = `<!DOCTYPE html>
       margin-top: 0.25rem;
     }
     .wallet-message.error { color: var(--text); font-weight: 600; }
-    .wallet-provider-menu {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      min-width: 200px;
-      max-height: 300px;
-      overflow-y: auto;
-      background: var(--bg-card);
-      border: 2px solid var(--border);
-      z-index: 100;
-      margin-top: 0.25rem;
+    .wallet-provider-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
     }
     .wallet-provider-option {
       width: 100%;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.75rem;
       text-align: left;
       background: var(--bg-card);
       color: var(--text);
-      border: none;
-      border-bottom: 1px solid var(--border);
-      padding: 0.5rem;
+      border: 2px solid var(--border);
+      padding: 0.75rem;
       font-size: 0.875rem;
       text-transform: none;
       letter-spacing: normal;
+      cursor: pointer;
     }
-    .wallet-provider-option:last-child { border-bottom: none; }
     .wallet-provider-option:hover { background: var(--bg-hover); }
     .wallet-provider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .wallet-provider-icon, .wallet-connected-icon {
@@ -2331,7 +2323,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         padding: 0.75rem 0.5rem;
         min-height: 44px;
       }
-      /* Wallet provider menu items */
+      /* Wallet provider modal items */
       .wallet-provider-option {
         padding: 0.75rem 0.5rem;
         min-height: 44px;
@@ -2444,7 +2436,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           <button type="button" id="disconnectWalletBtn" class="btn-disconnect">Disconnect</button>
         </div>
       </div>
-      <div id="walletProviderMenu" class="wallet-provider-menu" hidden></div>
+      <!-- Wallet provider menu moved to modal below -->
       <div id="walletMessage" class="wallet-message" aria-live="polite"></div>
     </div>
     <!-- Row 3: From Token -->
@@ -2624,6 +2616,20 @@ const INDEX_HTML = `<!DOCTYPE html>
           <button type="button" id="unrecognizedTokenCancelBtn" class="btn-secondary">Cancel</button>
           <button type="button" id="unrecognizedTokenSaveBtn" class="btn-primary" disabled>Save to Local List</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wallet Provider Modal -->
+  <div id="walletProviderModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="walletProviderModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="walletProviderModalTitle" class="modal-title">Connect Wallet</h2>
+        <button type="button" id="walletProviderModalClose" class="modal-close" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="walletProviderList" class="wallet-provider-list"></div>
+        <p id="walletProviderNoWallet" class="modal-text" hidden>No wallet detected. Install a wallet extension and try again.</p>
       </div>
     </div>
   </div>
@@ -3225,7 +3231,10 @@ const INDEX_HTML = `<!DOCTYPE html>
     const walletConnectedName = document.getElementById('walletConnectedName');
     const walletConnectedAddress = document.getElementById('walletConnectedAddress');
     const disconnectWalletBtn = document.getElementById('disconnectWalletBtn');
-    const walletProviderMenu = document.getElementById('walletProviderMenu');
+    const walletProviderModal = document.getElementById('walletProviderModal');
+    const walletProviderModalClose = document.getElementById('walletProviderModalClose');
+    const walletProviderList = document.getElementById('walletProviderList');
+    const walletProviderNoWallet = document.getElementById('walletProviderNoWallet');
     const walletMessage = document.getElementById('walletMessage');
     const chainIdInput = document.getElementById('chainId');
     const fromInput = document.getElementById('from');
@@ -3418,6 +3427,22 @@ const INDEX_HTML = `<!DOCTYPE html>
         void runCompareAndMaybeStartAutoRefresh(compareParams, { showLoading: false });
       }, 400);
     }
+
+    // Clicking/focusing the sell field switches back to exactIn mode
+    sellAmountInput.addEventListener('focus', () => {
+      if (isProgrammaticUpdate) return;
+      if (activeAmountField !== 'sell') {
+        setDirectionMode('exactIn');
+      }
+    });
+
+    // Clicking/focusing the receive field switches to targetOut mode
+    receiveAmountInput.addEventListener('focus', () => {
+      if (isProgrammaticUpdate) return;
+      if (activeAmountField !== 'receive') {
+        setDirectionMode('targetOut');
+      }
+    });
 
     // When user types in sell field, set mode to exactIn and trigger auto-quote
     sellAmountInput.addEventListener('input', () => {
@@ -4758,12 +4783,15 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
 
     function closeWalletProviderMenu() {
-      walletProviderMenu.hidden = true;
-      walletProviderMenu.innerHTML = '';
+      walletProviderModal.classList.remove('show');
+      unlockBodyScroll();
+      walletProviderList.innerHTML = '';
+      walletProviderNoWallet.hidden = true;
       // If closing without a provider connection in progress, cancel any pending action
       if (!isConnectingProvider && pendingPostConnectAction) {
         pendingPostConnectAction = null;
       }
+      connectWalletBtn.focus();
     }
 
     function createWalletIcon(iconUri, altText, className) {
@@ -4903,7 +4931,8 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
 
     function openWalletProviderMenu(providers) {
-      walletProviderMenu.innerHTML = '';
+      walletProviderList.innerHTML = '';
+      walletProviderNoWallet.hidden = true;
 
       providers.forEach((detail) => {
         const option = document.createElement('button');
@@ -4924,7 +4953,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           void connectToWalletProvider(detail.provider, providerInfo);
         });
 
-        walletProviderMenu.appendChild(option);
+        walletProviderList.appendChild(option);
       });
 
       // Add WalletConnect option if available
@@ -4945,11 +4974,12 @@ const INDEX_HTML = `<!DOCTYPE html>
           void connectViaWalletConnect();
         });
 
-        walletProviderMenu.appendChild(wcOption);
+        walletProviderList.appendChild(wcOption);
       }
 
-      const totalOptions = providers.length + (isWalletConnectAvailable() ? 1 : 0);
-      walletProviderMenu.hidden = totalOptions === 0;
+      walletProviderModal.classList.add('show');
+      lockBodyScroll();
+      walletProviderModalClose.focus();
     }
 
     function getAnnouncedWalletProviders() {
@@ -4998,19 +5028,24 @@ const INDEX_HTML = `<!DOCTYPE html>
         return;
       }
 
-      closeWalletProviderMenu();
-      setWalletMessage('No wallet detected. Install a wallet extension and try again.', true);
+      // No providers found - show the modal with "no wallet" message
+      walletProviderList.innerHTML = '';
+      walletProviderNoWallet.hidden = false;
+      walletProviderModal.classList.add('show');
+      lockBodyScroll();
+      walletProviderModalClose.focus();
     }
 
     connectWalletBtn.addEventListener('click', triggerWalletConnectionFlow);
 
     disconnectWalletBtn.addEventListener('click', disconnectWallet);
 
-    document.addEventListener('mousedown', (event) => {
-      if (event.target === connectWalletBtn || walletProviderMenu.contains(event.target)) {
-        return;
+    walletProviderModalClose.addEventListener('click', closeWalletProviderMenu);
+
+    walletProviderModal.addEventListener('click', (event) => {
+      if (event.target === walletProviderModal) {
+        closeWalletProviderMenu();
       }
-      closeWalletProviderMenu();
     });
 
     updateWalletStateUi();
@@ -6183,6 +6218,9 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     // Close modal on Escape key
     document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && walletProviderModal.classList.contains('show')) {
+        closeWalletProviderMenu();
+      }
       if (event.key === 'Escape' && mevModal.classList.contains('show')) {
         closeMevModal();
       }
