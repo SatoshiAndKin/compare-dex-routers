@@ -2,7 +2,7 @@ import "./env.js";
 import "./sentry.js";
 import http from "node:http";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getQuote, serializeWithBigInt } from "@spandex/core";
 import type { Address } from "viem";
@@ -2655,6 +2655,13 @@ const INDEX_HTML = `<!DOCTYPE html>
     </div>
   </div>
 
+  <script>
+    window.__config = {
+      defaultTokens: ${JSON.stringify(DEFAULT_TOKENS)},
+      walletConnectProjectId: '${process.env.WALLETCONNECT_PROJECT_ID || ""}'
+    };
+  </script>
+  <script src="/static/client.js" type="module" defer></script>
   <script>
     // Theme toggle: light -> dark -> system -> light
     (function initTheme() {
@@ -7382,6 +7389,30 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
   if (url.pathname === "/" && req.method === "GET") {
     sendHtml(res, INDEX_HTML);
+    return;
+  }
+
+  if (url.pathname.startsWith("/static/") && req.method === "GET") {
+    const filename = url.pathname.slice("/static/".length);
+    if (filename.includes("..") || filename.length === 0) {
+      sendError(res, 404, "Not found");
+      return;
+    }
+    const ext = filename.split(".").pop();
+    const contentTypes: Record<string, string> = {
+      js: "application/javascript",
+      css: "text/css",
+      map: "application/json",
+    };
+    const contentType = contentTypes[ext || ""] || "application/octet-stream";
+    try {
+      const filePath = join(process.cwd(), "dist", "client", filename);
+      const data = await readFile(filePath);
+      res.writeHead(200, { "Content-Type": contentType });
+      res.end(data);
+    } catch {
+      sendError(res, 404, "Not found");
+    }
     return;
   }
 

@@ -8,7 +8,9 @@
   "scripts": {
     "start": "tsx src/server.ts",
     "dev": "tsx --watch src/server.ts",
-    "typecheck": "tsc --noEmit",
+    "build:client": "esbuild src/client/main.ts --bundle --outfile=dist/client/client.js --format=esm --target=es2022 --sourcemap",
+    "dev:client": "esbuild src/client/main.ts --bundle --outfile=dist/client/client.js --format=esm --target=es2022 --sourcemap --watch",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/client/tsconfig.json",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
@@ -34,6 +36,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.3.3",
     "@vitest/coverage-v8": "^4.0.18",
+    "esbuild": "^0.27.3",
     "eslint": "^10.0.2",
     "husky": "^9.1.7",
     "jscpd": "^4.0.8",
