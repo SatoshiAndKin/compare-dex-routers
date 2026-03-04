@@ -1,0 +1,94 @@
+{
+  "milestone": "core-polish",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/bryan/code/compare-dex-routers\" test -- --maxWorkers=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/bryan/code/compare-dex-routers\" run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/bryan/code/compare-dex-routers\" run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 6,
+    "passed": 4,
+    "failed": 2,
+    "failedFeatures": [
+      "wei-and-address-display",
+      "css-polish-responsive"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "wei-and-address-display",
+      "severity": "blocking",
+      "description": "src/curve.ts now depends on unguarded getTokenDecimals + parseUnits in findCurveQuote; if decimals lookup fails, Curve quote generation can fail entirely, so Curve wei fields are not reliably available."
+    },
+    {
+      "featureId": "css-polish-responsive",
+      "severity": "blocking",
+      "description": "At the 375px breakpoint in src/server.ts, slippage typography is reduced to 0.6875rem for slippage controls, violating VAL-CSS-001 (>= 0.75rem)."
+    },
+    {
+      "featureId": "css-polish-responsive",
+      "severity": "blocking",
+      "description": "At the 375px breakpoint in src/server.ts, .slippage-preset-compact min-width is 40px, violating VAL-CSS-005 (>= 44px touch target)."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "services.yaml",
+      "description": "Added commands.docker_validate_compose = 'docker compose config' so compose-file validation is available in the shared command catalog alongside stack validation.",
+      "sourceFeature": "docker-service-rename"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Update fullstack-worker restart guidance to avoid execution patterns that the safety layer blocks (e.g., chained lsof/xargs kill + background start); provide a safe, non-blocked restart sequence.",
+      "evidence": "persist-user-choices review observed the documented restart command fail with safety rejection before fallback.",
+      "isSystemic": true
+    },
+    {
+      "target": "skills",
+      "suggestion": "Require full, untruncated validator runs in fullstack-worker (explicitly forbid piping tests through head/tail) and require reporting complete command exit results.",
+      "evidence": "docker-service-rename review found test execution piped through head while handoff still marked procedure followed.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills",
+      "suggestion": "Strengthen fullstack-worker procedure enforcement for tests-first: require explicit failing/added test evidence before implementation edits for feature behavior changes.",
+      "evidence": "wei-and-address-display review found implementation edits landed before feature-specific test assertions, with only a later mock addition.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills",
+      "suggestion": "For UI contract checks with numeric thresholds, require explicit checklist verification at the smallest required viewport before concluding pass.",
+      "evidence": "css-polish-responsive review observed recorded 11px font and 40px preset width at 375px despite pass claim.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add explicit feature-isolation guidance: workers must keep scoped diffs per feature and finalize with a concrete commit ID (no pending) before ending feature runs.",
+      "evidence": "Both css-polish-responsive and wei-and-address-display reviews found scope bleed/traceability issues across commits and pending commit metadata.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Commit hygiene concern from css-polish-responsive review",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": null
+}

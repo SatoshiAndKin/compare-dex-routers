@@ -1,0 +1,15 @@
+{
+  "featureId": "default-tokens-amount",
+  "reviewedAt": "2026-03-04T00:19:23Z",
+  "commitId": "ad15d77615c6b2a79848c3b30604b114b451ccea",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation matches the feature requirements: Ethereum default token pair was updated to USDC -> crvUSD in src/config.ts, default amount was changed from 1000 to 1 in src/server.ts, and existing default application flow (applyDefaults on initialization and chain change) continues to enforce per-chain defaults while preserving URL param override behavior.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, transcript skeleton, and commit ad15d77 diff. Changes are scoped correctly to the requested default amount/token behavior and satisfy expected behavior/validation assertions for default amount, Ethereum defaults, non-Ethereum defaults, chain-switch defaults, and URL override precedence."
+}
