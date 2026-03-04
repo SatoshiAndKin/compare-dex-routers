@@ -815,135 +815,53 @@ describe("server /quote and /compare", () => {
     expect(body.mode).toBe("exactIn");
   });
 
-  it("GET /compare-stream returns SSE events with Content-Type: text/event-stream", async () => {
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ outputAmount: 2_000_000_000_000_000_000n, gasUsed: 20000n })
-    );
+  it("GET /quote-curve returns successful Curve quote", async () => {
     findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "2.5", gas: "30000" }));
     isCurveSupportedMock.mockReturnValue(true);
 
     const res = await request(
-      `${baseUrl}/compare-stream?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+      `${baseUrl}/quote-curve?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
     );
 
     expect(res.status).toBe(200);
-    expect(res.headers["content-type"]).toBe("text/event-stream");
-    expect(res.headers["cache-control"]).toBe("no-cache");
+    const body = JSON.parse(res.body);
+    expect(body.source).toBe("curve");
+    expect(body.output_amount).toBe("2.5");
+    expect(body.gas_used).toBe("30000");
   });
 
-  it("GET /compare-stream sends quote events for each router", async () => {
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ outputAmount: 2_000_000_000_000_000_000n, gasUsed: 20000n })
-    );
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "2.5", gas: "30000" }));
-    isCurveSupportedMock.mockReturnValue(true);
-
-    const res = await request(
-      `${baseUrl}/compare-stream?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
-    );
-
-    expect(res.status).toBe(200);
-
-    // Parse SSE events
-    const events = parseSSEEvents(res.body);
-
-    // Should have quote events for both routers
-    const quoteEvents = events.filter((e) => e.event === "quote");
-    expect(quoteEvents.length).toBeGreaterThanOrEqual(2);
-
-    // Should have complete event with recommendation
-    const completeEvents = events.filter((e) => e.event === "complete");
-    expect(completeEvents.length).toBe(1);
-    const completeEvent = completeEvents[0];
-    expect(completeEvent).toBeDefined();
-    expect(completeEvent?.data.recommendation).toBeDefined();
-
-    // Should have done event
-    const doneEvents = events.filter((e) => e.event === "done");
-    expect(doneEvents.length).toBe(1);
-  });
-
-  it("GET /compare-stream handles single-router mode (Curve unavailable)", async () => {
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ outputAmount: 2_000_000_000_000_000_000n, gasUsed: 20000n })
-    );
+  it("GET /quote-curve returns error when Curve is not supported for chain", async () => {
     isCurveSupportedMock.mockReturnValue(false);
 
     const res = await request(
-      `${baseUrl}/compare-stream?chainId=8453&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+      `${baseUrl}/quote-curve?chainId=8453&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
     );
 
-    expect(res.status).toBe(200);
-
-    const events = parseSSEEvents(res.body);
-
-    // Should have error event for Curve (unavailable)
-    const errorEvents = events.filter((e) => e.event === "error");
-    expect(errorEvents.length).toBeGreaterThanOrEqual(1);
-    const curveError = errorEvents.find((e) => e.data.router === "curve");
-    expect(curveError).toBeDefined();
-    expect(curveError?.data.error).toContain("does not support chain");
-
-    // Should still have complete event
-    const completeEvents = events.filter((e) => e.event === "complete");
-    expect(completeEvents.length).toBe(1);
-    const completeEvent = completeEvents[0];
-    expect(completeEvent).toBeDefined();
-    expect(completeEvent?.data.single_router_mode).toBe(true);
+    expect(res.status).toBe(500);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("does not support chain");
   });
 
-  it("GET /compare-stream handles Spandex error", async () => {
-    getQuoteMock.mockRejectedValue(new Error("Spandex API error"));
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "2.5", gas: "30000" }));
+  it("GET /quote-curve returns error when Curve quote fails", async () => {
     isCurveSupportedMock.mockReturnValue(true);
+    findCurveQuoteMock.mockRejectedValue(new Error("Curve routing failed"));
 
     const res = await request(
-      `${baseUrl}/compare-stream?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
+      `${baseUrl}/quote-curve?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
     );
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("Curve routing failed");
+  });
 
-    const events = parseSSEEvents(res.body);
+  it("GET /quote-curve returns 400 for invalid params", async () => {
+    const res = await request(
+      `${baseUrl}/quote-curve?chainId=999&from=bad&to=bad&amount=1&slippageBps=50`
+    );
 
-    // Should have error event for Spandex
-    const spandexError = events.find((e) => e.event === "error" && e.data.router === "spandex");
-    expect(spandexError).toBeDefined();
-    expect(spandexError?.data.error).toContain("Spandex API error");
-
-    // Should still recommend Curve
-    const completeEvents = events.filter((e) => e.event === "complete");
-    const completeEvent = completeEvents[0];
-    expect(completeEvent).toBeDefined();
-    expect(completeEvent?.data.recommendation).toBe("curve");
+    expect(res.status).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error).toBeDefined();
   });
 });
-
-// Helper to parse SSE events from response body
-function parseSSEEvents(body: string): Array<{ event: string; data: Record<string, unknown> }> {
-  const events: Array<{ event: string; data: Record<string, unknown> }> = [];
-  const lines = body.split("\n");
-
-  let currentEvent = "";
-  let currentData = "";
-
-  for (const line of lines) {
-    if (line.startsWith("event: ")) {
-      currentEvent = line.slice(7).trim();
-    } else if (line.startsWith("data: ")) {
-      currentData = line.slice(6).trim();
-    } else if (line === "" && currentEvent && currentData) {
-      try {
-        events.push({
-          event: currentEvent,
-          data: JSON.parse(currentData),
-        });
-      } catch {
-        // Ignore parse errors
-      }
-      currentEvent = "";
-      currentData = "";
-    }
-  }
-
-  return events;
-}
