@@ -2934,6 +2934,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       inFlight: false,
       errorMessage: '',
     };
+    // Chains where Curve is supported - used to determine single-router mode upfront
+    const CURVE_SUPPORTED_CHAINS = [1, 8453, 42161, 10, 137, 56, 43114];
     let compareRequestSequence = 0;
     let currentEventSource = null; // Track in-progress SSE connection
     let progressiveQuoteState = {
@@ -2952,7 +2954,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     };
 
     // Reset progressive quote state for new comparison
-    function resetProgressiveQuoteState() {
+    function resetProgressiveQuoteState(singleRouterMode = false) {
       progressiveQuoteState = {
         spandex: null,
         spandexError: null,
@@ -2965,7 +2967,7 @@ const INDEX_HTML = `<!DOCTYPE html>
         inputToEthRate: null,
         mode: null,
         complete: false,
-        singleRouterMode: false,
+        singleRouterMode: singleRouterMode,
       };
     }
 
@@ -3103,8 +3105,11 @@ const INDEX_HTML = `<!DOCTYPE html>
       // Cancel any in-progress EventSource
       cancelInProgressEventSource();
 
-      // Reset progressive state
-      resetProgressiveQuoteState();
+      // Determine single-router mode upfront based on Curve support for this chain
+      const isSingleRouterChain = !CURVE_SUPPORTED_CHAINS.includes(currentQuoteChainId);
+
+      // Reset progressive state with pre-computed single-router mode
+      resetProgressiveQuoteState(isSingleRouterChain);
 
       if (showLoading) {
         submit.disabled = true;
@@ -3236,7 +3241,19 @@ const INDEX_HTML = `<!DOCTYPE html>
           if (!resolved) {
             resolved = true;
             if (progressiveQuoteState.spandex || progressiveQuoteState.curve) {
-              resolve({ ok: true, params: normalizedParams });
+              // Build payload for auto-refresh compatibility
+              const payload = {
+                spandex: progressiveQuoteState.spandex,
+                curve: progressiveQuoteState.curve,
+                recommendation: progressiveQuoteState.recommendation,
+                recommendation_reason: progressiveQuoteState.recommendationReason,
+                gas_price_gwei: progressiveQuoteState.gasPriceGwei,
+                output_to_eth_rate: progressiveQuoteState.outputToEthRate,
+                input_to_eth_rate: progressiveQuoteState.inputToEthRate,
+                mode: progressiveQuoteState.mode,
+                single_router_mode: progressiveQuoteState.singleRouterMode,
+              };
+              resolve({ ok: true, params: normalizedParams, payload });
             } else {
               const errorMsg = progressiveQuoteState.spandexError || progressiveQuoteState.curveError || 'No quotes available';
               resolve({ ok: false, error: errorMsg, params: normalizedParams });
@@ -3805,18 +3822,46 @@ const INDEX_HTML = `<!DOCTYPE html>
       updateSwapConfirmModalText();
       swapConfirmModal.classList.add('show');
       lockBodyScroll();
-      // Focus the close button for accessibility
-      swapConfirmModalClose.focus();
+      // Focus the first focusable element (Wait button) for accessibility
+      swapConfirmWaitBtn.focus();
     }
 
     function closeSwapConfirmModal() {
       swapConfirmModal.classList.remove('show');
       unlockBodyScroll();
+      // Save the card reference before clearing
+      const cardToFocus = pendingSwapCard;
       pendingSwapCard = null;
       // Return focus to the swap button
-      if (pendingSwapCard) {
-        const swapBtn = pendingSwapCard.querySelector('.swap-btn');
+      if (cardToFocus) {
+        const swapBtn = cardToFocus.querySelector('.swap-btn');
         if (swapBtn) swapBtn.focus();
+      }
+    }
+
+    // Focus trap for swap confirmation modal
+    function handleSwapConfirmModalKeydown(event) {
+      if (event.key !== 'Tab') return;
+
+      // Get all focusable elements in the modal
+      const focusableElements = swapConfirmModal.querySelectorAll(
+        'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey) {
+        // Shift+Tab: if on first element, wrap to last
+        if (document.activeElement === firstElement) {
+          event.preventDefault();
+          lastElement.focus();
+        }
+      } else {
+        // Tab: if on last element, wrap to first
+        if (document.activeElement === lastElement) {
+          event.preventDefault();
+          firstElement.focus();
+        }
       }
     }
 
@@ -6043,6 +6088,9 @@ const INDEX_HTML = `<!DOCTYPE html>
     swapConfirmProceedBtn.addEventListener('click', () => {
       void handleSwapConfirmProceed();
     });
+
+    // Focus trap for swap confirmation modal (Tab/Shift+Tab)
+    swapConfirmModal.addEventListener('keydown', handleSwapConfirmModalKeydown);
 
     // Tab switching
     document.querySelectorAll('.tab').forEach(tab => {
