@@ -2896,6 +2896,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
   <script>
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
+    const WALLETCONNECT_PROJECT_ID = '${process.env.WALLETCONNECT_PROJECT_ID || ""}';
     const DEFAULT_TOKENLIST_NAME = 'Default Tokenlist';
 
     // Multi-tokenlist data model:
@@ -4795,6 +4796,62 @@ const INDEX_HTML = `<!DOCTYPE html>
       setWalletMessage('Wallet disconnected.');
     }
 
+    // WalletConnect icon (official blue logo as data URI)
+    const WALLETCONNECT_ICON = 'data:image/svg+xml,' + encodeURIComponent('<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="6" fill="#3B99FC"/><path d="M10.05 12.36c3.28-3.21 8.62-3.21 11.9 0l.4.39a.41.41 0 0 1 0 .58l-1.35 1.32a.21.21 0 0 1-.3 0l-.54-.53c-2.29-2.24-6.01-2.24-8.3 0l-.58.57a.21.21 0 0 1-.3 0l-1.35-1.32a.41.41 0 0 1 0-.58l.42-.43Zm14.7 2.74 1.2 1.18a.41.41 0 0 1 0 .58l-5.43 5.31a.42.42 0 0 1-.6 0l-3.85-3.77a.1.1 0 0 0-.15 0l-3.85 3.77a.42.42 0 0 1-.6 0l-5.42-5.31a.41.41 0 0 1 0-.58l1.2-1.18a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0Z" fill="#fff"/></svg>');
+
+    const WALLETCONNECT_INFO = {
+      uuid: 'walletconnect',
+      name: 'WalletConnect',
+      icon: WALLETCONNECT_ICON,
+      rdns: 'walletconnect',
+    };
+
+    // Connect via WalletConnect
+    async function connectViaWalletConnect() {
+      const EthereumProvider = window.__WalletConnectEthereumProvider;
+      if (!EthereumProvider) {
+        setWalletMessage('WalletConnect module is not available. Try refreshing.', true);
+        return;
+      }
+      if (!WALLETCONNECT_PROJECT_ID) {
+        setWalletMessage('WalletConnect is not configured (missing project ID).', true);
+        return;
+      }
+      try {
+        const wcProvider = await EthereumProvider.init({
+          projectId: WALLETCONNECT_PROJECT_ID,
+          optionalChains: [1, 8453, 42161, 10, 137, 56, 43114],
+          metadata: {
+            name: 'FlashProfits',
+            description: 'Compare DEX Router Quotes',
+            url: location.origin,
+            icons: [],
+          },
+          showQrModal: true,
+        });
+
+        wcProvider.on('disconnect', () => {
+          disconnectWallet();
+        });
+
+        await wcProvider.connect();
+        await connectToWalletProvider(wcProvider, WALLETCONNECT_INFO);
+      } catch (err) {
+        const code = err && typeof err === 'object' ? err.code : undefined;
+        if (code === 4001) {
+          setWalletMessage('WalletConnect connection was canceled.', true);
+          pendingPostConnectAction = null;
+          return;
+        }
+        const detail = err instanceof Error ? err.message : String(err);
+        setWalletMessage('WalletConnect failed: ' + detail, true);
+      }
+    }
+
+    function isWalletConnectAvailable() {
+      return !!(WALLETCONNECT_PROJECT_ID && window.__WalletConnectEthereumProvider);
+    }
+
     function openWalletProviderMenu(providers) {
       walletProviderMenu.innerHTML = '';
 
@@ -4820,7 +4877,29 @@ const INDEX_HTML = `<!DOCTYPE html>
         walletProviderMenu.appendChild(option);
       });
 
-      walletProviderMenu.hidden = providers.length === 0;
+      // Add WalletConnect option if available
+      if (isWalletConnectAvailable()) {
+        const wcOption = document.createElement('button');
+        wcOption.type = 'button';
+        wcOption.className = 'wallet-provider-option';
+
+        const wcIcon = createWalletIcon(WALLETCONNECT_INFO.icon, 'WalletConnect icon', 'wallet-provider-icon');
+        const wcName = document.createElement('span');
+        wcName.className = 'wallet-provider-name';
+        wcName.textContent = 'WalletConnect';
+
+        wcOption.appendChild(wcIcon);
+        wcOption.appendChild(wcName);
+
+        wcOption.addEventListener('click', () => {
+          void connectViaWalletConnect();
+        });
+
+        walletProviderMenu.appendChild(wcOption);
+      }
+
+      const totalOptions = providers.length + (isWalletConnectAvailable() ? 1 : 0);
+      walletProviderMenu.hidden = totalOptions === 0;
     }
 
     function getAnnouncedWalletProviders() {
@@ -4852,7 +4931,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       setWalletMessage('');
       window.dispatchEvent(new Event('eip6963:requestProvider'));
       const announcedProviders = getAnnouncedWalletProviders();
-      if (announcedProviders.length > 0) {
+      const wcAvailable = isWalletConnectAvailable();
+
+      if (announcedProviders.length > 0 || wcAvailable) {
         openWalletProviderMenu(announcedProviders);
         return;
       }
@@ -7084,6 +7165,16 @@ const INDEX_HTML = `<!DOCTYPE html>
     chainIdInput.addEventListener('change', () => {
       renderTokenlistSources();
     });
+  </script>
+  <script type="module">
+    // Load WalletConnect EthereumProvider via ESM CDN
+    try {
+      const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2');
+      window.__WalletConnectEthereumProvider = EthereumProvider;
+    } catch (err) {
+      // WalletConnect module failed to load - WC option will be hidden
+      window.__WalletConnectEthereumProvider = null;
+    }
   </script>
 </body>
 </html>`;
