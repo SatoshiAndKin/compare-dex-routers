@@ -1,0 +1,60 @@
+{
+  "groupId": "group-prog-swap-modal",
+  "surface": "web-ui",
+  "assertions": [
+    {
+      "id": "VAL-PROG-006",
+      "status": "pass",
+      "reason": "Swap clicked while second quote pending showed warning confirmation modal.",
+      "evidence": [
+        "Screenshot: pq_swap_val_prog_006_modal.png",
+        "Connected address: 0x3333333333333333333333333333333333333333",
+        "Modal text: The Spandex quote is still loading. A better price may arrive soon.",
+        "Console errors: none",
+        "Network: GET /compare-stream -> 200"
+      ]
+    },
+    {
+      "id": "VAL-PROG-007",
+      "status": "pass",
+      "reason": "Wait dismissed modal and did not initiate swap transaction.",
+      "evidence": [
+        "Screenshot: pq_swap_val_prog_007_wait.png",
+        "eth_sendTransaction count before/after Wait: 0/0",
+        "Console errors: none",
+        "Network: GET /compare-stream -> 200"
+      ]
+    },
+    {
+      "id": "VAL-PROG-008",
+      "status": "pass",
+      "reason": "Swap Anyway closed modal and initiated wallet transaction request.",
+      "evidence": [
+        "Screenshot: pq_swap_val_prog_008_swap_anyway.png",
+        "eth_sendTransaction count before/after Swap Anyway: 0/1",
+        "Console errors: none",
+        "Network: GET /compare-stream -> 200"
+      ]
+    },
+    {
+      "id": "VAL-PROG-009",
+      "status": "pass",
+      "reason": "After both quotes loaded, Swap proceeded directly with no confirmation modal.",
+      "evidence": [
+        "Screenshot: pq_swap_val_prog_009_no_modal.png",
+        "Modal visible after final swap click: false",
+        "eth_sendTransaction count before/after final swap: 1/2",
+        "Console errors: none",
+        "Network: GET /compare-stream -> 200"
+      ]
+    }
+  ],
+  "frictions": [
+    "Used a test-only EventSource delay hook for Spandex SSE events to make pending-quote modal timing deterministic."
+  ],
+  "blockers": [],
+  "toolsUsed": [
+    "playwright",
+    "mock-erc6963-provider"
+  ]
+}

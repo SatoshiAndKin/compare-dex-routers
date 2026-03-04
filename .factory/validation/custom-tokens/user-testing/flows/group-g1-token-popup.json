@@ -1,0 +1,120 @@
+{
+  "groupId": "g1",
+  "testedAt": "2026-03-02T20:12:00.000Z",
+  "credentials": {
+    "account": "validator_ct_g1",
+    "namespace": "ct_g1"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-TOKEN-001",
+      "title": "Unrecognized address triggers warning popup",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/ and switch chain to Ethereum", "expected": "App loads on Ethereum chain", "observed": "App loaded, chain set to Ethereum (1)" },
+        { "action": "Clear From Token field and type unrecognized address 0x39AA39c021dfbaE8faC545936693aC917d5E7563", "expected": "Warning popup appears", "observed": "Dialog 'Unrecognized Token' appeared with address and metadata" },
+        { "action": "Cancel popup, reset From Token to USDC, clear To Token and type same unrecognized address", "expected": "Warning popup appears for To field too", "observed": "Dialog 'Unrecognized Token' appeared for the To field as well" }
+      ],
+      "evidence": {
+        "screenshots": ["val-token-001-popup-from-field.png", "val-token-001-popup-to-field.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic, ignored)",
+        "network": "GET /token-metadata?chainId=1&address=0x39AA39c021dfbaE8faC545936693aC917d5E7563 triggered on address entry"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-002",
+      "title": "On-chain metadata fetched and displayed",
+      "status": "pass",
+      "steps": [
+        { "action": "Enter unrecognized address 0x39AA39c021dfbaE8faC545936693aC917d5E7563 in From Token field", "expected": "Popup shows loading then ERC-20 metadata", "observed": "Popup displayed metadata: Name='Compound USD Coin', Symbol='cUSDC', Decimals=8" },
+        { "action": "Verify metadata fields are visible in popup", "expected": "Name, Symbol, Decimals fields shown", "observed": "All three fields shown with correct values from on-chain lookup" }
+      ],
+      "evidence": {
+        "screenshots": ["val-token-001-popup-from-field.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic, ignored)",
+        "network": "GET /token-metadata?chainId=1&address=0x39AA39c021dfbaE8faC545936693aC917d5E7563 -> 200 with metadata"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-003",
+      "title": "Cancel dismisses popup without saving",
+      "status": "pass",
+      "steps": [
+        { "action": "With unrecognized token popup open, click Cancel button", "expected": "Popup closes, token not saved to local list", "observed": "Popup closed, address remained in input field" },
+        { "action": "Check localStorage for localTokenList", "expected": "No local token list entry", "observed": "localStorage.getItem('localTokenList') returned null" }
+      ],
+      "evidence": {
+        "screenshots": ["val-token-003-popup-dismissed.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic, ignored)",
+        "network": "No additional network calls on Cancel"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-004",
+      "title": "Save adds token to local list with correct chain",
+      "status": "pass",
+      "steps": [
+        { "action": "Trigger unrecognized token popup again for 0x39AA39c021dfbaE8faC545936693aC917d5E7563", "expected": "Popup appears with metadata", "observed": "Popup appeared showing cUSDC metadata" },
+        { "action": "Click 'Save to Local List' button", "expected": "Popup closes, input shows formatted SYMBOL (0xAddress)", "observed": "Popup closed, To Token field updated to 'cUSDC (0x39AA39c021dfbaE8faC545936693aC917d5E7563)'" },
+        { "action": "Verify localStorage contains saved token", "expected": "localTokenList contains token with chainId=1", "observed": "localStorage contains JSON with tokens array including {chainId:1, address:'0x39AA39c021dfbaE8faC545936693aC917d5E7563', name:'Compound USD Coin', symbol:'cUSDC', decimals:8}" }
+      ],
+      "evidence": {
+        "screenshots": ["val-token-004-saved-formatted.png"],
+        "consoleErrors": "Only favicon.ico 404 (cosmetic, ignored)",
+        "network": "GET /token-metadata -> 200 for metadata fetch"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-006",
+      "title": "Non-ERC-20 address handled gracefully",
+      "status": "pass",
+      "steps": [
+        { "action": "Enter EOA/precompile address 0x0000000000000000000000000000000000000001 in From Token field", "expected": "Popup shows error for non-ERC-20 token", "observed": "Popup displayed red error box: 'Not a valid ERC-20 token'" },
+        { "action": "Verify Save button is disabled", "expected": "Save to Local List button disabled", "observed": "Save button rendered as disabled (grayed out), only Cancel is actionable" }
+      ],
+      "evidence": {
+        "screenshots": ["val-token-006-non-erc20-error.png"],
+        "consoleErrors": "Two 'Failed to load resource' errors for /token-metadata with the precompile address (expected - server correctly rejects non-ERC-20)",
+        "network": "GET /token-metadata?chainId=1&address=0x0000000000000000000000000000000000000001 -> error responses"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-008",
+      "title": "Metadata fetch failure shows error in popup",
+      "status": "pass",
+      "steps": [
+        { "action": "Set up Playwright route interception to return 500 for /token-metadata requests", "expected": "Route interception active", "observed": "Route intercepted successfully" },
+        { "action": "Enter unrecognized address 0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643 (cDAI) in From Token", "expected": "Popup appears with error message due to failed fetch", "observed": "Popup displayed red error box: 'Internal Server Error'" },
+        { "action": "Verify Save button is disabled", "expected": "Save button disabled when metadata fetch fails", "observed": "Save to Local List button rendered as disabled (grayed out)" }
+      ],
+      "evidence": {
+        "screenshots": ["val-token-008-metadata-error.png"],
+        "consoleErrors": "Multiple 'Failed to load resource: net::ERR_FAILED' and 500 errors for /token-metadata (expected due to route interception)",
+        "network": "GET /token-metadata requests intercepted and returned 500/aborted"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Playwright MCP page.evaluate() and browser_run_code sometimes lose page context (navigates to about:blank). Required navigating back to the app URL multiple times.",
+      "resolved": true,
+      "resolution": "Navigated back to http://localhost:3002/ after each context loss. Used browser_select_option and browser_click MCP tools instead of run_code when possible.",
+      "affectedAssertions": ["VAL-TOKEN-001", "VAL-TOKEN-008"]
+    },
+    {
+      "description": "Clicking from one token field to another while an unrecognized address is still in the first field re-triggers the popup for the first field's address on blur.",
+      "resolved": true,
+      "resolution": "Worked around by selecting a known token (USDC) in the From field before testing the To field independently.",
+      "affectedAssertions": ["VAL-TOKEN-001"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 6 assertions: all 6 passed. VAL-TOKEN-001 confirmed popup triggers for both from/to fields. VAL-TOKEN-002 confirmed on-chain metadata (name, symbol, decimals) fetched and displayed. VAL-TOKEN-003 confirmed Cancel dismisses without saving. VAL-TOKEN-004 confirmed Save persists token to localStorage with correct chainId and formats the input. VAL-TOKEN-006 confirmed non-ERC-20 address shows error with disabled Save. VAL-TOKEN-008 confirmed metadata fetch failure (via route interception) shows error with disabled Save."
+}

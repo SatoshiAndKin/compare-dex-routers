@@ -1,0 +1,232 @@
+{
+  "groupId": "group-wei-addr-cross",
+  "testedAt": "2026-03-04T02:51:55.061653+00:00",
+  "credentials": {
+    "account": "core_polish_validator_weiaddr_01@example.test",
+    "namespace": "core-polish-weiaddr"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "curl",
+    "Read"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-WEI-001",
+      "title": "Input amount in wei shown in expandable details",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Open ETH compare flow (USDC -> WETH, amount=1)",
+          "expected": "Quote renders with expandable details",
+          "observed": "Spandex quote rendered with Details toggle"
+        },
+        {
+          "action": "Expand Spandex details",
+          "expected": "Input Amount (wei) appears",
+          "observed": "Displayed `Input Amount (wei) 1000000`"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-wei-001-spandex-details-stable.png"
+        ],
+        "consoleErrors": "none observed (agent-browser errors/console returned no entries)",
+        "network": "GET /compare?chainId=1&from=0xA0b8...&to=0xC02a...&amount=1&slippageBps=50 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-WEI-002",
+      "title": "Wei values shown for both Spandex and Curve quotes",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Expand Spandex details",
+          "expected": "Input/output wei shown",
+          "observed": "`Input Amount (wei) 1000000`, `Output Amount (wei) 509098180811869`"
+        },
+        {
+          "action": "Switch to Curve tab and expand details",
+          "expected": "Input/output wei shown",
+          "observed": "`Input Amount (wei) 1000000`, `Output Amount (wei) 506601679964983`"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-wei-001-spandex-details-stable.png",
+          "val-wei-002-curve-details-stable.png"
+        ],
+        "consoleErrors": "none observed",
+        "network": "GET /compare (same params) -> both spandex and curve quote objects present"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-WEI-003",
+      "title": "Wei values match raw API response",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Call /compare API for ETH USDC->WETH amount=1",
+          "expected": "Raw fields present in payload",
+          "observed": "API response file saved with spandex_output_amount_raw=509098180811869 and curve_output_amount_raw=506601679964983"
+        },
+        {
+          "action": "Inspect expanded UI details for both tabs",
+          "expected": "Displayed wei values match API raw fields",
+          "observed": "Spandex UI output wei `509098180811869` and Curve UI output wei `506601679964983`, both matching saved payload"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-wei-003-spandex-ui-vs-api.png",
+          "val-wei-003-curve-ui-vs-api.png"
+        ],
+        "consoleErrors": "none observed",
+        "network": "GET /compare?chainId=1&from=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&to=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&amount=1&slippageBps=50 -> 200; full payload saved to val-wei-003-compare-response.json"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ADDR-001",
+      "title": "Error messages show token symbol",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Open URL-param flow on Optimism with unsupported pair and wait for compare result",
+          "expected": "Error references tokens by symbol instead of raw addresses",
+          "observed": "Error text showed clickable `USDC.e` and `WETH` token refs (not raw addresses)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-addr-001-error-symbols.png"
+        ],
+        "consoleErrors": "none observed",
+        "network": "GET /compare?chainId=10&from=0x7F5c764cBc14f9669B88837ca1490cCa17c31607&to=0x4200000000000000000000000000000000000006&amount=1&slippageBps=50 -> 200 with curve_error containing raw addresses; UI rendered symbols via token refs (payload saved to val-addr-error-response.json)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ADDR-002",
+      "title": "Hovering token reference shows full address",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect token-ref title attributes and hover token ref",
+          "expected": "Full 0x address available via tooltip/title",
+          "observed": "`title` attributes returned full addresses: USDC.e=0x7F5c764cBc14f9669B88837ca1490cCa17c31607 and WETH=0x4200000000000000000000000000000000000006"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-addr-002-hover-token-ref.png"
+        ],
+        "consoleErrors": "none observed",
+        "network": "UI error path from GET /compare (Optimism unsupported route)"
+      },
+      "issues": "Native browser title tooltip text does not render reliably in headless screenshot; validated via direct title attribute reads on the live token-ref elements."
+    },
+    {
+      "id": "VAL-ADDR-003",
+      "title": "Clicking token reference copies address",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Click token ref in error message",
+          "expected": "Clipboard write succeeds and `Copied!` visual appears",
+          "observed": "No copied UI state observed; DOM check showed no `.copied-feedback` and no `.token-ref.copied`"
+        },
+        {
+          "action": "Check clipboard capability in session",
+          "expected": "Clipboard API available for write",
+          "observed": "`navigator.clipboard.writeText` failed: `Write permission denied` in automation context"
+        },
+        {
+          "action": "Source inspection of copy handler",
+          "expected": "Confirm intended visual feedback path",
+          "observed": "`handleTokenRefClick` in src/server.ts appends `.copied-feedback` with text `Copied!` on successful clipboard write (lines ~5503-5523)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-addr-003-copied-feedback.png"
+        ],
+        "consoleErrors": "none observed",
+        "network": "N/A (client-side clipboard behavior)"
+      },
+      "issues": "Blocked by clipboard permission denial in this headless test environment; cannot fully validate visual confirmation path without clipboard write permission."
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "First visit -> compare -> expand details -> see wei",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Clear local/session storage and load app with no URL params",
+          "expected": "First-visit defaults include amount=1",
+          "observed": "Amount input was `1000` (not `1`)"
+        },
+        {
+          "action": "Run compare and expand details",
+          "expected": "Wei values visible in expanded details",
+          "observed": "Wei fields were visible after compare"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "val-weiaddr-cross-001-initial.png",
+          "val-weiaddr-after-compare.png",
+          "val-wei-001-spandex-details-stable.png"
+        ],
+        "consoleErrors": "none observed",
+        "network": "GET /compare calls succeeded during flow"
+      },
+      "issues": "Cross-flow failed on first-visit default amount requirement (expected 1, observed 1000)."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Auto-refresh frequently collapsed details panels before capture.",
+      "resolved": true,
+      "resolution": "Used in-page `stopAutoRefresh({ clearLastParams: false })` during capture windows.",
+      "affectedAssertions": [
+        "VAL-WEI-001",
+        "VAL-WEI-002",
+        "VAL-WEI-003",
+        "VAL-CROSS-001"
+      ]
+    },
+    {
+      "description": "agent-browser intermittently reset to about:blank or returned temporary read errors during long command chains.",
+      "resolved": true,
+      "resolution": "Recovered by reopening URL/session and re-running the affected step.",
+      "affectedAssertions": [
+        "VAL-WEI-002",
+        "VAL-WEI-003",
+        "VAL-ADDR-001",
+        "VAL-ADDR-002",
+        "VAL-ADDR-003"
+      ]
+    },
+    {
+      "description": "Headless run does not reliably display native title tooltips in screenshots.",
+      "resolved": true,
+      "resolution": "Validated full-address tooltip content via live DOM `title` attribute reads on token-ref elements.",
+      "affectedAssertions": [
+        "VAL-ADDR-002"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Clipboard write permission denied in automation context (`Failed to execute 'writeText' on 'Clipboard': Write permission denied.`), preventing reliable validation of `Copied!` visual confirmation.",
+      "affectedAssertions": [
+        "VAL-ADDR-003"
+      ],
+      "quickFixAttempted": "Retried click flow and directly tested `navigator.clipboard.writeText`; permission remained denied."
+    }
+  ],
+  "summary": "Tested 7 assertions: 5 passed (VAL-WEI-001/002/003, VAL-ADDR-001/002), 1 failed (VAL-CROSS-001 default amount expected 1 but observed 1000), 1 blocked (VAL-ADDR-003 clipboard permission denied in automation context)."
+}

@@ -1,0 +1,45 @@
+{
+  "featureId": "ui-chain-searchable-dropdown",
+  "reviewedAt": "2026-03-03T06:30:00.000Z",
+  "commitId": "a26ec6e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The searchable chain dropdown implementation is well-structured, follows existing patterns (mirrors .autocomplete-list CSS and behavior), and correctly updates most call sites from Number(chainIdInput.value) to getCurrentChainId(). However, a blocking bug exists: the token autocomplete refresh() function at line 4343 reads document.getElementById('chainId').value directly, which now returns the display string (e.g., 'Base (8453)') instead of a numeric chain ID. This causes getTokensForChain() to receive NaN, returning zero tokens and breaking all token autocomplete functionality. Additionally, the dropdown lacks ARIA attributes (role=combobox, role=listbox, aria-expanded) that the rest of the app consistently provides for interactive components.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 4343,
+        "severity": "blocking",
+        "description": "Token autocomplete refresh() reads `document.getElementById('chainId').value` which now returns the display string (e.g., 'Base (8453)') instead of a numeric chain ID. getTokensForChain() converts this via Number(), getting NaN, so no tokens are returned. This breaks autocomplete for both From and To token fields. Fix: use `document.getElementById('chainId').dataset.chainId` or `getCurrentChainId()` instead."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2115,
+        "severity": "non_blocking",
+        "description": "The chain input element lacks ARIA attributes for the combobox pattern. Should have role='combobox', aria-expanded toggled on open/close, aria-autocomplete='list', and aria-controls pointing to the dropdown. The dropdown should have role='listbox' and items role='option'. The existing codebase consistently uses ARIA on interactive elements (modals have role=dialog+aria-modal, toggles have role=switch+aria-checked, settings button has aria-haspopup+aria-expanded)."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 2484,
+        "severity": "non_blocking",
+        "description": "ALL_CHAINS array duplicates data already in CHAIN_NAMES object. Could derive ALL_CHAINS from CHAIN_NAMES (e.g., Object.entries(CHAIN_NAMES).map(([id, name]) => ({id, name}))) to avoid maintenance burden of keeping two data sources in sync."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The autocomplete refresh() function reads chainId via document.getElementById('chainId').value instead of using the centralized getCurrentChainId() function. This pre-existing pattern was broken by the select-to-input refactor. AGENTS.md and the skill should document that chain ID must always be read via getCurrentChainId(), never via .value directly, since .value now contains display text.",
+      "evidence": "src/server.ts:4343 — `const chainId = document.getElementById('chainId').value;` returns 'Base (8453)' instead of '8453'. Compare to the correctly updated sites at lines 3279, 4276, 4843, 5250, 5526 which all use getCurrentChainId()."
+    },
+    {
+      "area": "conventions",
+      "observation": "The app uses ARIA attributes consistently on modals (role=dialog, aria-modal, aria-labelledby), toggles (role=switch, aria-checked), and buttons (aria-label, aria-haspopup, aria-expanded), but there's no documented convention requiring ARIA on new interactive components. The new chain dropdown shipped without any ARIA attributes.",
+      "evidence": "src/server.ts:2115 — chain input has no role=combobox or aria-expanded; src/server.ts:2116 — dropdown div has no role=listbox. Compare to settings button at line 2101 which has aria-label, aria-haspopup, aria-expanded."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL — Blocking bug: token autocomplete is broken because the autocomplete refresh() function reads chainIdInput.value directly (now returns display text like 'Base (8453)' instead of numeric ID), causing getTokensForChain() to receive NaN and return no tokens. The worker correctly updated most call sites to use getCurrentChainId() but missed one at line 4343 inside the autocomplete factory function. Two non-blocking issues: missing ARIA combobox attributes and duplicated chain data. Otherwise the implementation is solid — CSS follows existing patterns, keyboard nav is complete (ArrowUp/Down/Enter/Escape/Tab), blur/click-outside restores state gracefully, and URL params work correctly."
+}

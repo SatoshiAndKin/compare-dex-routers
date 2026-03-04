@@ -1346,6 +1346,7 @@ const INDEX_HTML = `<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Compare DEX Routers</title>
+  <meta name="fc:miniapp" content='{"version":"1","imageUrl":"","button":{"title":"Compare DEX","action":{"type":"launch_frame","name":"FlashProfits","url":""}}}' />
   <style>
     /* BRUTALIST DESIGN: High contrast, no border-radius, max 2 fonts */
     /* Color Palette: Black/White + Blue accent (#0055FF) + Orange accent (#CC2900) + Green (#007700) + Red (#CC0000) */
@@ -7175,6 +7176,49 @@ const INDEX_HTML = `<!DOCTYPE html>
       // WalletConnect module failed to load - WC option will be hidden
       window.__WalletConnectEthereumProvider = null;
     }
+
+    // Farcaster miniapp SDK — conditional loading
+    // Only loads when ?miniApp=true is in the URL (set by Farcaster client)
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('miniApp') === 'true') {
+        const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+
+        // Signal to Farcaster client that the app is ready (dismiss splash screen)
+        sdk.actions.ready();
+
+        // Get the Farcaster wallet provider and store it globally
+        const farcasterProvider = sdk.wallet.getEthereumProvider();
+        window.__farcasterWalletProvider = farcasterProvider;
+        window.__isFarcasterMiniApp = true;
+
+        // Auto-connect using the Farcaster wallet provider (bypass ERC-6963/WalletConnect menu)
+        if (farcasterProvider && typeof farcasterProvider.request === 'function') {
+          const accounts = await farcasterProvider.request({ method: 'eth_requestAccounts' });
+          const account = Array.isArray(accounts) ? accounts[0] : null;
+          if (typeof account === 'string' && account) {
+            // Set globals directly for miniapp wallet
+            window.__selectedWalletProvider = farcasterProvider;
+            window.__selectedWalletAddress = account;
+            window.__selectedWalletInfo = { name: 'Farcaster', icon: '', uuid: 'farcaster', rdns: 'farcaster' };
+
+            // Update UI elements
+            const connectBtn = document.getElementById('connectWalletBtn');
+            const walletConnected = document.getElementById('walletConnected');
+            const walletName = document.getElementById('walletConnectedName');
+            const walletAddr = document.getElementById('walletConnectedAddress');
+            if (connectBtn) connectBtn.hidden = true;
+            if (walletConnected) walletConnected.hidden = false;
+            if (walletName) walletName.textContent = 'Farcaster';
+            if (walletAddr) walletAddr.textContent = account;
+          }
+        }
+      }
+    } catch (err) {
+      // Farcaster SDK failed to load — graceful degradation, all existing behavior unchanged
+      window.__farcasterWalletProvider = null;
+      window.__isFarcasterMiniApp = false;
+    }
   </script>
 </body>
 </html>`;
@@ -7198,6 +7242,27 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
   if (url.pathname === "/" && req.method === "GET") {
     sendHtml(res, INDEX_HTML);
+    return;
+  }
+
+  if (url.pathname === "/.well-known/farcaster.json" && req.method === "GET") {
+    const host = req.headers.host || "localhost:3000";
+    const protocol = req.headers["x-forwarded-proto"] || "http";
+    const baseUrl = `${protocol}://${host}`;
+    sendJson(res, 200, {
+      accountAssociation: {
+        header: process.env.FARCASTER_ACCOUNT_ASSOCIATION_HEADER || "",
+        payload: process.env.FARCASTER_ACCOUNT_ASSOCIATION_PAYLOAD || "",
+        signature: process.env.FARCASTER_ACCOUNT_ASSOCIATION_SIGNATURE || "",
+      },
+      miniapp: {
+        version: "1",
+        name: "FlashProfits",
+        homeUrl: `${baseUrl}/?miniApp=true`,
+        iconUrl: `${baseUrl}/icon.png`,
+        primaryCategory: "finance",
+      },
+    });
     return;
   }
 

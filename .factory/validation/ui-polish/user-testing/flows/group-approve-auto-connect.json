@@ -1,0 +1,131 @@
+{
+  "groupId": "group-approve-auto-connect",
+  "testedAt": "2026-03-03T07:51:00.000Z",
+  "credentials": {
+    "account": "ui_wallet_validator_01@example.test",
+    "namespace": "ui-polish-wallet-autoconnect"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-UI-030",
+      "title": "Approve click triggers wallet connect when disconnected",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to app and submit comparison (USDC→WETH on Base)", "expected": "Comparison results with Approve/Swap buttons", "observed": "Results displayed with step 1 Approve and step 2 Swap (disabled) buttons" },
+        { "action": "Inject mock ERC-6963 wallet provider via page.evaluate()", "expected": "Provider registered for discovery", "observed": "Mock wallet injected, responds to eip6963:requestProvider" },
+        { "action": "Click Approve button with no wallet connected", "expected": "Wallet provider menu appears", "observed": "Wallet provider menu appeared showing 'Frame' and 'Mock Wallet' options" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-030-initial-state.png", "val-ui-030-approve-wallet-menu.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored per guidance)",
+        "network": "GET /compare -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-031",
+      "title": "Auto-approve after wallet connect",
+      "status": "pass",
+      "steps": [
+        { "action": "Click Approve (no wallet) to open wallet provider menu", "expected": "Wallet provider menu appears", "observed": "Menu appeared with Frame and Mock Wallet" },
+        { "action": "Clear mock wallet request log", "expected": "Log empty", "observed": "Log cleared" },
+        { "action": "Select Mock Wallet from provider menu", "expected": "Wallet connects then auto-approve fires (eth_sendTransaction sent without second click)", "observed": "Wallet connected. Request log shows: eth_requestAccounts → eth_call (x2 balance checks) → eth_chainId → eth_sendTransaction (approve calldata 0x095ea7b3... to USDC token) → eth_getTransactionReceipt" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-031-auto-approve-after-connect.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored per guidance)",
+        "network": "Mock wallet received eth_requestAccounts then eth_sendTransaction automatically",
+        "mockWalletRequestLog": [
+          { "method": "eth_requestAccounts" },
+          { "method": "eth_call", "note": "balance check USDC" },
+          { "method": "eth_call", "note": "balance check WETH" },
+          { "method": "eth_chainId" },
+          { "method": "eth_sendTransaction", "params": { "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "data": "0x095ea7b3... (ERC-20 approve)", "from": "0x1234567890123456789012345678901234567890" } },
+          { "method": "eth_getTransactionReceipt" }
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-032",
+      "title": "Approve works when wallet already connected",
+      "status": "pass",
+      "steps": [
+        { "action": "Reload page, inject mock wallet, connect via Connect Wallet → Mock Wallet", "expected": "Wallet connected, Approve/Swap buttons visible", "observed": "Wallet connected showing Mock Wallet address, Approve button clickable" },
+        { "action": "Clear request log then click Approve (wallet already connected)", "expected": "Approval tx sent directly (no eth_requestAccounts)", "observed": "Request log shows: eth_chainId → eth_sendTransaction (approve calldata) → eth_getTransactionReceipt. No eth_requestAccounts. Button changed to 'Approved ✓' (disabled), Swap button enabled." }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-032-approve-already-connected.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored per guidance)",
+        "network": "Mock wallet received eth_sendTransaction directly (no eth_requestAccounts)",
+        "mockWalletRequestLog": [
+          { "method": "eth_chainId" },
+          { "method": "eth_sendTransaction", "params": { "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "data": "0x095ea7b3... (ERC-20 approve)" } },
+          { "method": "eth_getTransactionReceipt" }
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-033",
+      "title": "User cancels wallet connect during approve flow",
+      "status": "pass",
+      "steps": [
+        { "action": "Disconnect wallet to return to disconnected state", "expected": "Connect Wallet button visible, wallet disconnected message", "observed": "UI shows Connect Wallet button and 'Wallet disconnected.' message" },
+        { "action": "Take before-state screenshot", "expected": "Form intact with results and Approve/Swap buttons", "observed": "Form shows results with Approve and Swap (disabled) buttons" },
+        { "action": "Click Approve (no wallet)", "expected": "Wallet provider menu appears", "observed": "Wallet provider menu appeared with Frame and Mock Wallet options" },
+        { "action": "Click outside the wallet provider menu (on page heading)", "expected": "Menu dismissed, UI returns to prior state", "observed": "Wallet provider menu hidden. UI returned to prior state: Connect Wallet button visible, form intact, Approve button still available, no error messages" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-033-before-approve.png", "val-ui-033-wallet-menu-open.png", "val-ui-033-after-dismiss.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored per guidance)",
+        "network": "No wallet requests made (menu dismissed before selection)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-034",
+      "title": "Swap button auto-connect when disconnected",
+      "status": "pass",
+      "steps": [
+        { "action": "Reload page, inject mock wallet, connect wallet", "expected": "Wallet connected", "observed": "Wallet connected with Mock Wallet" },
+        { "action": "Stop auto-refresh to preserve results", "expected": "Auto-refresh disabled", "observed": "All intervals cleared" },
+        { "action": "Click Approve to enable Swap button", "expected": "Approval succeeds, Swap button enabled", "observed": "Approve button changed to 'Approved ✓' (disabled), Swap button enabled (disabled=false, no .disabled class)" },
+        { "action": "Disconnect wallet", "expected": "Wallet disconnected, Swap button remains clickable with wallet-required class", "observed": "Wallet disconnected. Swap button has classes 'tx-btn swap-btn wallet-required', disabled=false" },
+        { "action": "Clear request log then click Swap (no wallet)", "expected": "Wallet provider menu appears", "observed": "Wallet provider menu appeared with Frame and Mock Wallet options" },
+        { "action": "Select Mock Wallet from provider menu", "expected": "Wallet connects then auto-swap fires (eth_sendTransaction sent to router)", "observed": "Request log shows: eth_requestAccounts → eth_call (x2 balance checks) → eth_chainId → eth_sendTransaction (swap calldata to router 0x0D05a7D3...) → eth_getTransactionReceipt" }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-034-swap-wallet-menu.png", "val-ui-034-auto-swap-after-connect.png"],
+        "consoleErrors": "favicon.ico 404 only (cosmetic, ignored per guidance)",
+        "network": "Mock wallet received eth_requestAccounts then eth_sendTransaction (swap) automatically",
+        "mockWalletRequestLog": [
+          { "method": "eth_requestAccounts" },
+          { "method": "eth_call", "note": "balance check USDC" },
+          { "method": "eth_call", "note": "balance check WETH" },
+          { "method": "eth_chainId" },
+          { "method": "eth_sendTransaction", "params": { "to": "0x0D05a7D3448512B78fa8A9e46c4872C88C4a0D05", "note": "router address with swap calldata", "from": "0x1234567890123456789012345678901234567890" } },
+          { "method": "eth_getTransactionReceipt" }
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Browser context kept crashing/closing between test steps, requiring multiple Chrome process kills and restarts",
+      "resolved": true,
+      "resolution": "Killed all Chrome mcp-chrome processes between test sessions and re-navigated. Used browser_run_code for complex multi-step flows to avoid context loss.",
+      "affectedAssertions": ["VAL-UI-032", "VAL-UI-034"]
+    },
+    {
+      "description": "Auto-refresh (15s interval) regenerates result cards, resetting approve/swap button states. This interfered with VAL-UI-034 which requires maintaining approved state across disconnect.",
+      "resolved": true,
+      "resolution": "Cleared all intervals via page.evaluate() before performing the approve→disconnect→swap sequence. Documented in user-testing.md as known quirk.",
+      "affectedAssertions": ["VAL-UI-034"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. VAL-UI-030 confirmed approve button opens wallet provider menu when disconnected. VAL-UI-031 confirmed auto-approve fires after wallet connect (eth_requestAccounts → eth_sendTransaction with no second click). VAL-UI-032 confirmed approve sends tx directly when wallet already connected. VAL-UI-033 confirmed dismissing wallet menu returns UI to prior state cleanly. VAL-UI-034 confirmed swap button triggers connect then auto-submits swap transaction to the router."
+}

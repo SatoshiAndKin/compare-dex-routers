@@ -136,3 +136,12 @@ Read `/Users/bryan/code/compare-dex-routers/src/server.ts` to verify swap/approv
 - **BSC pair caveat**: Default BSC pair `USDT -> WBNB` did not route on Curve in validation; `USDC -> USDT` returned a valid Curve quote.
 - **Startup/init validation pattern**: For `VAL-CURVE-010` and `VAL-CURVE-011`, restarting the dev server and capturing startup logs is required evidence. A controlled `RPC_URL_<chainId>` bad override is effective for verifying single-chain init failure isolation.
 
+## Known Issues & Quirks (from progressive-quotes validation round 1)
+
+- **No single-router chain in this runtime**: With `CURVE_ENABLED=true`, all supported chain IDs (`1, 10, 56, 137, 8453, 42161, 43114`) reported `single_router_mode=false` in `/compare-stream` complete events. `VAL-PROG-013` is blocked unless Curve is disabled or a truly unsupported Curve chain is available.
+- **Progressive auto-refresh evidence**: For `VAL-PROG-010`/`VAL-PROG-011`, instrumenting EventSource lifecycle timestamps in-browser is more reliable than relying on visible UI loading states, because fast quote returns can hide pending indicators.
+
+## Known Issues & Quirks (from core-polish validation round 1)
+
+- **Clipboard permission in headless browser**: `navigator.clipboard.writeText(...)` can fail with `Write permission denied` in headless automation, which blocks end-to-end validation of copy-feedback UI (`Copied!`) even when the handler exists. Prefer headed runs or explicit clipboard permission grants when validating copy-to-clipboard assertions.
+

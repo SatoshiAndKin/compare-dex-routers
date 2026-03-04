@@ -1,0 +1,72 @@
+{
+  "groupId": "group-prog-core",
+  "surface": "web-ui",
+  "testedAt": "2026-03-04T05:24:57Z",
+  "credentials": {
+    "account": "0x1111111111111111111111111111111111111111",
+    "namespace": "pq_core"
+  },
+  "assertions": [
+    {
+      "id": "VAL-PROG-001",
+      "status": "pass",
+      "reason": "On Ethereum compare, a router quote rendered while the submit button still showed 'Comparing...', confirming first-result progressive rendering before stream completion.",
+      "evidence": [
+        "prog-core-val-prog-001-first-while-pending.png"
+      ]
+    },
+    {
+      "id": "VAL-PROG-002",
+      "status": "pass",
+      "reason": "With one quote already visible, the pending router tab displayed 'Loading...', confirming a user-visible pending indicator.",
+      "evidence": [
+        "prog-core-val-prog-002-loading-with-first-quote.png"
+      ]
+    },
+    {
+      "id": "VAL-PROG-003",
+      "status": "pass",
+      "reason": "After both quotes arrived, the UI showed both router tabs plus a populated reason box and recommendation state.",
+      "evidence": [
+        "prog-core-val-prog-003-final.png"
+      ]
+    },
+    {
+      "id": "VAL-PROG-010",
+      "status": "fail",
+      "reason": "During auto-refresh, countdown advanced and refreshed results, but no user-visible progressive in-flight state ('Comparing...' / tab 'Loading...') was observable; UI appeared to jump directly between settled states.",
+      "evidence": [
+        "prog-core-val-prog-010-no-progressive-autorefresh.png"
+      ]
+    },
+    {
+      "id": "VAL-PROG-011",
+      "status": "blocked",
+      "reason": "Could not verify whether countdown reset waits for both router responses because auto-refresh in-flight progressive state was not user-visible in this environment (see VAL-PROG-010 failure).",
+      "evidence": [
+        "prog-core-val-prog-011-cycle-complete.png"
+      ]
+    },
+    {
+      "id": "VAL-PROG-013",
+      "status": "fail",
+      "reason": "On Base (single-router expectation), UI showed dual loading tabs and then 'Failed to connect to quote stream' instead of rendering a single successful quote flow without unnecessary Curve loading.",
+      "evidence": [
+        "prog-core-val-prog-013-base-initial-after-submit.png",
+        "prog-core-val-prog-013-base-result.png",
+        "curl compare-stream chainId=8453 returned curve error + spandex quote + complete"
+      ]
+    }
+  ],
+  "frictions": [
+    "agent-browser session intermittently reset to about:blank during longer observation loops; reopened the same named session and repeated affected checks.",
+    "agent-browser network/console capture was unreliable for EventSource details, so curl was used for supporting stream evidence."
+  ],
+  "blockers": [
+    "VAL-PROG-011 remained blocked because auto-refresh did not expose observable progressive pending state needed to verify countdown reset timing against per-router completion."
+  ],
+  "toolsUsed": [
+    "agent-browser",
+    "curl"
+  ]
+}

@@ -1,0 +1,160 @@
+{
+  "groupId": "group-chain-dropdown",
+  "testedAt": "2026-03-03T07:07:00Z",
+  "credentials": {
+    "account": "ui_chain_validator_01@example.test",
+    "namespace": "ui-polish-chain-dropdown"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-UI-050",
+      "title": "Chain selector accepts text input",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/",
+          "expected": "App loads with chain selector visible",
+          "observed": "App loaded with chain combobox showing 'Base (8453)' as current selection"
+        },
+        {
+          "action": "Click chain combobox to expand dropdown",
+          "expected": "Dropdown opens showing all chains with search input",
+          "observed": "Dropdown expanded showing all 7 chains (Base, Ethereum, Arbitrum, Optimism, Polygon, BSC, Avalanche) with placeholder 'Search chain name or ID...'"
+        },
+        {
+          "action": "Type 'base' into the combobox search input",
+          "expected": "List filters in real-time to show matching chains",
+          "observed": "List filtered in real-time as each character was typed, showing only 'Base (8453)' after typing 'base'"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-050-chain-dropdown-open.png", "val-ui-051-filter-base.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic, documented as ignore)",
+        "network": "N/A - client-side filtering only"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-051",
+      "title": "Filter by chain name",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "With dropdown open, type 'base' (case-insensitive)",
+          "expected": "Filters to show Base chain",
+          "observed": "Filtered to show only 'Base (8453)' - case-insensitive match worked correctly"
+        },
+        {
+          "action": "Clear filter, type 'eth'",
+          "expected": "Filters to show Ethereum",
+          "observed": "Filtered to show only 'Ethereum (1)' - partial name match 'eth' correctly matched 'Ethereum'"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-051-filter-base.png", "val-ui-051-filter-eth.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic)",
+        "network": "N/A - client-side filtering"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-052",
+      "title": "Filter by chain ID",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Clear filter, type '8453'",
+          "expected": "Filters to show Base",
+          "observed": "Filtered to show only 'Base (8453)'"
+        },
+        {
+          "action": "Clear filter, type '137'",
+          "expected": "Filters to show Polygon",
+          "observed": "Filtered to show only 'Polygon (137)'"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-052-filter-chainid-8453.png", "val-ui-052-filter-chainid-137.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic)",
+        "network": "N/A - client-side filtering"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-053",
+      "title": "Selection from filtered list works",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Clear filter, type 'eth' to filter to Ethereum",
+          "expected": "Only Ethereum option visible",
+          "observed": "Only 'Ethereum (1)' option shown in filtered list"
+        },
+        {
+          "action": "Click 'Ethereum (1)' option in filtered list",
+          "expected": "Chain selector updates to Ethereum, default tokens change to Ethereum addresses",
+          "observed": "Chain changed to 'Ethereum (1)'. From Token updated to 'USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)' (Ethereum USDC). To Token updated to 'WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)' (Ethereum WETH). Dropdown closed after selection."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-051-filter-eth.png", "val-ui-053-selected-ethereum.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-054",
+      "title": "Empty filter restores full list",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "With dropdown open and 'Ethereum (1)x' typed (no match state), select all text and delete",
+          "expected": "Full chain list restored showing all 7 chains",
+          "observed": "All 7 chains restored: Ethereum (1), Base (8453), Arbitrum (42161), Optimism (10), Polygon (137), BSC (56), Avalanche (43114). Placeholder 'Search chain name or ID...' reappeared."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-054-full-list-restored.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic)",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-055",
+      "title": "No match shows empty/message",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "With dropdown open, type 'zzzzz' (no matching chain)",
+          "expected": "Empty list or 'no matches' message displayed",
+          "observed": "Dropdown showed 'No chains match' message in italics. No chain options visible. Listbox contained only the 'No chains match' text element (not a selectable option)."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-055-no-match.png"],
+        "consoleErrors": "none (only favicon.ico 404 - cosmetic)",
+        "network": "N/A"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The combobox toggle behavior: clicking the combobox when already focused toggles it closed instead of keeping it open. This makes it slightly tricky to reopen after selection - you need to type a character or click twice to reopen. This is standard combobox behavior but worth noting.",
+      "resolved": true,
+      "resolution": "Used keyboard typing to open/filter the dropdown instead of relying on click to reopen",
+      "affectedAssertions": ["VAL-UI-054"]
+    },
+    {
+      "description": "When the combobox is opened after a chain has been selected, the current chain's display text (e.g. 'Ethereum (1)') appears in the input and must be fully cleared before typing a new filter. Typing appends to existing text rather than replacing it.",
+      "resolved": true,
+      "resolution": "Used Cmd+A then Backspace to select-all and clear before typing new filter text",
+      "affectedAssertions": ["VAL-UI-051", "VAL-UI-052", "VAL-UI-055"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 6 assertions (VAL-UI-050 through VAL-UI-055): all 6 passed. The chain searchable dropdown correctly supports text input filtering, filters by chain name (case-insensitive partial match), filters by chain ID, allows selection from filtered results with proper default token updates, restores the full list when the filter is cleared, and shows a 'No chains match' message when no chains match the filter."
+}

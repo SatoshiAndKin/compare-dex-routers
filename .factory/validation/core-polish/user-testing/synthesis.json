@@ -1,0 +1,27 @@
+{
+  "milestone": "core-polish",
+  "round": 2,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 6,
+    "passed": 5,
+    "failed": 0,
+    "blocked": 1
+  },
+  "passedAssertions": [
+    "VAL-CROSS-001",
+    "VAL-CSS-005",
+    "VAL-DEF-001",
+    "VAL-DEF-002",
+    "VAL-DEF-003"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-ADDR-003",
+      "blockedBy": "Clipboard write denied in automation context ('Write permission denied'), preventing end-to-end verification of 'Copied!' feedback during VAL-ADDR-003."
+    }
+  ],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/core-polish/user-testing/synthesis.json (round 1)"
+}

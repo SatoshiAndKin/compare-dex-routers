@@ -1,0 +1,148 @@
+{
+  "groupId": "group-r2-defaults-css-cross",
+  "testedAt": "2026-03-04T04:03:12Z",
+  "credentials": {
+    "account": "not applicable",
+    "namespace": "core-polish-r2-defaults-css"
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "playwright-mcp"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-DEF-001",
+      "title": "Default amount is 1 on first visit",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Clear localStorage/sessionStorage and reload http://localhost:3002/",
+          "expected": "First-visit defaults are applied",
+          "observed": "Fresh state loaded with default form values"
+        },
+        {
+          "action": "Inspect Amount input on first visit",
+          "expected": "Amount defaults to 1",
+          "observed": "Amount input showed 1"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "core-r2-val-def-001-first-visit.png"
+        ],
+        "consoleErrors": "none",
+        "network": "GET /tokenlist -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DEF-002",
+      "title": "Ethereum defaults to USDC -> crvUSD",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "From fresh state, switch chain selector to Ethereum (1)",
+          "expected": "From token defaults to Ethereum USDC and To token defaults to crvUSD",
+          "observed": "From was USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48) and To was 0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "core-r2-val-def-002-ethereum-defaults.png"
+        ],
+        "consoleErrors": "none",
+        "network": "No failing requests observed during chain switch"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DEF-003",
+      "title": "Non-Ethereum chains default to USDC -> native token",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Switch chain selector to BSC (56)",
+          "expected": "From defaults to BSC USDC and To defaults to wrapped native token WBNB",
+          "observed": "From was USDC (0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d) and To was WBNB (0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "core-r2-val-def-003-bsc-defaults.png"
+        ],
+        "consoleErrors": "none",
+        "network": "No failing requests observed during chain switch"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CSS-005",
+      "title": "Touch targets >= 44px on mobile",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Resize viewport to 375x812 and capture mobile view",
+          "expected": "Mobile layout remains usable",
+          "observed": "All form controls and action buttons remained visible and tappable"
+        },
+        {
+          "action": "Measure visible interactive elements via getBoundingClientRect",
+          "expected": "Interactive elements have touch target height >= 44px",
+          "observed": "13 visible buttons/inputs measured; minimum height was 44px, with no element under 44px"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "core-r2-val-css-005-375px.png"
+        ],
+        "consoleErrors": "none",
+        "network": "No network dependency for size checks; existing page requests completed successfully"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "First visit -> compare -> expand details -> see wei",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Start from fresh load (cleared storage) and verify defaults",
+          "expected": "Defaults present (amount=1 and default token pair)",
+          "observed": "Base defaults loaded with amount=1, USDC -> WETH"
+        },
+        {
+          "action": "Click Compare Quotes",
+          "expected": "Comparison result renders",
+          "observed": "Spandex quote rendered; /compare returned 200"
+        },
+        {
+          "action": "Expand Details section on quote card",
+          "expected": "Wei-level fields are visible",
+          "observed": "Details showed Input Amount (wei)=1000000 and Output Amount (wei)=510707574394901"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "core-r2-val-cross-001-initial.png",
+          "core-r2-val-cross-001-after-compare.png",
+          "core-r2-val-cross-001-details-expanded-wei-v2.png"
+        ],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=8453&from=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&to=0x4200000000000000000000000000000000000006&amount=1&slippageBps=50&mode=exactIn -> 200"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Auto-refresh updated quotes while collecting expanded-details evidence, occasionally collapsing/changing DOM refs before screenshot capture.",
+      "resolved": true,
+      "resolution": "Re-opened Details and re-captured screenshot after stabilizing the page state.",
+      "affectedAssertions": [
+        "VAL-CROSS-001"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assigned assertions (VAL-DEF-001, VAL-DEF-002, VAL-DEF-003, VAL-CSS-005, VAL-CROSS-001); all passed with required UI evidence, console checks, and network observations."
+}

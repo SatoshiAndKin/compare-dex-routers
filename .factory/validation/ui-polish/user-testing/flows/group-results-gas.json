@@ -1,0 +1,183 @@
+{
+  "groupId": "group-results-gas",
+  "testedAt": "2026-03-03T07:20:00Z",
+  "credentials": {
+    "account": "ui_results_validator_01@example.test",
+    "namespace": "ui-polish-results-gas"
+  },
+  "toolsUsed": ["playwright-mcp", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-UI-020",
+      "title": "Token icons in Spandex quote result",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:3002/ and switch chain to Ethereum",
+          "expected": "Chain selector shows Ethereum (1) with USDC/WETH defaults",
+          "observed": "Chain changed to Ethereum (1), From=USDC, To=WETH populated correctly"
+        },
+        {
+          "action": "Click Compare Quotes for USDC→WETH on Ethereum",
+          "expected": "Spandex result shows token icon next to WETH symbol",
+          "observed": "Spandex recommended result displays '0.500075858293885996 [WETH icon] WETH' with img element 'WETH logo' visible inline next to the output amount and symbol"
+        },
+        {
+          "action": "Also tested on Base chain (8453) with USDC→WETH",
+          "expected": "Same icon behavior on different chain",
+          "observed": "Base Spandex result shows WETH icon inline with output amount, consistent with Ethereum"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-020-spandex-result-ethereum.png", "val-ui-020-spandex-result-icons-gas.png"],
+        "consoleErrors": "none (only known favicon.ico 404)",
+        "network": "GET /compare?chainId=1&from=USDC&to=WETH&amount=1000&slippageBps=50 -> 200 with spandex quote containing from_symbol/to_symbol",
+        "domObservation": "Accessibility snapshot shows 'img \"WETH logo\"' element (ref=e187) between the output amount text and 'WETH' text in the Spandex result card"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-021",
+      "title": "Token icons in Curve quote result",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "With USDC→WETH comparison results on Ethereum, click Curve tab",
+          "expected": "Curve result section shows token icon next to WETH symbol",
+          "observed": "Curve alternative result displays '0.499580390943255557 [WETH icon] WETH' with img element 'WETH logo' visible inline"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-021-curve-result-icons.png"],
+        "consoleErrors": "none",
+        "network": "Same /compare request returned both spandex and curve quotes",
+        "domObservation": "Accessibility snapshot shows 'img \"WETH logo\"' element (ref=e210) in the Curve result card between output amount and symbol text"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-022",
+      "title": "Result icons fallback for missing logoURI",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate with to=0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E (crvUSD, not in tokenlist) on Ethereum",
+          "expected": "Comparison results show no broken image for crvUSD (no logoURI)",
+          "observed": "Result displays '1000.946874886748447559 crvUSD' as plain text without any img element — no broken image placeholder"
+        },
+        {
+          "action": "Click Curve tab to check alternative result",
+          "expected": "Same clean rendering without broken image",
+          "observed": "Curve tab shows '1000.946874886748447559 crvUSD' as plain text, no img element, no broken image"
+        },
+        {
+          "action": "Verified crvUSD is not in tokenlist via /tokenlist API",
+          "expected": "crvUSD not found in tokenlist",
+          "observed": "curl /tokenlist confirmed crvUSD (0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E) not present in tokenlist"
+        },
+        {
+          "action": "Verified source code fallback logic",
+          "expected": "renderResultTokenIcon returns empty string when token has no logoURI, plus onerror handler hides broken images",
+          "observed": "Source at line 4224 returns '' for missing token/logoURI; line 4229 includes onerror='this.style.display=none' for load failures"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-022-no-logo-fallback-result.png", "val-ui-022-curve-no-logo-fallback.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?chainId=1&from=USDC&to=crvUSD -> 200, both spandex and curve returned quotes",
+        "domObservation": "Accessibility snapshot for Spandex result (ref=e63) shows just text '1000.946874886748447559 crvUSD' with no child img element. Same for Curve result (ref=e85). Compare with WETH results that had explicit 'img WETH logo' child elements."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-040",
+      "title": "Gas label reads 'Gas Price' not 'Gas'",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "View Spandex result card for USDC→WETH on Ethereum",
+          "expected": "Gas price line reads 'Gas Price: X.XXXX gwei' not 'Gas: X.XXXX gwei'",
+          "observed": "Result card shows 'GAS PRICE' label with value '0.0469 gwei'. Reason box shows 'Gas Price: 0.0469 gwei'. No instances of bare 'Gas:' label."
+        },
+        {
+          "action": "View Spandex result card on Base (8453)",
+          "expected": "Same 'Gas Price' label on different chain",
+          "observed": "Base result shows 'GAS PRICE' label with '0.0060 gwei' and reason box shows 'Gas Price: 0.0060 gwei'"
+        },
+        {
+          "action": "View Curve result card on Ethereum",
+          "expected": "Gas Price label in Curve results too",
+          "observed": "Curve result shows 'GAS PRICE' label with '0.0464 gwei'. Consistent naming across both providers."
+        },
+        {
+          "action": "Verified source code for gas label text",
+          "expected": "All gas label references use 'Gas Price' not 'Gas'",
+          "observed": "Source lines 5090-5095, 5170-5175 use 'Gas Price' for field labels. Line 5228 uses 'Gas Price:' for reason box. No bare 'Gas:' labels found in gas display code."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-040-041-gas-price-base-spandex.png", "val-ui-020-spandex-result-ethereum.png", "val-ui-021-curve-result-icons.png"],
+        "consoleErrors": "none",
+        "network": "Multiple /compare requests all returned gas_price_gwei field",
+        "domObservation": "Accessibility snapshots consistently show 'Gas Price' as field label (never 'Gas'). Reason box text 'Gas Price: X.XXXX gwei' confirmed in refs e52/e108/e156/e182/e59."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-UI-041",
+      "title": "Gas Price positioned next to Gas Cost",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "View Spandex result card for USDC→WETH on Ethereum",
+          "expected": "'Gas Price: X gwei' appears visually adjacent to 'Gas Cost: X ETH'",
+          "observed": "In the result card: 'GAS COST / 0.000026 ETH' immediately followed by 'GAS PRICE / 0.0469 gwei'. Both fields are stacked vertically in the same card section, visually adjacent."
+        },
+        {
+          "action": "View Spandex result card on Base (8453)",
+          "expected": "Same positioning on different chain",
+          "observed": "'GAS COST / 0.000003 ETH' immediately followed by 'GAS PRICE / 0.0060 gwei' in the result card. Same adjacent layout."
+        },
+        {
+          "action": "View Curve result card on Ethereum",
+          "expected": "Gas Price shown (Gas Cost may be absent due to unfunded sender)",
+          "observed": "Curve result shows 'GAS PRICE / 0.0464 gwei' without Gas Cost (expected - Curve gas estimation requires funded sender per known issues). When Gas Cost is absent, Gas Price still displays correctly in the same field area."
+        },
+        {
+          "action": "Verified source code field ordering",
+          "expected": "Gas Cost and Gas Price rendered in adjacent div elements",
+          "observed": "Source lines 5087-5095 build gasInfoLine with Gas Cost div followed by Gas Price div using 'field field-spaced' class. Both are inserted into the same result card section sequentially."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["val-ui-020-spandex-result-icons-gas.png", "val-ui-020-spandex-result-ethereum.png"],
+        "consoleErrors": "none",
+        "network": "Spandex quotes included gas_cost_eth and gas_used fields; gas_price_gwei at top level",
+        "domObservation": "In Spandex result DOM: Gas Cost field (refs e191/e192) immediately precedes Gas Price field (refs e194/e195) as sibling div elements within the result card. Screenshot confirms both are visually stacked and adjacent."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Spandex provider often returns null/error ('No providers returned a successful quote') on Base chain, leaving only Curve results. On Ethereum, both providers returned quotes. Testing required trying multiple chains to get full coverage.",
+      "resolved": true,
+      "resolution": "Tested on both Base (Spandex only) and Ethereum (both Spandex+Curve) to cover all assertion scenarios",
+      "affectedAssertions": ["VAL-UI-020", "VAL-UI-021"]
+    },
+    {
+      "description": "Auto-refresh timer (15s) causes results to refresh during testing, potentially changing values in screenshots. Timer countdown visible in UI.",
+      "resolved": true,
+      "resolution": "Took screenshots promptly after results loaded. Values changed slightly between refreshes but assertion behavior was consistent.",
+      "affectedAssertions": ["VAL-UI-020", "VAL-UI-021", "VAL-UI-040", "VAL-UI-041"]
+    },
+    {
+      "description": "Curve gas_cost_eth is '0' or absent because gas estimation requires a funded sender address. This means VAL-UI-041 (Gas Price next to Gas Cost) cannot be fully verified for Curve results since Gas Cost is not displayed.",
+      "resolved": true,
+      "resolution": "Known limitation per user-testing.md. Verified Gas Price positioning adjacent to Gas Cost in Spandex results where both are present. For Curve, Gas Price displays correctly alone when Gas Cost is unavailable.",
+      "affectedAssertions": ["VAL-UI-041"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. VAL-UI-020/021 confirmed token icons render in both Spandex and Curve result cards (WETH logo visible inline with output amount). VAL-UI-022 confirmed no broken images for tokens without logoURI (crvUSD renders as plain text, no img element). VAL-UI-040 confirmed all gas labels read 'Gas Price' not 'Gas' across both providers and reason box. VAL-UI-041 confirmed Gas Price is positioned directly adjacent to Gas Cost in result cards."
+}

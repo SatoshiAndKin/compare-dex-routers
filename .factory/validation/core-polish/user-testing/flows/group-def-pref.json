@@ -1,0 +1,193 @@
+{
+  "groupId": "group-def-pref",
+  "testedAt": "2026-03-04T02:50:44Z",
+  "credentials": {
+    "account": "core_polish_validator_defpref_01@example.test",
+    "namespace": "core-polish-defpref"
+  },
+  "toolsUsed": ["agent-browser", "playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-DEF-001",
+      "title": "Default amount is 1 on first visit",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Clear localStorage/sessionStorage and load http://localhost:3002/ with no URL params",
+          "expected": "Amount defaults to 1",
+          "observed": "Amount field displayed 1000"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["core-polish-defpref-val-def-001-first-visit.png"],
+        "consoleErrors": "none (favicon.ico noise ignored)",
+        "network": "not applicable"
+      },
+      "issues": "First-visit default amount is 1000 instead of 1."
+    },
+    {
+      "id": "VAL-DEF-002",
+      "title": "Ethereum defaults to USDC -> crvUSD",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Switch chain to Ethereum (1)",
+          "expected": "From=USDC (0xA0b8...), To=crvUSD (0xf939...)",
+          "observed": "From=USDC (0xA0b8...), To=WETH (0xC02a...)"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["core-polish-defpref-val-def-002-ethereum-defaults.png"],
+        "consoleErrors": "none",
+        "network": "not applicable"
+      },
+      "issues": "Ethereum default To token is WETH, not crvUSD."
+    },
+    {
+      "id": "VAL-DEF-003",
+      "title": "Non-Ethereum chains default to USDC -> native token",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Switch chain to BSC (56)",
+          "expected": "From=USDC and To=wrapped native token (WBNB)",
+          "observed": "From=USDT (0x55d3...), To=WBNB (0xbb4C...)"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["core-polish-defpref-val-def-003-bsc-defaults.png"],
+        "consoleErrors": "none",
+        "network": "not applicable"
+      },
+      "issues": "BSC default From token is USDT instead of USDC."
+    },
+    {
+      "id": "VAL-DEF-004",
+      "title": "Chain switch updates default tokens",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "With empty localStorage on Base defaults, capture form state",
+          "expected": "Base defaults visible",
+          "observed": "Base showed USDC -> WETH"
+        },
+        {
+          "action": "Switch chain to Ethereum (1)",
+          "expected": "From/To update to Ethereum defaults when no saved per-chain prefs exist",
+          "observed": "From/To changed to Ethereum pair (USDC -> WETH)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "core-polish-defpref-val-def-004-before-chain-switch-base.png",
+          "core-polish-defpref-val-def-004-after-chain-switch-ethereum.png"
+        ],
+        "consoleErrors": "none",
+        "network": "not applicable"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PREF-001",
+      "title": "Selections saved to localStorage after comparison",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Set chain=Ethereum, amount=7, slippage=100 and run Compare Quotes",
+          "expected": "Successful comparison and preferences saved in localStorage",
+          "observed": "Compare returned 200; localStorage key flashprofits-preferences stored chainId=1, amount=7, slippageBps=100, mode=exactIn, perChainTokens[1]"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["core-polish-defpref-val-pref-001-after-compare.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?...amount=7&slippageBps=100 -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PREF-002",
+      "title": "Saved selections restored on return visit",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Reload page without URL params after VAL-PREF-001 save",
+          "expected": "Form restores saved chain/token/amount/slippage",
+          "observed": "Restored Ethereum, USDC->WETH, amount=7, slippage=100"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["core-polish-defpref-val-pref-002-restored-on-reload.png"],
+        "consoleErrors": "none",
+        "network": "not applicable"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PREF-003",
+      "title": "URL params override localStorage",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Set localStorage preferences to conflicting values (chainId=1, amount=99, slippage=300)",
+          "expected": "Saved values exist as fallback",
+          "observed": "flashprofits-preferences contained conflicting Ethereum values"
+        },
+        {
+          "action": "Open URL with explicit params (chainId=8453, from=0x8335..., to=0x4200..., amount=2, slippageBps=50)",
+          "expected": "Form uses URL values over localStorage",
+          "observed": "Form showed Base, USDC(0x8335...), WETH(0x4200...), amount=2, slippage=50"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["core-polish-defpref-val-pref-003-url-overrides-localstorage.png"],
+        "consoleErrors": "none",
+        "network": "GET /compare?...amount=2&slippageBps=50 -> 200 (one earlier aborted request observed during navigation)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PREF-004",
+      "title": "Corrupt localStorage handled gracefully",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Write malformed JSON to flashprofits-preferences localStorage and reload",
+          "expected": "App falls back to defaults with no console errors",
+          "observed": "App loaded default form state (Base, default tokens, amount=1000/slippage=50) and console remained clean"
+        }
+      ],
+      "evidence": {
+        "screenshots": ["core-polish-defpref-val-pref-004-corrupt-localstorage-fallback.png"],
+        "consoleErrors": "none",
+        "network": "not applicable"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Playwright browser startup initially failed due stale Chrome profile lock files (SingletonLock/SingletonSocket/SingletonCookie).",
+      "resolved": true,
+      "resolution": "Removed stale lock files and retried browser startup successfully.",
+      "affectedAssertions": [
+        "VAL-DEF-001",
+        "VAL-DEF-002",
+        "VAL-DEF-003",
+        "VAL-DEF-004",
+        "VAL-PREF-001",
+        "VAL-PREF-002",
+        "VAL-PREF-003",
+        "VAL-PREF-004"
+      ]
+    },
+    {
+      "description": "Chain combobox text had to be filtered by partial value (e.g., 'BSC') before selecting option; direct full-text fill intermittently returned 'No chains match'.",
+      "resolved": true,
+      "resolution": "Used combobox filter + explicit option click workflow.",
+      "affectedAssertions": ["VAL-DEF-003"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 8 assertions: 5 passed, 3 failed. Failures were in default values (amount and default token pairs): VAL-DEF-001, VAL-DEF-002, VAL-DEF-003. Preference persistence assertions VAL-PREF-001 through VAL-PREF-004 passed with localStorage and URL override behavior confirmed."
+}

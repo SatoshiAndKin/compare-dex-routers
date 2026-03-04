@@ -1,0 +1,92 @@
+{
+  "groupId": "g4",
+  "testedAt": "2026-03-02T21:05:00.000Z",
+  "credentials": {
+    "account": "validator_ct_g4",
+    "namespace": "ct_g4"
+  },
+  "toolsUsed": ["playwright-mcp"],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-001",
+      "title": "Saved token appears in both from and to autocomplete",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to http://localhost:3002/, clear localStorage, switch to Ethereum chain", "expected": "App loads on Ethereum with clean state", "observed": "App loaded, Ethereum (1) selected, default tokens USDC/WETH populated" },
+        { "action": "Clear From Token field and enter unrecognized address 0x39AA39c021dfbaE8faC545936693aC917d5E7563", "expected": "Unrecognized Token popup appears with on-chain metadata", "observed": "Popup appeared showing Name='Compound USD Coin', Symbol='cUSDC', Decimals=8, full address 0x39AA39c021dfbaE8faC545936693aC917d5E7563" },
+        { "action": "Click 'Save to Local List' in the popup", "expected": "Token saved, From Token field shows formatted cUSDC (0x39AA39c021dfbaE8faC545936693aC917d5E7563)", "observed": "Popup closed, From Token field updated to 'cUSDC (0x39AA39c021dfbaE8faC545936693aC917d5E7563)'" },
+        { "action": "Clear To Token field and type 'cUSDC'", "expected": "cUSDC appears in To Token autocomplete dropdown", "observed": "Autocomplete dropdown showed cUSDC entry with full address 0x39AA39c021dfbaE8faC545936693aC917d5E7563 and name 'Compound USD Coin'" }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g4-val-cross-001-from-popup.png", "ct_g4-val-cross-001-from-saved.png", "ct_g4-val-cross-001-to-autocomplete.png"],
+        "consoleErrors": "none",
+        "network": "GET /token-metadata?chainId=1&address=0x39AA39c021dfbaE8faC545936693aC917d5E7563 -> 200 with metadata"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Multiple lists + local tokens + full disambiguation",
+      "status": "pass",
+      "steps": [
+        { "action": "Open settings panel and add CoinGecko tokenlist URL https://tokens.coingecko.com/uniswap/all.json", "expected": "CoinGecko list loads with token count", "observed": "CoinGecko list added with 5098 tokens, shown alongside Default Tokenlist (357 tokens)" },
+        { "action": "Close settings and type 'PEPE' in To Token field", "expected": "Multiple PEPE tokens shown disambiguated by source list name and full address", "observed": "Autocomplete dropdown showed multiple PEPE entries: (1) PEPE 'Pepe' from 'Default Tokenlist' at 0x6982508145454Ce325dDbE47a25d4ec3d2311933, (2) PEPE 'The Original Pepe' from 'CoinGecko' at 0x4dfae3690b93c47470b03036a17b23c1be05127c, (3) PEPE 'NEWPEPE' from 'CoinGecko' at 0xa57ed6e54be8125bbe45d6ca330e45ebb71ef11e, (4) PEPE 'Pepe King Prawn' from 'CoinGecko' at 0x51a59a02ba906194285e81eb1f98ffa28e7cf4c9. Each entry shows source list badge and full 0x address." },
+        { "action": "Verify local token (cUSDC) coexists with remote list tokens", "expected": "cUSDC accessible via autocomplete", "observed": "Searching 'cUSDC' showed CUSDC (Compound USDC) at 0x39aa39c021dfbae8fac545936693ac917d5e7563 — deduplicated by address since same token exists in CoinGecko list (per VAL-AUTO-004)" }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g4-val-cross-002-pepe-disambiguation.png", "ct_g4-val-cross-002-pepe-disambiguation-full.png"],
+        "consoleErrors": "none",
+        "network": "GET /tokenlist/proxy?url=https://tokens.coingecko.com/uniswap/all.json -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Toggle local tokens list on/off",
+      "status": "fail",
+      "steps": [
+        { "action": "Open settings panel and inspect Local Tokens section for a toggle switch", "expected": "Local Tokens section has a toggle switch (like Default Tokenlist and CoinGecko)", "observed": "Local Tokens section has Export, Import, and individual token Remove buttons, but NO toggle switch. Tokenlist Sources section shows Default Tokenlist toggle and CoinGecko toggle — Local Tokens is not represented as a toggleable source." },
+        { "action": "Programmatically check all toggle/switch elements in the settings panel", "expected": "At least one toggle in Local Tokens section", "observed": "Tokenlist Sources section has 2 toggles (Default Tokenlist, CoinGecko). Local Tokens section has 0 toggles." }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g4-val-cross-003-no-local-toggle.png"],
+        "consoleErrors": "none",
+        "network": "n/a"
+      },
+      "issues": "The Local Tokens section in the settings panel does not have a toggle switch to enable/disable local tokens as a source. Unlike the Default Tokenlist and custom remote lists which each have a toggle, the Local Tokens section only offers Export, Import, and per-token Remove. There is no way to temporarily hide all local tokens from autocomplete without individually removing them. In the source code (src/server.ts), getTokensForChain() always appends local tokens unconditionally — there is no 'enabled' flag for the local token source."
+    },
+    {
+      "id": "VAL-CROSS-005",
+      "title": "Chain switch removes wrong-chain local tokens from autocomplete",
+      "status": "pass",
+      "steps": [
+        { "action": "On Ethereum chain, search 'cUSDC' in From Token field", "expected": "cUSDC local token appears in autocomplete", "observed": "cUSDC (Compound USD Coin) appeared at 0x39AA39c021dfbaE8faC545936693aC917d5E7563 in autocomplete dropdown" },
+        { "action": "Switch chain to Base (8453)", "expected": "Form updates to Base defaults", "observed": "Chain switched to Base (8453), default tokens changed to Base USDC/WETH" },
+        { "action": "Search 'cUSDC' in From Token field on Base", "expected": "No autocomplete results for cUSDC (Ethereum-only local token)", "observed": "No autocomplete dropdown appeared — cUSDC correctly hidden on Base chain" },
+        { "action": "Switch back to Ethereum (1) and search 'cUSDC' again", "expected": "cUSDC reappears in autocomplete", "observed": "cUSDC (Compound USD Coin) reappeared at 0x39AA39c021dfbaE8faC545936693aC917d5E7563 in autocomplete dropdown" }
+      ],
+      "evidence": {
+        "screenshots": ["ct_g4-val-cross-005-ethereum-cusdc-local.png", "ct_g4-val-cross-005-base-no-cusdc.png", "ct_g4-val-cross-005-ethereum-reappears.png"],
+        "consoleErrors": "none",
+        "network": "n/a"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The From Token input field ID is 'from' (not 'fromToken' as might be expected). Required discovering this via DOM inspection before page.evaluate() calls would work.",
+      "resolved": true,
+      "resolution": "Queried all input elements to discover correct IDs: 'from', 'to', 'amount', 'slippageBps', 'tokenlistUrlInput'.",
+      "affectedAssertions": ["VAL-CROSS-001"]
+    },
+    {
+      "description": "Local cUSDC token at 0x39AA39c021dfbaE8faC545936693aC917d5E7563 is deduplicated with CoinGecko's CUSDC (same address). For clean chain-switch testing (VAL-CROSS-005), had to remove CoinGecko list first so cUSDC only existed as a local token.",
+      "resolved": true,
+      "resolution": "Removed CoinGecko list via settings panel Remove button before testing chain-switch behavior.",
+      "affectedAssertions": ["VAL-CROSS-005"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 4 assertions: 3 passed, 1 failed. VAL-CROSS-001 confirmed saving unrecognized token via FROM popup makes it available in TO autocomplete. VAL-CROSS-002 confirmed disambiguation with source list badges and full addresses across Default Tokenlist, CoinGecko, and local tokens. VAL-CROSS-003 FAILED — Local Tokens section has no toggle switch; local tokens are always included in autocomplete with no way to temporarily disable them as a source. VAL-CROSS-005 confirmed Ethereum-only local token is hidden on Base and reappears on Ethereum."
+}
