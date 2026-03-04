@@ -1,0 +1,40 @@
+{
+  "featureId": "swap-confirmation-modal",
+  "reviewedAt": "2026-03-04T04:52:05Z",
+  "commitId": "c18f619d2b3fbbc1f509ef772cab86da00685405",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The modal UX wiring is mostly implemented (Wait/Swap Anyway paths, overlay/Escape close, aria, auto-update hooks), but two requirement-level gaps remain: single-router swaps can still be gated by the modal before complete arrives, and a focus trap is not implemented.",
+    "issues": [
+      {
+        "file": "src/server.ts",
+        "line": 3214,
+        "severity": "blocking",
+        "description": "`singleRouterMode` is only set on the `complete` event, but swap gating uses `areQuotesStillLoading()` in `onSwapClick` (line 6715) before completion. In single-router cases, users can click Swap on the first rendered quote and incorrectly get the confirmation modal, violating the expected behavior that single-router swaps proceed directly with no modal."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 6032,
+        "severity": "blocking",
+        "description": "The swap confirmation modal does not implement keyboard focus trapping. Event handling covers close button/overlay/Escape, but there is no Tab/Shift+Tab loop within modal controls, so focus can escape the dialog while it is open, which fails the feature’s explicit focus-trap requirement."
+      },
+      {
+        "file": "src/server.ts",
+        "line": 3815,
+        "severity": "non_blocking",
+        "description": "`closeSwapConfirmModal()` sets `pendingSwapCard = null` before attempting focus restoration from that same variable, making the return-focus block unreachable and reducing keyboard UX parity with the MEV modal behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Shared modal guidance omits focus-trap requirements, which makes it easy to miss accessibility parity when implementing new dialogs.",
+      "evidence": ".factory/skills/fullstack-worker/SKILL.md:82 and mission AGENTS.md:30 describe modal pattern as overlay/Escape/body-scroll/aria only; src/server.ts swap modal listeners at 6008-6044 similarly implement no Tab focus trap."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed for commit c18f619: while core modal interactions are implemented, the feature does not fully satisfy requirements due to missing focus-trap behavior and incorrect single-router gating before completion."
+}
