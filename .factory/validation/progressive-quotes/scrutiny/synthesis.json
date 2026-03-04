@@ -1,7 +1,7 @@
 {
   "milestone": "progressive-quotes",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,61 +20,26 @@
     }
   },
   "reviewsSummary": {
-    "total": 3,
+    "total": 1,
     "passed": 1,
-    "failed": 2,
-    "failedFeatures": [
-      "progressive-quotes-implementation",
-      "swap-confirmation-modal"
-    ]
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "progressive-quotes-implementation",
-      "severity": "blocking",
-      "description": "Auto-refresh integration regressed: progressive compare flow resolves without payload, but auto-refresh start condition still checks comparison.payload and stops refresh."
-    },
-    {
-      "featureId": "swap-confirmation-modal",
-      "severity": "blocking",
-      "description": "Single-router swaps can incorrectly trigger the confirmation modal before stream completion because singleRouterMode is set only on complete event."
-    },
-    {
-      "featureId": "swap-confirmation-modal",
-      "severity": "blocking",
-      "description": "Swap confirmation modal is missing keyboard focus trap, so Tab navigation can escape the dialog while open."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills",
-      "suggestion": "Update fullstack-worker modal guidance to explicitly require focus trap behavior when mission requirements call for MEV-modal parity or accessibility-complete dialogs.",
-      "evidence": "swap-confirmation-modal review found missing focus trap in src/server.ts modal handlers despite meeting overlay/Escape/aria requirements.",
-      "isSystemic": true
-    },
-    {
-      "target": "skills",
-      "suggestion": "Allow non-UI or test-only fixes to skip mandatory Playwright/manual interaction checks when verification is fully covered by typecheck/lint/tests.",
-      "evidence": "fix-typecheck-progressive-tests was correctly validated with static checks only; current procedure text still implies manual browser checks are always required.",
-      "isSystemic": true
-    },
-    {
-      "target": "skills",
-      "suggestion": "Strengthen TDD enforcement wording so workers run and capture a failing test state before large server/UI edits when adding behavior-changing features.",
-      "evidence": "progressive-quotes-implementation transcript shows substantial server edits before new /compare-stream tests were added.",
+      "suggestion": "Update shared modal implementation guidance (especially fullstack-worker) to explicitly require Tab/Shift+Tab focus trap and focus restoration when modal parity/accessibility is required.",
+      "evidence": "The original swap-confirmation-modal failed review due to missing focus trap, and the fix review again identified this as an under-specified skill guidance gap.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Address truncation ambiguity between 'never truncate addresses' and compare-stream logs slicing address prefixes.",
-      "reason": "ambiguous: observation is about internal logging, while guidance is primarily user-visible/API behavior; needs orchestrator policy decision before applying."
-    },
-    {
-      "observation": "Add library note that strict ESLint rules disallow non-null assertions in TypeScript test fixes.",
-      "reason": "already-documented-source: eslint.config.js is the canonical source of this rule, so no additional library update was applied in this pass."
+      "observation": "Re-apply previously suggested skill updates for non-UI verification exemptions and stricter TDD wording.",
+      "reason": "already-captured-in-previous-round: these recommendations were documented in round 1 and were not newly introduced by this re-run fix review."
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/progressive-quotes/scrutiny/synthesis.round1.json"
 }

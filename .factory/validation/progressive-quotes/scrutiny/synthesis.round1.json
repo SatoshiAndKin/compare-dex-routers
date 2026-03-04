@@ -1,0 +1,80 @@
+{
+  "milestone": "progressive-quotes",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test -- --maxWorkers=7",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "progressive-quotes-implementation",
+      "swap-confirmation-modal"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "progressive-quotes-implementation",
+      "severity": "blocking",
+      "description": "Auto-refresh integration regressed: progressive compare flow resolves without payload, but auto-refresh start condition still checks comparison.payload and stops refresh."
+    },
+    {
+      "featureId": "swap-confirmation-modal",
+      "severity": "blocking",
+      "description": "Single-router swaps can incorrectly trigger the confirmation modal before stream completion because singleRouterMode is set only on complete event."
+    },
+    {
+      "featureId": "swap-confirmation-modal",
+      "severity": "blocking",
+      "description": "Swap confirmation modal is missing keyboard focus trap, so Tab navigation can escape the dialog while open."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Update fullstack-worker modal guidance to explicitly require focus trap behavior when mission requirements call for MEV-modal parity or accessibility-complete dialogs.",
+      "evidence": "swap-confirmation-modal review found missing focus trap in src/server.ts modal handlers despite meeting overlay/Escape/aria requirements.",
+      "isSystemic": true
+    },
+    {
+      "target": "skills",
+      "suggestion": "Allow non-UI or test-only fixes to skip mandatory Playwright/manual interaction checks when verification is fully covered by typecheck/lint/tests.",
+      "evidence": "fix-typecheck-progressive-tests was correctly validated with static checks only; current procedure text still implies manual browser checks are always required.",
+      "isSystemic": true
+    },
+    {
+      "target": "skills",
+      "suggestion": "Strengthen TDD enforcement wording so workers run and capture a failing test state before large server/UI edits when adding behavior-changing features.",
+      "evidence": "progressive-quotes-implementation transcript shows substantial server edits before new /compare-stream tests were added.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Address truncation ambiguity between 'never truncate addresses' and compare-stream logs slicing address prefixes.",
+      "reason": "ambiguous: observation is about internal logging, while guidance is primarily user-visible/API behavior; needs orchestrator policy decision before applying."
+    },
+    {
+      "observation": "Add library note that strict ESLint rules disallow non-null assertions in TypeScript test fixes.",
+      "reason": "already-documented-source: eslint.config.js is the canonical source of this rule, so no additional library update was applied in this pass."
+    }
+  ],
+  "previousRound": null
+}
