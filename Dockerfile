@@ -11,6 +11,6 @@ COPY tsconfig.json ./
 
 ENV NODE_ENV=production
 
-EXPOSE 3000
+EXPOSE 3001
 
 CMD ["tsx", "src/server.ts"]
