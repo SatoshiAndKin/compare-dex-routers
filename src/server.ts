@@ -1862,6 +1862,19 @@ const INDEX_HTML = `<!DOCTYPE html>
       flex: 1;
     }
 
+    /* Swap Confirmation Modal Actions */
+    .swap-confirm-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .swap-confirm-actions .btn-primary {
+      flex: 1;
+    }
+    .swap-confirm-actions .btn-secondary {
+      flex: 1;
+    }
+
     /* Source badge in autocomplete */
     .autocomplete-source {
       font-size: 0.5rem;
@@ -2860,6 +2873,27 @@ const INDEX_HTML = `<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Swap Confirmation Modal (appears when clicking Swap while quotes still loading) -->
+  <div id="swapConfirmModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="swapConfirmModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="swapConfirmModalTitle" class="modal-title">Confirm Swap</h2>
+        <button type="button" id="swapConfirmModalClose" class="modal-close" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <p class="modal-text" id="swapConfirmModalText">
+            <strong>Another quote is still loading.</strong> A better price may arrive soon.
+          </p>
+        </div>
+        <div class="swap-confirm-actions">
+          <button type="button" id="swapConfirmWaitBtn" class="btn-secondary">Wait</button>
+          <button type="button" id="swapConfirmProceedBtn" class="btn-primary">Swap Anyway</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
     const DEFAULT_TOKENLIST_NAME = 'Default Tokenlist';
@@ -3122,6 +3156,11 @@ const INDEX_HTML = `<!DOCTYPE html>
 
             // Render this quote immediately
             renderProgressiveQuote(router, data, quoteChainId, progressiveQuoteState.gasPriceGwei);
+
+            // Update swap confirmation modal if open (may change text or auto-dismiss)
+            if (swapConfirmModal.classList.contains('show')) {
+              updateSwapConfirmModalText();
+            }
           } catch (e) {
             console.error('Failed to parse quote event:', e);
           }
@@ -3151,6 +3190,11 @@ const INDEX_HTML = `<!DOCTYPE html>
               // Server error - show in results
               showError(error);
             }
+
+            // Update swap confirmation modal if open (may change text or auto-dismiss)
+            if (swapConfirmModal.classList.contains('show')) {
+              updateSwapConfirmModalText();
+            }
           } catch (e) {
             console.error('Failed to parse error event:', e);
           }
@@ -3169,6 +3213,11 @@ const INDEX_HTML = `<!DOCTYPE html>
             progressiveQuoteState.mode = payload.mode;
             progressiveQuoteState.singleRouterMode = payload.single_router_mode;
             progressiveQuoteState.complete = true;
+
+            // Update swap confirmation modal if open (auto-dismiss if all quotes arrived)
+            if (swapConfirmModal.classList.contains('show')) {
+              updateSwapConfirmModalText();
+            }
 
             // Update UI with recommendation
             showProgressiveRecommendation(payload, quoteChainId);
@@ -3608,6 +3657,16 @@ const INDEX_HTML = `<!DOCTYPE html>
     const settingsModal = document.getElementById('settingsModal');
     const settingsModalClose = document.getElementById('settingsModalClose');
 
+    // Swap Confirmation Modal Elements
+    const swapConfirmModal = document.getElementById('swapConfirmModal');
+    const swapConfirmModalClose = document.getElementById('swapConfirmModalClose');
+    const swapConfirmModalText = document.getElementById('swapConfirmModalText');
+    const swapConfirmWaitBtn = document.getElementById('swapConfirmWaitBtn');
+    const swapConfirmProceedBtn = document.getElementById('swapConfirmProceedBtn');
+
+    // State for pending swap action (when user clicks "Swap Anyway")
+    let pendingSwapCard = null; // HTMLElement - the card to swap
+
     function hasConnectedWallet() {
       return Boolean(connectedWalletProvider && connectedWalletAddressValue);
     }
@@ -3738,6 +3797,74 @@ const INDEX_HTML = `<!DOCTYPE html>
       unlockBodyScroll();
       // Return focus to the button that opened the modal
       settingsBtn.focus();
+    }
+
+    // Swap Confirmation Modal Functions
+    function openSwapConfirmModal(card) {
+      pendingSwapCard = card;
+      updateSwapConfirmModalText();
+      swapConfirmModal.classList.add('show');
+      lockBodyScroll();
+      // Focus the close button for accessibility
+      swapConfirmModalClose.focus();
+    }
+
+    function closeSwapConfirmModal() {
+      swapConfirmModal.classList.remove('show');
+      unlockBodyScroll();
+      pendingSwapCard = null;
+      // Return focus to the swap button
+      if (pendingSwapCard) {
+        const swapBtn = pendingSwapCard.querySelector('.swap-btn');
+        if (swapBtn) swapBtn.focus();
+      }
+    }
+
+    function updateSwapConfirmModalText() {
+      // Check if quotes are still loading
+      const isLoading = !progressiveQuoteState.complete &&
+                        ((progressiveQuoteState.spandex === null && progressiveQuoteState.spandexError === null) ||
+                         (progressiveQuoteState.curve === null && progressiveQuoteState.curveError === null && !progressiveQuoteState.singleRouterMode));
+
+      if (!isLoading) {
+        // All quotes arrived while modal was open - auto-dismiss
+        closeSwapConfirmModal();
+        return;
+      }
+
+      // Update text based on current state
+      const routerName = progressiveQuoteState.spandex === null && progressiveQuoteState.spandexError === null ? 'Spandex' : 'Curve';
+      swapConfirmModalText.innerHTML = '<strong>The ' + routerName + ' quote is still loading.</strong> A better price may arrive soon.';
+    }
+
+    function handleSwapConfirmWait() {
+      closeSwapConfirmModal();
+      // No swap executed - user chose to wait
+    }
+
+    async function handleSwapConfirmProceed() {
+      const card = pendingSwapCard;
+      closeSwapConfirmModal();
+
+      if (!card) return;
+
+      // Proceed with the swap
+      await executeSwapFromCard(card);
+    }
+
+    // Check if quotes are still loading
+    function areQuotesStillLoading() {
+      // If complete flag is true, no quotes are loading
+      if (progressiveQuoteState.complete) return false;
+
+      // If in single router mode, only one router applies
+      if (progressiveQuoteState.singleRouterMode) return false;
+
+      // Check if any router hasn't responded yet (no quote and no error)
+      const spandexPending = progressiveQuoteState.spandex === null && progressiveQuoteState.spandexError === null;
+      const curvePending = progressiveQuoteState.curve === null && progressiveQuoteState.curveError === null;
+
+      return spandexPending || curvePending;
     }
 
     // Local Tokenlist Management
@@ -5885,6 +6012,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (event.key === 'Escape' && settingsModal.classList.contains('show')) {
         closeSettingsModal();
       }
+      if (event.key === 'Escape' && swapConfirmModal.classList.contains('show')) {
+        closeSwapConfirmModal();
+      }
     });
 
     // Settings Modal event listeners
@@ -5897,6 +6027,21 @@ const INDEX_HTML = `<!DOCTYPE html>
       if (event.target === settingsModal) {
         closeSettingsModal();
       }
+    });
+
+    // Swap Confirmation Modal event listeners
+    swapConfirmModalClose.addEventListener('click', closeSwapConfirmModal);
+
+    // Close swap confirmation modal on overlay click (outside the modal)
+    swapConfirmModal.addEventListener('click', (event) => {
+      if (event.target === swapConfirmModal) {
+        closeSwapConfirmModal();
+      }
+    });
+
+    swapConfirmWaitBtn.addEventListener('click', handleSwapConfirmWait);
+    swapConfirmProceedBtn.addEventListener('click', () => {
+      void handleSwapConfirmProceed();
     });
 
     // Tab switching
@@ -6566,6 +6711,18 @@ const INDEX_HTML = `<!DOCTYPE html>
         return;
       }
 
+      // Check if quotes are still loading - show confirmation modal if so
+      if (areQuotesStillLoading()) {
+        openSwapConfirmModal(card);
+        return;
+      }
+
+      // All quotes arrived - proceed directly
+      await executeSwapFromCard(card);
+    }
+
+    // Execute the swap transaction from a card element
+    async function executeSwapFromCard(card) {
       const routerAddress = String(card.dataset.routerAddress || '').trim();
       const routerCalldata = String(card.dataset.routerCalldata || '').trim();
       const routerValue = String(card.dataset.routerValue || '0x0');
