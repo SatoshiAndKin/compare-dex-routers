@@ -8,7 +8,7 @@
   "scripts": {
     "start": "tsx src/server.ts",
     "dev": "tsx --watch src/server.ts",
-    "build:client": "esbuild src/client/main.ts --bundle --outfile=dist/client/client.js --format=esm --target=es2022 --sourcemap",
+    "build:client": "esbuild src/client/main.ts --bundle --outfile=dist/client/client.js --format=esm --target=es2022 --sourcemap && cp src/client/styles.css dist/client/styles.css",
     "dev:client": "esbuild src/client/main.ts --bundle --outfile=dist/client/client.js --format=esm --target=es2022 --sourcemap --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/client/tsconfig.json",
     "lint": "eslint src/",

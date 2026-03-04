@@ -402,10 +402,10 @@ describe("server integration", () => {
     expect(html).toContain('id="chainDropdown"');
     expect(html).toContain('class="chain-dropdown"');
 
-    // Chain dropdown CSS styles are present
-    expect(html).toContain(".chain-item");
-    expect(html).toContain(".chain-item-name");
-    expect(html).toContain(".chain-item-id");
+    // Chain dropdown CSS classes are referenced in JS
+    expect(html).toContain("chain-item");
+    expect(html).toContain("chain-item-name");
+    expect(html).toContain("chain-item-id");
 
     // Chain dropdown JavaScript functions are present
     expect(html).toContain("filterChains");
@@ -420,8 +420,8 @@ describe("server integration", () => {
     expect(res.status).toBe(200);
     const html = res.body;
 
-    // Chain dropdown empty state class is defined
-    expect(html).toContain(".chain-item-empty");
+    // Chain dropdown empty state class is referenced in JS
+    expect(html).toContain("chain-item-empty");
   });
 
   // VAL-FLOW-008: MEV info button in results area
