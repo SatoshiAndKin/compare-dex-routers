@@ -10,6 +10,8 @@ declare global {
 import "./types.js";
 import { DEFAULT_TOKENS, WALLETCONNECT_PROJECT_ID } from "./config.js";
 import { initTheme } from "./theme.js";
+import { initChainSelector, getCurrentChainId } from "./chain-selector.js";
+import type { ChainSelectorElements, ChainSelectorCallbacks } from "./chain-selector.js";
 import { initModals, lockBodyScroll, unlockBodyScroll, closeWalletProviderMenu } from "./modals.js";
 import type { ModalElements, ModalCallbacks } from "./modals.js";
 import { initWallet } from "./wallet.js";
@@ -31,6 +33,24 @@ const themeIcon = document.getElementById("themeIcon");
 if (themeBtn && themeIcon) {
   initTheme(themeBtn, themeIcon);
 }
+
+// ---------------------------------------------------------------------------
+// Chain selector initialization
+// ---------------------------------------------------------------------------
+
+const chainSelectorElements: ChainSelectorElements = {
+  chainIdInput: document.getElementById("chainId") as HTMLInputElement,
+  chainDropdown: document.getElementById("chainDropdown") as HTMLElement,
+};
+
+const chainSelectorCallbacks: ChainSelectorCallbacks = {
+  onChainChange: () => {
+    // Chain change side-effects are handled by the inline JS 'change' listener
+  },
+  getCurrentChainId: () => getCurrentChainId(),
+};
+
+initChainSelector(chainSelectorElements, chainSelectorCallbacks);
 
 // ---------------------------------------------------------------------------
 // Modals initialization
@@ -75,10 +95,7 @@ const modalElements: ModalElements = {
 const win = window as any;
 
 const modalCallbacks: ModalCallbacks = {
-  getCurrentChainId: () =>
-    typeof win.__cb_getCurrentChainId === "function"
-      ? (win.__cb_getCurrentChainId as () => number)()
-      : 1,
+  getCurrentChainId: () => getCurrentChainId(),
   hasConnectedWallet: () =>
     typeof win.__cb_hasConnectedWallet === "function"
       ? (win.__cb_hasConnectedWallet as () => boolean)()
@@ -192,10 +209,7 @@ const walletModalFns: WalletModalFunctions = {
 };
 
 const walletCallbacks: WalletCallbacks = {
-  getCurrentChainId: () =>
-    typeof win.__cb_getCurrentChainId === "function"
-      ? (win.__cb_getCurrentChainId as () => number)()
-      : 1,
+  getCurrentChainId: () => getCurrentChainId(),
   onConnected: (pendingAction) => {
     if (typeof win.__cb_onWalletConnected === "function")
       (win.__cb_onWalletConnected as (a: typeof pendingAction) => void)(pendingAction);

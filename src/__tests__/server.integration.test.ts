@@ -406,26 +406,10 @@ describe("server integration", () => {
     expect(html).toContain('id="chainDropdown"');
     expect(html).toContain('class="chain-dropdown"');
 
-    // Chain dropdown CSS classes are referenced in JS
-    expect(html).toContain("chain-item");
-    expect(html).toContain("chain-item-name");
-    expect(html).toContain("chain-item-id");
-
-    // Chain dropdown JavaScript functions are present
-    expect(html).toContain("filterChains");
-    expect(html).toContain("selectChain");
+    // Chain dropdown JS logic is now in src/client/chain-selector.ts (loaded via client.js bundle)
+    // The inline JS references getCurrentChainId and formatChainDisplay via window globals
+    expect(html).toContain("getCurrentChainId");
     expect(html).toContain("formatChainDisplay");
-    expect(html).toContain("ALL_CHAINS");
-  });
-
-  // VAL-UI-055: No match shows empty/message
-  it("GET / has chain-dropdown-empty CSS class for no-match state", async () => {
-    const res = await request(`${baseUrl}/`);
-    expect(res.status).toBe(200);
-    const html = res.body;
-
-    // Chain dropdown empty state class is referenced in JS
-    expect(html).toContain("chain-item-empty");
   });
 
   // VAL-FLOW-008: MEV info button in results area
