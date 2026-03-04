@@ -12,9 +12,27 @@ import { DEFAULT_TOKENS, WALLETCONNECT_PROJECT_ID } from "./config.js";
 import { initTheme } from "./theme.js";
 import { initChainSelector, getCurrentChainId } from "./chain-selector.js";
 import type { ChainSelectorElements, ChainSelectorCallbacks } from "./chain-selector.js";
-import { initModals, lockBodyScroll, unlockBodyScroll, closeWalletProviderMenu } from "./modals.js";
+import {
+  initModals,
+  lockBodyScroll,
+  unlockBodyScroll,
+  closeWalletProviderMenu,
+  openSwapConfirmModal,
+  updateSwapConfirmModalText,
+  openMevModal as modalsOpenMevModal,
+  renderMevChainContent,
+} from "./modals.js";
 import type { ModalElements, ModalCallbacks } from "./modals.js";
-import { initWallet } from "./wallet.js";
+import {
+  initWallet,
+  hasConnectedWallet,
+  getConnectedProvider,
+  getConnectedAddress,
+  ensureWalletOnChain,
+  triggerWalletConnectionFlow,
+  setPendingPostConnectAction,
+  setWalletMessage,
+} from "./wallet.js";
 import type { WalletElements, WalletModalFunctions, WalletCallbacks } from "./wallet.js";
 import {
   initTokenManagement,
@@ -25,6 +43,8 @@ import {
   setUnrecognizedTokenState,
   findTokenByAddress,
   getTokensForChain,
+  initializeTokenlistSources,
+  renderTokenlistSources,
 } from "./token-management.js";
 import type { TokenManagementElements, TokenManagementCallbacks } from "./token-management.js";
 import { initAutocomplete, escapeHtml, refreshAutocomplete } from "./autocomplete.js";
@@ -41,7 +61,7 @@ import {
   getActiveAmount,
   isProgrammatic,
   setProgrammatic,
-  getBestQuoteFromState,
+  getBestQuoteFromState as amountGetBestQuoteFromState,
 } from "./amount-fields.js";
 import type { AmountFieldElements, AmountFieldCallbacks } from "./amount-fields.js";
 import {
@@ -67,6 +87,51 @@ import {
 import type { UrlSyncElements, UrlSyncCallbacks } from "./url-sync.js";
 import { formatChainDisplay } from "./chain-selector.js";
 import { CHAIN_NAMES } from "./config.js";
+import {
+  initBalance,
+  updateTokenBalances,
+  updateFromTokenBalance,
+  updateToTokenBalance,
+  clearBalances,
+  clearBalanceCache,
+} from "./balance.js";
+import type { BalanceElements, BalanceCallbacks } from "./balance.js";
+import {
+  initTransactions,
+  isAddressLike,
+  handleTokenRefClick,
+  updateTransactionActionStates,
+  onApproveClick,
+  onSwapClick,
+  executeSwapFromCard,
+  setupResultClickHandler,
+} from "./transactions.js";
+import type { TransactionCallbacks } from "./transactions.js";
+import {
+  initAutoRefresh,
+  stopAutoRefresh,
+  pauseAutoRefreshForTransaction,
+  resumeAutoRefreshAfterTransaction,
+  runCompareAndMaybeStartAutoRefresh,
+  forceUpdateRefreshIndicator,
+} from "./auto-refresh.js";
+import type { AutoRefreshElements, AutoRefreshCallbacks } from "./auto-refresh.js";
+import {
+  initQuoteDisplay,
+  cancelInProgressFetches,
+  clearResultDisplay,
+  requestAndRenderCompare,
+  getProgressiveQuoteState,
+  getCurrentQuoteChainId,
+  getBestQuoteFromState,
+  hasQuoteResults,
+  getNextRequestId,
+  setupTabSwitching,
+  resetCurrentQuoteChainId,
+  formatErrorWithTokenRefs,
+  showError,
+} from "./quote-display.js";
+import type { QuoteDisplayElements, QuoteDisplayCallbacks } from "./quote-display.js";
 
 console.log(
   "[client] bundle loaded, chains configured",
@@ -145,50 +210,34 @@ const modalElements: ModalElements = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const win = window as any;
 
+// Pending swap card state (used by swap confirmation modal)
+let pendingSwapCard: HTMLElement | null = null;
+
 const modalCallbacks: ModalCallbacks = {
   getCurrentChainId: () => getCurrentChainId(),
-  hasConnectedWallet: () =>
-    typeof win.__cb_hasConnectedWallet === "function"
-      ? (win.__cb_hasConnectedWallet as () => boolean)()
-      : false,
+  hasConnectedWallet: () => hasConnectedWallet(),
   renderLocalTokens: () => renderLocalTokens(),
   addMevRpcToWallet: (type: string) => {
     if (typeof win.__cb_addMevRpcToWallet === "function")
       (win.__cb_addMevRpcToWallet as (t: string) => void)(type);
   },
   getProgressiveQuoteState: () => {
-    if (typeof win.__cb_getProgressiveQuoteState === "function") {
-      return (
-        win.__cb_getProgressiveQuoteState as () => {
-          complete: boolean;
-          spandex: unknown;
-          spandexError: unknown;
-          curve: unknown;
-          curveError: unknown;
-          singleRouterMode: boolean;
-        }
-      )();
-    }
+    const state = getProgressiveQuoteState();
     return {
-      complete: true,
-      spandex: null,
-      spandexError: null,
-      curve: null,
-      curveError: null,
-      singleRouterMode: false,
+      complete: state.complete,
+      spandex: state.spandex,
+      spandexError: state.spandexError,
+      curve: state.curve,
+      curveError: state.curveError,
+      singleRouterMode: state.singleRouterMode,
     };
   },
   executeSwapFromCard: async (card: HTMLElement) => {
-    if (typeof win.__cb_executeSwapFromCard === "function")
-      await (win.__cb_executeSwapFromCard as (c: HTMLElement) => Promise<void>)(card);
+    await executeSwapFromCard(card);
   },
-  getPendingSwapCard: () =>
-    typeof win.__cb_getPendingSwapCard === "function"
-      ? (win.__cb_getPendingSwapCard as () => HTMLElement | null)()
-      : null,
+  getPendingSwapCard: () => pendingSwapCard,
   setPendingSwapCard: (card: HTMLElement | null) => {
-    if (typeof win.__cb_setPendingSwapCard === "function")
-      (win.__cb_setPendingSwapCard as (c: HTMLElement | null) => void)(card);
+    pendingSwapCard = card;
   },
   fetchTokenMetadata: (address: string, chainId: number) =>
     void fetchTokenMetadata(address, chainId),
@@ -246,21 +295,19 @@ const walletModalFns: WalletModalFunctions = {
 const walletCallbacks: WalletCallbacks = {
   getCurrentChainId: () => getCurrentChainId(),
   onConnected: (pendingAction) => {
-    if (typeof win.__cb_onWalletConnected === "function")
-      (win.__cb_onWalletConnected as (a: typeof pendingAction) => void)(pendingAction);
+    if (pendingAction) {
+      if (pendingAction.type === "approve" && pendingAction.card && pendingAction.button) {
+        void onApproveClick(pendingAction.card, pendingAction.button);
+      } else if (pendingAction.type === "swap" && pendingAction.card) {
+        void onSwapClick(pendingAction.card);
+      }
+    }
   },
   onDisconnected: () => {
-    if (typeof win.__cb_onWalletDisconnected === "function")
-      (win.__cb_onWalletDisconnected as () => void)();
+    clearBalances();
   },
-  updateTransactionActionStates: () => {
-    if (typeof win.__cb_updateTransactionActionStates === "function")
-      (win.__cb_updateTransactionActionStates as () => void)();
-  },
-  updateTokenBalances: () => {
-    if (typeof win.__cb_updateTokenBalances === "function")
-      (win.__cb_updateTokenBalances as () => void)();
-  },
+  updateTransactionActionStates: () => updateTransactionActionStates(),
+  updateTokenBalances: () => updateTokenBalances(),
 };
 
 initWallet(walletElements, walletModalFns, walletCallbacks);
@@ -344,17 +391,13 @@ const tokenManagementCallbacks: TokenManagementCallbacks = {
       (win.clearTokenInputIcon as (w: HTMLElement, i: HTMLImageElement) => void)(wrapper, icon);
   },
   updateFromTokenBalance: () => {
-    if (typeof win.updateFromTokenBalance === "function")
-      (win.updateFromTokenBalance as () => void)();
+    void updateFromTokenBalance();
   },
   updateToTokenBalance: () => {
-    if (typeof win.updateToTokenBalance === "function") (win.updateToTokenBalance as () => void)();
+    void updateToTokenBalance();
   },
-  updateAmountFieldLabels: () => {
-    if (typeof win.updateAmountFieldLabels === "function")
-      (win.updateAmountFieldLabels as () => void)();
-  },
-  isAddressLike: (address: string) => /^0x[a-fA-F0-9]{40}$/.test(String(address || "").trim()),
+  updateAmountFieldLabels: () => updateAmountFieldLabels(),
+  isAddressLike: (address: string) => isAddressLike(address),
   openUnrecognizedTokenModal: (address: string, chainId: number, targetInput: string) => {
     if (typeof win.openUnrecognizedTokenModal === "function")
       (win.openUnrecognizedTokenModal as (a: string, c: number, t: string) => void)(
@@ -398,9 +441,9 @@ const autocompleteCallbacks: AutocompleteCallbacks = {
   handleTokenSwapIfNeeded: tokenManagementCallbacks.handleTokenSwapIfNeeded,
   updateTokenInputIcon: tokenManagementCallbacks.updateTokenInputIcon,
   clearTokenInputIcon: tokenManagementCallbacks.clearTokenInputIcon,
-  updateFromTokenBalance: tokenManagementCallbacks.updateFromTokenBalance,
-  updateToTokenBalance: tokenManagementCallbacks.updateToTokenBalance,
-  updateAmountFieldLabels: tokenManagementCallbacks.updateAmountFieldLabels,
+  updateFromTokenBalance: () => void updateFromTokenBalance(),
+  updateToTokenBalance: () => void updateToTokenBalance(),
+  updateAmountFieldLabels: () => updateAmountFieldLabels(),
   findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
 };
 
@@ -432,36 +475,15 @@ const amountFieldElements: AmountFieldElements = {
 
 const amountFieldCallbacks: AmountFieldCallbacks = {
   scheduleAutoQuote: () => scheduleAutoQuote(),
-  cancelInProgressFetches: () => {
-    if (typeof win.__cb_cancelInProgressFetches === "function")
-      (win.__cb_cancelInProgressFetches as () => void)();
-  },
+  cancelInProgressFetches: () => cancelInProgressFetches(),
   readCompareParamsFromForm: () => readCompareParamsFromForm(),
   runCompareAndMaybeStartAutoRefresh: async (params, options) => {
-    if (typeof win.__cb_runCompareAndMaybeStartAutoRefresh === "function")
-      await (
-        win.__cb_runCompareAndMaybeStartAutoRefresh as (
-          p: typeof params,
-          o: typeof options
-        ) => Promise<void>
-      )(params, options);
+    await runCompareAndMaybeStartAutoRefresh(params, options);
   },
   findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
   getCurrentChainId: () => getCurrentChainId(),
-  getBestQuoteFromState: () => {
-    if (typeof win.__cb_getBestQuoteFromState === "function")
-      return (
-        win.__cb_getBestQuoteFromState as () => {
-          output_amount?: string;
-          input_amount?: string;
-        } | null
-      )();
-    return null;
-  },
-  clearNonActiveField: () => {
-    if (typeof win.__cb_clearNonActiveField === "function")
-      (win.__cb_clearNonActiveField as () => void)();
-  },
+  getBestQuoteFromState: () => getBestQuoteFromState(),
+  clearNonActiveField: () => setComputedAmount(""),
 };
 
 initAmountFields(amountFieldElements, amountFieldCallbacks);
@@ -497,14 +519,8 @@ const urlSyncElements: UrlSyncElements = {
 
 const urlSyncCallbacks: UrlSyncCallbacks = {
   getCurrentChainId: () => getCurrentChainId(),
-  hasConnectedWallet: () =>
-    typeof win.__cb_hasConnectedWallet === "function"
-      ? (win.__cb_hasConnectedWallet as () => boolean)()
-      : false,
-  getConnectedAddress: () =>
-    typeof win.getConnectedAddress === "function"
-      ? (win.getConnectedAddress as () => string)()
-      : "",
+  hasConnectedWallet: () => hasConnectedWallet(),
+  getConnectedAddress: () => getConnectedAddress(),
   getActiveMode: () => getActiveMode(),
   getSlippageBps: () => getSlippageBps(),
   findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
@@ -538,6 +554,223 @@ const urlSyncCallbacks: UrlSyncCallbacks = {
 
 initUrlSync(urlSyncElements, urlSyncCallbacks);
 
+// ---------------------------------------------------------------------------
+// Balance module initialization
+// ---------------------------------------------------------------------------
+
+const balanceElements: BalanceElements = {
+  fromBalanceEl: getEl("fromBalance"),
+  toBalanceEl: getEl("toBalance"),
+  fromInput,
+  toInput,
+};
+
+const balanceCallbacks: BalanceCallbacks = {
+  getCurrentChainId: () => getCurrentChainId(),
+  hasConnectedWallet: () => hasConnectedWallet(),
+  getConnectedProvider: () => getConnectedProvider(),
+  getConnectedAddress: () => getConnectedAddress(),
+  findTokenByAddress: (address: string, chainId: number) => findTokenByAddress(address, chainId),
+};
+
+initBalance(balanceElements, balanceCallbacks);
+
+// ---------------------------------------------------------------------------
+// Quote display module initialization
+// ---------------------------------------------------------------------------
+
+const quoteDisplayElements: QuoteDisplayElements = {
+  result: getEl("result"),
+  recommendedContent: getEl("recommendedContent"),
+  alternativeContent: getEl("alternativeContent"),
+  tabRecommended: getEl("tabRecommended"),
+  tabAlternative: getEl("tabAlternative"),
+  submit: getEl("submit") as HTMLButtonElement,
+};
+
+const quoteDisplayCallbacks: QuoteDisplayCallbacks = {
+  hasConnectedWallet: () => hasConnectedWallet(),
+  getCurrentChainId: () => getCurrentChainId(),
+  renderResultTokenIcon: (address, chainId) =>
+    typeof win.renderResultTokenIcon === "function"
+      ? (win.renderResultTokenIcon as (a: string, c: number | string) => string)(address, chainId)
+      : "",
+  getTokensForChain: (chainId: number) => getTokensForChain(chainId),
+  handleTokenRefClick: (element, address) => handleTokenRefClick(element, address),
+  formatErrorWithTokenRefs: (message, chainId) => formatErrorWithTokenRefs(message, chainId),
+  updateTransactionActionStates: () => updateTransactionActionStates(),
+  forceUpdateRefreshIndicator: () => forceUpdateRefreshIndicator(),
+  populateNonActiveField: (quote) => populateNonActiveField(quote),
+  clearNonActiveField: () => setComputedAmount(""),
+  cloneCompareParams: (params) => cloneCompareParams(params),
+  compareParamsToSearchParams: (params) => compareParamsToSearchParams(params),
+  updateUrlFromCompareParams: (params) => updateUrlFromCompareParams(params),
+  saveUserPreferences: (params) => saveUserPreferences(params),
+  updateSwapConfirmModalText: () => updateSwapConfirmModalText(),
+  isSwapConfirmModalOpen: () => modalElements.swapConfirmModal.classList.contains("show"),
+  getBestQuoteFromState: () => getBestQuoteFromState(),
+};
+
+initQuoteDisplay(quoteDisplayElements, quoteDisplayCallbacks);
+
+// ---------------------------------------------------------------------------
+// Transactions module initialization
+// ---------------------------------------------------------------------------
+
+const transactionCallbacks: TransactionCallbacks = {
+  hasConnectedWallet: () => hasConnectedWallet(),
+  getConnectedProvider: () => getConnectedProvider(),
+  getConnectedAddress: () => getConnectedAddress(),
+  getCurrentChainId: () => getCurrentChainId(),
+  setWalletMessage: (message, isError) => setWalletMessage(message, isError),
+  triggerWalletConnectionFlow: () => triggerWalletConnectionFlow(),
+  setPendingPostConnectAction: (action) => setPendingPostConnectAction(action),
+  ensureWalletOnChain: (provider, chainId) => ensureWalletOnChain(provider, chainId),
+  pauseAutoRefreshForTransaction: () => pauseAutoRefreshForTransaction(),
+  resumeAutoRefreshAfterTransaction: () => resumeAutoRefreshAfterTransaction(),
+  areQuotesStillLoading: () => {
+    const state = getProgressiveQuoteState();
+    return !state.complete;
+  },
+  openSwapConfirmModal: (card) => openSwapConfirmModal(card),
+  getCurrentQuoteChainId: () => getCurrentQuoteChainId(),
+};
+
+initTransactions(transactionCallbacks);
+
+// Set up click delegation for tx buttons on the result container
+setupResultClickHandler(quoteDisplayElements.result);
+
+// ---------------------------------------------------------------------------
+// Auto-refresh module initialization
+// ---------------------------------------------------------------------------
+
+const autoRefreshElements: AutoRefreshElements = {
+  refreshIndicator: getEl("refreshIndicator"),
+  refreshCountdown: getEl("refreshCountdown"),
+  refreshStatus: getEl("refreshStatus"),
+  result: quoteDisplayElements.result,
+};
+
+const autoRefreshCallbacks: AutoRefreshCallbacks = {
+  cloneCompareParams: (params) => cloneCompareParams(params),
+  hasConnectedWallet: () => hasConnectedWallet(),
+  getConnectedAddress: () => getConnectedAddress(),
+  requestAndRenderCompare: (params, options) => requestAndRenderCompare(params, options),
+  readCompareParamsFromForm: () => readCompareParamsFromForm(),
+  hasQuoteResults: (payload) => hasQuoteResults(payload),
+  getNextRequestId: () => getNextRequestId(),
+};
+
+initAutoRefresh(autoRefreshElements, autoRefreshCallbacks);
+
+// Set up tab switching
+setupTabSwitching();
+
+// ---------------------------------------------------------------------------
+// Expose functions on window for inline JS shims (temporary bridge)
+// ---------------------------------------------------------------------------
+
+// These are still needed by inline JS in server.ts for functions not yet extracted.
+win.__cb_cancelInProgressFetches = () => cancelInProgressFetches();
+win.__cb_runCompareAndMaybeStartAutoRefresh = (
+  params: import("./types.js").CompareParams,
+  options: { showLoading?: boolean }
+) => runCompareAndMaybeStartAutoRefresh(params, options);
+win.__cb_getBestQuoteFromState = () => getBestQuoteFromState();
+win.__cb_clearNonActiveField = () => setComputedAmount("");
+win.__cb_getProgressiveQuoteState = () => getProgressiveQuoteState();
+win.__cb_executeSwapFromCard = (card: HTMLElement) => executeSwapFromCard(card);
+win.__cb_getPendingSwapCard = () => pendingSwapCard;
+win.__cb_setPendingSwapCard = (card: HTMLElement | null) => {
+  pendingSwapCard = card;
+};
+win.__cb_updateTransactionActionStates = () => updateTransactionActionStates();
+win.__cb_updateTokenBalances = () => updateTokenBalances();
+win.__cb_onWalletConnected = (
+  pendingAction: { type: string; card: HTMLElement; button?: HTMLButtonElement } | null
+) => {
+  if (pendingAction) {
+    if (pendingAction.type === "approve" && pendingAction.card && pendingAction.button) {
+      void onApproveClick(pendingAction.card, pendingAction.button);
+    } else if (pendingAction.type === "swap" && pendingAction.card) {
+      void onSwapClick(pendingAction.card);
+    }
+  }
+};
+win.__cb_onWalletDisconnected = () => clearBalances();
+win.updateFromTokenBalance = () => void updateFromTokenBalance();
+win.updateToTokenBalance = () => void updateToTokenBalance();
+win.handleTokenRefClick = (element: HTMLElement, address: string) =>
+  handleTokenRefClick(element, address);
+
+// ---------------------------------------------------------------------------
+// Chain change handler
+// ---------------------------------------------------------------------------
+
+const chainIdInput = document.getElementById("chainId") as HTMLInputElement;
+chainIdInput.addEventListener("change", () => {
+  stopAutoRefresh();
+  clearResultDisplay();
+  resetCurrentQuoteChainId();
+  applyDefaults(Number(getCurrentChainId()));
+  // Update modal content if modal is open
+  if (modalElements.mevModal.classList.contains("show")) {
+    renderMevChainContent();
+  }
+  // Clear balance cache on chain change and refetch balances
+  clearBalanceCache();
+  updateTokenBalances();
+  updateAmountFieldLabels();
+  renderTokenlistSources();
+});
+
+// ---------------------------------------------------------------------------
+// Form submit handler
+// ---------------------------------------------------------------------------
+
+const form = document.getElementById("form") as HTMLFormElement;
+form.addEventListener("submit", async (e: Event) => {
+  e.preventDefault();
+  const compareParams = readCompareParamsFromForm();
+  await runCompareAndMaybeStartAutoRefresh(compareParams, { showLoading: true });
+});
+
+// ---------------------------------------------------------------------------
+// URL restore and initial load
+// ---------------------------------------------------------------------------
+
+const urlRestoreResult = restoreFromUrlAndPreferences();
+const shouldLoadFromUrlParams = urlRestoreResult.shouldLoadFromUrlParams;
+const savedPrefs = urlRestoreResult.savedPrefs;
+
+initializeTokenlistSources().then(() => {
+  applyTokenFormattingAfterLoad(savedPrefs);
+
+  const activeElement = document.activeElement;
+  if (activeElement === fromInput) {
+    refreshAutocomplete();
+  }
+  if (activeElement === toInput) {
+    refreshAutocomplete();
+  }
+
+  if (shouldLoadFromUrlParams) {
+    void runCompareAndMaybeStartAutoRefresh(readCompareParamsFromForm(), {
+      showLoading: true,
+      updateUrl: false,
+    });
+  }
+
+  // Render local tokens on page load
+  renderLocalTokens();
+
+  // Fetch balances if wallet is already connected
+  updateTokenBalances();
+  // Update amount field labels with token symbols from loaded tokens
+  updateAmountFieldLabels();
+});
+
 // Re-export for inline JS compatibility (avoid dead-code detection issues)
 void formatQuoteAmount;
 void populateNonActiveField;
@@ -545,7 +778,7 @@ void setComputedAmount;
 void getActiveAmount;
 void isProgrammatic;
 void setProgrammatic;
-void getBestQuoteFromState;
+void amountGetBestQuoteFromState;
 void loadPreferences;
 void getSavedTokensForChain;
 void applyDefaults;
@@ -555,5 +788,7 @@ void updateUrlFromCompareParams;
 void restoreFromUrlAndPreferences;
 void applyTokenFormattingAfterLoad;
 void saveUserPreferences;
+void showError;
+void modalsOpenMevModal;
 
 export {};

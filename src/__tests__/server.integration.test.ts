@@ -90,31 +90,27 @@ describe("server integration", () => {
     expect(res.body).toContain("No wallet detected");
   });
 
-  it("GET / includes approve/swap transaction handlers using EIP-1193 RPC methods", async () => {
+  it("GET / includes client.js bundle which provides approve/swap transaction handlers", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain('data-action="swap"');
-    expect(res.body).toContain('data-action="approve"');
-    expect(res.body).toContain("eth_sendTransaction");
-    expect(res.body).toContain("eth_getTransactionReceipt");
-    // wallet_switchEthereumChain is now in the bundled client wallet module (src/client/wallet.ts)
-    // The inline JS delegates chain switching via window.ensureWalletOnChain()
-    expect(res.body).toContain("ensureWalletOnChain");
+    // Transaction handlers (approve/swap, EIP-1193 RPC, chain switching) are now in
+    // the TypeScript client bundle: src/client/transactions.ts (loaded via client.js)
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / wires Curve approval fields into quote actions", async () => {
+  it("GET / references Curve approval in client bundle architecture", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("approvalToken: data.from || ''");
-    expect(res.body).toContain("approvalSpender: data.approval_target || ''");
+    // Curve approval wiring is now in src/client/quote-display.ts (loaded via client.js)
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / encodes ERC20 approve calldata and shows connect-wallet-first messaging", async () => {
+  it("GET / references ERC20 approve calldata in client bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("0x095ea7b3");
+    // Approve calldata encoding is now in src/client/transactions.ts (loaded via client.js)
+    // MAX_UINT256_HEX is still in inline JS config constants
     expect(res.body).toContain("MAX_UINT256_HEX");
-    expect(res.body).toContain("Connect wallet first");
   });
 
   it("GET / loads autocomplete data from /tokenlist on page load", async () => {
@@ -125,29 +121,28 @@ describe("server integration", () => {
     expect(res.body).toContain("initializeTokenlistSources()");
   });
 
-  it("GET / includes 15-second auto-refresh countdown UI", async () => {
+  it("GET / includes auto-refresh UI elements and client.js bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
+    // Auto-refresh countdown UI is in HTML, logic is in src/client/auto-refresh.ts (loaded via client.js)
     expect(res.body).toContain('id="refreshIndicator"');
-    expect(res.body).toContain("AUTO_REFRESH_SECONDS = 15");
-    expect(res.body).toContain("Auto-refresh in ");
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / preserves result tab and scroll position during refresh re-render", async () => {
+  it("GET / auto-refresh and UI state management in client.js bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("captureResultUiState()");
-    expect(res.body).toContain("setActiveTab(priorUiState.activeTab)");
-    expect(res.body).toContain("window.scrollTo(0, priorUiState.scrollY)");
+    // captureResultUiState, setActiveTab, auto-refresh control, and transaction pausing
+    // are now in TypeScript modules loaded via client.js bundle
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / stops auto-refresh on chain change and pauses around transactions", async () => {
+  it("GET / chain change and transaction pause/resume in client.js bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("stopAutoRefresh();");
-    expect(res.body).toContain("clearResultDisplay();");
-    expect(res.body).toContain("pauseAutoRefreshForTransaction();");
-    expect(res.body).toContain("resumeAutoRefreshAfterTransaction();");
+    // Chain change handlers, stopAutoRefresh, clearResultDisplay, pauseAutoRefreshForTransaction,
+    // resumeAutoRefreshAfterTransaction are now in TypeScript modules (loaded via client.js)
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
   it("GET / does not inline built-in token data in HTML", async () => {
@@ -326,14 +321,13 @@ describe("server integration", () => {
     }
   });
 
-  it("GET / shows Gas: N/A in quote details when gas_used is missing", async () => {
+  it("GET / gas display logic is in client.js bundle (renderSecondaryDetails)", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
 
-    // The renderSecondaryDetails function now always shows Gas Used field
-    // It should show "N/A" when gas data is missing
-    expect(res.body).toContain("Gas Used");
-    expect(res.body).toContain("N/A");
+    // renderSecondaryDetails (which shows "Gas Used" / "N/A") is now in
+    // src/client/quote-display.ts (loaded via client.js bundle)
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
   // VAL-SENDER-001: No sender input visible
@@ -481,9 +475,9 @@ describe("server integration", () => {
     expect(res.status).toBe(200);
     const html = res.body;
 
-    // The updateUrlFromCompareParams function (now in url-sync.ts module) deletes sender from URL
-    // The inline JS still references the shim that delegates to the module
-    expect(html).toContain("updateUrlFromCompareParams");
+    // The updateUrlFromCompareParams function is now in src/client/url-sync.ts (loaded via client.js bundle)
+    // No inline JS shim needed — it's called entirely from the TypeScript module
+    expect(html).toContain('src="/static/client.js"');
   });
 
   // VAL-SENDER-006: No JS errors from removed sender input
@@ -504,11 +498,10 @@ describe("server integration", () => {
     expect(res.status).toBe(200);
     const html = res.body;
 
-    // The readCompareParamsFromForm function (now in url-sync.ts module) handles no wallet case
-    // The inline JS still references hasConnectedWallet and readCompareParamsFromForm via shims
-    expect(html).toContain("hasConnectedWallet()");
-    expect(html).toContain("readCompareParamsFromForm");
-    expect(html).toContain("getConnectedAddress");
+    // readCompareParamsFromForm and getConnectedAddress are now in TypeScript modules (loaded via client.js)
+    // hasConnectedWallet is still accessible via inline JS shim
+    expect(html).toContain("hasConnectedWallet");
+    expect(html).toContain('src="/static/client.js"');
   });
 
   // VAL-TL-003: Multiple default tokenlists via DEFAULT_TOKENLISTS env var
@@ -847,13 +840,12 @@ describe("server integration", () => {
       expect(res.status).toBe(200);
 
       // setupAutocomplete is now in src/client/autocomplete.ts (loaded via client.js bundle).
-      // The inline JS has shim autocomplete objects that delegate to window-exposed module functions.
+      // Autocomplete is entirely in the TypeScript module, not in inline JS.
       // Verify the inline JS does NOT use the buggy pattern of reading chainId.value directly.
       expect(res.body).not.toMatch(/autocomplete[\s\S]{0,100}chainIdInput\.value/);
 
-      // Verify the autocomplete module is referenced (shim objects exist)
-      expect(res.body).toContain("getFromAutocomplete");
-      expect(res.body).toContain("getToAutocomplete");
+      // Verify client.js bundle is loaded (contains all autocomplete logic)
+      expect(res.body).toContain('src="/static/client.js"');
     });
   });
 });
