@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-FlashProfits DEX Router Comparison is a quote comparison server that queries multiple DEX routers (Spandex and Curve Finance) and returns quotes from each for side-by-side comparison. Spandex aggregates across multiple providers (0x, Fabric, KyberSwap, Odos, LiFi, Relay, Velora). Includes a built-in web UI.
+Compare DEX Routers is a quote comparison server that queries multiple DEX routers (Spandex and Curve Finance) and returns quotes from each for side-by-side comparison. Spandex aggregates across multiple providers (0x, Fabric, KyberSwap, Odos, LiFi, Relay, Velora). Includes a built-in web UI.
 
 **Language:** TypeScript (Node.js >= 20, ESM)
 **Runtime:** tsx (TypeScript execution without build step)

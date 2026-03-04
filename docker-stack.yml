@@ -1,4 +1,4 @@
-# Docker Swarm Stack for FlashProfits DEX Router Comparison
+# Docker Swarm Stack for Compare DEX Routers
 #
 # Zero-Downtime Rolling Deploy Strategy:
 # ---------------------------------------
@@ -16,9 +16,9 @@
 # Rollback is automatic if the new container fails to become healthy within the configured window.
 
 services:
-  flashprofits:
+  compare-dex-routers:
     # Image: configurable via DOCKER_IMAGE env var, or defaults to locally-built image
-    # To use a registry image: DOCKER_IMAGE=myregistry/flashprofits:v1.2.3 docker stack deploy -c docker-stack.yml spandex
+    # To use a registry image: DOCKER_IMAGE=myregistry/compare-dex-routers:v1.2.3 docker stack deploy -c docker-stack.yml spandex
     image: ${DOCKER_IMAGE:-compare-dex-routers:latest}
 
     # Port mapping: hardcoded for Swarm reliability

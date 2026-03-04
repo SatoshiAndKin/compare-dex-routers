@@ -22,7 +22,7 @@ const provider = await EthereumProvider.init({
   projectId: 'YOUR_PROJECT_ID',
   optionalChains: [1, 8453, 42161, 10, 137, 56, 43114],
   metadata: {
-    name: 'FlashProfits DEX Router Comparison',
+    name: 'Compare DEX Routers',
     description: 'Compare quotes from multiple DEX routers',
     url: 'https://yourapp.com',
     icons: ['https://yourapp.com/icon.png']
