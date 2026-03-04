@@ -1995,7 +1995,7 @@ const INDEX_HTML = `<!DOCTYPE html>
     }
     .token-input-wrapper input {
       width: 100%;
-      padding-left: 1.75rem; /* Make room for 18px icon + 6px margin */
+      padding-left: calc(1em + 0.875rem); /* Make room for 1em icon + margin */
     }
     .token-input-wrapper.no-icon input {
       padding-left: 0.5rem; /* Standard padding when no icon */
@@ -2005,8 +2005,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       left: 0.5rem;
       top: 50%;
       transform: translateY(-50%);
-      width: 18px;
-      height: 18px;
+      width: 1em;
+      height: 1em;
       object-fit: cover;
       background: var(--icon-bg);
       border-radius: 50%;
@@ -2018,8 +2018,8 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     /* Result Token Icon - small icon next to token symbols in results */
     .result-token-icon {
-      width: 16px;
-      height: 16px;
+      width: 1em;
+      height: 1em;
       object-fit: cover;
       background: var(--icon-bg);
       border-radius: 50%;
@@ -5392,6 +5392,17 @@ const INDEX_HTML = `<!DOCTYPE html>
       try {
         // Fetch the tokenlist BEFORE adding to tokenlistSources
         const { tokens, name } = await loadTokenlistFromUrl(url);
+
+        // Check for duplicate by name (catches default lists added via URL)
+        const nameNorm = (name || '').trim().toLowerCase();
+        const isNameDuplicate = tokenlistSources.some(s =>
+          (s.name || '').trim().toLowerCase() === nameNorm
+        );
+        if (isNameDuplicate) {
+          setTokenlistMessage('This tokenlist is already loaded ("' + escapeHtml(name) + '")', 'error');
+          return;
+        }
+
         const taggedTokens = tokens.map(t => ({ ...t, _source: name }));
 
         // Only add to tokenlistSources after successful fetch
@@ -7125,9 +7136,21 @@ const INDEX_HTML = `<!DOCTYPE html>
       const migrated = migrateOldTokenlistUrl();
       let savedLists = migrated || loadTokenlistSourcesFromStorage();
 
-      // Step 3: Load saved custom tokenlists
+      // Collect default names for dedup
+      const defaultNames = new Set(
+        defaultTokenlistEntries.map(e => (e.name || '').trim().toLowerCase())
+      );
+
+      // Step 3: Load saved custom tokenlists (skip duplicates of defaults)
       if (savedLists && savedLists.length > 0) {
-        const loadPromises = savedLists.map(async (saved) => {
+        // Filter out saved lists whose name already matches a default
+        const filteredSaved = savedLists.filter(saved => {
+          const savedName = (saved.name || '').trim().toLowerCase();
+          return !savedName || !defaultNames.has(savedName);
+        });
+
+        let removedDuplicates = false;
+        const loadPromises = filteredSaved.map(async (saved) => {
           const index = tokenlistSources.length;
           tokenlistSources.push({
             url: saved.url,
@@ -7139,6 +7162,13 @@ const INDEX_HTML = `<!DOCTYPE html>
 
           try {
             const { tokens, name } = await loadTokenlistFromUrl(saved.url);
+            // Post-fetch dedup: if fetched name matches a default, mark for removal
+            const nameNorm = (name || '').trim().toLowerCase();
+            if (defaultNames.has(nameNorm)) {
+              tokenlistSources[index]._duplicate = true;
+              removedDuplicates = true;
+              return;
+            }
             tokenlistSources[index].tokens = tokens.map(t => ({ ...t, _source: name }));
             tokenlistSources[index].name = name;
           } catch (err) {
@@ -7149,6 +7179,12 @@ const INDEX_HTML = `<!DOCTYPE html>
         });
 
         await Promise.all(loadPromises);
+
+        // Remove any entries that turned out to be duplicates after fetch
+        if (removedDuplicates) {
+          tokenlistSources = tokenlistSources.filter(s => !s._duplicate);
+          saveTokenlistSources();
+        }
       }
 
       // Step 4: Render the sources list
