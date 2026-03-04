@@ -1290,40 +1290,7 @@ const INDEX_HTML = `<!DOCTYPE html>
   </script>
   <script src="/static/client.js" type="module" defer></script>
   <script>
-    // Theme toggle: light -> dark -> system -> light
-    (function initTheme() {
-      const btn = document.getElementById('themeBtn');
-      const icon = document.getElementById('themeIcon');
-      const THEME_KEY = 'compare-dex-theme';
-      function getStored() { return localStorage.getItem(THEME_KEY); }
-      function apply(theme) {
-        if (theme === 'light' || theme === 'dark') {
-          localStorage.setItem(THEME_KEY, theme);
-          document.documentElement.setAttribute('data-theme', theme);
-        } else {
-          localStorage.removeItem(THEME_KEY);
-          var d = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          document.documentElement.setAttribute('data-theme', d ? 'dark' : 'light');
-        }
-        updateIcon(theme || 'system');
-      }
-      function updateIcon(t) {
-        if (t === 'dark') icon.textContent = '\\u263E';
-        else if (t === 'light') icon.textContent = '\\u2600';
-        else icon.textContent = '\\u25D0';
-        btn.setAttribute('aria-label', 'Theme: ' + (t || 'system'));
-      }
-      btn.addEventListener('click', function() {
-        var s = getStored();
-        if (s === 'light') apply('dark');
-        else if (s === 'dark') apply(null);
-        else apply('light');
-      });
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
-        if (!getStored()) apply(null);
-      });
-      updateIcon(getStored() || 'system');
-    })();
+    // Theme toggle is now in src/client/theme.ts (loaded via client.js bundle)
 
     const DEFAULT_TOKENS = ${JSON.stringify(DEFAULT_TOKENS)};
     const WALLETCONNECT_PROJECT_ID = '${process.env.WALLETCONNECT_PROJECT_ID || ""}';
@@ -2456,7 +2423,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       });
     }
 
-    // MEV Protection Modal
+    // MEV Protection Modal - chain ID constants still used by inline JS
     const FLASHBOTS_RPC_URL = 'https://rpc.flashbots.net';
     const BLOXROUTE_BSC_RPC_URL = 'https://bsc.rpc.blxrbdn.com';
     const ETHEREUM_CHAIN_ID = 1;
@@ -2467,155 +2434,39 @@ const INDEX_HTML = `<!DOCTYPE html>
     const POLYGON_CHAIN_ID = 137;
     const AVALANCHE_CHAIN_ID = 43114;
 
-    // Modal scroll lock coordination with reference counting
-    // When multiple modals are open, closing one should not restore body overflow
-    // until all modals are closed.
-    let modalScrollLockCount = 0;
+    // Modal functions are now in src/client/modals.ts (loaded via client.js bundle).
+    // Bridge helpers expose inline-JS state to the modal module via window callbacks.
+    function openMevModal() { if (typeof window.openMevModal === 'function') window.openMevModal(); }
+    function closeMevModal() { if (typeof window.closeMevModal === 'function') window.closeMevModal(); }
+    function openSettingsModal() { if (typeof window.openSettingsModal === 'function') window.openSettingsModal(); }
+    function closeSettingsModal() { if (typeof window.closeSettingsModal === 'function') window.closeSettingsModal(); }
+    function openSwapConfirmModal(card) { if (typeof window.openSwapConfirmModal === 'function') window.openSwapConfirmModal(card); }
+    function closeSwapConfirmModal() { if (typeof window.closeSwapConfirmModal === 'function') window.closeSwapConfirmModal(); }
+    function updateSwapConfirmModalText() { if (typeof window.updateSwapConfirmModalText === 'function') window.updateSwapConfirmModalText(); }
+    function areQuotesStillLoading() { return typeof window.areQuotesStillLoading === 'function' ? window.areQuotesStillLoading() : false; }
+    function lockBodyScroll() { if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll(); }
+    function unlockBodyScroll() { if (typeof window.unlockBodyScroll === 'function') window.unlockBodyScroll(); }
+    function renderMevChainContent() { if (typeof window.renderMevChainContent === 'function') window.renderMevChainContent(); }
 
-    function lockBodyScroll() {
-      modalScrollLockCount++;
-      if (modalScrollLockCount === 1) {
-        document.body.style.overflow = 'hidden';
-      }
-    }
-
-    function unlockBodyScroll() {
-      modalScrollLockCount = Math.max(0, modalScrollLockCount - 1);
-      if (modalScrollLockCount === 0) {
-        document.body.style.overflow = '';
-      }
-    }
-
-    // Open modal
-    function openMevModal() {
-      renderMevChainContent();
-      mevModal.classList.add('show');
-      lockBodyScroll();
-      // Focus the close button for accessibility
-      mevModalClose.focus();
-    }
-
-    // Close modal
-    function closeMevModal() {
-      mevModal.classList.remove('show');
-      unlockBodyScroll();
-      // Return focus to the button that opened the modal
-      mevInfoBtn.focus();
-    }
-
-    // Settings Modal Functions
-    function openSettingsModal() {
-      renderLocalTokens();
-      settingsModal.classList.add('show');
-      settingsBtn.setAttribute('aria-expanded', 'true');
-      lockBodyScroll();
-      // Focus the close button for accessibility
-      settingsModalClose.focus();
-    }
-
-    function closeSettingsModal() {
-      settingsModal.classList.remove('show');
-      settingsBtn.setAttribute('aria-expanded', 'false');
-      unlockBodyScroll();
-      // Return focus to the button that opened the modal
-      settingsBtn.focus();
-    }
-
-    // Swap Confirmation Modal Functions
-    function openSwapConfirmModal(card) {
-      pendingSwapCard = card;
-      updateSwapConfirmModalText();
-      swapConfirmModal.classList.add('show');
-      lockBodyScroll();
-      // Focus the first focusable element (Wait button) for accessibility
-      swapConfirmWaitBtn.focus();
-    }
-
-    function closeSwapConfirmModal() {
-      swapConfirmModal.classList.remove('show');
-      unlockBodyScroll();
-      // Save the card reference before clearing
-      const cardToFocus = pendingSwapCard;
-      pendingSwapCard = null;
-      // Return focus to the swap button
-      if (cardToFocus) {
-        const swapBtn = cardToFocus.querySelector('.swap-btn');
-        if (swapBtn) swapBtn.focus();
-      }
-    }
-
-    // Focus trap for swap confirmation modal
-    function handleSwapConfirmModalKeydown(event) {
-      if (event.key !== 'Tab') return;
-
-      // Get all focusable elements in the modal
-      const focusableElements = swapConfirmModal.querySelectorAll(
-        'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-
-      if (event.shiftKey) {
-        // Shift+Tab: if on first element, wrap to last
-        if (document.activeElement === firstElement) {
-          event.preventDefault();
-          lastElement.focus();
-        }
-      } else {
-        // Tab: if on last element, wrap to first
-        if (document.activeElement === lastElement) {
-          event.preventDefault();
-          firstElement.focus();
-        }
-      }
-    }
-
-    function updateSwapConfirmModalText() {
-      // Check if quotes are still loading
-      const isLoading = !progressiveQuoteState.complete &&
-                        ((progressiveQuoteState.spandex === null && progressiveQuoteState.spandexError === null) ||
-                         (progressiveQuoteState.curve === null && progressiveQuoteState.curveError === null && !progressiveQuoteState.singleRouterMode));
-
-      if (!isLoading) {
-        // All quotes arrived while modal was open - auto-dismiss
-        closeSwapConfirmModal();
-        return;
-      }
-
-      // Update text based on current state
-      const routerName = progressiveQuoteState.spandex === null && progressiveQuoteState.spandexError === null ? 'Spandex' : 'Curve';
-      swapConfirmModalText.innerHTML = '<strong>The ' + routerName + ' quote is still loading.</strong> A better price may arrive soon.';
-    }
-
-    function handleSwapConfirmWait() {
-      closeSwapConfirmModal();
-      // No swap executed - user chose to wait
-    }
-
-    async function handleSwapConfirmProceed() {
-      const card = pendingSwapCard;
-      closeSwapConfirmModal();
-
-      if (!card) return;
-
-      // Proceed with the swap
-      await executeSwapFromCard(card);
-    }
-
-    // Check if quotes are still loading
-    function areQuotesStillLoading() {
-      // If complete flag is true, no quotes are loading
-      if (progressiveQuoteState.complete) return false;
-
-      // If in single router mode, only one router applies
-      if (progressiveQuoteState.singleRouterMode) return false;
-
-      // Check if any router hasn't responded yet (no quote and no error)
-      const spandexPending = progressiveQuoteState.spandex === null && progressiveQuoteState.spandexError === null;
-      const curvePending = progressiveQuoteState.curve === null && progressiveQuoteState.curveError === null;
-
-      return spandexPending || curvePending;
-    }
+    // Expose inline-JS state/functions to the modal module via window callbacks
+    // Bridge callbacks for the modal module (prefixed to avoid shadowing global function declarations)
+    window.__cb_getCurrentChainId = function() { return getCurrentChainId(); };
+    window.__cb_hasConnectedWallet = function() { return hasConnectedWallet(); };
+    window.__cb_renderLocalTokens = function() { renderLocalTokens(); };
+    window.__cb_addMevRpcToWallet = function(type) { addMevRpcToWallet(type); };
+    window.__cb_getProgressiveQuoteState = function() { return progressiveQuoteState; };
+    window.__cb_executeSwapFromCard = function(card) { return executeSwapFromCard(card); };
+    window.__cb_getPendingSwapCard = function() { return pendingSwapCard; };
+    window.__cb_setPendingSwapCard = function(card) { pendingSwapCard = card; };
+    window.__cb_fetchTokenMetadata = function(address, chainId) { fetchTokenMetadata(address, chainId); };
+    window.__cb_handleUnrecognizedTokenSave = function() { handleUnrecognizedTokenSave(); };
+    window.__cb_getFromInput = function() { return fromInput; };
+    window.__cb_getToInput = function() { return toInput; };
+    window.__cb_getUnrecognizedTokenState = function() { return unrecognizedTokenState; };
+    window.__cb_setUnrecognizedTokenState = function(state) { unrecognizedTokenState = state; };
+    window.__cb_getIsConnectingProvider = function() { return isConnectingProvider; };
+    window.__cb_getPendingPostConnectAction = function() { return pendingPostConnectAction; };
+    window.__cb_setPendingPostConnectAction = function(action) { pendingPostConnectAction = action; };
 
     // Local Tokenlist Management
     function loadLocalTokenList() {
@@ -2997,48 +2848,15 @@ const INDEX_HTML = `<!DOCTYPE html>
       targetInput: null, // 'from' or 'to'
     };
 
+    // openUnrecognizedTokenModal and closeUnrecognizedTokenModal are now in src/client/modals.ts
     function openUnrecognizedTokenModal(address, chainId, targetInput) {
-      unrecognizedTokenState = {
-        address: address,
-        chainId: chainId,
-        metadata: null,
-        targetInput: targetInput,
-      };
-
-      // Reset UI
-      unrecognizedTokenAddress.textContent = address;
-      unrecognizedTokenLoading.hidden = false;
-      unrecognizedTokenMetadata.hidden = true;
-      unrecognizedTokenError.hidden = true;
-      unrecognizedTokenSaveBtn.disabled = true;
-      unrecognizedTokenSaveBtn.textContent = 'Save to Local List';
-
-      // Show modal
-      unrecognizedTokenModal.classList.add('show');
-      lockBodyScroll();
-      unrecognizedTokenModalClose.focus();
-
-      // Fetch metadata
-      fetchTokenMetadata(address, chainId);
+      if (typeof window.openUnrecognizedTokenModal === 'function') window.openUnrecognizedTokenModal(address, chainId, targetInput);
     }
-
     function closeUnrecognizedTokenModal() {
-      unrecognizedTokenModal.classList.remove('show');
-      unlockBodyScroll();
-      // Return focus to the input that triggered the modal
-      if (unrecognizedTokenState.targetInput === 'from') {
-        fromInput.focus();
-      } else if (unrecognizedTokenState.targetInput === 'to') {
-        toInput.focus();
-      }
-      unrecognizedTokenState = {
-        address: '',
-        chainId: 0,
-        metadata: null,
-        targetInput: null,
-      };
+      if (typeof window.closeUnrecognizedTokenModal === 'function') window.closeUnrecognizedTokenModal();
     }
 
+    // fetchTokenMetadata stays inline - called by modals module via callback
     async function fetchTokenMetadata(address, chainId) {
       try {
         const url = '/token-metadata?chainId=' + encodeURIComponent(chainId) + '&address=' + encodeURIComponent(address);
@@ -3123,24 +2941,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       updateAmountFieldLabels();
     }
 
-    // Event listeners for unrecognized token modal
-    unrecognizedTokenModalClose.addEventListener('click', closeUnrecognizedTokenModal);
-    unrecognizedTokenCancelBtn.addEventListener('click', closeUnrecognizedTokenModal);
-    unrecognizedTokenSaveBtn.addEventListener('click', handleUnrecognizedTokenSave);
-
-    // Close modal on overlay click
-    unrecognizedTokenModal.addEventListener('click', (event) => {
-      if (event.target === unrecognizedTokenModal) {
-        closeUnrecognizedTokenModal();
-      }
-    });
-
-    // Close modal on Escape key
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && unrecognizedTokenModal.classList.contains('show')) {
-        closeUnrecognizedTokenModal();
-      }
-    });
+    // Unrecognized token modal event listeners are now in src/client/modals.ts (via initModals)
 
     // Check if address is in any enabled tokenlist (including local tokens)
     function isAddressInTokenlists(address, chainId) {
@@ -3245,70 +3046,7 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
     });
 
-    // Render chain-specific content in modal
-    function renderMevChainContent() {
-      const chainId = getCurrentChainId();
-      const walletConnectedValue = hasConnectedWallet();
-      const walletDisabled = !walletConnectedValue;
-      const walletNote = walletDisabled ? '<p class="wallet-required-note">Connect wallet first</p>' : '';
-
-      let html = '';
-
-      if (chainId === ETHEREUM_CHAIN_ID) {
-        html =
-          '<div class="mev-chain-message ethereum">' +
-            '<div class="mev-chain-title">Ethereum Mainnet</div>' +
-            '<p>Your swap is vulnerable to sandwich attacks. Add Flashbots Protect to send transactions privately.</p>' +
-            '<button type="button" class="add-to-wallet-btn" id="addFlashbotsBtn" ' + (walletDisabled ? 'disabled' : '') + '>' +
-              'Add Flashbots Protect to Wallet' +
-            '</button>' +
-            walletNote +
-          '</div>';
-      } else if (chainId === BSC_CHAIN_ID) {
-        html =
-          '<div class="mev-chain-message bsc">' +
-            '<div class="mev-chain-title">BSC (BNB Chain)</div>' +
-            '<p>BSC has active MEV bots. Add bloXroute BSC Protect for private transaction submission.</p>' +
-            '<button type="button" class="add-to-wallet-btn" id="addBloXrouteBtn" ' + (walletDisabled ? 'disabled' : '') + '>' +
-              'Add bloXroute Protect to Wallet' +
-            '</button>' +
-            walletNote +
-          '</div>';
-      } else if (chainId === BASE_CHAIN_ID || chainId === ARBITRUM_CHAIN_ID || chainId === OPTIMISM_CHAIN_ID) {
-        const chainName = chainId === BASE_CHAIN_ID ? 'Base' : (chainId === ARBITRUM_CHAIN_ID ? 'Arbitrum' : 'Optimism');
-        html =
-          '<div class="mev-chain-message l2">' +
-            '<div class="mev-chain-title">' + chainName + ' (L2)</div>' +
-            '<p>This chain uses a centralized sequencer that processes transactions in order received. Sandwich attacks are significantly harder. No additional protection needed.</p>' +
-          '</div>';
-      } else if (chainId === POLYGON_CHAIN_ID || chainId === AVALANCHE_CHAIN_ID) {
-        const chainName = chainId === POLYGON_CHAIN_ID ? 'Polygon' : 'Avalanche';
-        html =
-          '<div class="mev-chain-message other">' +
-            '<div class="mev-chain-title">' + chainName + '</div>' +
-            '<p>MEV protection is useful on this chain but no free public protection RPC is currently available.</p>' +
-          '</div>';
-      } else {
-        html =
-          '<div class="mev-chain-message other">' +
-            '<div class="mev-chain-title">Unknown Chain</div>' +
-            '<p>MEV protection availability varies by chain. Check if your wallet supports private transaction submission.</p>' +
-          '</div>';
-      }
-
-      mevChainContent.innerHTML = html;
-
-      // Add click handlers for Add to Wallet buttons
-      const addFlashbotsBtn = document.getElementById('addFlashbotsBtn');
-      if (addFlashbotsBtn) {
-        addFlashbotsBtn.addEventListener('click', () => addMevRpcToWallet('ethereum'));
-      }
-
-      const addBloXrouteBtn = document.getElementById('addBloXrouteBtn');
-      if (addBloXrouteBtn) {
-        addBloXrouteBtn.addEventListener('click', () => addMevRpcToWallet('bsc'));
-      }
-    }
+    // renderMevChainContent is now in src/client/modals.ts
 
     // Add MEV protection RPC to wallet via wallet_addEthereumChain
     async function addMevRpcToWallet(type) {
@@ -3416,17 +3154,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       }
     }
 
-    function closeWalletProviderMenu() {
-      walletProviderModal.classList.remove('show');
-      unlockBodyScroll();
-      walletProviderList.innerHTML = '';
-      walletProviderNoWallet.hidden = true;
-      // If closing without a provider connection in progress, cancel any pending action
-      if (!isConnectingProvider && pendingPostConnectAction) {
-        pendingPostConnectAction = null;
-      }
-      connectWalletBtn.focus();
-    }
+    // closeWalletProviderMenu is now in src/client/modals.ts (loaded via client.js bundle)
+    function closeWalletProviderMenu() { if (typeof window.closeWalletProviderMenu === 'function') window.closeWalletProviderMenu(); }
 
     function createWalletIcon(iconUri, altText, className) {
       const icon = document.createElement('img');
@@ -3564,7 +3293,9 @@ const INDEX_HTML = `<!DOCTYPE html>
       return !!(WALLETCONNECT_PROJECT_ID && window.__WalletConnectEthereumProvider);
     }
 
-    function openWalletProviderMenu(providers) {
+    // openWalletProviderMenu stays inline due to complex wallet rendering dependencies.
+    // Exposed on window.__openWalletProviderMenuImpl for the modals module to delegate to.
+    function openWalletProviderMenuImpl(providers) {
       walletProviderList.innerHTML = '';
       walletProviderNoWallet.hidden = true;
 
@@ -3615,6 +3346,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       lockBodyScroll();
       walletProviderModalClose.focus();
     }
+    window.__openWalletProviderMenuImpl = openWalletProviderMenuImpl;
+    function openWalletProviderMenu(providers) { openWalletProviderMenuImpl(providers); }
 
     function getAnnouncedWalletProviders() {
       return Array.from(walletProvidersByUuid.values());
@@ -3674,13 +3407,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 
     disconnectWalletBtn.addEventListener('click', disconnectWallet);
 
-    walletProviderModalClose.addEventListener('click', closeWalletProviderMenu);
-
-    walletProviderModal.addEventListener('click', (event) => {
-      if (event.target === walletProviderModal) {
-        closeWalletProviderMenu();
-      }
-    });
+    // Wallet provider modal event listeners are now in src/client/modals.ts (via initModals)
 
     updateWalletStateUi();
     setWalletGlobals();
@@ -4849,63 +4576,8 @@ const INDEX_HTML = `<!DOCTYPE html>
       updateAmountFieldLabels();
     });
 
-    // MEV Modal event listeners
-    mevInfoBtn.addEventListener('click', openMevModal);
-
-    mevModalClose.addEventListener('click', closeMevModal);
-
-    // Close modal on overlay click (outside the modal)
-    mevModal.addEventListener('click', (event) => {
-      if (event.target === mevModal) {
-        closeMevModal();
-      }
-    });
-
-    // Close modal on Escape key
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && walletProviderModal.classList.contains('show')) {
-        closeWalletProviderMenu();
-      }
-      if (event.key === 'Escape' && mevModal.classList.contains('show')) {
-        closeMevModal();
-      }
-      if (event.key === 'Escape' && settingsModal.classList.contains('show')) {
-        closeSettingsModal();
-      }
-      if (event.key === 'Escape' && swapConfirmModal.classList.contains('show')) {
-        closeSwapConfirmModal();
-      }
-    });
-
-    // Settings Modal event listeners
-    settingsBtn.addEventListener('click', openSettingsModal);
-
-    settingsModalClose.addEventListener('click', closeSettingsModal);
-
-    // Close settings modal on overlay click (outside the modal)
-    settingsModal.addEventListener('click', (event) => {
-      if (event.target === settingsModal) {
-        closeSettingsModal();
-      }
-    });
-
-    // Swap Confirmation Modal event listeners
-    swapConfirmModalClose.addEventListener('click', closeSwapConfirmModal);
-
-    // Close swap confirmation modal on overlay click (outside the modal)
-    swapConfirmModal.addEventListener('click', (event) => {
-      if (event.target === swapConfirmModal) {
-        closeSwapConfirmModal();
-      }
-    });
-
-    swapConfirmWaitBtn.addEventListener('click', handleSwapConfirmWait);
-    swapConfirmProceedBtn.addEventListener('click', () => {
-      void handleSwapConfirmProceed();
-    });
-
-    // Focus trap for swap confirmation modal (Tab/Shift+Tab)
-    swapConfirmModal.addEventListener('keydown', handleSwapConfirmModalKeydown);
+    // Modal event listeners (MEV, Settings, Swap Confirm, Wallet Provider, Escape key)
+    // are now in src/client/modals.ts (via initModals)
 
     // Tab switching
     document.querySelectorAll('.tab').forEach(tab => {
