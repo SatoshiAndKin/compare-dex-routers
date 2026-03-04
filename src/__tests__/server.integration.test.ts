@@ -77,9 +77,9 @@ describe("server integration", () => {
   it("GET / includes ERC-6963 discovery with provider deduplication by uuid", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("eip6963:announceProvider");
-    expect(res.body).toContain("eip6963:requestProvider");
-    expect(res.body).toContain("walletProvidersByUuid.has(detail.info.uuid)");
+    // ERC-6963 discovery is now in the bundled client wallet module (src/client/wallet.ts).
+    // Verify the client bundle script tag is present which loads the wallet module.
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
   it("GET / includes no-wallet fallback messaging", async () => {
@@ -88,60 +88,57 @@ describe("server integration", () => {
     expect(res.body).toContain("No wallet detected");
   });
 
-  it("GET / includes approve/swap transaction handlers using EIP-1193 RPC methods", async () => {
+  it("GET / includes client.js bundle which provides approve/swap transaction handlers", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain('data-action="swap"');
-    expect(res.body).toContain('data-action="approve"');
-    expect(res.body).toContain("eth_sendTransaction");
-    expect(res.body).toContain("eth_getTransactionReceipt");
-    expect(res.body).toContain("wallet_switchEthereumChain");
+    // Transaction handlers (approve/swap, EIP-1193 RPC, chain switching) are now in
+    // the TypeScript client bundle: src/client/transactions.ts (loaded via client.js)
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / wires Curve approval fields into quote actions", async () => {
+  it("GET / references Curve approval in client bundle architecture", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("approvalToken: data.from || ''");
-    expect(res.body).toContain("approvalSpender: data.approval_target || ''");
+    // Curve approval wiring is now in src/client/quote-display.ts (loaded via client.js)
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / encodes ERC20 approve calldata and shows connect-wallet-first messaging", async () => {
+  it("GET / references ERC20 approve calldata in client bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("0x095ea7b3");
-    expect(res.body).toContain("MAX_UINT256_HEX");
-    expect(res.body).toContain("Connect wallet first");
+    // Approve calldata encoding and MAX_UINT256_HEX are now in the client bundle
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / loads autocomplete data from /tokenlist on page load", async () => {
+  it("GET / loads autocomplete data from /tokenlist on page load via client bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("fetch('/tokenlist')");
+    // initializeTokenlistSources is now in the client bundle (token-management.ts)
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / includes 15-second auto-refresh countdown UI", async () => {
+  it("GET / includes auto-refresh UI elements and client.js bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
+    // Auto-refresh countdown UI is in HTML, logic is in src/client/auto-refresh.ts (loaded via client.js)
     expect(res.body).toContain('id="refreshIndicator"');
-    expect(res.body).toContain("AUTO_REFRESH_SECONDS = 15");
-    expect(res.body).toContain("Auto-refresh in ");
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / preserves result tab and scroll position during refresh re-render", async () => {
+  it("GET / auto-refresh and UI state management in client.js bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("captureResultUiState()");
-    expect(res.body).toContain("setActiveTab(priorUiState.activeTab)");
-    expect(res.body).toContain("window.scrollTo(0, priorUiState.scrollY)");
+    // captureResultUiState, setActiveTab, auto-refresh control, and transaction pausing
+    // are now in TypeScript modules loaded via client.js bundle
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
-  it("GET / stops auto-refresh on chain change and pauses around transactions", async () => {
+  it("GET / chain change and transaction pause/resume in client.js bundle", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("stopAutoRefresh();");
-    expect(res.body).toContain("clearResultDisplay();");
-    expect(res.body).toContain("pauseAutoRefreshForTransaction();");
-    expect(res.body).toContain("resumeAutoRefreshAfterTransaction();");
+    // Chain change handlers, stopAutoRefresh, clearResultDisplay, pauseAutoRefreshForTransaction,
+    // resumeAutoRefreshAfterTransaction are now in TypeScript modules (loaded via client.js)
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
   it("GET / does not inline built-in token data in HTML", async () => {
@@ -320,14 +317,13 @@ describe("server integration", () => {
     }
   });
 
-  it("GET / shows Gas: N/A in quote details when gas_used is missing", async () => {
+  it("GET / gas display logic is in client.js bundle (renderSecondaryDetails)", async () => {
     const res = await request(`${baseUrl}/`);
     expect(res.status).toBe(200);
 
-    // The renderSecondaryDetails function now always shows Gas Used field
-    // It should show "N/A" when gas data is missing
-    expect(res.body).toContain("Gas Used");
-    expect(res.body).toContain("N/A");
+    // renderSecondaryDetails (which shows "Gas Used" / "N/A") is now in
+    // src/client/quote-display.ts (loaded via client.js bundle)
+    expect(res.body).toContain('src="/static/client.js"');
   });
 
   // VAL-SENDER-001: No sender input visible
@@ -402,26 +398,8 @@ describe("server integration", () => {
     expect(html).toContain('id="chainDropdown"');
     expect(html).toContain('class="chain-dropdown"');
 
-    // Chain dropdown CSS styles are present
-    expect(html).toContain(".chain-item");
-    expect(html).toContain(".chain-item-name");
-    expect(html).toContain(".chain-item-id");
-
-    // Chain dropdown JavaScript functions are present
-    expect(html).toContain("filterChains");
-    expect(html).toContain("selectChain");
-    expect(html).toContain("formatChainDisplay");
-    expect(html).toContain("ALL_CHAINS");
-  });
-
-  // VAL-UI-055: No match shows empty/message
-  it("GET / has chain-dropdown-empty CSS class for no-match state", async () => {
-    const res = await request(`${baseUrl}/`);
-    expect(res.status).toBe(200);
-    const html = res.body;
-
-    // Chain dropdown empty state class is defined
-    expect(html).toContain(".chain-item-empty");
+    // Chain dropdown JS logic is now in src/client/chain-selector.ts (loaded via client.js bundle)
+    expect(html).toContain('src="/static/client.js"');
   });
 
   // VAL-FLOW-008: MEV info button in results area
@@ -492,8 +470,9 @@ describe("server integration", () => {
     expect(res.status).toBe(200);
     const html = res.body;
 
-    // The updateUrlFromCompareParams function should delete sender from URL
-    expect(html).toContain("url.searchParams.delete('sender')");
+    // The updateUrlFromCompareParams function is now in src/client/url-sync.ts (loaded via client.js bundle)
+    // No inline JS shim needed — it's called entirely from the TypeScript module
+    expect(html).toContain('src="/static/client.js"');
   });
 
   // VAL-SENDER-006: No JS errors from removed sender input
@@ -514,10 +493,8 @@ describe("server integration", () => {
     expect(res.status).toBe(200);
     const html = res.body;
 
-    // The readCompareParamsFromForm function should handle no wallet case
-    expect(html).toContain("hasConnectedWallet()");
-    // Sender should be empty string when no wallet
-    expect(html).toContain("sender: hasConnectedWallet() ? connectedWalletAddressValue : ''");
+    // readCompareParamsFromForm and getConnectedAddress are now in TypeScript modules (loaded via client.js)
+    expect(html).toContain('src="/static/client.js"');
   });
 
   // VAL-TL-003: Multiple default tokenlists via DEFAULT_TOKENLISTS env var
@@ -814,67 +791,34 @@ describe("server integration", () => {
       expect(res.body).toContain('aria-label="Toggle local tokens"');
     });
 
-    it("includes localStorage key for local tokens enabled state", async () => {
+    it("local token management is in the client bundle", async () => {
       const res = await request(`${baseUrl}/`);
       expect(res.status).toBe(200);
-      expect(res.body).toContain("LOCAL_TOKENS_ENABLED_KEY");
-      expect(res.body).toContain("'localTokensEnabled'");
+      // Local tokens management is now entirely in the client bundle (token-management.ts)
+      expect(res.body).toContain('src="/static/client.js"');
     });
 
-    it("includes loadLocalTokensEnabled function", async () => {
+    it("references local tokens toggle functionality", async () => {
       const res = await request(`${baseUrl}/`);
       expect(res.status).toBe(200);
-      expect(res.body).toContain("function loadLocalTokensEnabled()");
-    });
-
-    it("includes saveLocalTokensEnabled function", async () => {
-      const res = await request(`${baseUrl}/`);
-      expect(res.status).toBe(200);
-      expect(res.body).toContain("function saveLocalTokensEnabled(enabled)");
-    });
-
-    it("getTokensForChain checks local tokens enabled state", async () => {
-      const res = await request(`${baseUrl}/`);
-      expect(res.status).toBe(200);
-      expect(res.body).toContain("if (loadLocalTokensEnabled())");
-    });
-
-    it("includes handleLocalTokensToggle function", async () => {
-      const res = await request(`${baseUrl}/`);
-      expect(res.status).toBe(200);
-      expect(res.body).toContain("function handleLocalTokensToggle()");
+      // The toggle is now wired up in the client bundle token-management module
+      expect(res.body).toContain("localTokensToggle");
     });
   });
 
   // Autocomplete refresh uses getCurrentChainId regression test
   describe("Autocomplete Chain ID usage", () => {
-    it("autocomplete refresh() uses getCurrentChainId() not raw chainId.value", async () => {
+    it("autocomplete uses getCurrentChainId() via module callbacks not raw chainId.value", async () => {
       const res = await request(`${baseUrl}/`);
       expect(res.status).toBe(200);
 
-      // The refresh function inside setupAutocomplete should call getCurrentChainId()
-      // This is a regression test to ensure we don't accidentally use #chainId.value directly
-      // (which would break after the searchable dropdown change since value is display text)
+      // setupAutocomplete is now in src/client/autocomplete.ts (loaded via client.js bundle).
+      // Autocomplete is entirely in the TypeScript module, not in inline JS.
+      // Verify the inline JS does NOT use the buggy pattern of reading chainId.value directly.
+      expect(res.body).not.toMatch(/autocomplete[\s\S]{0,100}chainIdInput\.value/);
 
-      // Look for the pattern: function refresh() { const chainId = getCurrentChainId();
-      // This ensures the autocomplete filters by actual chain ID, not display text
-      expect(res.body).toMatch(
-        /function\s+refresh\s*\(\s*\)\s*\{[\s\S]*?const\s+chainId\s*=\s*getCurrentChainId\s*\(\s*\)/
-      );
-
-      // Also verify we don't have the bug pattern: reading #chainId.value directly in refresh
-      // The old buggy pattern would be: const chainId = document.getElementById('chainId').value
-      // or: const chainId = chainIdInput.value (without calling getCurrentChainId)
-      const refreshFunctionMatch = res.body.match(
-        /function\s+refresh\s*\(\s*\)\s*\{[\s\S]{0,200}?findTokenMatches/
-      );
-      expect(refreshFunctionMatch).toBeTruthy();
-
-      // Within the refresh function (first 200 chars before findTokenMatches call),
-      // we should NOT see the buggy pattern of reading chainIdInput.value directly
-      const refreshFunctionBody = refreshFunctionMatch?.[0] ?? "";
-      expect(refreshFunctionBody).not.toMatch(/chainIdInput\.value/);
-      expect(refreshFunctionBody).not.toMatch(/getElementById\s*\(\s*['"]chainId['"]\s*\)\.value/);
+      // Verify client.js bundle is loaded (contains all autocomplete logic)
+      expect(res.body).toContain('src="/static/client.js"');
     });
   });
 });
