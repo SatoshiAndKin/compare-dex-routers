@@ -1,5 +1,5 @@
 services:
-  flashprofits:
+  compare-dex-routers:
     build: .
     ports:
       - "${PORT:-3001}:${PORT:-3001}"

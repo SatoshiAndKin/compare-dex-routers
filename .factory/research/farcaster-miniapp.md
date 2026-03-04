@@ -14,7 +14,7 @@ Serve at `GET /.well-known/farcaster.json`:
   "accountAssociation": { "header": "...", "payload": "...", "signature": "..." },
   "miniapp": {
     "version": "1",
-    "name": "FlashProfits",
+    "name": "Compare DEX Routers",
     "homeUrl": "https://yourapp.com/?miniApp=true",
     "iconUrl": "https://yourapp.com/icon.png",
     "primaryCategory": "finance"
@@ -25,7 +25,7 @@ The `accountAssociation` is generated via https://farcaster.xyz/~/developers/new
 
 ## Embed Meta Tags
 ```html
-<meta name="fc:miniapp" content='{"version":"1","imageUrl":"...","button":{"title":"Compare DEX","action":{"type":"launch_frame","name":"FlashProfits","url":"..."}}}' />
+<meta name="fc:miniapp" content='{"version":"1","imageUrl":"...","button":{"title":"Compare DEX","action":{"type":"launch_frame","name":"Compare DEX Routers","url":"..."}}}' />
 ```
 
 ## Wallet Integration

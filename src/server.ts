@@ -1010,7 +1010,7 @@ const INDEX_HTML = `<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Compare DEX Routers</title>
-  <meta name="fc:miniapp" content='{"version":"1","imageUrl":"","button":{"title":"Compare DEX","action":{"type":"launch_frame","name":"FlashProfits","url":""}}}' />
+  <meta name="fc:miniapp" content='{"version":"1","imageUrl":"","button":{"title":"Compare DEX","action":{"type":"launch_frame","name":"Compare DEX Routers","url":""}}}' />
   <style>
     /* BRUTALIST DESIGN: High contrast, no border-radius, max 2 fonts */
     /* Color Palette: Black/White + Blue accent (#0055FF) + Orange accent (#CC2900) + Green (#007700) + Red (#CC0000) */
@@ -2598,7 +2598,13 @@ const INDEX_HTML = `<!DOCTYPE html>
     // Local tokens enabled state (toggle in settings panel)
     const LOCAL_TOKENS_ENABLED_KEY = 'localTokensEnabled';
     // User preferences key - stores form selections (chain, tokens, amount, slippage)
-    const USER_PREFERENCES_KEY = 'flashprofits-preferences';
+    const USER_PREFERENCES_KEY = 'compare-dex-preferences';
+    // Migrate old localStorage key
+    const oldPrefs = localStorage.getItem('flashprofits-preferences');
+    if (oldPrefs && !localStorage.getItem(USER_PREFERENCES_KEY)) {
+      localStorage.setItem(USER_PREFERENCES_KEY, oldPrefs);
+      localStorage.removeItem('flashprofits-preferences');
+    }
 
     const walletProvidersByUuid = new Map();
     let fallbackWalletProvider = null;
@@ -4759,7 +4765,7 @@ const INDEX_HTML = `<!DOCTYPE html>
           projectId: WALLETCONNECT_PROJECT_ID,
           optionalChains: [1, 8453, 42161, 10, 137, 56, 43114],
           metadata: {
-            name: 'FlashProfits',
+            name: 'Compare DEX Routers',
             description: 'Compare DEX Router Quotes',
             url: location.origin,
             icons: [],
@@ -7220,7 +7226,7 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       },
       miniapp: {
         version: "1",
-        name: "FlashProfits",
+        name: "Compare DEX Routers",
         homeUrl: `${baseUrl}/?miniApp=true`,
         iconUrl: `${baseUrl}/icon.png`,
         primaryCategory: "finance",

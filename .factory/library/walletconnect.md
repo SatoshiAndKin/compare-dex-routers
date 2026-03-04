@@ -14,7 +14,7 @@ const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereu
 const provider = await EthereumProvider.init({
   projectId: WALLETCONNECT_PROJECT_ID,
   optionalChains: [1, 8453, 42161, 10, 137, 56, 43114],
-  metadata: { name: 'FlashProfits', description: '...', url: location.origin, icons: [] },
+  metadata: { name: 'Compare DEX Routers', description: '...', url: location.origin, icons: [] },
   showQrModal: true
 });
 await provider.connect();
