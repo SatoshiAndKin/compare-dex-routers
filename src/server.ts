@@ -2226,26 +2226,32 @@ const INDEX_HTML = `<!DOCTYPE html>
       /* Reduce body padding to maximize usable space */
       body { padding: 12px; }
       /* Slippage area mobile - ensure no overflow */
+      /* Hide outer presets at 375px to fit within viewport while maintaining 44px touch targets */
       .slippage-box {
         gap: 0.25rem;
         padding: 0.25rem 0.375rem;
       }
       .slippage-preset-compact {
-        min-width: 40px;
+        min-width: 44px;
         min-height: 44px;
         padding: 0.5rem 0.375rem;
-        font-size: 0.6875rem;
+        font-size: 0.75rem; /* VAL-CSS-001: >= 0.75rem */
+      }
+      /* Hide outer preset buttons (3 and 300) at 375px to prevent overflow */
+      .slippage-preset-compact[data-bps="3"],
+      .slippage-preset-compact[data-bps="300"] {
+        display: none;
       }
       .slippage-box-input {
-        width: 44px;
+        width: 50px;
         min-height: 44px;
-        font-size: 0.6875rem;
+        font-size: 0.75rem; /* VAL-CSS-001: >= 0.75rem */
       }
       .slippage-box-label {
-        font-size: 0.6875rem;
+        font-size: 0.75rem; /* VAL-CSS-001: >= 0.75rem */
       }
       .slippage-box-hint {
-        font-size: 0.6875rem;
+        font-size: 0.75rem; /* VAL-CSS-001: >= 0.75rem */
       }
       /* Prevent form elements from causing overflow */
       input, select {
@@ -2260,9 +2266,9 @@ const INDEX_HTML = `<!DOCTYPE html>
         width: 100%;
         min-width: 0;
       }
-      /* Direction toggle needs smaller font to fit */
+      /* Direction toggle - keep readable font at 0.75rem */
       .direction-btn {
-        font-size: 0.6875rem;
+        font-size: 0.75rem;
         padding: 0.5rem 0.5rem;
       }
     }
