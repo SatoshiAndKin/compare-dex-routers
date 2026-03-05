@@ -139,6 +139,35 @@ export function isAddressLike(address: string): boolean {
   return /^0x[a-fA-F0-9]{40}$/.test(String(address || "").trim());
 }
 
+// ERC-20 allowance(address,address) function selector
+const ALLOWANCE_SELECTOR = "0xdd62ed3e";
+
+/**
+ * Threshold for treating an existing allowance as "effectively unlimited".
+ * Set to 2^128 — far larger than any practical token amount, but well below
+ * MAX_UINT256 so that slightly-decremented unlimited approvals still pass.
+ */
+const UNLIMITED_ALLOWANCE_THRESHOLD = 1n << 128n;
+
+/** Read the ERC-20 allowance for owner→spender via eth_call. */
+async function checkExistingAllowance(
+  provider: EIP1193Provider,
+  tokenAddress: string,
+  ownerAddress: string,
+  spenderAddress: string
+): Promise<bigint> {
+  const ownerPadded = ownerAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  const spenderPadded = spenderAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  const data = ALLOWANCE_SELECTOR + ownerPadded + spenderPadded;
+
+  const result = await provider.request({
+    method: "eth_call",
+    params: [{ to: tokenAddress, data }, "latest"],
+  });
+
+  return BigInt(result as string);
+}
+
 /** Encode ERC-20 approve calldata for unlimited approval */
 export function encodeApproveCalldata(spender: string): string {
   const normalizedSpender = String(spender || "").trim();
@@ -291,6 +320,38 @@ export async function onApproveClick(card: HTMLElement, button: HTMLButtonElemen
   if (!isAddressLike(approvalToken) || !isAddressLike(approvalSpender)) {
     setTxStatus(card, "Failed", "error");
     return;
+  }
+
+  // Check existing allowance — if already approved, skip the on-chain tx.
+  const provider = cbs.getConnectedProvider();
+  if (provider) {
+    try {
+      const allowance = await checkExistingAllowance(
+        provider,
+        approvalToken,
+        cbs.getConnectedAddress(),
+        approvalSpender
+      );
+
+      if (allowance >= UNLIMITED_ALLOWANCE_THRESHOLD) {
+        // Already approved — mark as done and enable the Swap button.
+        button.innerHTML = 'Approved<span class="tx-checkmark"> ✓</span>';
+        button.dataset.locked = "true";
+        button.classList.add("approved");
+        button.disabled = true;
+
+        const swapButton = card.querySelector<HTMLButtonElement>(".swap-btn");
+        if (swapButton) {
+          swapButton.classList.remove("disabled");
+          swapButton.disabled = false;
+        }
+
+        setTxStatus(card, "Already approved", "success");
+        return;
+      }
+    } catch {
+      // Allowance check failed (e.g. network error) — fall through to send approve tx.
+    }
   }
 
   let calldata: string;
