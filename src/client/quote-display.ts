@@ -144,6 +144,7 @@ function renderQuoteActions(options: {
   routerValue: string;
   approvalToken: string;
   approvalSpender: string;
+  inputAmountRaw: string;
 }): string {
   const quoteChainId = String(options.quoteChainId || "");
   const routerAddress = String(options.routerAddress || "");
@@ -151,6 +152,7 @@ function renderQuoteActions(options: {
   const routerValue = String(options.routerValue || "0x0");
   const approvalToken = String(options.approvalToken || "");
   const approvalSpender = String(options.approvalSpender || "");
+  const inputAmountRaw = String(options.inputAmountRaw || "0");
   const approvalRequired = Boolean(approvalToken && approvalSpender);
   const walletRequiredClass = cbs && cbs.hasConnectedWallet() ? "" : " wallet-required";
 
@@ -168,6 +170,8 @@ function renderQuoteActions(options: {
       approvalToken +
       '" data-approval-spender="' +
       approvalSpender +
+      '" data-input-amount-raw="' +
+      inputAmountRaw +
       '">' +
       '<div class="tx-steps">' +
       '<div class="tx-step">' +
@@ -196,7 +200,9 @@ function renderQuoteActions(options: {
       routerCalldata +
       '" data-router-value="' +
       routerValue +
-      '" data-approval-token="" data-approval-spender="">' +
+      '" data-approval-token="" data-approval-spender="" data-input-amount-raw="' +
+      inputAmountRaw +
+      '">' +
       '<div class="tx-steps">' +
       '<button type="button" class="tx-btn swap-btn' +
       walletRequiredClass +
@@ -371,6 +377,7 @@ function renderSpandexQuote(
       routerValue: data.router_value || "0x0",
       approvalToken: data.approval_token || "",
       approvalSpender: data.approval_spender || "",
+      inputAmountRaw: data.input_amount_raw || "0",
     }) +
     "</div>";
 
@@ -510,6 +517,7 @@ function renderCurveQuote(
       routerValue: "0x0",
       approvalToken: data.from || "",
       approvalSpender: (data as CurveQuoteResponse).approval_target || "",
+      inputAmountRaw: data.input_amount_raw || "0",
     }) +
     "</div>";
 

@@ -142,13 +142,6 @@ export function isAddressLike(address: string): boolean {
 // ERC-20 allowance(address,address) function selector
 const ALLOWANCE_SELECTOR = "0xdd62ed3e";
 
-/**
- * Threshold for treating an existing allowance as "effectively unlimited".
- * Set to 2^128 — far larger than any practical token amount, but well below
- * MAX_UINT256 so that slightly-decremented unlimited approvals still pass.
- */
-const UNLIMITED_ALLOWANCE_THRESHOLD = 1n << 128n;
-
 /** Read the ERC-20 allowance for owner→spender via eth_call. */
 async function checkExistingAllowance(
   provider: EIP1193Provider,
@@ -322,9 +315,12 @@ export async function onApproveClick(card: HTMLElement, button: HTMLButtonElemen
     return;
   }
 
-  // Check existing allowance — if already approved, skip the on-chain tx.
+  // Check existing allowance — if it covers the input amount, skip the approve tx.
+  const inputAmountRaw = String(card.dataset.inputAmountRaw || "0").trim();
+  const requiredAmount = inputAmountRaw ? BigInt(inputAmountRaw) : 0n;
+
   const provider = cbs.getConnectedProvider();
-  if (provider) {
+  if (provider && requiredAmount > 0n) {
     try {
       const allowance = await checkExistingAllowance(
         provider,
@@ -333,7 +329,7 @@ export async function onApproveClick(card: HTMLElement, button: HTMLButtonElemen
         approvalSpender
       );
 
-      if (allowance >= UNLIMITED_ALLOWANCE_THRESHOLD) {
+      if (allowance >= requiredAmount) {
         // Already approved — mark as done and enable the Swap button.
         button.innerHTML = 'Approved<span class="tx-checkmark"> ✓</span>';
         button.dataset.locked = "true";
