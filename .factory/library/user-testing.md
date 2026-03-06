@@ -1,33 +1,44 @@
 # User Testing
 
-Testing surface: tools, URLs, setup steps, known quirks.
+Testing surface, tools, URLs, setup steps, and known quirks.
 
-**What belongs here:** How to test the app manually, what tools to use, what to watch for.
+**What belongs here:** How to test the app manually, what tools to use, setup steps, isolation notes.
 
 ---
 
 ## Testing Surface
 
-- **URL:** http://localhost:3000
-- **API Health:** http://localhost:3000/health
-- **Start server:** `PORT=3000 npm run dev`
-- **Stop server:** `lsof -ti :3000 | xargs kill`
+### API (packages/api)
+- **Tool:** curl
+- **URL:** http://localhost:3100
+- **Key endpoints:** /health, /chains, /config, /compare, /quote, /tokenlist, /docs
+- **Start:** `cd packages/api && PORT=3100 npx tsx src/server.ts`
 
-## Tools
-
-- **agent-browser (Playwright):** For page rendering, interactive flows, screenshots
-- **curl:** For API endpoints (/health, /compare, /quote, /chains, /tokenlist)
+### Frontend (packages/frontend)
+- **Tool:** agent-browser (Playwright)
+- **URL:** http://localhost:5173
+- **Start:** `cd packages/frontend && npm run dev -- --port 5173`
+- **Requires:** API running on port 3100
 
 ## Setup Steps
 
-1. Ensure `.env` exists with `PORT=3000`
-2. `npm install`
-3. `PORT=3000 npm run dev` (or use services.yaml start command)
-4. Wait for server to respond at http://localhost:3000/health
+1. `npm install` from repo root
+2. Ensure .env exists with ALCHEMY_API_KEY
+3. Start API first, then frontend
+4. Frontend fetches /config, /tokenlist, /chains on startup
 
 ## Known Quirks
 
-- Curve Finance init fails without ALCHEMY_API_KEY — logged as errors but server works fine
-- No wallet extensions available in Playwright headless mode — wallet connection flows can only be partially tested (modal opens, but actual provider connection requires a real browser extension)
-- Farcaster miniapp flow requires `?miniApp=true` URL param
-- Port 3001 conflicts with OrbStack — always use 3000
+- Alchemy API key may return 401 - server starts fine, quotes fail. Not a UI test blocker.
+- WalletConnect requires real browser with wallet extension for full flow testing.
+- Farcaster SDK only works in Farcaster frame context.
+- 17 pre-existing lint warnings (complexity) - not errors.
+
+## Validation Dry Run Results (confirmed working)
+
+- Ports 3100 and 5173: available
+- npm test: 164 tests pass
+- typecheck: clean
+- lint: 0 errors
+- Dev server on 3100: starts, /health returns ok
+- agent-browser: navigates and interacts successfully
