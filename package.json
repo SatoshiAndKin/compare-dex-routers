@@ -2,6 +2,7 @@
   "name": "compare-dex-routers",
   "version": "1.0.0",
   "type": "module",
+  "workspaces": ["packages/*"],
   "engines": {
     "node": ">=20"
   },
@@ -10,12 +11,12 @@
     "dev": "tsx --watch src/server.ts",
     "build:client": "esbuild src/client/main.ts --bundle --outfile=dist/client/client.js --format=esm --target=es2022 --sourcemap && cp src/client/styles.css dist/client/styles.css",
     "dev:client": "esbuild src/client/main.ts --bundle --outfile=dist/client/client.js --format=esm --target=es2022 --sourcemap --watch",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p src/client/tsconfig.json",
-    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/client/tsconfig.json && npm run typecheck --workspaces --if-present",
+    "lint": "eslint src/ && npm run lint --workspaces --if-present",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
-    "test": "vitest run",
+    "test": "vitest run && npm run test --workspaces --if-present",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "dead-code": "knip",
