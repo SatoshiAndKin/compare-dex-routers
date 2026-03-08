@@ -355,7 +355,7 @@ class TokenListStore {
   private _saveCustomLists(): void {
     const customLists = this.lists
       .filter((l) => l.url !== null)
-      .map((l) => ({ url: l.url!, enabled: l.enabled, name: l.name }));
+      .map((l) => ({ url: l.url as string, enabled: l.enabled, name: l.name }));
 
     const defaultList = this.lists.find((l) => l.url === null);
     const defaultEnabled = defaultList ? defaultList.enabled : true;

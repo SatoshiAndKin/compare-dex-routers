@@ -51,7 +51,7 @@ describe('WalletButton', () => {
   });
 
   it('calls onConnectClick when connect button clicked', async () => {
-    const { getByRole, fireEvent } = await import('@testing-library/svelte');
+    const { fireEvent } = await import('@testing-library/svelte');
     const onConnectClick = vi.fn();
     const { getByRole: getBtn } = render(WalletButton, { props: { onConnectClick } });
     const btn = getBtn('button', { name: /connect wallet/i });
@@ -106,7 +106,7 @@ describe('WalletButton', () => {
     walletStore.address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
     const disconnectSpy = vi.spyOn(walletStore, 'disconnect');
 
-    const { getByRole, fireEvent } = await import('@testing-library/svelte');
+    const { fireEvent } = await import('@testing-library/svelte');
     const { getByRole: getBtn } = render(WalletButton);
     const btn = getBtn('button', { name: 'Disconnect' });
     await fireEvent.click(btn);

@@ -50,7 +50,7 @@ class TokensStore {
         }));
         this.fetched = true;
       }
-    } catch (e) {
+    } catch {
       this.error = 'Network error loading token list';
     } finally {
       this.isLoading = false;
