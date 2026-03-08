@@ -23,7 +23,7 @@
     "dead-flags": "tsx scripts/detect-dead-flags.ts",
     "duplicates": "jscpd src/",
     "docs": "typedoc --entryPoints src/server.ts src/config.ts src/quote.ts src/curve.ts src/metrics.ts src/tracing.ts src/feature-flags.ts --out docs/api",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@curvefi/api": "^2.68.37",

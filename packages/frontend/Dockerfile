@@ -15,6 +15,9 @@ ENV HUSKY=0
 # Install frontend dependencies (includes devDeps for build tools)
 RUN npm ci --workspace=packages/frontend
 
+# Copy root tsconfig (packages/frontend/tsconfig.json extends it)
+COPY tsconfig.json ./
+
 # Copy frontend source
 COPY packages/frontend/ ./packages/frontend/
 
