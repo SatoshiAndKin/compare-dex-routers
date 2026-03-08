@@ -9,20 +9,20 @@ Environment variables, external dependencies, and setup notes.
 
 ## Required Environment Variables
 
-- `PORT` — Server port (default: 3001, use 3000 to avoid OrbStack conflict)
-- `ALCHEMY_API_KEY` — Required for RPC access (Curve init will fail without it, but server still works)
+- `ALCHEMY_API_KEY` - Required for RPC provider (backend only)
+- `WALLETCONNECT_PROJECT_ID` - Optional, for WalletConnect integration (served via /config endpoint)
 
 ## Optional Environment Variables
 
-- `WALLETCONNECT_PROJECT_ID` — For WalletConnect integration
-- `ZEROX_API_KEY`, `FABRIC_API_KEY` — Provider API keys
-- `RPC_URL_<chainId>` — Per-chain RPC overrides
-- `DEFAULT_TOKENLISTS` — Comma-separated tokenlist file paths (defaults to `static/tokenlist.json`)
-- `CURVE_ENABLED`, `COMPARE_ENABLED`, `METRICS_ENABLED` — Feature flags
-- `SENTRY_DSN` — Error tracking
-- `LOG_LEVEL` — Logging level
+- `ZEROX_API_KEY`, `FABRIC_API_KEY` - Additional Spandex provider keys
+- `RPC_URL_{chainId}` - Per-chain RPC overrides
+- `CURVE_ENABLED`, `COMPARE_ENABLED`, `METRICS_ENABLED` - Feature flags
+- `SENTRY_DSN` - Error tracking
+- `LOG_LEVEL` - Logging level (default: info)
+- `PORT` - API server port (default: 3000, mission uses 3100)
 
-## Platform Notes
+## Notes
 
-- Port 3001 conflicts with OrbStack on this machine. Always use PORT=3000.
-- No Alchemy API key in .env — Curve Finance init logs errors but server starts fine.
+- Alchemy API key may be invalid/placeholder - server starts fine, only real quote fetching fails
+- No API keys should ever appear in frontend bundle
+- Frontend gets config via /config endpoint at runtime

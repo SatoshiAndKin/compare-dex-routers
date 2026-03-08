@@ -1,19 +1,17 @@
 #!/bin/bash
 set -e
 
-# Install dependencies (idempotent)
+# Install all workspace dependencies
+cd /Users/bryan/code/compare-dex-routers
 npm install
 
 # Ensure .env exists
 if [ ! -f .env ]; then
   cp env.example .env
-  # Set port to 3000 (3001 conflicts with OrbStack)
-  sed -i '' 's/^PORT=.*/PORT=3000/' .env 2>/dev/null || true
+  echo "Created .env from env.example - fill in ALCHEMY_API_KEY"
 fi
 
-# Build client if build script exists
-if npm run --silent build:client 2>/dev/null; then
-  echo "Client built successfully"
-else
-  echo "No build:client script yet (pipeline milestone not started)"
+# Generate API types for frontend (if openapi.yaml exists and frontend package exists)
+if [ -f openapi.yaml ] && [ -d packages/frontend ]; then
+  npx openapi-typescript openapi.yaml -o packages/frontend/src/generated/api-types.d.ts 2>/dev/null || true
 fi

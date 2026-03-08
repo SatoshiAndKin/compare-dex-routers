@@ -1,7 +1,17 @@
 import type { KnipConfig } from "knip";
 
 const config: KnipConfig = {
-  project: ["src/**/*.ts"],
+  workspaces: {
+    ".": {
+      project: ["src/**/*.ts"],
+    },
+    "packages/api": {
+      project: ["src/**/*.ts"],
+    },
+    "packages/frontend": {
+      project: ["src/**/*.ts", "src/**/*.svelte"],
+    },
+  },
   ignoreDependencies: ["pino-pretty"],
   ignoreExportsUsedInFile: true,
 };
