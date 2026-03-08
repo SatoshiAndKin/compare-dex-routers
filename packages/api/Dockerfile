@@ -8,6 +8,9 @@ COPY packages/api/package.json ./packages/api/
 # Create empty placeholder for frontend (required for workspace install)
 RUN mkdir -p packages/frontend && echo '{"name":"@compare-dex/frontend","version":"1.0.0"}' > packages/frontend/package.json
 
+# Disable husky git hooks (not applicable in Docker)
+ENV HUSKY=0
+
 # Install only API production dependencies
 RUN npm ci --workspace=packages/api --omit=dev
 
