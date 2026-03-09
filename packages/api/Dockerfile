@@ -19,9 +19,6 @@ COPY packages/api/src/ ./packages/api/src/
 COPY packages/api/tsconfig.json ./packages/api/
 COPY packages/api/static/ ./packages/api/static/
 
-# Copy OpenAPI spec
-COPY openapi.yaml ./
-
 ENV NODE_ENV=production
 
 EXPOSE 3100

@@ -4,7 +4,8 @@ const config: KnipConfig = {
   exclude: ["types"],
   workspaces: {
     ".": {
-      project: ["*.ts", "*.js"],
+      project: ["*.ts", "*.js", "scripts/**/*.ts"],
+      ignoreDependencies: ["openapi-typescript"],
     },
     "packages/api": {
       entry: ["src/__tests__/**/*.test.ts"],

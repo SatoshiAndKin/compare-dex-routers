@@ -28,7 +28,7 @@ compare-dex-routers/
 ├── packages/
 │   ├── api/           # Backend HTTP server (@compare-dex/api)
 │   └── frontend/      # Svelte 5 SPA (@compare-dex/frontend)
-├── openapi.yaml       # Shared API contract
+├── scripts/generate-api-types.ts  # Generates frontend types from API spec
 ├── docker-compose.yml # Local Docker stack (build from source)
 ├── docker-compose.prod.yml  # Production stack (pre-built images)
 ├── traefik-proxy/     # Traefik reverse-proxy config
@@ -76,7 +76,7 @@ Plain `node:http` server. Runs via `tsx` so TypeScript files execute directly, n
 | `GET` | `/analytics` | Quote analytics summary |
 | `GET` | `/errors` | Error pattern insights |
 | `GET` | `/docs` | API documentation UI (Swagger) |
-| `GET` | `/openapi.yaml` | OpenAPI spec |
+| `GET` | `/openapi.json` | OpenAPI spec (also at `/openapi.yaml`) |
 | `GET` | `/.well-known/farcaster.json` | Farcaster frame manifest |
 
 ## Frontend (`packages/frontend`)
@@ -127,7 +127,7 @@ All stores use Svelte 5 runes (`$state`, `$derived`).
 
 ### API client
 
-`openapi-fetch` with types generated from `openapi.yaml`. All backend calls go through a typed client in `src/lib/api.ts`. In development Vite proxies API requests to the local server; in production Traefik routes them.
+`openapi-fetch` with types generated from the API's Zod schemas (`npm run generate:types`). All backend calls go through a typed client in `src/lib/api.ts`. In development Vite proxies API requests to the local server; in production Traefik routes them.
 
 ## Request flow
 
@@ -155,7 +155,7 @@ Three containers behind Traefik, defined across two compose files:
 - `docker-compose.prod.yml` — pulls pre-built images from `ghcr.io/satoshiandkin/compare-dex-routers-{api,frontend}`.
 
 Traefik routing:
-- API routes (`/health`, `/chains`, `/config`, `/compare`, `/quote`, `/quote-curve`, `/tokenlist`, `/tokenlist/proxy`, `/token-metadata`, `/metrics`, `/analytics`, `/errors`, `/docs`, `/openapi.yaml`, `/.well-known`) match at priority 10.
+- API routes (`/health`, `/chains`, `/config`, `/compare`, `/quote`, `/quote-curve`, `/tokenlist`, `/tokenlist/proxy`, `/token-metadata`, `/metrics`, `/analytics`, `/errors`, `/docs`, `/openapi.*`, `/.well-known`) match at priority 10.
 - The frontend catches everything else at priority 1 (SPA fallback).
 
 All three services share the external `traefik` Docker network.

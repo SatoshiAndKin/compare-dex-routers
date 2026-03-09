@@ -19,6 +19,7 @@
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "dead-code": "knip",
     "duplicates": "jscpd packages/ --ignore 'node_modules/**' --ignore '**/__tests__/**'",
+    "generate:types": "tsx scripts/generate-api-types.ts",
     "dead-flags": "tsx scripts/detect-dead-flags.ts",
     "prepare": "if test -d .git; then husky; fi"
   },
@@ -29,6 +30,7 @@
     "jscpd": "^4.0.8",
     "knip": "^5.86.0",
     "lint-staged": "^16.3.2",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript-eslint": "^8.57.0"

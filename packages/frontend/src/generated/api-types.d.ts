@@ -4,846 +4,850 @@
  */
 
 export interface paths {
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Health check */
-        get: operations["getHealth"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+  "/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/chains": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List supported chains */
-        get: operations["getChains"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** Health check */
+    get: operations["getHealth"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/chains": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/quote": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get best Spandex quote */
-        get: operations["getQuote"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** List supported chains */
+    get: operations["getChains"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/quote": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/compare": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Compare Spandex vs Curve quotes */
-        get: operations["compareQuotes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** Get best Spandex quote */
+    get: operations["getQuote"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/compare": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/quote-curve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a single Curve Finance quote */
-        get: operations["getQuoteCurve"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** Compare Spandex vs Curve quotes */
+    get: operations["compareQuotes"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/quote-curve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/tokenlist": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the default token list(s)
-         * @description Returns all configured default token lists merged into a single response.
-         */
-        get: operations["getTokenlist"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** Get a single Curve Finance quote */
+    get: operations["getQuoteCurve"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/tokenlist": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/tokenlist/proxy": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Proxy a remote token list URL
-         * @description Fetches a remote HTTPS token list URL server-side to avoid CORS issues. Validates JSON and tokens array.
-         */
-        get: operations["proxyTokenlist"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get the default token list(s)
+     * @description Returns all configured default token lists merged into a single response.
+     */
+    get: operations["getTokenlist"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/tokenlist/proxy": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/token-metadata": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get ERC-20 token metadata from blockchain */
-        get: operations["getTokenMetadata"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Proxy a remote token list URL
+     * @description Fetches a remote HTTPS token list URL server-side to avoid CORS issues. Validates JSON and tokens array.
+     */
+    get: operations["proxyTokenlist"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/token-metadata": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/analytics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get analytics summary
-         * @description Returns in-memory analytics about quotes processed since server start.
-         */
-        get: operations["getAnalytics"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** Get ERC-20 token metadata from blockchain */
+    get: operations["getTokenMetadata"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/analytics": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/errors": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get error insights
-         * @description Returns aggregated error patterns observed since server start.
-         */
-        get: operations["getErrors"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get analytics summary
+     * @description Returns in-memory analytics about quotes processed since server start.
+     */
+    get: operations["getAnalytics"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/errors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/metrics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Prometheus metrics
-         * @description Returns Prometheus-compatible metrics in text exposition format. Requires metrics_endpoint feature flag to be enabled.
-         */
-        get: operations["getMetrics"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get error insights
+     * @description Returns aggregated error patterns observed since server start.
+     */
+    get: operations["getErrors"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/metrics": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get server configuration
-         * @description Returns default token pairs per chain and wallet connect project ID.
-         */
-        get: operations["getConfig"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Prometheus metrics
+     * @description Returns Prometheus-compatible metrics in text exposition format. Requires metrics_endpoint feature flag to be enabled.
+     */
+    get: operations["getMetrics"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/.well-known/farcaster.json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Farcaster manifest
-         * @description Returns the Farcaster mini-app manifest for frame integration.
-         */
-        get: operations["getFarcasterManifest"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get server configuration
+     * @description Returns default token pairs per chain and wallet connect project ID.
+     */
+    get: operations["getConfig"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/.well-known/farcaster.json": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    /**
+     * Farcaster manifest
+     * @description Returns the Farcaster mini-app manifest for frame integration.
+     */
+    get: operations["getFarcasterManifest"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        Error: {
-            error?: string;
-        };
-        SpandexQuote: {
-            chainId?: number;
-            from?: string;
-            from_symbol?: string;
-            to?: string;
-            to_symbol?: string;
-            amount?: string;
-            /** @description Human-readable input amount (relevant for targetOut mode) */
-            input_amount?: string;
-            /** @description Human-readable output amount */
-            output_amount?: string;
-            input_amount_raw?: string;
-            output_amount_raw?: string;
-            /** @enum {string} */
-            mode?: "exactIn" | "targetOut";
-            provider?: string;
-            slippage_bps?: number;
-            gas_used?: string;
-            /** @description Gas cost in ETH (gas_used * gas_price / 1e18) */
-            gas_cost_eth?: string;
-            /** @description Output value converted to ETH (or input value for targetOut mode) */
-            output_value_eth?: string;
-            /** @description Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost). */
-            net_value_eth?: string;
-            router_address?: string;
-            router_calldata?: string;
-            router_value?: string;
-            approval_token?: string;
-            approval_spender?: string;
-        };
-        CurveQuote: {
-            /** @enum {string} */
-            source?: "curve";
-            from?: string;
-            from_symbol?: string;
-            to?: string;
-            to_symbol?: string;
-            amount?: string;
-            /** @description Human-readable input amount (relevant for targetOut mode) */
-            input_amount?: string;
-            output_amount?: string;
-            /** @enum {string} */
-            mode?: "exactIn" | "targetOut";
-            route?: {
-                poolId?: string;
-                poolName?: string;
-                poolAddress?: string;
-                inputCoinAddress?: string;
-                outputCoinAddress?: string;
-            }[];
-            route_symbols?: {
-                [key: string]: string;
-            };
-            router_address?: string;
-            router_calldata?: string;
-            gas_used?: string;
-            /** @description Gas cost in ETH */
-            gas_cost_eth?: string;
-            /** @description Output value converted to ETH (or input value for targetOut mode) */
-            output_value_eth?: string;
-            /** @description Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost). */
-            net_value_eth?: string;
-        };
-        CompareResult: {
-            spandex?: components["schemas"]["SpandexQuote"];
-            spandex_error?: string | null;
-            curve?: components["schemas"]["CurveQuote"];
-            curve_error?: string | null;
-            /** @enum {string|null} */
-            recommendation?: "spandex" | "curve" | null;
-            recommendation_reason?: string;
-            gas_price_gwei?: string | null;
-            /** @description Rate used to convert output to ETH for gas-adjusted comparison (exactIn mode, null if output is ETH) */
-            output_to_eth_rate?: string | null;
-            /** @description Rate used to convert input to ETH for gas-adjusted comparison (targetOut mode, null if input is ETH) */
-            input_to_eth_rate?: string | null;
-            /**
-             * @description The quote mode used for this comparison
-             * @enum {string}
-             */
-            mode?: "exactIn" | "targetOut";
-        };
-        TokenMetadata: {
-            /** @description Token name from ERC-20 name() function */
-            name?: string;
-            /** @description Token symbol from ERC-20 symbol() function */
-            symbol?: string;
-            /** @description Token decimals from ERC-20 decimals() function */
-            decimals?: number;
-        };
-        TokenEntry: {
-            chainId?: number;
-            address?: string;
-            name?: string;
-            symbol?: string;
-            decimals?: number;
-            logoURI?: string;
-        };
-        TokenListEntry: {
-            name?: string;
-            tokens?: components["schemas"]["TokenEntry"][];
-        };
-        TokenListResponse: {
-            /** @description Name of the token list (or "Default Tokenlists" if multiple) */
-            name?: string;
-            tokenlists?: components["schemas"]["TokenListEntry"][];
-            /** @description Merged array of all tokens from all default token lists */
-            tokens?: components["schemas"]["TokenEntry"][];
-        };
-        AnalyticsSummary: {
-            /** @description Total number of quotes tracked since server start */
-            totalQuotes?: number;
-            /** @description Fraction of quotes that succeeded (0.0 to 1.0) */
-            successRate?: number;
-            /** @description Average quote duration in milliseconds */
-            avgDurationMs?: number;
-            topPairs?: {
-                pair?: string;
-                count?: number;
-            }[];
-            topChains?: {
-                chainId?: number;
-                count?: number;
-            }[];
-        };
-        ErrorPattern: {
-            message?: string;
-            count?: number;
-            /** Format: date-time */
-            firstSeen?: string;
-            /** Format: date-time */
-            lastSeen?: string;
-            contexts?: string[];
-        };
-        ErrorInsights: {
-            patterns?: components["schemas"]["ErrorPattern"][];
-            totalPatterns?: number;
-            recurringPatterns?: number;
-        };
-        DefaultTokenPair: {
-            /** @description Default input token address */
-            from?: string;
-            /** @description Default output token address */
-            to?: string;
-        };
-        Config: {
-            /** @description Map of chainId to default token pair */
-            defaultTokens?: {
-                [key: string]: components["schemas"]["DefaultTokenPair"];
-            };
-            /** @description WalletConnect project ID (empty string if not configured) */
-            walletConnectProjectId?: string;
-        };
-        FarcasterAccountAssociation: {
-            header?: string;
-            payload?: string;
-            signature?: string;
-        };
-        FarcasterMiniapp: {
-            version?: string;
-            name?: string;
-            homeUrl?: string;
-            iconUrl?: string;
-            primaryCategory?: string;
-        };
-        FarcasterManifest: {
-            accountAssociation?: components["schemas"]["FarcasterAccountAssociation"];
-            miniapp?: components["schemas"]["FarcasterMiniapp"];
-        };
+  schemas: {
+    SpandexQuote: {
+      chainId: number;
+      from: string;
+      from_symbol: string;
+      to: string;
+      to_symbol: string;
+      amount: string;
+      /** @description Human-readable input amount (relevant for targetOut mode) */
+      input_amount: string;
+      /** @description Human-readable output amount */
+      output_amount: string;
+      input_amount_raw: string;
+      output_amount_raw: string;
+      /** @enum {string} */
+      mode: "exactIn" | "targetOut";
+      provider: string;
+      slippage_bps: number;
+      gas_used: string;
+      /** @description Gas cost in ETH (gas_used * gas_price / 1e18) */
+      gas_cost_eth: string;
+      /** @description Output value converted to ETH (or input value for targetOut mode) */
+      output_value_eth: string;
+      /** @description Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost). */
+      net_value_eth: string;
+      router_address: string;
+      router_calldata: string;
+      router_value: string;
+      approval_token: string;
+      approval_spender: string;
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    Error: {
+      error: string;
+    };
+    CompareResult: {
+      spandex: components["schemas"]["SpandexQuote"] & unknown;
+      spandex_error: string | null;
+      curve: components["schemas"]["CurveQuote"];
+      curve_error: string | null;
+      /** @enum {string|null} */
+      recommendation: "spandex" | "curve" | null;
+      recommendation_reason: string;
+      gas_price_gwei: string | null;
+      /** @description Rate used to convert output to ETH for gas-adjusted comparison (exactIn mode, null if output is ETH) */
+      output_to_eth_rate: string | null;
+      /** @description Rate used to convert input to ETH for gas-adjusted comparison (targetOut mode, null if input is ETH) */
+      input_to_eth_rate: string | null;
+      /**
+       * @description The quote mode used for this comparison
+       * @enum {string}
+       */
+      mode: "exactIn" | "targetOut";
+    };
+    CurveQuote: {
+      /** @enum {string} */
+      source: "curve";
+      from: string;
+      from_symbol: string;
+      to: string;
+      to_symbol: string;
+      amount: string;
+      /** @description Human-readable input amount (relevant for targetOut mode) */
+      input_amount: string;
+      output_amount: string;
+      /** @enum {string} */
+      mode: "exactIn" | "targetOut";
+      route: {
+        poolId: string;
+        poolName: string;
+        poolAddress: string;
+        inputCoinAddress: string;
+        outputCoinAddress: string;
+      }[];
+      route_symbols: {
+        [key: string]: string;
+      };
+      router_address: string;
+      router_calldata: string;
+      /** @description Spender address for ERC-20 approval (present when approval is required) */
+      approval_target?: string;
+      gas_used: string;
+      /** @description Gas cost in ETH */
+      gas_cost_eth: string;
+      /** @description Output value converted to ETH (or input value for targetOut mode) */
+      output_value_eth: string;
+      /** @description Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost). */
+      net_value_eth: string;
+    } | null;
+    TokenListResponse: {
+      /** @description Name of the token list (or "Default Tokenlists" if multiple) */
+      name: string;
+      tokenlists: components["schemas"]["TokenListEntry"][];
+      /** @description Merged array of all tokens from all default token lists */
+      tokens: components["schemas"]["TokenEntry"][];
+    };
+    TokenListEntry: {
+      name: string;
+      tokens: components["schemas"]["TokenEntry"][];
+    };
+    TokenEntry: {
+      chainId: number;
+      address: string;
+      name: string;
+      symbol: string;
+      decimals: number;
+      logoURI: string;
+    };
+    TokenMetadata: {
+      /** @description Token name from ERC-20 name() function */
+      name: string;
+      /** @description Token symbol from ERC-20 symbol() function */
+      symbol: string;
+      /** @description Token decimals from ERC-20 decimals() function */
+      decimals: number;
+    };
+    AnalyticsSummary: {
+      /** @description Total number of quotes tracked since server start */
+      totalQuotes: number;
+      /** @description Fraction of quotes that succeeded (0.0 to 1.0) */
+      successRate: number;
+      /** @description Average quote duration in milliseconds */
+      avgDurationMs: number;
+      topPairs: {
+        pair: string;
+        count: number;
+      }[];
+      topChains: {
+        chainId: number;
+        count: number;
+      }[];
+    };
+    ErrorInsights: {
+      patterns: {
+        message: string;
+        count: number;
+        /** Format: date-time */
+        firstSeen: string;
+        /** Format: date-time */
+        lastSeen: string;
+        contexts: string[];
+      }[];
+      totalPatterns: number;
+      recurringPatterns: number;
+    };
+    Config: {
+      /** @description Map of chainId to default token pair */
+      defaultTokens: {
+        [key: string]: components["schemas"]["DefaultTokenPair"];
+      };
+      /** @description WalletConnect project ID (empty string if not configured) */
+      walletConnectProjectId: string;
+    };
+    DefaultTokenPair: {
+      /** @description Default input token address */
+      from: string;
+      /** @description Default output token address */
+      to: string;
+    };
+    FarcasterManifest: {
+      accountAssociation: {
+        header: string;
+        payload: string;
+        signature: string;
+      };
+      miniapp: {
+        version: string;
+        name: string;
+        homeUrl: string;
+        iconUrl: string;
+        primaryCategory: string;
+      };
+    };
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    getHealth: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Server is healthy */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @example ok */
-                        status?: string;
-                    };
-                };
-            };
-        };
+  getHealth: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    getChains: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Server is healthy */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Map of chain IDs to chain metadata */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: {
-                            name?: string;
-                            alchemySubdomain?: string;
-                        };
-                    };
-                };
-            };
+        content: {
+          "application/json": {
+            /** @example ok */
+            status: string;
+          };
         };
+      };
     };
-    getQuote: {
-        parameters: {
-            query: {
-                /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
-                chainId: number;
-                /** @description Input token address */
-                from: string;
-                /** @description Output token address */
-                to: string;
-                /** @description Human-readable amount. For exactIn mode: input amount. For targetOut mode: desired output amount. */
-                amount: string;
-                /** @description Slippage tolerance in basis points */
-                slippageBps?: number;
-                /** @description Sender address for approval checks */
-                sender?: string;
-                /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
-                mode?: "exactIn" | "targetOut";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Best quote found */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SpandexQuote"];
-                };
-            };
-            /** @description Invalid parameters */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Quote failed */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
+  };
+  getChains: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    compareQuotes: {
-        parameters: {
-            query: {
-                chainId: number;
-                from: string;
-                to: string;
-                /** @description Human-readable amount. For exactIn mode: input amount. For targetOut mode: desired output amount. */
-                amount: string;
-                slippageBps?: number;
-                sender?: string;
-                /** @description Quote mode. exactIn: specify input amount, compare output amounts (higher = better). targetOut: specify desired output amount, compare required input amounts (lower = better). */
-                mode?: "exactIn" | "targetOut";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Map of chain IDs to chain metadata */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Comparison result with recommendation */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CompareResult"];
-                };
+        content: {
+          "application/json": {
+            [key: string]: {
+              name: string;
+              alchemySubdomain: string;
             };
-            /** @description Invalid parameters */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+          };
         };
+      };
     };
-    getQuoteCurve: {
-        parameters: {
-            query: {
-                /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
-                chainId: number;
-                /** @description Input token address */
-                from: string;
-                /** @description Output token address */
-                to: string;
-                /** @description Human-readable amount. For exactIn mode: input amount. For targetOut mode: desired output amount. */
-                amount: string;
-                /** @description Slippage tolerance in basis points */
-                slippageBps?: number;
-                /** @description Sender address for approval checks and gas estimation */
-                sender?: string;
-                /** @description Quote mode. exactIn: specify input amount. targetOut: specify desired output amount. */
-                mode?: "exactIn" | "targetOut";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Curve quote */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CurveQuote"];
-                };
-            };
-            /** @description Invalid parameters or Curve not supported on this chain */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Quote failed */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
+  };
+  getQuote: {
+    parameters: {
+      query: {
+        /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
+        chainId?: number | null;
+        /** @description Input token address */
+        from: string;
+        /** @description Output token address */
+        to: string;
+        /** @description Human-readable amount. For exactIn: input amount. For targetOut: desired output amount. */
+        amount: string;
+        /** @description Slippage tolerance in basis points */
+        slippageBps?: number | null;
+        /** @description Sender address for approval checks */
+        sender?: string;
+        /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
+        mode?: "exactIn" | "targetOut";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    getTokenlist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Best quote found */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Token list response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TokenListResponse"];
-                };
-            };
-            /** @description Failed to load token list */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["SpandexQuote"];
         };
+      };
+      /** @description Invalid parameters */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Quote failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
-    proxyTokenlist: {
-        parameters: {
-            query: {
-                /** @description HTTPS URL of the remote token list to proxy */
-                url: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Proxied token list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TokenListResponse"];
-                };
-            };
-            /** @description Missing url, invalid URL format, or non-HTTPS URL */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Remote fetch failed, invalid JSON, missing tokens array, or response too large */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
+  };
+  compareQuotes: {
+    parameters: {
+      query: {
+        /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
+        chainId?: number | null;
+        /** @description Input token address */
+        from: string;
+        /** @description Output token address */
+        to: string;
+        /** @description Human-readable amount. For exactIn: input amount. For targetOut: desired output amount. */
+        amount: string;
+        /** @description Slippage tolerance in basis points */
+        slippageBps?: number | null;
+        /** @description Sender address for approval checks */
+        sender?: string;
+        /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
+        mode?: "exactIn" | "targetOut";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    getTokenMetadata: {
-        parameters: {
-            query: {
-                /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
-                chainId: number;
-                /** @description Token contract address */
-                address: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Comparison result with recommendation */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Token metadata retrieved successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TokenMetadata"];
-                };
-            };
-            /** @description Invalid parameters (missing/invalid chainId or address, unsupported chain) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not a valid ERC-20 token (EOA or non-ERC-20 contract) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description RPC error or timeout */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["CompareResult"];
         };
+      };
+      /** @description Invalid parameters */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
-    getAnalytics: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Analytics summary */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AnalyticsSummary"];
-                };
-            };
-        };
+  };
+  getQuoteCurve: {
+    parameters: {
+      query: {
+        /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
+        chainId?: number | null;
+        /** @description Input token address */
+        from: string;
+        /** @description Output token address */
+        to: string;
+        /** @description Human-readable amount. For exactIn: input amount. For targetOut: desired output amount. */
+        amount: string;
+        /** @description Slippage tolerance in basis points */
+        slippageBps?: number | null;
+        /** @description Sender address for approval checks */
+        sender?: string;
+        /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
+        mode?: "exactIn" | "targetOut";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    getErrors: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Curve quote */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Error insights */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorInsights"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["CurveQuote"];
         };
+      };
+      /** @description Invalid parameters or Curve not supported on this chain */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Quote failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
-    getMetrics: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Prometheus metrics text */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/plain": string;
-                };
-            };
-        };
+  };
+  getTokenlist: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    getConfig: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Token list response */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Server configuration */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Config"];
-                };
-            };
+        content: {
+          "application/json": components["schemas"]["TokenListResponse"];
         };
+      };
+      /** @description Failed to load token list */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
-    getFarcasterManifest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Farcaster manifest */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FarcasterManifest"];
-                };
-            };
-        };
+  };
+  proxyTokenlist: {
+    parameters: {
+      query: {
+        /** @description HTTPS URL of the remote token list to proxy */
+        url: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    requestBody?: never;
+    responses: {
+      /** @description Proxied token list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TokenListResponse"];
+        };
+      };
+      /** @description Missing url, invalid URL format, or non-HTTPS URL */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Remote fetch failed, invalid JSON, missing tokens array, or response too large */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  getTokenMetadata: {
+    parameters: {
+      query: {
+        /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
+        chainId?: number | null;
+        /** @description Token contract address */
+        address: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Token metadata retrieved successfully */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TokenMetadata"];
+        };
+      };
+      /** @description Invalid parameters (missing/invalid chainId or address, unsupported chain) */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Not a valid ERC-20 token (EOA or non-ERC-20 contract) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description RPC error or timeout */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  getAnalytics: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Analytics summary */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AnalyticsSummary"];
+        };
+      };
+    };
+  };
+  getErrors: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Error insights */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorInsights"];
+        };
+      };
+    };
+  };
+  getMetrics: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Prometheus metrics text */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/plain": string;
+        };
+      };
+    };
+  };
+  getConfig: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server configuration */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Config"];
+        };
+      };
+    };
+  };
+  getFarcasterManifest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Farcaster manifest */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FarcasterManifest"];
+        };
+      };
+    };
+  };
 }
