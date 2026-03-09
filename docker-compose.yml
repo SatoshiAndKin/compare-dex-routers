@@ -22,7 +22,7 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
-    stop_grace_period: 30s
+    stop_grace_period: 35s
     networks:
       - traefik
     labels:
@@ -47,7 +47,7 @@ services:
       timeout: 5s
       start_period: 5s
       retries: 3
-    stop_grace_period: 30s
+    stop_grace_period: 35s
     networks:
       - traefik
     labels:
