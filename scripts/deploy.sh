@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage: ./scripts/deploy.sh [api|frontend|all]
 
 SERVICE="${1:-all}"
-COMPOSE_FILE="docker-compose.yml"
+COMPOSE_FILE="docker-compose.prod.yml"
 
 build_and_rollout() {
   local service="$1"
