@@ -4,19 +4,17 @@
  * updating state progressively as each response arrives.
  */
 
-import type { components } from '../../generated/api-types.js';
+import type { components } from "../../generated/api-types.js";
 
 // Extend SpandexQuote with gas_price_gwei (present in server response but not in OpenAPI schema)
-export type SpandexQuote = components['schemas']['SpandexQuote'] & {
+export type SpandexQuote = components["schemas"]["SpandexQuote"] & {
   gas_price_gwei?: string;
   error?: string;
 };
 
-// Extend CurveQuote with fields returned by the server but missing from OpenAPI schema
-export type CurveQuote = components['schemas']['CurveQuote'] & {
+export type CurveQuote = components["schemas"]["CurveQuote"] & {
   input_amount_raw?: string;
   output_amount_raw?: string;
-  approval_target?: string;
   approval_calldata?: string;
   error?: string;
 };
@@ -27,7 +25,7 @@ export interface CompareParams {
   to: string;
   amount: string;
   slippageBps?: number;
-  mode?: 'exactIn' | 'targetOut';
+  mode?: "exactIn" | "targetOut";
   sender?: string;
 }
 
@@ -38,72 +36,74 @@ function computeRecommendation(
   spandex: SpandexQuote | null,
   curve: CurveQuote | null,
   mode: string,
-  isSingleRouterMode: boolean,
-): { recommendation: 'spandex' | 'curve'; reason: string } | null {
+  isSingleRouterMode: boolean
+): { recommendation: "spandex" | "curve"; reason: string } | null {
   const gasPriceGwei = spandex?.gas_price_gwei ?? null;
 
   if (spandex && curve) {
-    if (mode === 'targetOut') {
+    if (mode === "targetOut") {
       const spandexInput = Number(spandex.input_amount);
       const curveInput = Number(curve.input_amount);
-      const inputSymbol = spandex.from_symbol ?? 'tokens';
+      const inputSymbol = spandex.from_symbol ?? "tokens";
       if (curveInput < spandexInput) {
         const diff = spandexInput - curveInput;
         const pct = ((diff / spandexInput) * 100).toFixed(3);
         return {
-          recommendation: 'curve',
+          recommendation: "curve",
           reason: `Curve requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%).`,
         };
       } else if (spandexInput < curveInput) {
         const diff = curveInput - spandexInput;
         const pct = ((diff / curveInput) * 100).toFixed(3);
-        const provider = spandex.provider ?? 'Spandex';
+        const provider = spandex.provider ?? "Spandex";
         return {
-          recommendation: 'spandex',
+          recommendation: "spandex",
           reason: `Spandex (${provider}) requires ${diff.toFixed(6)} ${inputSymbol} less (-${pct}%).`,
         };
       } else {
         return {
-          recommendation: 'spandex',
-          reason: 'Equal input amounts; defaulting to Spandex for multi-provider coverage.',
+          recommendation: "spandex",
+          reason: "Equal input amounts; defaulting to Spandex for multi-provider coverage.",
         };
       }
     } else {
       // exactIn mode: higher output = better
       const spandexOutput = Number(spandex.output_amount);
       const curveOutput = Number(curve.output_amount);
-      const outputSymbol = spandex.to_symbol ?? 'tokens';
+      const outputSymbol = spandex.to_symbol ?? "tokens";
       if (curveOutput > spandexOutput) {
         const diff = curveOutput - spandexOutput;
         const pct = ((diff / spandexOutput) * 100).toFixed(3);
         return {
-          recommendation: 'curve',
+          recommendation: "curve",
           reason: `Curve outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).`,
         };
       } else if (spandexOutput > curveOutput) {
         const diff = spandexOutput - curveOutput;
         const pct = ((diff / curveOutput) * 100).toFixed(3);
-        const provider = spandex.provider ?? 'Spandex';
+        const provider = spandex.provider ?? "Spandex";
         return {
-          recommendation: 'spandex',
+          recommendation: "spandex",
           reason: `Spandex (${provider}) outputs ${diff.toFixed(6)} ${outputSymbol} more (+${pct}%).`,
         };
       } else {
         return {
-          recommendation: 'spandex',
-          reason: 'Equal output amounts; defaulting to Spandex for multi-provider coverage.',
+          recommendation: "spandex",
+          reason: "Equal output amounts; defaulting to Spandex for multi-provider coverage.",
         };
       }
     }
   } else if (spandex) {
     return {
-      recommendation: 'spandex',
-      reason: isSingleRouterMode ? 'Only Spandex is available on this chain.' : 'Only Spandex returned a quote.',
+      recommendation: "spandex",
+      reason: isSingleRouterMode
+        ? "Only Spandex is available on this chain."
+        : "Only Spandex returned a quote.",
     };
   } else if (curve) {
     return {
-      recommendation: 'curve',
-      reason: 'Only Curve returned a quote.',
+      recommendation: "curve",
+      reason: "Only Curve returned a quote.",
     };
   }
 
@@ -120,10 +120,10 @@ class ComparisonStore {
   spandexLoading = $state(false);
   curveLoading = $state(false);
   gasPriceGwei = $state<string | null>(null);
-  recommendation = $state<'spandex' | 'curve' | null>(null);
+  recommendation = $state<"spandex" | "curve" | null>(null);
   recommendationReason = $state<string | null>(null);
-  activeTab = $state<'recommended' | 'alternative'>('recommended');
-  mode = $state<'exactIn' | 'targetOut'>('exactIn');
+  activeTab = $state<"recommended" | "alternative">("recommended");
+  mode = $state<"exactIn" | "targetOut">("exactIn");
   isSingleRouterMode = $state(false);
 
   /** Any comparison in progress */
@@ -136,7 +136,7 @@ class ComparisonStore {
       this.spandexError !== null ||
       this.curveError !== null ||
       this.spandexLoading ||
-      this.curveLoading,
+      this.curveLoading
   );
 
   private abortController: AbortController | null = null;
@@ -162,8 +162,8 @@ class ComparisonStore {
     this.gasPriceGwei = null;
     this.recommendation = null;
     this.recommendationReason = null;
-    this.mode = params.mode ?? 'exactIn';
-    this.activeTab = 'recommended';
+    this.mode = params.mode ?? "exactIn";
+    this.activeTab = "recommended";
 
     const isSingleRouter = !CURVE_SUPPORTED_CHAINS.includes(params.chainId);
     this.isSingleRouterMode = isSingleRouter;
@@ -184,13 +184,13 @@ class ComparisonStore {
       amount: params.amount,
     });
     if (params.slippageBps !== undefined) {
-      query.set('slippageBps', String(params.slippageBps));
+      query.set("slippageBps", String(params.slippageBps));
     }
     if (params.mode) {
-      query.set('mode', params.mode);
+      query.set("mode", params.mode);
     }
     if (params.sender) {
-      query.set('sender', params.sender);
+      query.set("sender", params.sender);
     }
 
     const isStale = () => currentSequence !== this.sequence;
@@ -203,8 +203,8 @@ class ComparisonStore {
       const result = computeRecommendation(
         this.spandexResult,
         this.curveResult,
-        params.mode ?? 'exactIn',
-        isSingleRouter,
+        params.mode ?? "exactIn",
+        isSingleRouter
       );
       if (result) {
         this.recommendation = result.recommendation;
@@ -219,8 +219,7 @@ class ComparisonStore {
         const data: SpandexQuote = (await response.json()) as SpandexQuote;
         if (isStale() || signal.aborted) return;
         if (!response.ok || data.error) {
-          this.spandexError =
-            data.error ?? `Spandex request failed with status ${response.status}`;
+          this.spandexError = data.error ?? `Spandex request failed with status ${response.status}`;
         } else {
           this.spandexResult = data;
           if (data.gas_price_gwei) {
@@ -229,7 +228,7 @@ class ComparisonStore {
         }
       } catch (err) {
         if (signal.aborted || isStale()) return;
-        this.spandexError = err instanceof Error ? err.message : 'Spandex quote failed';
+        this.spandexError = err instanceof Error ? err.message : "Spandex quote failed";
       } finally {
         this.spandexLoading = false;
         tryFinalize();
@@ -252,7 +251,7 @@ class ComparisonStore {
         }
       } catch (err) {
         if (signal.aborted || isStale()) return;
-        this.curveError = err instanceof Error ? err.message : 'Curve quote failed';
+        this.curveError = err instanceof Error ? err.message : "Curve quote failed";
       } finally {
         this.curveLoading = false;
         tryFinalize();

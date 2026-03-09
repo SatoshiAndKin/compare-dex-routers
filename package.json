@@ -19,6 +19,7 @@
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "dead-code": "knip",
     "duplicates": "jscpd packages/ --ignore 'node_modules/**' --ignore '**/__tests__/**'",
+    "generate:types": "tsx scripts/generate-api-types.ts",
     "dead-flags": "tsx scripts/detect-dead-flags.ts",
     "prepare": "if test -d .git; then husky; fi"
   },

@@ -2,8 +2,9 @@ import "./env.js";
 import "./sentry.js";
 import http from "node:http";
 import { readFile } from "node:fs/promises";
-import { resolve, dirname } from "node:path";
-import { pathToFileURL, fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { openapiDocument } from "./openapi.js";
 import { getQuote, serializeWithBigInt } from "@spandex/core";
 import type { Address } from "viem";
 import { parseUnits, formatUnits } from "viem";
@@ -1016,18 +1017,13 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
 
-  if (url.pathname === "/openapi.yaml" && req.method === "GET") {
-    try {
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = dirname(__filename);
-      const openapiPath = resolve(__dirname, "../../../openapi.yaml");
-      const yamlContent = await readFile(openapiPath, "utf8");
-      res.writeHead(200, { "Content-Type": "application/yaml" });
-      res.end(yamlContent);
-    } catch (err) {
-      logError("Failed to serve openapi.yaml", err);
-      sendError(res, 500, "Failed to load OpenAPI spec");
-    }
+  if (
+    (url.pathname === "/openapi.json" || url.pathname === "/openapi.yaml") &&
+    req.method === "GET"
+  ) {
+    const json = JSON.stringify(openapiDocument, null, 2);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(json);
     return;
   }
 
@@ -1046,7 +1042,7 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 <script>
 window.onload = function() {
   SwaggerUIBundle({
-    url: "/openapi.yaml",
+    url: "/openapi.json",
     dom_id: '#swagger-ui',
     presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
     layout: "StandaloneLayout"

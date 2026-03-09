@@ -5,5 +5,8 @@ docs/api/
 *.log
 .env
 
+# Generated OpenAPI spec (built from packages/api/src/openapi.ts)
+packages/api/openapi.json
+
 # Validation screenshots in repo root (PNGs in subdirectories may be intentional)
 /*.png
