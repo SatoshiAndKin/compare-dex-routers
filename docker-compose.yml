@@ -28,8 +28,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.api.rule=Host(`${DOMAIN:-localhost}`) && (PathPrefix(`/health`) || PathPrefix(`/chains`) || PathPrefix(`/compare`) || PathPrefix(`/quote`) || PathPrefix(`/tokenlist`) || PathPrefix(`/token-metadata`) || PathPrefix(`/metrics`) || PathPrefix(`/analytics`) || PathPrefix(`/errors`) || PathPrefix(`/config`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.yaml`) || PathPrefix(`/.well-known`))
-      - traefik.http.routers.api.entrypoints=websecure
-      - traefik.http.routers.api.tls.certresolver=myresolver
+      - traefik.http.routers.api.entrypoints=web
       - traefik.http.services.api.loadbalancer.server.port=3100
       - traefik.http.routers.api.priority=10
     deploy:
@@ -54,8 +53,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.frontend.rule=Host(`${DOMAIN:-localhost}`)
-      - traefik.http.routers.frontend.entrypoints=websecure
-      - traefik.http.routers.frontend.tls.certresolver=myresolver
+      - traefik.http.routers.frontend.entrypoints=web
       - traefik.http.routers.frontend.priority=1
       - traefik.http.routers.api.priority=10
       - traefik.http.services.frontend.loadbalancer.server.port=80
