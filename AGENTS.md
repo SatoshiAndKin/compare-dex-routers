@@ -46,7 +46,7 @@ Node.js HTTP server (no framework). Source files in `packages/api/src/`:
 | --- | --- |
 | `server.ts` | HTTP server, request routing, response handling |
 | `config.ts` | Chain config, router setup, viem clients, token metadata |
-| `curve.ts` | Curve Finance API integration (Ethereum only) |
+| `curve.ts` | Curve Finance API integration (all 7 supported chains) |
 | `quote.ts` | Query parameter parsing and validation |
 | `env.ts` | `.env` file loader (imported first in server.ts) |
 | `logger.ts` | Structured logging with pino and log scrubbing |
@@ -76,7 +76,6 @@ Svelte 5 SPA built with Vite. Source files in `packages/frontend/src/`:
 | `GET` | `/chains` | Supported chains list |
 | `GET` | `/config` | Client configuration (chains, tokens, feature flags) |
 | `GET` | `/compare` | Compare quotes from Spandex and Curve |
-| `GET` | `/compare-stream` | SSE streaming comparison quotes |
 | `GET` | `/quote` | Single quote from Spandex router |
 | `GET` | `/quote-curve` | Single quote from Curve router |
 | `GET` | `/tokenlist` | Aggregated token list |

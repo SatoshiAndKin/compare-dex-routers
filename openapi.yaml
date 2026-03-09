@@ -1,8 +1,8 @@
 openapi: "3.0.3"
 info:
-  title: Compare DEX Routers Spandex Router
+  title: Compare DEX Routers API
   version: "1.0.0"
-  description: Compare DEX Routers quote server querying Spandex and Curve for best-priced swap quotes.
+  description: Quote comparison server querying Spandex and Curve for side-by-side swap quotes.
 
 servers:
   - url: http://localhost:3100

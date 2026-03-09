@@ -19,7 +19,7 @@
                     └──────────────────┘   └──────────────────┘
 ```
 
-The **frontend** is a Svelte 5 single-page application served by nginx. The **API** is a Node.js server executed with `tsx` (TypeScript without a build step). **Traefik** sits in front of both and routes requests by path prefix — API routes get higher priority so they match first, and everything else falls through to the SPA.
+The frontend is a Svelte 5 SPA served by nginx. The API is a Node.js server run with `tsx` (TypeScript without a build step). Traefik sits in front of both and routes by path prefix. API routes get higher priority so they match first; everything else falls through to the SPA.
 
 ## Monorepo structure
 
@@ -39,7 +39,7 @@ Both packages are managed through npm workspaces. Root-level scripts (`npm run t
 
 ## API (`packages/api`)
 
-The API is a plain `node:http` server. It runs via `tsx` so TypeScript files execute directly — no build step.
+Plain `node:http` server. Runs via `tsx` so TypeScript files execute directly, no build step.
 
 ### Modules
 
@@ -48,7 +48,7 @@ The API is a plain `node:http` server. It runs via `tsx` so TypeScript files exe
 | `server.ts` | HTTP request routing, response handling, token-list loading, quote orchestration |
 | `config.ts` | Chain definitions (7 chains), Spandex router setup with providers (0x, Fabric, KyberSwap, Odos, LiFi, Relay, Velora), viem public clients, token metadata helpers |
 | `quote.ts` | Query-parameter parsing and validation (`chainId`, `from`, `to`, `amount`, `slippageBps`, `sender`, `mode`) |
-| `curve.ts` | Curve Finance SDK integration — quote fetching across all supported chains via `@curvefi/api` |
+| `curve.ts` | Curve Finance SDK integration via `@curvefi/api` (all 7 supported chains) |
 | `gas-price.ts` | Gas-price fallback with per-block caching; fetches from RPC when Spandex omits `gas_price_gwei` |
 | `analytics.ts` | In-memory quote event tracking — success rates, latency, top pairs and chains |
 | `error-insights.ts` | Error pattern aggregation — counts, deduplication, and threshold alerting |
@@ -65,15 +65,19 @@ The API is a plain `node:http` server. It runs via `tsx` so TypeScript files exe
 |---|---|---|
 | `GET` | `/health` | Health check |
 | `GET` | `/chains` | Supported chains list |
+| `GET` | `/config` | Feature flags and runtime config |
 | `GET` | `/compare` | Compare quotes from Spandex and Curve side-by-side |
 | `GET` | `/quote` | Single quote from Spandex |
+| `GET` | `/quote-curve` | Single quote from Curve |
 | `GET` | `/tokenlist` | Token lists |
+| `GET` | `/tokenlist/proxy` | Proxy to external token lists |
 | `GET` | `/token-metadata` | On-chain token metadata lookup |
 | `GET` | `/metrics` | Prometheus-compatible metrics |
 | `GET` | `/analytics` | Quote analytics summary |
 | `GET` | `/errors` | Error pattern insights |
-| `GET` | `/config` | Feature flags and runtime config |
+| `GET` | `/docs` | API documentation UI (Swagger) |
 | `GET` | `/openapi.yaml` | OpenAPI spec |
+| `GET` | `/.well-known/farcaster.json` | Farcaster frame manifest |
 
 ## Frontend (`packages/frontend`)
 
@@ -123,7 +127,7 @@ All stores use Svelte 5 runes (`$state`, `$derived`).
 
 ### API client
 
-The frontend uses `openapi-fetch` with types generated from `openapi.yaml`. All backend calls go through a single typed client in `src/lib/api.ts`. In development, Vite proxies `/api/*` to the local API server. In production, Traefik routes the same paths.
+`openapi-fetch` with types generated from `openapi.yaml`. All backend calls go through a typed client in `src/lib/api.ts`. In development Vite proxies API requests to the local server; in production Traefik routes them.
 
 ## Request flow
 
@@ -151,16 +155,11 @@ Three containers behind Traefik, defined across two compose files:
 - `docker-compose.prod.yml` — pulls pre-built images from `ghcr.io/satoshiandkin/compare-dex-routers-{api,frontend}`.
 
 Traefik routing:
-- API routes (`/health`, `/chains`, `/compare`, `/quote`, `/tokenlist`, `/token-metadata`, `/metrics`, `/analytics`, `/errors`, `/config`, `/docs`, `/openapi.yaml`, `/.well-known`) match at **priority 10**.
-- The frontend catches everything else at **priority 1** (SPA fallback).
+- API routes (`/health`, `/chains`, `/config`, `/compare`, `/quote`, `/quote-curve`, `/tokenlist`, `/tokenlist/proxy`, `/token-metadata`, `/metrics`, `/analytics`, `/errors`, `/docs`, `/openapi.yaml`, `/.well-known`) match at priority 10.
+- The frontend catches everything else at priority 1 (SPA fallback).
 
 All three services share the external `traefik` Docker network.
 
 ## Data flow
 
-- **Token metadata**: fetched on-demand from chain via viem `readContract`.
-- **Spandex quotes**: real-time aggregation across providers (0x, Fabric, KyberSwap, Odos, LiFi, Relay, Velora) via `@spandex/core`.
-- **Curve quotes**: direct Curve SDK integration via `@curvefi/api`.
-- **Gas prices**: returned by Spandex when available; otherwise fetched from RPC with per-block caching (`gas-price.ts`).
-- **Token lists**: loaded by the API from bundled JSON files; served to the frontend via `/tokenlist`.
-- **Comparison**: parallel router queries with side-by-side result presentation.
+Token metadata is fetched on-demand from chain via viem `readContract`. Spandex quotes come from `@spandex/core`, which aggregates across 0x, Fabric, KyberSwap, Odos, LiFi, Relay, and Velora. Curve quotes come from `@curvefi/api`. Gas prices are returned by Spandex when available, otherwise fetched from RPC with per-block caching (`gas-price.ts`). Token lists are loaded from bundled JSON files and served to the frontend via `/tokenlist`. The `/compare` endpoint queries Spandex and Curve in parallel and returns both results.

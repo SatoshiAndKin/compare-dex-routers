@@ -19,7 +19,7 @@ Environment variables, external dependencies, and setup notes.
 - `CURVE_ENABLED`, `COMPARE_ENABLED`, `METRICS_ENABLED` - Feature flags
 - `SENTRY_DSN` - Error tracking
 - `LOG_LEVEL` - Logging level (default: info)
-- `PORT` - API server port (default: 3000, mission uses 3100)
+- `PORT` - API server port (default: 3100)
 
 ## Notes
 
