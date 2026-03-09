@@ -29,8 +29,8 @@ Ethereum (1), Base (8453), Arbitrum (42161), Optimism (10), Polygon (137), BSC (
 - Kava (2222), X Layer (196), Moonriver (1285), Cronos (25)
 
 ## Implementation Notes
-1. Add to `SUPPORTED_CHAINS` in `src/config.ts`
-2. Add to `CURVE_SUPPORTED_CHAINS` in `src/curve.ts` for chains with Curve routers
+1. Add to `SUPPORTED_CHAINS` in `packages/api/src/config.ts`
+2. Add to `CURVE_SUPPORTED_CHAINS` in `packages/api/src/curve.ts` for chains with Curve routers
 3. Add `DEFAULT_TOKENS` entries (USDC variant → native token)
 4. Spandex needs no changes (accepts any chainId)
 5. Tokenlist needs updating for new chains

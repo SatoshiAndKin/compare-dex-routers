@@ -11,16 +11,16 @@ A DEX router comparison and swap execution tool. Queries multiple swap routers (
 ```sh
 cp env.example .env   # fill in ALCHEMY_API_KEY
 npm install
-npm run dev           # starts server at http://localhost:3000
+npm run dev           # starts API at :3100 and frontend at :5173
 ```
 
-Open `http://localhost:3000` in a browser to use the UI.
+Open `http://localhost:5173` in a browser to use the UI.
 
 ## Features
 
 **Searchable chain selector** — The chain dropdown is a searchable input that filters by chain name or chain ID. Type "base" or "8453" to narrow the list instantly.
 
-**Token selection** — Autocomplete powered by a built-in tokenlist (`data/tokenlist.json`) plus any custom remote tokenlists added via the settings panel. Filters by the selected chain, shows token logos in the input fields after selection and in comparison results, and accepts name, symbol, or address. When multiple lists contain tokens with the same symbol, the source list name is shown for disambiguation. After selection the input displays the symbol followed by the full contract address. Dropdowns have a minimum width of 320 px. Full addresses are displayed throughout the UI — no truncation anywhere. Setting from and to to the same token automatically swaps them. The form fields are ordered: From token → To token → Sell exact/Buy exact toggle → Amount.
+**Token selection** — Autocomplete powered by a built-in tokenlist (`packages/api/static/tokenlist.json`) plus any custom remote tokenlists added via the settings panel. Filters by the selected chain, shows token logos in the input fields after selection and in comparison results, and accepts name, symbol, or address. When multiple lists contain tokens with the same symbol, the source list name is shown for disambiguation. After selection the input displays the symbol followed by the full contract address. Dropdowns have a minimum width of 320 px. Full addresses are displayed throughout the UI — no truncation anywhere. Setting from and to to the same token automatically swaps them. The form fields are ordered: From token → To token → Sell exact/Buy exact toggle → Amount.
 
 **Wallet connection** — Integrated directly in the form flow (Chain → Wallet → Tokens → Slippage → Compare). Detects wallets via ERC-6963 multi-provider discovery with `window.ethereum` fallback. Connect/disconnect with one click; the connected address is used automatically as the sender. The wallet provider menu supports scrolling when many wallets are available.
 
@@ -38,7 +38,7 @@ Open `http://localhost:3000` in a browser to use the UI.
 
 ## Tokenlist management
 
-Token autocomplete reads from `data/tokenlist.json` (the built-in default list) plus any custom remote tokenlists you add. Click the **gear icon** next to the chain selector to open the settings panel.
+Token autocomplete reads from `packages/api/static/tokenlist.json` (the built-in default list) plus any custom remote tokenlists you add. Click the **gear icon** next to the chain selector to open the settings panel.
 
 **Multiple tokenlists** — Add as many custom tokenlist URLs as you want (e.g. `https://tokens.uniswap.org`). Each list can be independently toggled on/off. Remote lists are fetched through a server-side proxy (`GET /tokenlist/proxy?url=...`) to avoid CORS issues. All list URLs and toggle states persist in `localStorage`.
 
@@ -85,7 +85,7 @@ Single quote from the Spandex router. Same parameters as `/compare`.
 
 ### `GET /tokenlist`
 
-Returns the contents of `data/tokenlist.json`.
+Returns the contents of `packages/api/static/tokenlist.json`.
 
 ### `GET /tokenlist/proxy`
 
@@ -138,6 +138,8 @@ Copy `env.example` to `.env` and fill in your keys.
 
 ## Development
 
+All commands run from the repo root and delegate to workspaces (`packages/api`, `packages/frontend`).
+
 ```sh
 npm run dev             # dev server with file watch
 npm run typecheck       # type-check without emitting
@@ -151,7 +153,8 @@ npm run test:coverage   # tests with coverage
 ## Production
 
 ```sh
-npm start
+cd packages/api && npm start    # API server
+cd packages/frontend && npm run build && npm run preview  # Frontend
 ```
 
 Or with Docker:
@@ -161,16 +164,6 @@ docker compose up --build -d
 docker compose down       # to stop
 ```
 
-### Docker Swarm (zero-downtime deploys)
+### Zero-downtime deploys
 
-A `docker-stack.yml` is included for single-node zero-downtime rolling deployments via Docker Swarm. The stack uses `start-first` ordering so the new container must pass its healthcheck before the old one is stopped.
-
-```sh
-docker swarm init                                              # one-time setup
-docker build -t compare-dex-routers:latest .
-docker stack deploy -c docker-stack.yml spandex                # deploy / update
-docker stack services spandex                                  # check status
-docker stack rm spandex                                        # tear down
-```
-
-Rollback is automatic if the new container fails to become healthy.
+Uses [docker-rollout](https://github.com/Wowu/docker-rollout) with Traefik for zero-downtime rolling deployments. See `scripts/deploy.sh`.

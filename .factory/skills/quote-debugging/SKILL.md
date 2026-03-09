@@ -17,7 +17,7 @@ Helps debug failed or incorrect swap quotes by tracing the request through provi
 6. Check gas estimation and ensure the router has sufficient allowance
 
 ## Key Files
-- `src/server.ts` - Request handling and quote orchestration
-- `src/config.ts` - Chain config and token metadata
-- `src/quote.ts` - Parameter validation
-- `src/curve.ts` - Curve-specific quote logic
+- `packages/api/src/server.ts` - Request handling and quote orchestration
+- `packages/api/src/config.ts` - Chain config and token metadata
+- `packages/api/src/quote.ts` - Parameter validation
+- `packages/api/src/curve.ts` - Curve-specific quote logic

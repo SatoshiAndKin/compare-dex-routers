@@ -54,7 +54,7 @@ const { data, error } = await client.GET('/compare', { params: { query: { chainI
 
 1. **Read mission context**: Read `AGENTS.md`, `.factory/services.yaml`, `.factory/library/` for knowledge. Read `.factory/research/svelte5-spa.md` for Svelte 5 patterns.
 
-2. **Understand the feature**: Read feature description, preconditions, expectedBehavior, verificationSteps. Read the ORIGINAL vanilla TS implementation in `src/client/` to understand exact behavior being replicated.
+2. **Understand the feature**: Read feature description, preconditions, expectedBehavior, verificationSteps.
 
 3. **Write tests first (TDD)**:
    - Write component tests in `packages/frontend/src/__tests__/` using Vitest + @testing-library/svelte.
@@ -65,9 +65,8 @@ const { data, error } = await client.GET('/compare', { params: { query: { chainI
    - Create components in `packages/frontend/src/lib/components/`.
    - Create stores in `packages/frontend/src/lib/stores/` as `.svelte.ts` files.
    - Use the generated API types from `packages/frontend/src/generated/api-types.d.ts`.
-   - Match the exact behavior of the original `src/client/*.ts` modules.
    - Use Svelte 5 runes, NOT legacy store syntax.
-   - CSS: use Svelte scoped styles. Port relevant styles from `src/client/styles.css`.
+   - CSS: use Svelte scoped styles.
    - **NEVER truncate addresses.** Always display full 0x addresses.
 
 5. **Run tests (green phase)**:

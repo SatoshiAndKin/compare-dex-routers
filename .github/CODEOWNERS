@@ -1,13 +1,16 @@
 # Default owners for everything in the repo
 * @SatoshiAndKin
 
-# Core routing and quote logic
-src/server.ts @SatoshiAndKin
-src/config.ts @SatoshiAndKin
-src/quote.ts @SatoshiAndKin
-src/curve.ts @SatoshiAndKin
+# Core API routing and quote logic
+packages/api/src/server.ts @SatoshiAndKin
+packages/api/src/config.ts @SatoshiAndKin
+packages/api/src/quote.ts @SatoshiAndKin
+packages/api/src/curve.ts @SatoshiAndKin
+
+# Frontend
+packages/frontend/ @SatoshiAndKin
 
 # Infrastructure and CI
 .github/ @SatoshiAndKin
-Dockerfile @SatoshiAndKin
-docker-compose.yml @SatoshiAndKin
+packages/*/Dockerfile @SatoshiAndKin
+docker-compose*.yml @SatoshiAndKin
