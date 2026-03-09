@@ -14,16 +14,10 @@ ENV HUSKY=0
 # Install only API production dependencies
 RUN npm ci --workspace=packages/api --omit=dev
 
-# Install tsx globally (it's a devDependency but needed at runtime)
-RUN npm install -g tsx
-
 # Copy API source code
 COPY packages/api/src/ ./packages/api/src/
 COPY packages/api/tsconfig.json ./packages/api/
 COPY packages/api/static/ ./packages/api/static/
-
-# Copy root tsconfig (API tsconfig extends it)
-COPY tsconfig.json ./
 
 # Copy OpenAPI spec
 COPY openapi.yaml ./
