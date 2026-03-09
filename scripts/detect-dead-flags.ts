@@ -6,7 +6,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-const SRC_DIR = join(import.meta.dirname, "..", "src");
+const SRC_DIR = join(import.meta.dirname, "..", "packages", "api", "src");
 const FLAG_FILE = "feature-flags.ts";
 
 function collectTsFiles(dir: string): string[] {
