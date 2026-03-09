@@ -5,7 +5,7 @@ info:
   description: Compare DEX Routers quote server querying Spandex and Curve for best-priced swap quotes.
 
 servers:
-  - url: http://localhost:3000
+  - url: http://localhost:3100
 
 paths:
   /health:

@@ -22,8 +22,6 @@ docs
 # Development scripts
 scripts
 
-# Development config files
-*.config.ts
-
 # Docker compose (not needed in image)
 docker-compose.yml
+docker-compose.prod.yml

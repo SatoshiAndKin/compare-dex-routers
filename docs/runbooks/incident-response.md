@@ -6,10 +6,10 @@
 
 **Steps**:
 1. Check container status: `docker ps`
-2. Check logs: `docker logs compare-dex-routers --tail 100`
-3. Verify port binding: `curl http://localhost:3000/health`
+2. Check logs: `docker compose logs api --tail 100`
+3. Verify port binding: `curl http://localhost:3100/health`
 4. Check Sentry for recent errors
-5. Restart: `docker-compose restart`
+5. Restart: `docker compose restart api`
 
 ## High Error Rate on /quote or /compare
 
@@ -37,7 +37,7 @@
 ## High Memory Usage
 
 **Steps**:
-1. Check metrics: `curl http://localhost:3000/metrics`
+1. Check metrics: `curl http://localhost:3100/metrics`
 2. Check container resources: `docker stats`
 3. Review recent deployments for memory leaks
 4. Restart container as immediate mitigation
@@ -47,7 +47,7 @@
 
 **Steps**:
 1. Identify the last known good version tag
-2. Pull previous image: `docker pull ghcr.io/satoshiandkin/compare-dex-routers:<tag>`
+2. Pull previous image: `docker pull ghcr.io/satoshiandkin/compare-dex-routers-api:<tag>`
 3. Update docker-compose or deployment to use previous tag
-4. Restart: `docker-compose up -d`
-5. Verify health: `curl http://localhost:3000/health`
+4. Restart: `docker compose up -d`
+5. Verify health: `curl http://localhost:3100/health`
