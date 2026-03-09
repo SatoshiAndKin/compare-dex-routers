@@ -49,7 +49,7 @@ const ModeParam = z
       "Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount.",
   });
 
-export const QuoteQuerySchema = z.object({
+const QuoteQuerySchema = z.object({
   chainId: ChainIdParam,
   from: AddressSchema.openapi({
     param: { name: "from", in: "query" },
@@ -72,7 +72,7 @@ export const QuoteQuerySchema = z.object({
   mode: ModeParam,
 });
 
-export const TokenMetadataQuerySchema = z.object({
+const TokenMetadataQuerySchema = z.object({
   chainId: ChainIdParam,
   address: AddressSchema.openapi({
     param: { name: "address", in: "query" },
@@ -80,7 +80,7 @@ export const TokenMetadataQuerySchema = z.object({
   }),
 });
 
-export const ProxyQuerySchema = z.object({
+const ProxyQuerySchema = z.object({
   url: z
     .string()
     .url()
@@ -119,17 +119,13 @@ const SpandexQuoteSchema = z
     gas_cost_eth: z
       .string()
       .openapi({ description: "Gas cost in ETH (gas_used * gas_price / 1e18)" }),
-    output_value_eth: z
-      .string()
-      .openapi({
-        description: "Output value converted to ETH (or input value for targetOut mode)",
-      }),
-    net_value_eth: z
-      .string()
-      .openapi({
-        description:
-          "Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost).",
-      }),
+    output_value_eth: z.string().openapi({
+      description: "Output value converted to ETH (or input value for targetOut mode)",
+    }),
+    net_value_eth: z.string().openapi({
+      description:
+        "Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost).",
+    }),
     router_address: z.string(),
     router_calldata: z.string(),
     router_value: z.string(),
@@ -163,25 +159,18 @@ const CurveQuoteSchema = z
     route_symbols: z.record(z.string(), z.string()),
     router_address: z.string(),
     router_calldata: z.string(),
-    approval_target: z
-      .string()
-      .optional()
-      .openapi({
-        description: "Spender address for ERC-20 approval (present when approval is required)",
-      }),
+    approval_target: z.string().optional().openapi({
+      description: "Spender address for ERC-20 approval (present when approval is required)",
+    }),
     gas_used: z.string(),
     gas_cost_eth: z.string().openapi({ description: "Gas cost in ETH" }),
-    output_value_eth: z
-      .string()
-      .openapi({
-        description: "Output value converted to ETH (or input value for targetOut mode)",
-      }),
-    net_value_eth: z
-      .string()
-      .openapi({
-        description:
-          "Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost).",
-      }),
+    output_value_eth: z.string().openapi({
+      description: "Output value converted to ETH (or input value for targetOut mode)",
+    }),
+    net_value_eth: z.string().openapi({
+      description:
+        "Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost).",
+    }),
   })
   .openapi("CurveQuote");
 
@@ -194,20 +183,14 @@ const CompareResultSchema = z
     recommendation: z.enum(["spandex", "curve"]).nullable(),
     recommendation_reason: z.string(),
     gas_price_gwei: z.string().nullable(),
-    output_to_eth_rate: z
-      .string()
-      .nullable()
-      .openapi({
-        description:
-          "Rate used to convert output to ETH for gas-adjusted comparison (exactIn mode, null if output is ETH)",
-      }),
-    input_to_eth_rate: z
-      .string()
-      .nullable()
-      .openapi({
-        description:
-          "Rate used to convert input to ETH for gas-adjusted comparison (targetOut mode, null if input is ETH)",
-      }),
+    output_to_eth_rate: z.string().nullable().openapi({
+      description:
+        "Rate used to convert output to ETH for gas-adjusted comparison (exactIn mode, null if output is ETH)",
+    }),
+    input_to_eth_rate: z.string().nullable().openapi({
+      description:
+        "Rate used to convert input to ETH for gas-adjusted comparison (targetOut mode, null if input is ETH)",
+    }),
     mode: z
       .enum(["exactIn", "targetOut"])
       .openapi({ description: "The quote mode used for this comparison" }),
