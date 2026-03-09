@@ -1,7 +1,7 @@
 # Validation Assertions: Cross-Area Flows & Deployment
 
 > Area: Cross-area integration flows (VAL-CROSS) and deployment (VAL-DEPLOY)
-> Context: Splitting monolith (`src/server.ts` + `src/client/`) into `packages/api` + `packages/frontend` (Svelte SPA)
+> Context: Monorepo with `packages/api` + `packages/frontend` (Svelte SPA)
 > These assertions catch integration issues that per-area assertions miss.
 
 ---
@@ -266,8 +266,8 @@ The `packages/api` Dockerfile builds successfully from the monorepo. The resulti
 
 **Pass condition:**
 - `docker build -t api ./packages/api` completes without errors
-- `docker run -p 3001:3001 --env-file .env api` starts the server
-- `curl http://localhost:3001/health` returns `{"status":"ok","requestId":"...","flags":{...}}`
+- `docker run -p 3100:3100 --env-file .env api` starts the server
+- `curl http://localhost:3100/health` returns `{"status":"ok","requestId":"...","flags":{...}}`
 - Container healthcheck passes (exit code 0)
 - All API endpoints respond: `/chains`, `/tokenlist`, `/compare`, `/quote`, `/token-metadata`, `/tokenlist/proxy`, `/metrics`
 - No "module not found" or "Cannot find module" errors in container logs
@@ -309,7 +309,7 @@ The `packages/frontend` Dockerfile builds the Svelte SPA (produces static files 
 ### VAL-DEPLOY-003 — Traefik Routes to Correct Service
 
 **Behavioral description:**
-With Traefik as reverse proxy and both API and frontend services running, HTTP requests are routed correctly: API paths (`/compare`, `/quote`, `/health`, `/chains`, `/tokenlist`, `/tokenlist/proxy`, `/token-metadata`, `/metrics`, `/analytics`, `/errors`) route to the API container on port 3001. All other paths (including `/`) route to the frontend container on port 80. Traefik handles TLS termination.
+With Traefik as reverse proxy and both API and frontend services running, HTTP requests are routed correctly: API paths (`/health`, `/chains`, `/config`, `/compare`, `/quote`, `/quote-curve`, `/tokenlist`, `/tokenlist/proxy`, `/token-metadata`, `/metrics`, `/analytics`, `/errors`, `/docs`, `/openapi.yaml`, `/.well-known`) route to the API container on port 3100. All other paths (including `/`) route to the frontend container on port 80.
 
 **Pass condition:**
 - `curl https://DOMAIN/health` → routed to API, returns `{"status":"ok"}`
@@ -416,7 +416,7 @@ After the split, environment variables must reach the correct service. The API n
 
 **Fail condition:**
 - API fails to start due to missing `ALCHEMY_API_KEY`
-- Frontend hardcodes `localhost:3001` as API URL (works in dev, fails in prod)
+- Frontend hardcodes `localhost:3100` as API URL (works in dev, fails in prod)
 - API keys appear in frontend JavaScript bundle
 - Feature flags not loaded (`CURVE_ENABLED`, `COMPARE_ENABLED` ignored)
 
