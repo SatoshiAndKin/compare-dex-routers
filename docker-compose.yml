@@ -27,7 +27,7 @@ services:
       - traefik-proxy
     labels:
       - traefik.enable=true
-      - traefik.http.routers.cdr-api.rule=Host(`${DOMAIN:-localhost}`) && (PathPrefix(`/health`) || PathPrefix(`/chains`) || PathPrefix(`/compare`) || PathPrefix(`/quote`) || PathPrefix(`/tokenlist`) || PathPrefix(`/token-metadata`) || PathPrefix(`/metrics`) || PathPrefix(`/analytics`) || PathPrefix(`/errors`) || PathPrefix(`/config`) || PathPrefix(`/docs`) || PathPrefix(`/openapi`) || PathPrefix(`/.well-known`))
+      - traefik.http.routers.cdr-api.rule=Host(`${VIRTUAL_HOST:-localhost}`) && (PathPrefix(`/health`) || PathPrefix(`/chains`) || PathPrefix(`/compare`) || PathPrefix(`/quote`) || PathPrefix(`/tokenlist`) || PathPrefix(`/token-metadata`) || PathPrefix(`/metrics`) || PathPrefix(`/analytics`) || PathPrefix(`/errors`) || PathPrefix(`/config`) || PathPrefix(`/docs`) || PathPrefix(`/openapi`) || PathPrefix(`/.well-known`))
       - traefik.http.routers.cdr-api.entrypoints=web
       - traefik.http.services.cdr-api.loadbalancer.server.port=3100
       - traefik.http.routers.cdr-api.priority=10
@@ -52,7 +52,7 @@ services:
       - traefik-proxy
     labels:
       - traefik.enable=true
-      - traefik.http.routers.cdr-frontend.rule=Host(`${DOMAIN:-localhost}`)
+      - traefik.http.routers.cdr-frontend.rule=Host(`${VIRTUAL_HOST:-localhost}`)
       - traefik.http.routers.cdr-frontend.entrypoints=web
       - traefik.http.routers.cdr-frontend.priority=1
       - traefik.http.services.cdr-frontend.loadbalancer.server.port=80
