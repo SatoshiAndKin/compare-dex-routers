@@ -1,14 +1,13 @@
 name: CD
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-  # Auto-merges via GITHUB_TOKEN don't trigger push events, so also
-  # trigger on merged PRs targeting main.
+  # Use pull_request closed instead of push:main because auto-merges via
+  # GITHUB_TOKEN don't fire push events (GitHub anti-recursion).
   pull_request:
     branches: [main]
     types: [closed]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
