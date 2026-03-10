@@ -14,9 +14,9 @@ services:
       - --entrypoints.web.address=:80
       - --log.level=INFO
     networks:
-      - traefik
+      - traefik-proxy
 
 networks:
-  traefik:
-    name: traefik
+  traefik-proxy:
+    name: traefik-proxy
     driver: bridge
