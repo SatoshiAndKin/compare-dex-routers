@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  # Auto-merges via GITHUB_TOKEN don't trigger push events, so also
+  # trigger on merged PRs targeting main.
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,6 +17,7 @@ permissions:
 
 jobs:
   build-and-push:
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     strategy:
       matrix:
