@@ -3,11 +3,11 @@
    * QuoteDetails — expandable section with full technical details for a quote.
    * Addresses are NEVER truncated — always shown in full.
    */
-  import type { SpandexQuote, CurveQuote } from '../stores/comparisonStore.svelte.js';
+  import type { SpandexQuote, CurveQuote } from "../stores/comparisonStore.svelte.js";
 
   interface Props {
     quote: SpandexQuote | CurveQuote;
-    type: 'spandex' | 'curve';
+    type: "spandex" | "curve";
     gasPriceGwei?: string | null;
   }
 
@@ -20,18 +20,14 @@
   }
 
   // Determine if this is a Spandex quote
-  const isSpandex = $derived(type === 'spandex');
+  const isSpandex = $derived(type === "spandex");
   const spandex = $derived(isSpandex ? (quote as SpandexQuote) : null);
   const curve = $derived(!isSpandex ? (quote as CurveQuote) : null);
 
   // Show gas cost section?
-  const hasGasCost = $derived(
-    Boolean(quote.gas_cost_eth) && Number(quote.gas_cost_eth) > 0,
-  );
+  const hasGasCost = $derived(Boolean(quote.gas_cost_eth) && Number(quote.gas_cost_eth) > 0);
   const hasGasUsed = $derived(Boolean(quote.gas_used) && Number(quote.gas_used) > 0);
-  const hasNetValue = $derived(
-    Boolean(quote.net_value_eth) && Number(quote.net_value_eth) > 0,
-  );
+  const hasNetValue = $derived(Boolean(quote.net_value_eth) && Number(quote.net_value_eth) > 0);
 
   // Route info for Curve
   const curveRoute = $derived(curve?.route ?? []);
@@ -41,7 +37,7 @@
 
 <div class="quote-details">
   <button type="button" class="details-toggle" class:open onclick={toggleOpen}>
-    Details {open ? '▲' : '▼'}
+    Details {open ? "▲" : "▼"}
   </button>
   {#if open}
     <div class="details-content">
@@ -50,7 +46,7 @@
         <div class="detail-field">
           <span class="detail-label">From</span>
           <span class="detail-value mono">
-            {quote.from_symbol ? `${quote.from_symbol} ` : ''}{quote.from}
+            {quote.from_symbol ? `${quote.from_symbol} ` : ""}{quote.from}
           </span>
         </div>
       {/if}
@@ -58,7 +54,7 @@
         <div class="detail-field">
           <span class="detail-label">To</span>
           <span class="detail-value mono">
-            {quote.to_symbol ? `${quote.to_symbol} ` : ''}{quote.to}
+            {quote.to_symbol ? `${quote.to_symbol} ` : ""}{quote.to}
           </span>
         </div>
       {/if}
@@ -142,7 +138,7 @@
       {:else}
         <div class="detail-field">
           <span class="detail-label">Gas Used</span>
-          <span class="detail-value number">{hasGasUsed ? quote.gas_used : 'N/A'}</span>
+          <span class="detail-value number">{hasGasUsed ? quote.gas_used : "N/A"}</span>
         </div>
       {/if}
 
@@ -170,13 +166,13 @@
             {#each curveRoute as step, i}
               <div class="route-step">
                 <div class="route-step-header">
-                  Step {i + 1}: {step.poolName ?? step.poolId ?? 'Unknown Pool'}
+                  Step {i + 1}: {step.poolName ?? step.poolId ?? "Unknown Pool"}
                 </div>
                 {#if step.inputCoinAddress}
                   <div class="route-step-field">
                     <span class="detail-label">Input</span>
                     <span class="detail-value mono">
-                      {routeSymbols[step.inputCoinAddress.toLowerCase()] ?? ''}
+                      {routeSymbols[step.inputCoinAddress.toLowerCase()] ?? ""}
                       {step.inputCoinAddress}
                     </span>
                   </div>
@@ -185,7 +181,7 @@
                   <div class="route-step-field">
                     <span class="detail-label">Output</span>
                     <span class="detail-value mono">
-                      {routeSymbols[step.outputCoinAddress.toLowerCase()] ?? ''}
+                      {routeSymbols[step.outputCoinAddress.toLowerCase()] ?? ""}
                       {step.outputCoinAddress}
                     </span>
                   </div>

@@ -4,65 +4,53 @@
    * Displays Spandex and Curve quotes progressively as they arrive.
    * The "Recommended" tab shows the winning quote; "Alternative" shows the other.
    */
-  import { comparisonStore } from '../stores/comparisonStore.svelte.js';
-  import QuoteCard from './QuoteCard.svelte';
+  import { comparisonStore } from "../stores/comparisonStore.svelte.js";
+  import QuoteCard from "./QuoteCard.svelte";
 
   // Derived: which provider goes in which tab
-  const recommendedProvider = $derived(
-    comparisonStore.recommendation ?? 'spandex',
-  );
-  const alternativeProvider = $derived(
-    recommendedProvider === 'spandex' ? 'curve' : 'spandex',
-  );
+  const recommendedProvider = $derived(comparisonStore.recommendation ?? "spandex");
+  const alternativeProvider = $derived(recommendedProvider === "spandex" ? "curve" : "spandex");
 
   const recommendedQuote = $derived(
-    recommendedProvider === 'spandex'
-      ? comparisonStore.spandexResult
-      : comparisonStore.curveResult,
+    recommendedProvider === "spandex" ? comparisonStore.spandexResult : comparisonStore.curveResult
   );
   const recommendedError = $derived(
-    recommendedProvider === 'spandex'
-      ? comparisonStore.spandexError
-      : comparisonStore.curveError,
+    recommendedProvider === "spandex" ? comparisonStore.spandexError : comparisonStore.curveError
   );
   const recommendedLoading = $derived(
-    recommendedProvider === 'spandex'
+    recommendedProvider === "spandex"
       ? comparisonStore.spandexLoading
-      : comparisonStore.curveLoading,
+      : comparisonStore.curveLoading
   );
 
   const alternativeQuote = $derived(
-    alternativeProvider === 'spandex'
-      ? comparisonStore.spandexResult
-      : comparisonStore.curveResult,
+    alternativeProvider === "spandex" ? comparisonStore.spandexResult : comparisonStore.curveResult
   );
   const alternativeError = $derived(
-    alternativeProvider === 'spandex'
-      ? comparisonStore.spandexError
-      : comparisonStore.curveError,
+    alternativeProvider === "spandex" ? comparisonStore.spandexError : comparisonStore.curveError
   );
   const alternativeLoading = $derived(
-    alternativeProvider === 'spandex'
+    alternativeProvider === "spandex"
       ? comparisonStore.spandexLoading
-      : comparisonStore.curveLoading,
+      : comparisonStore.curveLoading
   );
 
   // Label for the recommended tab
   const recommendedTabLabel = $derived(
     comparisonStore.spandexLoading && comparisonStore.curveLoading
-      ? 'Loading...'
-      : recommendedProvider === 'spandex'
-        ? 'Spandex'
-        : 'Curve',
+      ? "Loading..."
+      : recommendedProvider === "spandex"
+        ? "Spandex"
+        : "Curve"
   );
 
   // Label for the alternative tab
   const alternativeTabLabel = $derived(
     comparisonStore.spandexLoading && comparisonStore.curveLoading
-      ? 'Loading...'
-      : alternativeProvider === 'spandex'
-        ? 'Spandex'
-        : 'Curve',
+      ? "Loading..."
+      : alternativeProvider === "spandex"
+        ? "Spandex"
+        : "Curve"
   );
 
   // Hide alternative tab in single router mode (once we know)
@@ -74,27 +62,24 @@
       comparisonStore.spandexError !== null &&
       (comparisonStore.isSingleRouterMode || comparisonStore.curveError !== null) &&
       comparisonStore.spandexResult === null &&
-      comparisonStore.curveResult === null,
+      comparisonStore.curveResult === null
   );
 
   const combinedErrorMessage = $derived(
     bothFailed
-      ? 'No quotes available. ' +
-          (comparisonStore.spandexError
-            ? `Spandex: ${comparisonStore.spandexError}. `
-            : '') +
-          (comparisonStore.curveError ? `Curve: ${comparisonStore.curveError}` : '')
-      : null,
+      ? "No quotes available. " +
+          (comparisonStore.spandexError ? `Spandex: ${comparisonStore.spandexError}. ` : "") +
+          (comparisonStore.curveError ? `Curve: ${comparisonStore.curveError}` : "")
+      : null
   );
 
-  function setTab(tab: 'recommended' | 'alternative') {
+  function setTab(tab: "recommended" | "alternative") {
     comparisonStore.activeTab = tab;
   }
 
   // Show recommendation reason box
   const showReason = $derived(
-    comparisonStore.recommendation !== null &&
-      comparisonStore.recommendationReason !== null,
+    comparisonStore.recommendation !== null && comparisonStore.recommendationReason !== null
   );
 </script>
 
@@ -105,11 +90,11 @@
       <button
         type="button"
         class="tab"
-        class:active={comparisonStore.activeTab === 'recommended'}
+        class:active={comparisonStore.activeTab === "recommended"}
         role="tab"
-        aria-selected={comparisonStore.activeTab === 'recommended'}
+        aria-selected={comparisonStore.activeTab === "recommended"}
         data-tab="recommended"
-        onclick={() => setTab('recommended')}
+        onclick={() => setTab("recommended")}
       >
         {recommendedTabLabel}
       </button>
@@ -117,11 +102,11 @@
         <button
           type="button"
           class="tab"
-          class:active={comparisonStore.activeTab === 'alternative'}
+          class:active={comparisonStore.activeTab === "alternative"}
           role="tab"
-          aria-selected={comparisonStore.activeTab === 'alternative'}
+          aria-selected={comparisonStore.activeTab === "alternative"}
           data-tab="alternative"
-          onclick={() => setTab('alternative')}
+          onclick={() => setTab("alternative")}
         >
           {alternativeTabLabel}
         </button>
@@ -140,7 +125,7 @@
     {/if}
 
     <!-- Tab panels -->
-    {#if comparisonStore.activeTab === 'recommended'}
+    {#if comparisonStore.activeTab === "recommended"}
       <div class="tab-panel" role="tabpanel">
         {#if bothFailed && combinedErrorMessage}
           <div class="combined-error" role="alert">{combinedErrorMessage}</div>
@@ -155,7 +140,7 @@
           />
         {/if}
       </div>
-    {:else if comparisonStore.activeTab === 'alternative' && showAlternativeTab}
+    {:else if comparisonStore.activeTab === "alternative" && showAlternativeTab}
       <div class="tab-panel" role="tabpanel">
         <QuoteCard
           provider={alternativeProvider}

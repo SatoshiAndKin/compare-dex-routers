@@ -4,7 +4,7 @@
    * or wallet info + address + disconnect button when connected.
    * Full 0x addresses are always shown — never truncated.
    */
-  import { walletStore } from '../stores/walletStore.svelte.js';
+  import { walletStore } from "../stores/walletStore.svelte.js";
 
   interface Props {
     /** Called when the connect button is clicked (to open provider menu) */
@@ -23,13 +23,11 @@
           src={walletStore.walletInfo.icon}
           alt="{walletStore.walletInfo.name ?? 'Wallet'} icon"
           onerror={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
+            (e.currentTarget as HTMLImageElement).style.display = "none";
           }}
         />
       {/if}
-      <span class="wallet-name">{walletStore.walletInfo?.name ?? 'Wallet'}</span>
-      <!-- Full address — NEVER truncated (project convention) -->
-      <span class="wallet-address" title="Connected wallet address">{walletStore.address}</span>
+      <span class="wallet-name">{walletStore.walletInfo?.name ?? "Wallet"}</span>
       <button
         type="button"
         class="disconnect-btn"
@@ -45,25 +43,34 @@
       class="connect-btn"
       onclick={onConnectClick}
       disabled={walletStore.isConnecting}
-      aria-label={walletStore.isConnecting ? 'Connecting wallet...' : 'Connect wallet'}
+      aria-label={walletStore.isConnecting ? "Connecting wallet..." : "Connect wallet"}
     >
-      {walletStore.isConnecting ? 'Connecting...' : 'Connect Wallet'}
+      {walletStore.isConnecting ? "Connecting..." : "Connect Wallet"}
     </button>
   {/if}
-
-  {#if walletStore.message}
-    <p class="wallet-message" class:error={walletStore.messageIsError} role="status">
-      {walletStore.message}
-    </p>
-  {/if}
 </div>
+{#if walletStore.isConnected && walletStore.address}
+  <div class="wallet-address-row">
+    <span class="wallet-address" title="Connected wallet address"
+      >{walletStore.ensName ?? walletStore.address}</span
+    >
+    {#if walletStore.ensName}
+      <span class="wallet-address-raw">{walletStore.address}</span>
+    {/if}
+  </div>
+{/if}
+{#if walletStore.message}
+  <p class="wallet-message" class:error={walletStore.messageIsError} role="status">
+    {walletStore.message}
+  </p>
+{/if}
 
 <style>
   .wallet-area {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.25rem;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
   }
 
   .wallet-connected {
@@ -86,15 +93,33 @@
     font-weight: 600;
   }
 
+  .wallet-address-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+  }
+
   .wallet-address {
     font-family: monospace;
     font-size: 0.75rem;
     word-break: break-all;
     color: var(--text-muted, #666);
+    text-align: right;
+  }
+
+  .wallet-address-raw {
+    font-family: monospace;
+    font-size: 0.625rem;
+    word-break: break-all;
+    color: var(--text-muted, #666);
+    opacity: 0.7;
+    text-align: right;
   }
 
   .connect-btn {
-    padding: 0.4rem 0.9rem;
+    height: 44px;
+    padding: 0 0.9rem;
     font-size: 0.9rem;
     font-weight: 600;
     font-family: inherit;
@@ -103,6 +128,7 @@
     background: var(--accent, #0055ff);
     color: var(--text-inverse, #fff);
     transition: background 0.1s;
+    white-space: nowrap;
   }
 
   .connect-btn:hover:not(:disabled) {

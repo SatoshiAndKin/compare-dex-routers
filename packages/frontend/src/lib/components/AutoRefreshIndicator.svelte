@@ -7,7 +7,7 @@
    *   - "Auto-refresh paused" when paused (e.g. during a transaction)
    *   - Nothing when inactive
    */
-  import { autoRefreshStore } from '../stores/autoRefreshStore.svelte.js';
+  import { autoRefreshStore } from "../stores/autoRefreshStore.svelte.js";
 </script>
 
 {#if autoRefreshStore.active}

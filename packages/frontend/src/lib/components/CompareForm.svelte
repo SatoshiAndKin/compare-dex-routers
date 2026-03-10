@@ -3,18 +3,63 @@
    * CompareForm — container assembling all form components.
    * Calls the comparison API and updates the comparison store on submit.
    */
-  import { formStore } from '../stores/formStore.svelte.js';
-  import { comparisonStore, type CompareParams } from '../stores/comparisonStore.svelte.js';
-  import { updateUrl } from '../stores/urlSync.svelte.js';
-  import { preferencesStore } from '../stores/preferencesStore.svelte.js';
-  import { autoRefreshStore, AUTO_REFRESH_SECONDS } from '../stores/autoRefreshStore.svelte.js';
-  import { walletStore } from '../stores/walletStore.svelte.js';
-  import { balanceStore } from '../stores/balanceStore.svelte.js';
-  import ChainSelector from './ChainSelector.svelte';
-  import TokenInput from './TokenInput.svelte';
-  import AmountFields from './AmountFields.svelte';
-  import SlippagePresets from './SlippagePresets.svelte';
-  import AutoRefreshIndicator from './AutoRefreshIndicator.svelte';
+  import { formStore } from "../stores/formStore.svelte.js";
+  import { comparisonStore, type CompareParams } from "../stores/comparisonStore.svelte.js";
+  import { updateUrl } from "../stores/urlSync.svelte.js";
+  import { preferencesStore } from "../stores/preferencesStore.svelte.js";
+  import { autoRefreshStore, AUTO_REFRESH_SECONDS } from "../stores/autoRefreshStore.svelte.js";
+  import { walletStore } from "../stores/walletStore.svelte.js";
+  import { balanceStore } from "../stores/balanceStore.svelte.js";
+  import { onDestroy } from "svelte";
+  import ChainSelector from "./ChainSelector.svelte";
+  import TokenInput from "./TokenInput.svelte";
+  import AmountFields from "./AmountFields.svelte";
+  import SlippagePresets from "./SlippagePresets.svelte";
+  import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
+
+  const AUTO_COMPARE_DELAY_MS = 600;
+  let autoCompareTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearAutoCompareTimer(): void {
+    if (autoCompareTimer !== null) {
+      clearTimeout(autoCompareTimer);
+      autoCompareTimer = null;
+    }
+  }
+
+  onDestroy(clearAutoCompareTimer);
+
+  $effect(() => {
+    // Track amount changes to auto-trigger comparison
+    const _sellAmount = formStore.sellAmount;
+    const _receiveAmount = formStore.receiveAmount;
+    const _mode = formStore.mode;
+
+    // Also need tokens to be selected
+    const from = formStore.fromToken?.address;
+    const to = formStore.toToken?.address;
+
+    clearAutoCompareTimer();
+
+    const amount = _mode === "exactIn" ? _sellAmount : _receiveAmount;
+    if (!from || !to || !amount) return;
+
+    autoCompareTimer = setTimeout(() => {
+      const params: CompareParams = {
+        chainId: formStore.chainId,
+        from,
+        to,
+        amount,
+        slippageBps: formStore.slippageBps,
+        mode: _mode,
+      };
+
+      autoRefreshStore.stop();
+      updateUrl(params);
+      void runCompare(params);
+      preferencesStore.saveForChain(formStore.chainId);
+    }, AUTO_COMPARE_DELAY_MS);
+  });
 
   // ---------------------------------------------------------------------------
   // Auto-refresh helpers
@@ -60,7 +105,7 @@
         void runAutoRefresh(capturedParams);
       });
     } else {
-      autoRefreshStore.setErrorMessage('Refresh failed. Keeping previous quotes.');
+      autoRefreshStore.setErrorMessage("Refresh failed. Keeping previous quotes.");
       // Restart countdown despite error (matching original behavior)
       const capturedParams = { ...params };
       autoRefreshStore.reset(AUTO_REFRESH_SECONDS, () => {
@@ -80,8 +125,7 @@
 
     const from = formStore.fromToken?.address;
     const to = formStore.toToken?.address;
-    const amount =
-      formStore.mode === 'exactIn' ? formStore.sellAmount : formStore.receiveAmount;
+    const amount = formStore.mode === "exactIn" ? formStore.sellAmount : formStore.receiveAmount;
 
     if (!from || !to || !amount) return;
 
@@ -113,27 +157,26 @@
     <ChainSelector />
   </div>
 
-  <div class="form-section form-row">
-    <div class="form-col">
-      <span class="section-label">From Token</span>
-      <TokenInput type="from" />
-      {#if walletStore.isConnected && balanceStore.fromBalance !== null}
-        <span class="balance-display" aria-label="From token balance">
-          Balance: {balanceStore.fromBalance}
-          {formStore.fromToken?.symbol ?? ''}
-        </span>
-      {/if}
-    </div>
-    <div class="form-col">
-      <span class="section-label">To Token</span>
-      <TokenInput type="to" />
-      {#if walletStore.isConnected && balanceStore.toBalance !== null}
-        <span class="balance-display" aria-label="To token balance">
-          Balance: {balanceStore.toBalance}
-          {formStore.toToken?.symbol ?? ''}
-        </span>
-      {/if}
-    </div>
+  <div class="form-section">
+    <span class="section-label">From Token</span>
+    <TokenInput type="from" />
+    {#if walletStore.isConnected && balanceStore.fromBalance !== null}
+      <span class="balance-display" aria-label="From token balance">
+        Balance: {balanceStore.fromBalance}
+        {formStore.fromToken?.symbol ?? ""}
+      </span>
+    {/if}
+  </div>
+
+  <div class="form-section">
+    <span class="section-label">To Token</span>
+    <TokenInput type="to" />
+    {#if walletStore.isConnected && balanceStore.toBalance !== null}
+      <span class="balance-display" aria-label="To token balance">
+        Balance: {balanceStore.toBalance}
+        {formStore.toToken?.symbol ?? ""}
+      </span>
+    {/if}
   </div>
 
   <div class="form-section">
@@ -172,19 +215,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-  }
-
-  .form-row {
-    flex-direction: row;
-    gap: 1rem;
-  }
-
-  .form-col {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    min-width: 0;
   }
 
   .section-label {
@@ -228,11 +258,5 @@
     font-size: 0.75rem;
     color: var(--text-muted, #666);
     margin-top: 0.1rem;
-  }
-
-  @media (max-width: 600px) {
-    .form-row {
-      flex-direction: column;
-    }
   }
 </style>

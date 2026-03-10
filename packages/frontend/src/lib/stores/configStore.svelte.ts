@@ -1,27 +1,45 @@
 /**
- * Config store — fetches server configuration from /api/config.
- * Provides WALLETCONNECT_PROJECT_ID and other server-injected settings.
+ * Config store — fetches server configuration from /api/config and /api/chains.
+ * Provides WALLETCONNECT_PROJECT_ID and supported chain list.
  */
 
-class ConfigStore {
-  /** WalletConnect project ID (empty string if not configured) */
-  walletConnectProjectId = $state('');
+export interface ChainInfo {
+  id: number;
+  name: string;
+}
 
-  /**
-   * Fetch server configuration.
-   * Should be called once from App.svelte's onMount.
-   */
+class ConfigStore {
+  walletConnectProjectId = $state("");
+  supportedChains = $state<ChainInfo[]>([]);
+
   async init(): Promise<void> {
+    await Promise.all([this._fetchConfig(), this._fetchChains()]);
+  }
+
+  private async _fetchConfig(): Promise<void> {
     try {
-      const response = await fetch('/api/config');
+      const response = await fetch("/api/config");
       if (!response.ok) return;
       const data = (await response.json()) as {
         walletConnectProjectId?: string;
-        defaultTokens?: Record<string, { from?: string; to?: string }>;
       };
-      this.walletConnectProjectId = data.walletConnectProjectId ?? '';
+      this.walletConnectProjectId = data.walletConnectProjectId ?? "";
     } catch {
-      // Silently fail — WalletConnect will just be unavailable
+      // Silently fail
+    }
+  }
+
+  private async _fetchChains(): Promise<void> {
+    try {
+      const response = await fetch("/api/chains");
+      if (!response.ok) return;
+      const data = (await response.json()) as Record<string, { name: string }>;
+      this.supportedChains = Object.entries(data).map(([id, info]) => ({
+        id: Number(id),
+        name: info.name,
+      }));
+    } catch {
+      // Silently fail — will use hardcoded fallback in ChainSelector
     }
   }
 }

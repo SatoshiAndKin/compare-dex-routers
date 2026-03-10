@@ -1,24 +1,29 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import CompareForm from './lib/components/CompareForm.svelte';
-  import QuoteResults from './lib/components/QuoteResults.svelte';
-  import ThemeToggle from './lib/components/ThemeToggle.svelte';
-  import WalletButton from './lib/components/WalletButton.svelte';
-  import WalletProviderMenu from './lib/components/WalletProviderMenu.svelte';
-  import SwapConfirmationModal from './lib/components/SwapConfirmationModal.svelte';
-  import ChainMismatchWarning from './lib/components/ChainMismatchWarning.svelte';
-  import SettingsModal from './lib/components/SettingsModal.svelte';
-  import MevModal from './lib/components/MevModal.svelte';
-  import { themeStore } from './lib/stores/themeStore.svelte.js';
-  import { preferencesStore } from './lib/stores/preferencesStore.svelte.js';
-  import { parseUrlParams, hasAllRequiredParams, applyUrlParamsToForm } from './lib/stores/urlSync.svelte.js';
-  import { formStore } from './lib/stores/formStore.svelte.js';
-  import { comparisonStore } from './lib/stores/comparisonStore.svelte.js';
-  import { walletStore } from './lib/stores/walletStore.svelte.js';
-  import { transactionStore } from './lib/stores/transactionStore.svelte.js';
-  import { balanceStore } from './lib/stores/balanceStore.svelte.js';
-  import { configStore } from './lib/stores/configStore.svelte.js';
-  import { settingsStore } from './lib/stores/settingsStore.svelte.js';
+  import { onMount } from "svelte";
+  import CompareForm from "./lib/components/CompareForm.svelte";
+  import QuoteResults from "./lib/components/QuoteResults.svelte";
+  import ThemeToggle from "./lib/components/ThemeToggle.svelte";
+  import WalletButton from "./lib/components/WalletButton.svelte";
+  import WalletProviderMenu from "./lib/components/WalletProviderMenu.svelte";
+  import SwapConfirmationModal from "./lib/components/SwapConfirmationModal.svelte";
+  import ChainMismatchWarning from "./lib/components/ChainMismatchWarning.svelte";
+  import SettingsModal from "./lib/components/SettingsModal.svelte";
+
+  import { themeStore } from "./lib/stores/themeStore.svelte.js";
+  import { preferencesStore } from "./lib/stores/preferencesStore.svelte.js";
+  import {
+    parseUrlParams,
+    hasAllRequiredParams,
+    applyUrlParamsToForm,
+  } from "./lib/stores/urlSync.svelte.js";
+  import { formStore } from "./lib/stores/formStore.svelte.js";
+  import { comparisonStore } from "./lib/stores/comparisonStore.svelte.js";
+  import { walletStore } from "./lib/stores/walletStore.svelte.js";
+  import { transactionStore } from "./lib/stores/transactionStore.svelte.js";
+  import { balanceStore } from "./lib/stores/balanceStore.svelte.js";
+  import { configStore } from "./lib/stores/configStore.svelte.js";
+  import { settingsStore } from "./lib/stores/settingsStore.svelte.js";
+  import { tokenListStore } from "./lib/stores/tokenListStore.svelte.js";
 
   let walletMenuOpen = $state(false);
 
@@ -49,7 +54,7 @@
     const connected = walletStore.isConnected;
     const pending = walletStore.pendingAction;
 
-    if (connected && pending && (pending.type === 'approve' || pending.type === 'swap')) {
+    if (connected && pending && (pending.type === "approve" || pending.type === "swap")) {
       // Clear the pending action first to avoid re-execution
       walletStore.pendingAction = null;
 
@@ -57,7 +62,7 @@
       if (params?.routerName && params.quote) {
         const routerName = params.routerName;
         const quote = params.quote;
-        if (pending.type === 'approve') {
+        if (pending.type === "approve") {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           void transactionStore.approve(routerName, quote as any);
         } else {
@@ -89,7 +94,7 @@
       address,
       chainId,
       fromToken ? { address: fromToken.address, decimals: fromToken.decimals } : null,
-      toToken ? { address: toToken.address, decimals: toToken.decimals } : null,
+      toToken ? { address: toToken.address, decimals: toToken.decimals } : null
     );
   });
 
@@ -99,6 +104,10 @@
 
     // 1b. Load persisted settings
     settingsStore.load();
+
+    // 1c. Initialize token lists (default + custom lists from localStorage)
+    void tokenListStore.init();
+    tokenListStore.loadLocalTokens();
 
     // 2. Fetch server config (for WalletConnect project ID)
     void configStore.init();
@@ -172,7 +181,6 @@
 <SwapConfirmationModal />
 
 <SettingsModal />
-<MevModal />
 
 <style>
   /* Basic shell styles */
@@ -187,7 +195,8 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 1rem;
-    gap: 1rem;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
 
   .header-actions {
