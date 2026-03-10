@@ -98,6 +98,49 @@
     );
   });
 
+  /**
+   * Apply default token pair from server config when no tokens are selected yet.
+   * Looks up tokens by address in the token list to get symbol/decimals.
+   */
+  function applyDefaultTokensIfNeeded(): void {
+    // Skip if form already has tokens (from URL params or preferences)
+    if (formStore.fromToken || formStore.toToken) return;
+
+    const pair = configStore.getDefaultTokens(formStore.chainId);
+    if (!pair) return;
+
+    // Try to resolve from tokenListStore for full metadata
+    const fromToken = tokenListStore.findToken(pair.from, formStore.chainId);
+    const toToken = tokenListStore.findToken(pair.to, formStore.chainId);
+
+    if (fromToken) {
+      formStore.fromToken = {
+        address: fromToken.address,
+        symbol: fromToken.symbol,
+        decimals: fromToken.decimals,
+        name: fromToken.name,
+        logoURI: fromToken.logoURI,
+        chainId: fromToken.chainId,
+      };
+    } else {
+      // Fallback: set just the address so the form is pre-populated
+      formStore.fromToken = { address: pair.from, symbol: pair.from.slice(0, 6), decimals: 18 };
+    }
+
+    if (toToken) {
+      formStore.toToken = {
+        address: toToken.address,
+        symbol: toToken.symbol,
+        decimals: toToken.decimals,
+        name: toToken.name,
+        logoURI: toToken.logoURI,
+        chainId: toToken.chainId,
+      };
+    } else {
+      formStore.toToken = { address: pair.to, symbol: pair.to.slice(0, 6), decimals: 18 };
+    }
+  }
+
   onMount(() => {
     // 1. Initialize theme from localStorage (applies data-theme to <html>)
     themeStore.init();
@@ -106,11 +149,16 @@
     settingsStore.load();
 
     // 1c. Initialize token lists (default + custom lists from localStorage)
-    void tokenListStore.init();
+    void tokenListStore.init().then(() => {
+      // Re-apply defaults after token list loads (to resolve full metadata)
+      applyDefaultTokensIfNeeded();
+    });
     tokenListStore.loadLocalTokens();
 
-    // 2. Fetch server config (for WalletConnect project ID)
-    void configStore.init();
+    // 2. Fetch server config (for WalletConnect project ID + default tokens)
+    void configStore.init().then(() => {
+      applyDefaultTokensIfNeeded();
+    });
 
     // 3. Start EIP-6963 wallet discovery
     walletStore.startDiscovery();
@@ -134,8 +182,11 @@
       // 6a. Partial URL params — apply what we have
       applyUrlParamsToForm(urlParams);
     } else {
-      // 6b. No URL params — restore preferences for default chain
-      preferencesStore.applyToForm(formStore.chainId);
+      // 6b. No URL params — restore preferences or use defaults
+      const applied = preferencesStore.applyToForm(formStore.chainId);
+      if (!applied) {
+        // Will be handled by applyDefaultTokensIfNeeded after config loads
+      }
     }
 
     // Cleanup on unmount
