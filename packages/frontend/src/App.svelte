@@ -24,6 +24,7 @@
   import { configStore } from "./lib/stores/configStore.svelte.js";
   import { settingsStore } from "./lib/stores/settingsStore.svelte.js";
   import { tokenListStore } from "./lib/stores/tokenListStore.svelte.js";
+  import { DEFAULT_TOKENS } from "./lib/chains.js";
 
   let walletMenuOpen = $state(false);
 
@@ -99,46 +100,39 @@
   });
 
   /**
-   * Apply default token pair from server config when no tokens are selected yet.
-   * Looks up tokens by address in the token list to get symbol/decimals.
+   * Apply default token pair when no tokens are selected yet.
+   * Resolves full metadata from tokenListStore when available.
    */
   function applyDefaultTokensIfNeeded(): void {
-    // Skip if form already has tokens (from URL params or preferences)
     if (formStore.fromToken || formStore.toToken) return;
 
-    const pair = configStore.getDefaultTokens(formStore.chainId);
+    const pair = DEFAULT_TOKENS[formStore.chainId];
     if (!pair) return;
 
-    // Try to resolve from tokenListStore for full metadata
     const fromToken = tokenListStore.findToken(pair.from, formStore.chainId);
     const toToken = tokenListStore.findToken(pair.to, formStore.chainId);
 
-    if (fromToken) {
-      formStore.fromToken = {
-        address: fromToken.address,
-        symbol: fromToken.symbol,
-        decimals: fromToken.decimals,
-        name: fromToken.name,
-        logoURI: fromToken.logoURI,
-        chainId: fromToken.chainId,
-      };
-    } else {
-      // Fallback: set just the address so the form is pre-populated
-      formStore.fromToken = { address: pair.from, symbol: pair.from.slice(0, 6), decimals: 18 };
-    }
+    formStore.fromToken = fromToken
+      ? {
+          address: fromToken.address,
+          symbol: fromToken.symbol,
+          decimals: fromToken.decimals,
+          name: fromToken.name,
+          logoURI: fromToken.logoURI,
+          chainId: fromToken.chainId,
+        }
+      : { address: pair.from, symbol: pair.from.slice(0, 6), decimals: 18 };
 
-    if (toToken) {
-      formStore.toToken = {
-        address: toToken.address,
-        symbol: toToken.symbol,
-        decimals: toToken.decimals,
-        name: toToken.name,
-        logoURI: toToken.logoURI,
-        chainId: toToken.chainId,
-      };
-    } else {
-      formStore.toToken = { address: pair.to, symbol: pair.to.slice(0, 6), decimals: 18 };
-    }
+    formStore.toToken = toToken
+      ? {
+          address: toToken.address,
+          symbol: toToken.symbol,
+          decimals: toToken.decimals,
+          name: toToken.name,
+          logoURI: toToken.logoURI,
+          chainId: toToken.chainId,
+        }
+      : { address: pair.to, symbol: pair.to.slice(0, 6), decimals: 18 };
   }
 
   onMount(() => {
@@ -150,15 +144,13 @@
 
     // 1c. Initialize token lists (default + custom lists from localStorage)
     void tokenListStore.init().then(() => {
-      // Re-apply defaults after token list loads (to resolve full metadata)
+      // Re-apply defaults after token list loads (to get full metadata like symbol/logo)
       applyDefaultTokensIfNeeded();
     });
     tokenListStore.loadLocalTokens();
 
-    // 2. Fetch server config (for WalletConnect project ID + default tokens)
-    void configStore.init().then(() => {
-      applyDefaultTokensIfNeeded();
-    });
+    // 2. Fetch server config (for WalletConnect project ID)
+    void configStore.init();
 
     // 3. Start EIP-6963 wallet discovery
     walletStore.startDiscovery();
@@ -185,7 +177,7 @@
       // 6b. No URL params — restore preferences or use defaults
       const applied = preferencesStore.applyToForm(formStore.chainId);
       if (!applied) {
-        // Will be handled by applyDefaultTokensIfNeeded after config loads
+        applyDefaultTokensIfNeeded();
       }
     }
 

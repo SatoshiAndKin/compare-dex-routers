@@ -4,40 +4,17 @@
    * Ports behavior from src/client/chain-selector.ts.
    */
   import { formStore } from "../stores/formStore.svelte.js";
-  import { configStore } from "../stores/configStore.svelte.js";
+  import { SUPPORTED_CHAINS, CHAIN_NAMES } from "../chains.js";
 
-  interface ChainDefinition {
+  interface ChainItem {
     id: string;
     name: string;
   }
 
-  const FALLBACK_CHAINS: ChainDefinition[] = [
-    { id: "1", name: "Ethereum" },
-    { id: "8453", name: "Base" },
-    { id: "42161", name: "Arbitrum" },
-    { id: "10", name: "Optimism" },
-    { id: "137", name: "Polygon" },
-    { id: "56", name: "BSC" },
-    { id: "43114", name: "Avalanche" },
-  ];
-
-  let allChains = $derived.by((): ChainDefinition[] => {
-    if (configStore.supportedChains.length > 0) {
-      return configStore.supportedChains.map((c) => ({
-        id: String(c.id),
-        name: c.name,
-      }));
-    }
-    return FALLBACK_CHAINS;
-  });
-
-  let chainNames = $derived.by((): Record<string, string> => {
-    const map: Record<string, string> = {};
-    for (const c of allChains) {
-      map[c.id] = c.name;
-    }
-    return map;
-  });
+  const allChains: ChainItem[] = SUPPORTED_CHAINS.map((c) => ({
+    id: String(c.id),
+    name: c.name,
+  }));
 
   // ---------------------------------------------------------------------------
   // State
@@ -62,11 +39,11 @@
 
   let currentChainDisplay = $derived.by(() => {
     const id = String(formStore.chainId);
-    const name = chainNames[id] ?? "Unknown";
+    const name = CHAIN_NAMES[id] ?? "Unknown";
     return `${name} (${id})`;
   });
 
-  let visibleChains = $derived.by((): ChainDefinition[] => {
+  let visibleChains = $derived.by((): ChainItem[] => {
     if (!isOpen) return [];
     if (searchQuery) {
       return filteredChains;
@@ -81,11 +58,7 @@
   // Helpers
   // ---------------------------------------------------------------------------
 
-  function formatChainDisplay(id: string, name: string): string {
-    return `${name} (${id})`;
-  }
-
-  function selectChain(chain: ChainDefinition): void {
+  function selectChain(chain: ChainItem): void {
     formStore.chainId = Number(chain.id);
     previousChainId = null;
     closeDropdown();
@@ -196,7 +169,7 @@
     closeDropdown();
   }
 
-  function handleItemMousedown(e: MouseEvent, chain: ChainDefinition): void {
+  function handleItemMousedown(e: MouseEvent, chain: ChainItem): void {
     e.preventDefault();
     selectChain(chain);
   }
