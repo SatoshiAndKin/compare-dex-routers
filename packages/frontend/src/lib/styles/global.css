@@ -1670,6 +1670,15 @@ button:focus {
   }
 }
 
+/* Force 16px on all inputs to prevent iOS auto-zoom */
+@media (max-width: 600px) {
+  input,
+  select,
+  textarea {
+    font-size: 1rem !important;
+  }
+}
+
 /* Extra-small viewport (375px) - ensure no horizontal overflow */
 @media (max-width: 375px) {
   /* Reduce body padding to maximize usable space */

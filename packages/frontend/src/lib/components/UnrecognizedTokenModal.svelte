@@ -3,20 +3,20 @@
    * UnrecognizedTokenModal — shown when a user pastes a 0x address not found
    * in any token list. Fetches ERC-20 metadata, lets the user save to local tokens.
    */
-  import { tokenListStore, type Token } from '../stores/tokenListStore.svelte.js';
-  import { apiClient } from '../api.js';
+  import { tokenListStore, type Token } from "../stores/tokenListStore.svelte.js";
+  import { apiClient } from "../api.js";
 
   // ---------------------------------------------------------------------------
   // Internal state (per-open)
   // ---------------------------------------------------------------------------
 
   type MetadataState =
-    | { status: 'idle' }
-    | { status: 'loading' }
-    | { status: 'loaded'; name: string; symbol: string; decimals: number }
-    | { status: 'error'; message: string };
+    | { status: "idle" }
+    | { status: "loading" }
+    | { status: "loaded"; name: string; symbol: string; decimals: number }
+    | { status: "error"; message: string };
 
-  let metadataState = $state<MetadataState>({ status: 'idle' });
+  let metadataState = $state<MetadataState>({ status: "idle" });
 
   // ---------------------------------------------------------------------------
   // Reactive: open/close triggered by tokenListStore.unrecognizedModal
@@ -26,13 +26,13 @@
     const modal = tokenListStore.unrecognizedModal;
     if (modal !== null) {
       // Opened: start fetching metadata
-      metadataState = { status: 'loading' };
+      metadataState = { status: "loading" };
       fetchMetadata(modal.address, modal.chainId).catch(() => {
         // handled inside fetchMetadata
       });
     } else {
       // Closed: reset state
-      metadataState = { status: 'idle' };
+      metadataState = { status: "idle" };
     }
   });
 
@@ -42,27 +42,26 @@
 
   async function fetchMetadata(address: string, chainId: number): Promise<void> {
     try {
-      const { data, error } = await apiClient.GET('/token-metadata', {
+      const { data, error } = await apiClient.GET("/token-metadata", {
         params: { query: { chainId, address } },
       });
 
       if (error || !data) {
         const msg =
-          (error as { error?: string } | undefined)?.error ??
-          'Failed to fetch token metadata';
-        metadataState = { status: 'error', message: msg };
+          (error as { error?: string } | undefined)?.error ?? "Failed to fetch token metadata";
+        metadataState = { status: "error", message: msg };
         return;
       }
 
       metadataState = {
-        status: 'loaded',
-        name: data.name ?? '',
-        symbol: data.symbol ?? '',
+        status: "loaded",
+        name: data.name ?? "",
+        symbol: data.symbol ?? "",
         decimals: data.decimals ?? 0,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      metadataState = { status: 'error', message: `Failed to fetch metadata: ${msg}` };
+      metadataState = { status: "error", message: `Failed to fetch metadata: ${msg}` };
     }
   }
 
@@ -73,7 +72,7 @@
   function handleSave(): void {
     const modal = tokenListStore.unrecognizedModal;
     if (!modal) return;
-    if (metadataState.status !== 'loaded') return;
+    if (metadataState.status !== "loaded") return;
 
     const token: Token = {
       address: modal.address,
@@ -92,7 +91,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape') handleCancel();
+    if (e.key === "Escape") handleCancel();
   }
 
   // ---------------------------------------------------------------------------
@@ -100,7 +99,7 @@
   // ---------------------------------------------------------------------------
 
   let modal = $derived(tokenListStore.unrecognizedModal);
-  let canSave = $derived(metadataState.status === 'loaded');
+  let canSave = $derived(metadataState.status === "loaded");
 </script>
 
 {#if modal !== null}
@@ -116,12 +115,7 @@
     <div class="modal-card">
       <div class="modal-header">
         <h2 id="unrecognized-token-title" class="modal-title">Unrecognized Token</h2>
-        <button
-          type="button"
-          class="modal-close"
-          aria-label="Cancel"
-          onclick={handleCancel}
-        >
+        <button type="button" class="modal-close" aria-label="Cancel" onclick={handleCancel}>
           ×
         </button>
       </div>
@@ -132,15 +126,13 @@
           <span class="modal-address">{modal.address}</span>
         </div>
 
-        {#if metadataState.status === 'loading'}
-          <div class="modal-loading" aria-live="polite">
-            Loading token metadata…
-          </div>
-        {:else if metadataState.status === 'error'}
+        {#if metadataState.status === "loading"}
+          <div class="modal-loading" aria-live="polite">Loading token metadata…</div>
+        {:else if metadataState.status === "error"}
           <div class="modal-error" role="alert">
             {metadataState.message}
           </div>
-        {:else if metadataState.status === 'loaded'}
+        {:else if metadataState.status === "loaded"}
           <dl class="modal-metadata">
             <div class="metadata-row">
               <dt>Name</dt>
@@ -160,12 +152,7 @@
 
       <div class="modal-footer">
         <button type="button" class="btn-secondary" onclick={handleCancel}>Cancel</button>
-        <button
-          type="button"
-          class="btn-primary"
-          disabled={!canSave}
-          onclick={handleSave}
-        >
+        <button type="button" class="btn-primary" disabled={!canSave} onclick={handleSave}>
           Save to My Tokens
         </button>
       </div>

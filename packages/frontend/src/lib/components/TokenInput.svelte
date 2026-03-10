@@ -4,18 +4,18 @@
    * Ports behavior from src/client/autocomplete.ts (form parts).
    * Also handles unrecognized 0x address detection via tokenListStore.
    */
-  import { formStore, type TokenInfo } from '../stores/formStore.svelte.js';
-  import { tokensStore } from '../stores/tokensStore.svelte.js';
-  import { tokenListStore } from '../stores/tokenListStore.svelte.js';
-  import UnrecognizedTokenModal from './UnrecognizedTokenModal.svelte';
-  import { onMount } from 'svelte';
+  import { formStore, type TokenInfo } from "../stores/formStore.svelte.js";
+  import { tokensStore } from "../stores/tokensStore.svelte.js";
+  import { tokenListStore } from "../stores/tokenListStore.svelte.js";
+  import UnrecognizedTokenModal from "./UnrecognizedTokenModal.svelte";
+  import { onMount } from "svelte";
 
   // ---------------------------------------------------------------------------
   // Props
   // ---------------------------------------------------------------------------
 
   interface Props {
-    type: 'from' | 'to';
+    type: "from" | "to";
   }
 
   let { type }: Props = $props();
@@ -24,7 +24,7 @@
   // State
   // ---------------------------------------------------------------------------
 
-  let inputValue = $state('');
+  let inputValue = $state("");
   let dropdownVisible = $state(false);
   let matches = $state<TokenInfo[]>([]);
   let activeIdx = $state(-1);
@@ -38,7 +38,7 @@
   // Derived
   // ---------------------------------------------------------------------------
 
-  let currentToken = $derived(type === 'from' ? formStore.fromToken : formStore.toToken);
+  let currentToken = $derived(type === "from" ? formStore.fromToken : formStore.toToken);
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -52,7 +52,7 @@
   /** Normalize address for comparison */
   function normalizeAddress(value: string): string {
     const lower = value.toLowerCase();
-    return lower.startsWith('0x') ? lower.slice(2) : lower;
+    return lower.startsWith("0x") ? lower.slice(2) : lower;
   }
 
   /** Check whether a value looks like a full ERC-20 address */
@@ -72,15 +72,15 @@
     // Track symbol duplicates for disambiguation
     const symbolCounts = new Map<string, number>();
     for (const token of tokens) {
-      const sym = (token.symbol ?? '').toLowerCase();
+      const sym = (token.symbol ?? "").toLowerCase();
       symbolCounts.set(sym, (symbolCounts.get(sym) ?? 0) + 1);
     }
 
     return tokens
       .filter((token) => {
-        const symbol = (token.symbol ?? '').toLowerCase();
-        const name = (token.name ?? '').toLowerCase();
-        const address = (token.address ?? '').toLowerCase();
+        const symbol = (token.symbol ?? "").toLowerCase();
+        const name = (token.name ?? "").toLowerCase();
+        const address = (token.address ?? "").toLowerCase();
         const normalizedAddr = normalizeAddress(address);
         return (
           symbol.includes(q) ||
@@ -106,7 +106,7 @@
   /** Select a token and update store */
   function selectToken(token: TokenInfo): void {
     inputValue = formatTokenDisplay(token.symbol, token.address);
-    if (type === 'from') {
+    if (type === "from") {
       formStore.fromToken = token;
     } else {
       formStore.toToken = token;
@@ -135,7 +135,7 @@
     inputValue = target.value;
 
     // Clear the store token when input changes manually
-    if (type === 'from') {
+    if (type === "from") {
       formStore.fromToken = null;
     } else {
       formStore.toToken = null;
@@ -173,18 +173,18 @@
   function handleKeydown(e: KeyboardEvent): void {
     if (!dropdownVisible) return;
 
-    if (e.key === 'ArrowDown') {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       activeIdx = Math.min(activeIdx + 1, matches.length - 1);
-    } else if (e.key === 'ArrowUp') {
+    } else if (e.key === "ArrowUp") {
       e.preventDefault();
       activeIdx = Math.max(activeIdx - 1, 0);
-    } else if (e.key === 'Enter') {
+    } else if (e.key === "Enter") {
       e.preventDefault();
       const idx = activeIdx >= 0 ? activeIdx : 0;
       const selected = matches[idx];
       if (selected) selectToken(selected);
-    } else if (e.key === 'Escape') {
+    } else if (e.key === "Escape") {
       hideDropdown();
     }
   }
@@ -246,7 +246,7 @@
 
   // Sync input value when store token changes externally
   $effect(() => {
-    const token = type === 'from' ? formStore.fromToken : formStore.toToken;
+    const token = type === "from" ? formStore.fromToken : formStore.toToken;
     if (token) {
       const expected = formatTokenDisplay(token.symbol, token.address);
       if (inputValue !== expected) {
@@ -272,21 +272,23 @@
         class="token-icon-selected"
         src={currentToken.logoURI}
         alt={`${currentToken.symbol} logo`}
-        onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        onerror={(e) => {
+          (e.target as HTMLImageElement).style.display = "none";
+        }}
       />
     {/if}
     <input
       bind:this={inputEl}
       class="token-input"
       type="text"
-      placeholder={type === 'from' ? 'Sell token...' : 'Receive token...'}
+      placeholder={type === "from" ? "Sell token..." : "Receive token..."}
       value={inputValue}
       oninput={handleInput}
       onfocus={handleFocus}
       onkeydown={handleKeydown}
       onblur={handleBlur}
       autocomplete="off"
-      aria-label={type === 'from' ? 'From token' : 'To token'}
+      aria-label={type === "from" ? "From token" : "To token"}
     />
   </div>
 
@@ -294,7 +296,7 @@
     <div class="token-autocomplete-list" role="listbox">
       {#each matches as token, i}
         <div
-          class={`autocomplete-item${activeIdx === i ? ' active' : ''}`}
+          class={`autocomplete-item${activeIdx === i ? " active" : ""}`}
           role="option"
           tabindex="-1"
           aria-selected={activeIdx === i}
@@ -306,7 +308,9 @@
               src={token.logoURI}
               alt={`${token.symbol} logo`}
               loading="lazy"
-              onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              onerror={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
             />
           {:else}
             <span class="autocomplete-logo-placeholder"></span>

@@ -13,46 +13,39 @@
    * - Escape key closes
    * - Backdrop click closes
    */
-  import { settingsStore } from '../stores/settingsStore.svelte.js';
-  import { tokenListStore } from '../stores/tokenListStore.svelte.js';
+  import { settingsStore } from "../stores/settingsStore.svelte.js";
+  import { tokenListStore } from "../stores/tokenListStore.svelte.js";
 
   // ---------------------------------------------------------------------------
   // Internal state
   // ---------------------------------------------------------------------------
 
-  let addListUrl = $state('');
-  let addListError = $state('');
+  let addListUrl = $state("");
+  let addListError = $state("");
   let isAddingList = $state(false);
 
-  let rpcUrlInput = $state('');
-  let rpcSaved = $state(false);
-
   let fileInputEl = $state<HTMLInputElement | null>(null);
-  let importError = $state('');
-  let importSuccess = $state('');
+  let importError = $state("");
+  let importSuccess = $state("");
 
   let modalEl = $state<HTMLElement | null>(null);
   let closeButtonEl = $state<HTMLButtonElement | null>(null);
 
-  // Sync rpcUrlInput with store when modal opens
   $effect(() => {
     if (settingsStore.isSettingsOpen) {
-      rpcUrlInput = settingsStore.customRpcUrl;
-      addListUrl = '';
-      addListError = '';
-      importError = '';
-      importSuccess = '';
-      rpcSaved = false;
-      // Focus the close button
+      addListUrl = "";
+      addListError = "";
+      importError = "";
+      importSuccess = "";
       closeButtonEl?.focus();
     }
   });
 
   // Body scroll lock
   $effect(() => {
-    if (settingsStore.isSettingsOpen && typeof document !== 'undefined') {
+    if (settingsStore.isSettingsOpen && typeof document !== "undefined") {
       const original = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
       return () => {
         document.body.style.overflow = original;
       };
@@ -72,15 +65,15 @@
   }
 
   function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       handleClose();
       return;
     }
-    if (e.key === 'Tab' && modalEl) {
+    if (e.key === "Tab" && modalEl) {
       const focusable = Array.from(
         modalEl.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
+          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
       );
       if (focusable.length === 0) return;
       const first = focusable[0]!;
@@ -98,14 +91,14 @@
   // -- Token lists --
 
   async function handleAddList(): Promise<void> {
-    addListError = '';
+    addListError = "";
     isAddingList = true;
     const err = await tokenListStore.addList(addListUrl);
     isAddingList = false;
     if (err) {
       addListError = err;
     } else {
-      addListUrl = '';
+      addListUrl = "";
     }
   }
 
@@ -114,18 +107,18 @@
   function handleExportTokens(): void {
     const json = tokenListStore.exportLocalTokens();
     if (!json) return;
-    const blob = new Blob([json], { type: 'application/json' });
+    const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = 'my-tokens.json';
+    a.download = "my-tokens.json";
     a.click();
     URL.revokeObjectURL(url);
   }
 
   function handleImportClick(): void {
-    importError = '';
-    importSuccess = '';
+    importError = "";
+    importSuccess = "";
     fileInputEl?.click();
   }
 
@@ -138,39 +131,17 @@
     reader.onload = () => {
       const text = reader.result as string;
       const result = tokenListStore.importLocalTokens(text);
-      if ('error' in result) {
+      if ("error" in result) {
         importError = result.error;
-        importSuccess = '';
+        importSuccess = "";
       } else {
-        importSuccess = `Imported ${String(result.count)} token${result.count !== 1 ? 's' : ''}`;
-        importError = '';
+        importSuccess = `Imported ${String(result.count)} token${result.count !== 1 ? "s" : ""}`;
+        importError = "";
       }
     };
     reader.readAsText(file);
     // Reset input so same file can be selected again
-    input.value = '';
-  }
-
-  // -- MEV --
-
-  function handleMevToggle(): void {
-    settingsStore.mevEnabled = !settingsStore.mevEnabled;
-    settingsStore.save();
-  }
-
-  function handleOpenMevModal(): void {
-    settingsStore.openMevModal();
-  }
-
-  // -- Custom RPC URL --
-
-  function handleSaveRpc(): void {
-    settingsStore.customRpcUrl = rpcUrlInput.trim();
-    settingsStore.save();
-    rpcSaved = true;
-    setTimeout(() => {
-      rpcSaved = false;
-    }, 2000);
+    input.value = "";
   }
 </script>
 
@@ -208,12 +179,8 @@
         <div class="settings-section">
           <div class="settings-section-title">Token Lists</div>
 
-          {#each tokenListStore.lists as list (list.url ?? '__default__')}
-            <div
-              class="tokenlist-entry"
-              class:disabled={!list.enabled}
-              class:error={!!list.error}
-            >
+          {#each tokenListStore.lists as list (list.url ?? "__default__")}
+            <div class="tokenlist-entry" class:disabled={!list.enabled} class:error={!!list.error}>
               <!-- Toggle -->
               <button
                 type="button"
@@ -259,7 +226,7 @@
               aria-label="Token list URL"
               bind:value={addListUrl}
               onkeydown={(e) => {
-                if (e.key === 'Enter') void handleAddList();
+                if (e.key === "Enter") void handleAddList();
               }}
             />
             <button
@@ -268,7 +235,7 @@
               disabled={isAddingList || !addListUrl.trim()}
               onclick={() => void handleAddList()}
             >
-              {isAddingList ? 'Adding…' : 'Add'}
+              {isAddingList ? "Adding…" : "Add"}
             </button>
           </div>
           {#if addListError}
@@ -288,14 +255,14 @@
               aria-pressed={tokenListStore.localTokensEnabled}
               onclick={() => tokenListStore.toggleLocalTokens()}
             >
-              {tokenListStore.localTokensEnabled ? 'Enabled' : 'Disabled'}
+              {tokenListStore.localTokensEnabled ? "Enabled" : "Disabled"}
             </button>
           </div>
 
           {#if tokenListStore.localTokens.length === 0}
             <p class="empty-local-tokens">No local tokens saved.</p>
           {:else}
-            {#each tokenListStore.localTokens as token (token.address + '_' + token.chainId)}
+            {#each tokenListStore.localTokens as token (token.address + "_" + token.chainId)}
               <div class="local-token-entry">
                 <span class="local-token-symbol">{token.symbol}</span>
                 <!-- Full address — NEVER truncated (project convention) -->
@@ -305,8 +272,7 @@
                   type="button"
                   class="local-token-remove-btn"
                   aria-label="Remove {token.symbol}"
-                  onclick={() =>
-                    tokenListStore.removeLocalToken(token.address, token.chainId)}
+                  onclick={() => tokenListStore.removeLocalToken(token.address, token.chainId)}
                 >
                   ✕
                 </button>
@@ -347,56 +313,22 @@
         </div>
 
         <!-- ---------------------------------------------------------------- -->
-        <!-- MEV Protection Section (Ethereum only)                            -->
-        <!-- ---------------------------------------------------------------- -->
-        {#if settingsStore.mevAvailable}
-          <div class="settings-section" data-testid="mev-section">
-            <div class="settings-section-title">MEV Protection</div>
-            <p class="modal-text">
-              Protect swaps from sandwich attacks using Flashbots Protect.
-            </p>
-            <div class="mev-controls">
-              <button
-                type="button"
-                class="mev-toggle-btn"
-                class:active={settingsStore.mevEnabled}
-                aria-pressed={settingsStore.mevEnabled}
-                onclick={handleMevToggle}
-              >
-                {settingsStore.mevEnabled ? 'MEV Protection: ON' : 'MEV Protection: OFF'}
-              </button>
-              <button
-                type="button"
-                class="mev-info-btn"
-                aria-label="MEV protection info"
-                onclick={handleOpenMevModal}
-              >
-                ℹ Info
-              </button>
-            </div>
-          </div>
-        {/if}
-
-        <!-- ---------------------------------------------------------------- -->
-        <!-- Custom RPC URL Section                                            -->
+        <!-- MEV Protection Section                                            -->
         <!-- ---------------------------------------------------------------- -->
         <div class="settings-section">
-          <div class="settings-section-title">Custom RPC URL</div>
+          <div class="settings-section-title">MEV Protection</div>
           <p class="modal-text">
-            Override the default RPC endpoint for this chain. Leave empty to use the default.
+            To protect your swaps from sandwich attacks, configure your wallet to use a private RPC
+            endpoint like Flashbots Protect.
           </p>
-          <div class="rpc-row">
-            <input
-              type="url"
-              class="rpc-input"
-              placeholder="https://mainnet.infura.io/v3/..."
-              aria-label="Custom RPC URL"
-              bind:value={rpcUrlInput}
-            />
-            <button type="button" class="save-rpc-btn" onclick={handleSaveRpc}>
-              {rpcSaved ? 'Saved!' : 'Save'}
-            </button>
-          </div>
+          <a
+            class="flashbots-link"
+            href="https://docs.flashbots.net/flashbots-protect/overview"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Read Flashbots Protect docs &rarr;
+          </a>
         </div>
       </div>
     </div>
@@ -541,7 +473,7 @@
   }
 
   .tokenlist-toggle::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 1px;
     left: 1px;
@@ -772,95 +704,20 @@
     color: var(--text, #000);
   }
 
-  .mev-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-
-  .mev-toggle-btn {
-    padding: 0.4rem 0.85rem;
-    font-size: 0.85rem;
-    font-weight: 700;
-    font-family: inherit;
-    cursor: pointer;
-    background: var(--bg-muted, #f0f0f0);
-    color: var(--text, #000);
-    border: 2px solid var(--border, #000);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-
-  .mev-toggle-btn.active {
-    background: var(--green, #007700);
-    color: #fff;
-    border-color: var(--green, #007700);
-  }
-
-  .mev-toggle-btn:focus {
-    outline: 3px solid var(--accent, #0055ff);
-  }
-
-  .mev-info-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.75rem;
+  .flashbots-link {
+    display: inline-block;
+    font-size: 0.875rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.375rem 0.5rem;
-    background: var(--bg-card, #fff);
-    color: var(--text, #000);
-    border: 2px solid var(--border, #000);
-    cursor: pointer;
+    color: var(--accent, #0055ff);
+    text-decoration: underline;
   }
 
-  .mev-info-btn:hover {
-    background: var(--bg-hover, #f0f0f0);
+  .flashbots-link:hover {
+    text-decoration: none;
   }
 
-  .mev-info-btn:focus {
+  .flashbots-link:focus {
     outline: 3px solid var(--accent, #0055ff);
-  }
-
-  .rpc-row {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .rpc-input {
-    flex: 1;
-    min-width: 0;
-    padding: 0.4rem 0.5rem;
-    font-family: monospace;
-    font-size: 0.8rem;
-    background: var(--bg-input, #fff);
-    color: var(--text, #000);
-    border: 2px solid var(--border, #000);
-  }
-
-  .rpc-input:focus {
-    outline: 3px solid var(--accent, #0055ff);
-    outline-offset: 0;
-  }
-
-  .save-rpc-btn {
-    padding: 0.4rem 0.75rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-    background: var(--accent, #0055ff);
-    color: var(--text-inverse, #fff);
-    border: 2px solid var(--accent, #0055ff);
-    white-space: nowrap;
-  }
-
-  .save-rpc-btn:focus {
-    outline: 3px solid var(--accent, #0055ff);
-    outline-offset: 2px;
   }
 
   @media (max-width: 424px) {

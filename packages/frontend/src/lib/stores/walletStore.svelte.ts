@@ -31,7 +31,7 @@ export interface EIP6963ProviderDetail {
 
 /** Pending wallet action (auto-approve / auto-swap after connect) */
 export interface PendingAction {
-  type: 'approve' | 'swap';
+  type: "approve" | "swap";
   params: unknown;
 }
 
@@ -41,13 +41,13 @@ export interface PendingAction {
 
 /** Chain ID → hex string for wallet_switchEthereumChain */
 const CHAIN_ID_HEX_MAP: Readonly<Record<string, string>> = {
-  '1': '0x1',
-  '10': '0xa',
-  '56': '0x38',
-  '137': '0x89',
-  '8453': '0x2105',
-  '42161': '0xa4b1',
-  '43114': '0xa86a',
+  "1": "0x1",
+  "10": "0xa",
+  "56": "0x38",
+  "137": "0x89",
+  "8453": "0x2105",
+  "42161": "0xa4b1",
+  "43114": "0xa86a",
 };
 
 const WALLETCONNECT_ICON =
@@ -56,21 +56,29 @@ const WALLETCONNECT_ICON =
     '<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
       '<rect width="32" height="32" rx="6" fill="#3B99FC"/>' +
       '<path d="M10.05 12.36c3.28-3.21 8.62-3.21 11.9 0l.4.39a.41.41 0 0 1 0 .58l-1.35 ' +
-      '1.32a.21.21 0 0 1-.3 0l-.54-.53c-2.29-2.24-6.01-2.24-8.3 0l-.58.57a.21.21 0 0 1-.3 0l-1.35-1.32a.41.41 0 0 1 0-.58l.42-.43Z' +
-      'M24.75 15.1l1.2 1.18a.41.41 0 0 1 0 .58l-5.43 5.31a.42.42 0 0 1-.6 0l-3.85-3.77a.1.1 0 0 0-.15 0' +
-      'l-3.85 3.77a.42.42 0 0 1-.6 0l-5.42-5.31a.41.41 0 0 1 0-.58l1.2-1.18a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0' +
-      'l3.85-3.77a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0Z" fill="#fff"/></svg>',
+      "1.32a.21.21 0 0 1-.3 0l-.54-.53c-2.29-2.24-6.01-2.24-8.3 0l-.58.57a.21.21 0 0 1-.3 0l-1.35-1.32a.41.41 0 0 1 0-.58l.42-.43Z" +
+      "M24.75 15.1l1.2 1.18a.41.41 0 0 1 0 .58l-5.43 5.31a.42.42 0 0 1-.6 0l-3.85-3.77a.1.1 0 0 0-.15 0" +
+      "l-3.85 3.77a.42.42 0 0 1-.6 0l-5.42-5.31a.41.41 0 0 1 0-.58l1.2-1.18a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0" +
+      'l3.85-3.77a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0Z" fill="#fff"/></svg>'
   );
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+function decodeHexString(hex: string): string {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 function getChainIdHex(chainId: number): string {
   const mapped = CHAIN_ID_HEX_MAP[String(chainId)];
   if (mapped) return mapped;
-  if (!Number.isFinite(chainId) || chainId < 0) return '0x0';
-  return '0x' + chainId.toString(16);
+  if (!Number.isFinite(chainId) || chainId < 0) return "0x0";
+  return "0x" + chainId.toString(16);
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +88,8 @@ function getChainIdHex(chainId: number): string {
 class WalletStore {
   /** Full 0x wallet address — NEVER truncated */
   address = $state<string | null>(null);
+  /** Resolved ENS name for the connected address (null if none) */
+  ensName = $state<string | null>(null);
   /** Current chain ID from connected wallet */
   chainId = $state<number | null>(null);
   /** Connected EIP-1193 provider */
@@ -89,7 +99,7 @@ class WalletStore {
   /** Whether a connection attempt is in progress */
   isConnecting = $state(false);
   /** Status / error message */
-  message = $state('');
+  message = $state("");
   /** Whether message is an error */
   messageIsError = $state(false);
   /** Pending action stored for auto-approve/swap after connect */
@@ -147,22 +157,20 @@ class WalletStore {
       const detail = (event as CustomEvent<EIP6963ProviderDetail>).detail;
       if (!detail?.provider || !detail?.info?.uuid) return;
 
-      const alreadyKnown = this.discoveredProviders.some(
-        (p) => p.info.uuid === detail.info.uuid,
-      );
+      const alreadyKnown = this.discoveredProviders.some((p) => p.info.uuid === detail.info.uuid);
       if (!alreadyKnown) {
         this.discoveredProviders = [...this.discoveredProviders, detail];
       }
     };
 
-    window.addEventListener('eip6963:announceProvider', this._announceHandler);
-    window.dispatchEvent(new Event('eip6963:requestProvider'));
+    window.addEventListener("eip6963:announceProvider", this._announceHandler);
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
   }
 
   /** Stop EIP-6963 provider discovery and remove listener. */
   stopDiscovery(): void {
     if (this._announceHandler) {
-      window.removeEventListener('eip6963:announceProvider', this._announceHandler);
+      window.removeEventListener("eip6963:announceProvider", this._announceHandler);
       this._announceHandler = null;
     }
   }
@@ -175,26 +183,26 @@ class WalletStore {
   async connect(detail: EIP6963ProviderDetail): Promise<void> {
     const { provider, info } = detail;
 
-    if (typeof provider?.request !== 'function') {
-      this.setMessage('Wallet provider not available', true);
+    if (typeof provider?.request !== "function") {
+      this.setMessage("Wallet provider not available", true);
       return;
     }
 
     this.isConnecting = true;
-    this.setMessage('');
+    this.setMessage("");
 
     try {
       const accounts = (await provider.request({
-        method: 'eth_requestAccounts',
+        method: "eth_requestAccounts",
       })) as string[];
 
       const account = Array.isArray(accounts) ? accounts[0] : null;
-      if (typeof account !== 'string' || !account) {
-        throw new Error('No account returned by wallet');
+      if (typeof account !== "string" || !account) {
+        throw new Error("No account returned by wallet");
       }
 
       // Get current chain ID from provider
-      const chainIdHex = (await provider.request({ method: 'eth_chainId' })) as string;
+      const chainIdHex = (await provider.request({ method: "eth_chainId" })) as string;
       const chainId = parseInt(chainIdHex, 16);
 
       // Update state — full address, never truncated
@@ -209,8 +217,9 @@ class WalletStore {
         if (!Array.isArray(updatedAccounts) || updatedAccounts.length === 0) {
           this.disconnect();
         } else {
-          // Update address — full address, never truncated
           this.address = updatedAccounts[0] ?? null;
+          this.ensName = null;
+          if (this.address) void this._resolveEns(this.address);
         }
       };
 
@@ -221,23 +230,94 @@ class WalletStore {
       };
 
       if (provider.on) {
-        provider.on('accountsChanged', this._accountsChangedHandler);
-        provider.on('chainChanged', this._chainChangedHandler);
+        provider.on("accountsChanged", this._accountsChangedHandler);
+        provider.on("chainChanged", this._chainChangedHandler);
       }
 
-      this.setMessage('');
+      this.setMessage("");
+
+      // Resolve ENS name in background
+      void this._resolveEns(account);
     } catch (err: unknown) {
       const code =
-        err && typeof err === 'object' ? (err as Record<string, unknown>).code : undefined;
+        err && typeof err === "object" ? (err as Record<string, unknown>).code : undefined;
       if (code === 4001) {
-        this.setMessage('Connection canceled', true);
+        this.setMessage("Connection canceled", true);
         this.pendingAction = null;
       } else {
         const msg = err instanceof Error ? err.message : String(err);
-        this.setMessage('Connection failed: ' + msg, true);
+        this.setMessage("Connection failed: " + msg, true);
       }
     } finally {
       this.isConnecting = false;
+    }
+  }
+
+  /**
+   * Resolve reverse ENS for an address using the API's token-metadata endpoint
+   * or a direct provider call. Uses eth_call to the ENS reverse registrar.
+   */
+  private async _resolveEns(address: string): Promise<void> {
+    this.ensName = null;
+    try {
+      // Use the connected provider to call the ENS reverse resolver
+      // Only works on Ethereum mainnet (chainId 1)
+      if (!this.provider) return;
+
+      // Get current chain - ENS only works on mainnet
+      const chainIdHex = (await this.provider.request({ method: "eth_chainId" })) as string;
+      const chainId = parseInt(chainIdHex, 16);
+      if (chainId !== 1) return;
+
+      // Call the ENS universal resolver's reverse() function
+      // Address: 0x74E20Bd2A1fE0cdbe45b9A1d89cb7e0a45b36376 (ENS universal resolver on mainnet)
+      // ENS Reverse Records contract on mainnet: getNames(address[]) returns string[]
+      const REVERSE_RECORDS = "0x3671aE578E63FdF66ad4F3E12CC0c0d71Ac7510C";
+
+      // ABI encode: getNames(address[]) where we pass [address]
+      // selector: 0x55ea6c47
+      const paddedAddr = address.toLowerCase().slice(2).padStart(64, "0");
+      const calldata =
+        "0x55ea6c47" +
+        "0000000000000000000000000000000000000000000000000000000000000020" +
+        "0000000000000000000000000000000000000000000000000000000000000001" +
+        paddedAddr;
+
+      const result = (await this.provider.request({
+        method: "eth_call",
+        params: [{ to: REVERSE_RECORDS, data: calldata }, "latest"],
+      })) as string;
+
+      if (result && result !== "0x" && result.length > 130) {
+        // Decode the result - it's an array of strings
+        // Skip the first 64 chars (offset to array), next 64 chars (array length)
+        // Then offset to first string, string length, string data
+        const hex = result.slice(2);
+        // Find the string data
+        // Structure: offset_to_array(32) -> array_len(32) -> offset_to_str1(32) -> str_len(32) -> str_data
+        // The outer ABI: bytes offset (0x20) to dynamic array
+        // array: length (1), then offset to element 0
+        // element 0: length, then UTF-8 bytes
+
+        // Parse step by step
+        const outerOffset = parseInt(hex.slice(0, 64), 16) * 2;
+        const arrayLen = parseInt(hex.slice(outerOffset, outerOffset + 64), 16);
+        if (arrayLen === 0) return;
+
+        const stringsStart = outerOffset + 64;
+        const firstStrOffset = parseInt(hex.slice(stringsStart, stringsStart + 64), 16) * 2;
+        const strDataStart = stringsStart + firstStrOffset;
+        const strLen = parseInt(hex.slice(strDataStart, strDataStart + 64), 16);
+        if (strLen === 0) return;
+
+        const strHex = hex.slice(strDataStart + 64, strDataStart + 64 + strLen * 2);
+        const name = decodeHexString(strHex);
+        if (name && name.includes(".")) {
+          this.ensName = name;
+        }
+      }
+    } catch {
+      // ENS resolution is best-effort, don't show errors
     }
   }
 
@@ -247,17 +327,17 @@ class WalletStore {
    */
   async connectWalletConnect(projectId: string): Promise<void> {
     if (!projectId) {
-      this.setMessage('WalletConnect not configured (missing project ID)', true);
+      this.setMessage("WalletConnect not configured (missing project ID)", true);
       return;
     }
 
     this.isConnecting = true;
-    this.setMessage('');
+    this.setMessage("");
 
     try {
       // CDN ESM dynamic import — never bundled with npm.
       // Use a string variable so TypeScript doesn't attempt static module resolution.
-      const wcUrl = 'https://esm.sh/@walletconnect/ethereum-provider@2';
+      const wcUrl = "https://esm.sh/@walletconnect/ethereum-provider@2";
       const { EthereumProvider } = (await import(/* @vite-ignore */ wcUrl)) as {
         EthereumProvider: {
           init(opts: Record<string, unknown>): Promise<
@@ -273,15 +353,15 @@ class WalletStore {
         projectId,
         optionalChains: [1, 8453, 42161, 10, 137, 56, 43114],
         metadata: {
-          name: 'Compare DEX Routers',
-          description: 'Compare DEX Router Quotes',
+          name: "Compare DEX Routers",
+          description: "Compare DEX Router Quotes",
           url: location.origin,
           icons: [],
         },
         showQrModal: true,
       });
 
-      wcProvider.on('disconnect', () => {
+      wcProvider.on("disconnect", () => {
         this.disconnect();
       });
 
@@ -289,22 +369,22 @@ class WalletStore {
 
       await this.connect({
         info: {
-          uuid: 'walletconnect',
-          name: 'WalletConnect',
+          uuid: "walletconnect",
+          name: "WalletConnect",
           icon: WALLETCONNECT_ICON,
-          rdns: 'walletconnect',
+          rdns: "walletconnect",
         },
         provider: wcProvider,
       });
     } catch (err: unknown) {
       const code =
-        err && typeof err === 'object' ? (err as Record<string, unknown>).code : undefined;
+        err && typeof err === "object" ? (err as Record<string, unknown>).code : undefined;
       if (code === 4001) {
-        this.setMessage('WalletConnect connection canceled', true);
+        this.setMessage("WalletConnect connection canceled", true);
         this.pendingAction = null;
       } else {
         const msg = err instanceof Error ? err.message : String(err);
-        this.setMessage('WalletConnect failed: ' + msg, true);
+        this.setMessage("WalletConnect failed: " + msg, true);
       }
     } finally {
       this.isConnecting = false;
@@ -317,12 +397,12 @@ class WalletStore {
    */
   async connectFarcaster(): Promise<void> {
     this.isConnecting = true;
-    this.setMessage('');
+    this.setMessage("");
 
     try {
       // CDN ESM dynamic import — never bundled with npm.
       // Use a string variable so TypeScript doesn't attempt static module resolution.
-      const farcasterUrl = 'https://esm.sh/@farcaster/frame-sdk';
+      const farcasterUrl = "https://esm.sh/@farcaster/frame-sdk";
       const { sdk } = (await import(/* @vite-ignore */ farcasterUrl)) as {
         sdk: {
           wallet: { ethProvider: EIP1193Provider };
@@ -333,7 +413,7 @@ class WalletStore {
       const ethProvider = sdk.wallet.ethProvider;
 
       await this.connect({
-        info: { uuid: 'farcaster', name: 'Farcaster', rdns: 'farcaster' },
+        info: { uuid: "farcaster", name: "Farcaster", rdns: "farcaster" },
         provider: ethProvider,
       });
 
@@ -341,7 +421,7 @@ class WalletStore {
       await sdk.actions.ready();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.setMessage('Farcaster connection failed: ' + msg, true);
+      this.setMessage("Farcaster connection failed: " + msg, true);
     } finally {
       this.isConnecting = false;
     }
@@ -356,20 +436,21 @@ class WalletStore {
     // Remove event listeners from previous provider
     if (this.provider?.removeListener) {
       if (this._accountsChangedHandler) {
-        this.provider.removeListener('accountsChanged', this._accountsChangedHandler);
+        this.provider.removeListener("accountsChanged", this._accountsChangedHandler);
       }
       if (this._chainChangedHandler) {
-        this.provider.removeListener('chainChanged', this._chainChangedHandler);
+        this.provider.removeListener("chainChanged", this._chainChangedHandler);
       }
     }
 
     this.address = null;
+    this.ensName = null;
     this.chainId = null;
     this.provider = null;
     this.walletInfo = null;
     this._accountsChangedHandler = null;
     this._chainChangedHandler = null;
-    this.setMessage('Wallet disconnected');
+    this.setMessage("Wallet disconnected");
   }
 
   // ---------------------------------------------------------------------------
@@ -379,7 +460,7 @@ class WalletStore {
   /** Switch the wallet to the specified chain. */
   async switchChain(targetChainId: number): Promise<void> {
     if (!this.provider) {
-      this.setMessage('Connect wallet first', true);
+      this.setMessage("Connect wallet first", true);
       return;
     }
 
@@ -387,16 +468,16 @@ class WalletStore {
 
     try {
       await this.provider.request({
-        method: 'wallet_switchEthereumChain',
+        method: "wallet_switchEthereumChain",
         params: [{ chainId: chainIdHex }],
       });
       this.chainId = targetChainId;
     } catch (err: unknown) {
       const code =
-        err && typeof err === 'object' ? (err as Record<string, unknown>).code : undefined;
+        err && typeof err === "object" ? (err as Record<string, unknown>).code : undefined;
       if (code !== 4001) {
         const msg = err instanceof Error ? err.message : String(err);
-        this.setMessage('Failed to switch chain: ' + msg, true);
+        this.setMessage("Failed to switch chain: " + msg, true);
       }
     }
   }

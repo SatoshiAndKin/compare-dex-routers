@@ -11,23 +11,23 @@
    * - Confirm triggers transactionStore.confirmSwap()
    * - Cancel / backdrop click triggers transactionStore.cancelSwap()
    */
-  import { transactionStore } from '../stores/transactionStore.svelte.js';
-  import type { SpandexQuote, CurveQuote } from '../stores/comparisonStore.svelte.js';
+  import { transactionStore } from "../stores/transactionStore.svelte.js";
+  import type { SpandexQuote, CurveQuote } from "../stores/comparisonStore.svelte.js";
 
   const data = $derived(transactionStore.swapConfirmation);
   const isOpen = $derived(data !== null);
 
   function getQuoteDetails(quote: SpandexQuote | CurveQuote) {
-    const isTargetOut = quote.mode === 'targetOut';
+    const isTargetOut = quote.mode === "targetOut";
     return {
-      fromAmount: quote.input_amount ?? '',
-      fromSymbol: quote.from_symbol ?? '',
-      fromAddress: quote.from ?? '',
-      toAmount: quote.output_amount ?? '',
-      toSymbol: quote.to_symbol ?? '',
-      toAddress: quote.to ?? '',
-      routerAddress: quote.router_address ?? '',
-      gasCostEth: quote.gas_cost_eth ?? '',
+      fromAmount: quote.input_amount ?? "",
+      fromSymbol: quote.from_symbol ?? "",
+      fromAddress: quote.from ?? "",
+      toAmount: quote.output_amount ?? "",
+      toSymbol: quote.to_symbol ?? "",
+      toAddress: quote.to ?? "",
+      routerAddress: quote.router_address ?? "",
+      gasCostEth: quote.gas_cost_eth ?? "",
       isTargetOut,
     };
   }
@@ -47,7 +47,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       handleCancel();
     }
   }
@@ -69,12 +69,7 @@
     >
       <div class="modal-header">
         <h2 id="swap-modal-title" class="modal-title">Confirm Swap</h2>
-        <button
-          type="button"
-          class="close-btn"
-          onclick={handleCancel}
-          aria-label="Cancel swap"
-        >
+        <button type="button" class="close-btn" onclick={handleCancel} aria-label="Cancel swap">
           ×
         </button>
       </div>
@@ -82,11 +77,11 @@
       <div class="modal-body">
         <div class="trade-row">
           <span class="trade-label">
-            {details.isTargetOut ? 'You pay (required)' : 'You sell'}
+            {details.isTargetOut ? "You pay (required)" : "You sell"}
           </span>
           <span class="trade-amount">
             {details.fromAmount}
-            {details.fromSymbol ? ` ${details.fromSymbol}` : ''}
+            {details.fromSymbol ? ` ${details.fromSymbol}` : ""}
           </span>
           {#if details.fromAddress}
             <!-- Full address — NEVER truncated (project convention) -->
@@ -100,11 +95,11 @@
 
         <div class="trade-row">
           <span class="trade-label">
-            {details.isTargetOut ? 'You receive (exact)' : 'You receive (estimated)'}
+            {details.isTargetOut ? "You receive (exact)" : "You receive (estimated)"}
           </span>
           <span class="trade-amount">
             {details.toAmount}
-            {details.toSymbol ? ` ${details.toSymbol}` : ''}
+            {details.toSymbol ? ` ${details.toSymbol}` : ""}
           </span>
           {#if details.toAddress}
             <!-- Full address — NEVER truncated -->
@@ -136,12 +131,8 @@
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="btn-cancel" onclick={handleCancel}>
-          Cancel
-        </button>
-        <button type="button" class="btn-confirm" onclick={handleConfirm}>
-          Confirm Swap
-        </button>
+        <button type="button" class="btn-cancel" onclick={handleCancel}> Cancel </button>
+        <button type="button" class="btn-confirm" onclick={handleConfirm}> Confirm Swap </button>
       </div>
     </div>
   </div>

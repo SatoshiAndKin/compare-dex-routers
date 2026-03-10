@@ -6,8 +6,8 @@
    * Offers WalletConnect (loaded via CDN ESM — never bundled).
    * Detects Farcaster frame context and offers Farcaster SDK (CDN ESM).
    */
-  import { onMount } from 'svelte';
-  import { walletStore, type EIP6963ProviderDetail } from '../stores/walletStore.svelte.js';
+  import { onMount } from "svelte";
+  import { walletStore, type EIP6963ProviderDetail } from "../stores/walletStore.svelte.js";
 
   interface Props {
     /** WalletConnect project ID from server config */
@@ -24,13 +24,13 @@
   let isFarcasterFrame = $state(false);
 
   onMount(() => {
-    isFarcasterFrame = typeof window !== 'undefined' && window.parent !== window;
+    isFarcasterFrame = typeof window !== "undefined" && window.parent !== window;
   });
 
   // Re-request providers each time menu opens (in case new wallets were installed)
   $effect(() => {
-    if (isOpen && typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('eip6963:requestProvider'));
+    if (isOpen && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("eip6963:requestProvider"));
     }
   });
 
@@ -64,7 +64,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       onClose();
     }
   }
@@ -75,7 +75,7 @@
     encodeURIComponent(
       '<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
         '<rect width="32" height="32" rx="6" fill="#3B99FC"/>' +
-        '<path d="M10.05 12.36c3.28-3.21 8.62-3.21 11.9 0l.4.39a.41.41 0 0 1 0 .58l-1.35 1.32a.21.21 0 0 1-.3 0l-.54-.53c-2.29-2.24-6.01-2.24-8.3 0l-.58.57a.21.21 0 0 1-.3 0l-1.35-1.32a.41.41 0 0 1 0-.58l.42-.43ZM24.75 15.1l1.2 1.18a.41.41 0 0 1 0 .58l-5.43 5.31a.42.42 0 0 1-.6 0l-3.85-3.77a.1.1 0 0 0-.15 0l-3.85 3.77a.42.42 0 0 1-.6 0l-5.42-5.31a.41.41 0 0 1 0-.58l1.2-1.18a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0Z" fill="#fff"/></svg>',
+        '<path d="M10.05 12.36c3.28-3.21 8.62-3.21 11.9 0l.4.39a.41.41 0 0 1 0 .58l-1.35 1.32a.21.21 0 0 1-.3 0l-.54-.53c-2.29-2.24-6.01-2.24-8.3 0l-.58.57a.21.21 0 0 1-.3 0l-1.35-1.32a.41.41 0 0 1 0-.58l.42-.43ZM24.75 15.1l1.2 1.18a.41.41 0 0 1 0 .58l-5.43 5.31a.42.42 0 0 1-.6 0l-3.85-3.77a.1.1 0 0 0-.15 0l-3.85 3.77a.42.42 0 0 1-.6 0l-5.42-5.31a.41.41 0 0 1 0-.58l1.2-1.18a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0l3.85 3.77a.1.1 0 0 0 .15 0l3.85-3.77a.42.42 0 0 1 .6 0Z" fill="#fff"/></svg>'
     );
 </script>
 
@@ -113,7 +113,7 @@
                 src={detail.info.icon}
                 alt="{detail.info.name} icon"
                 onerror={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
                 }}
               />
             {:else}

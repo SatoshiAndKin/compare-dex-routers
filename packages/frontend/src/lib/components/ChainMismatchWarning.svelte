@@ -4,32 +4,30 @@
    * is on a different chain than the selected form chain.
    * Offers a one-click "Switch Chain" button.
    */
-  import { walletStore } from '../stores/walletStore.svelte.js';
-  import { formStore } from '../stores/formStore.svelte.js';
+  import { walletStore } from "../stores/walletStore.svelte.js";
+  import { formStore } from "../stores/formStore.svelte.js";
 
   const CHAIN_NAMES: Readonly<Record<number, string>> = {
-    1: 'Ethereum',
-    10: 'Optimism',
-    56: 'BSC',
-    137: 'Polygon',
-    8453: 'Base',
-    42161: 'Arbitrum',
-    43114: 'Avalanche',
+    1: "Ethereum",
+    10: "Optimism",
+    56: "BSC",
+    137: "Polygon",
+    8453: "Base",
+    42161: "Arbitrum",
+    43114: "Avalanche",
   };
 
   function chainName(chainId: number | null): string {
-    if (chainId === null) return 'Unknown';
+    if (chainId === null) return "Unknown";
     return CHAIN_NAMES[chainId] ?? `Chain ${chainId}`;
   }
-
 </script>
 
 {#if walletStore.isConnected && walletStore.chainId !== null && walletStore.chainId !== formStore.chainId}
   <div class="chain-mismatch" role="alert" aria-live="polite">
     <span class="mismatch-msg">
       Wallet is on
-      <strong>{chainName(walletStore.chainId)}</strong>.
-      Switch to
+      <strong>{chainName(walletStore.chainId)}</strong>. Switch to
       <strong>{chainName(formStore.chainId)}</strong>?
     </span>
     <button

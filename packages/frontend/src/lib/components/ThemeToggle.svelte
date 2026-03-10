@@ -3,7 +3,7 @@
    * ThemeToggle — cycles through light → dark → system themes on click.
    * Uses themeStore for state and persistence.
    */
-  import { themeStore } from '../stores/themeStore.svelte.js';
+  import { themeStore } from "../stores/themeStore.svelte.js";
 </script>
 
 <button
@@ -18,14 +18,20 @@
 
 <style>
   .theme-toggle {
-    background: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    background: var(--bg-card, #fff);
     border: 2px solid var(--border, #000);
     color: var(--text, #000);
     cursor: pointer;
-    font-size: 1.1rem;
+    font-size: 1.125rem;
     line-height: 1;
-    padding: 0.25rem 0.5rem;
     font-family: inherit;
+    flex-shrink: 0;
     transition: background 0.1s;
   }
 

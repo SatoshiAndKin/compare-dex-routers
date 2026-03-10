@@ -3,53 +3,75 @@
    * SlippagePresets — slippage preset buttons and custom input.
    * Ports behavior from src/client/slippage.ts.
    */
-  import { formStore } from '../stores/formStore.svelte.js';
-
-  // ---------------------------------------------------------------------------
-  // Constants (from src/client/slippage.ts — presets: 3, 10, 50, 100, 300 bps)
-  // ---------------------------------------------------------------------------
+  import { formStore } from "../stores/formStore.svelte.js";
 
   const PRESETS: number[] = [3, 10, 50, 100, 300];
+  const MAX_SLIPPAGE_BPS = 5000; // 50% absolute max
+  const WARN_SLIPPAGE_BPS = 1000; // 10% requires confirmation
 
-  // ---------------------------------------------------------------------------
-  // State
-  // ---------------------------------------------------------------------------
-
-  let customValue = $state('');
+  let customValue = $state("");
   let isCustomActive = $state(false);
-
-  // ---------------------------------------------------------------------------
-  // Derived
-  // ---------------------------------------------------------------------------
+  let slippageError = $state("");
+  let pendingHighSlippage = $state<number | null>(null);
 
   let activePreset = $derived(
-    isCustomActive ? null : PRESETS.find((p) => p === formStore.slippageBps) ?? null,
+    isCustomActive ? null : (PRESETS.find((p) => p === formStore.slippageBps) ?? null)
   );
-
-  // ---------------------------------------------------------------------------
-  // Event handlers
-  // ---------------------------------------------------------------------------
 
   function handlePresetClick(bps: number): void {
     formStore.slippageBps = bps;
     isCustomActive = false;
-    customValue = '';
+    customValue = "";
+    slippageError = "";
+    pendingHighSlippage = null;
   }
 
   function handleCustomInput(e: Event): void {
     const target = e.target as HTMLInputElement;
     customValue = target.value;
+    slippageError = "";
+    pendingHighSlippage = null;
     const val = Number(customValue);
-    if (customValue !== '' && Number.isFinite(val) && val > 0) {
-      formStore.slippageBps = Math.round(val);
-      isCustomActive = true;
-    } else if (customValue === '') {
-      // When cleared, revert to default preset (50 bps)
+
+    if (customValue === "") {
       formStore.slippageBps = 50;
       isCustomActive = false;
-    } else {
-      isCustomActive = true;
+      return;
     }
+
+    if (!Number.isFinite(val) || val <= 0 || !Number.isInteger(val)) {
+      slippageError = "Enter a whole number";
+      isCustomActive = true;
+      return;
+    }
+
+    if (val > MAX_SLIPPAGE_BPS) {
+      slippageError = `Max slippage is ${MAX_SLIPPAGE_BPS} bps (${MAX_SLIPPAGE_BPS / 100}%)`;
+      isCustomActive = true;
+      return;
+    }
+
+    if (val > WARN_SLIPPAGE_BPS) {
+      pendingHighSlippage = Math.round(val);
+      isCustomActive = true;
+      return;
+    }
+
+    formStore.slippageBps = Math.round(val);
+    isCustomActive = true;
+  }
+
+  function confirmHighSlippage(): void {
+    if (pendingHighSlippage !== null) {
+      formStore.slippageBps = pendingHighSlippage;
+      pendingHighSlippage = null;
+    }
+  }
+
+  function cancelHighSlippage(): void {
+    pendingHighSlippage = null;
+    customValue = "";
+    isCustomActive = false;
   }
 </script>
 
@@ -59,7 +81,7 @@
     <div class="slippage-buttons">
       {#each PRESETS as bps}
         <button
-          class={`slippage-btn${activePreset === bps ? ' active' : ''}`}
+          class={`slippage-btn${activePreset === bps ? " active" : ""}`}
           type="button"
           data-bps={bps}
           onclick={() => handlePresetClick(bps)}
@@ -71,11 +93,12 @@
     </div>
     <div class="slippage-custom">
       <input
-        class={`slippage-custom-input${isCustomActive ? ' active' : ''}`}
+        class={`slippage-custom-input${isCustomActive ? " active" : ""}${slippageError ? " error" : ""}`}
         type="number"
-        min="0"
+        min="1"
+        max={MAX_SLIPPAGE_BPS}
         step="1"
-        placeholder="Custom bps"
+        placeholder="bps"
         value={customValue}
         oninput={handleCustomInput}
         aria-label="Custom slippage in basis points"
@@ -83,9 +106,24 @@
       <span class="slippage-bps-label">bps</span>
     </div>
   </div>
+  {#if slippageError}
+    <div class="slippage-error" role="alert">{slippageError}</div>
+  {/if}
+  {#if pendingHighSlippage !== null}
+    <div class="slippage-warning" role="alert">
+      <span
+        >{pendingHighSlippage} bps ({(pendingHighSlippage / 100).toFixed(1)}%) is very high. Are you
+        sure?</span
+      >
+      <div class="slippage-warning-actions">
+        <button type="button" class="confirm-btn" onclick={confirmHighSlippage}>Yes, use it</button>
+        <button type="button" class="cancel-btn" onclick={cancelHighSlippage}>Cancel</button>
+      </div>
+    </div>
+  {/if}
   <div class="slippage-current">
     Current: <strong>{formStore.slippageBps} bps</strong> ({(formStore.slippageBps / 100).toFixed(
-      2,
+      2
     )}%)
   </div>
 </div>
@@ -175,7 +213,7 @@
     -webkit-appearance: none;
     margin: 0;
   }
-  .slippage-custom-input[type='number'] {
+  .slippage-custom-input[type="number"] {
     -moz-appearance: textfield;
     appearance: textfield;
   }
@@ -183,6 +221,51 @@
   .slippage-bps-label {
     font-size: 0.85rem;
     color: var(--text-muted, #666);
+  }
+
+  .slippage-custom-input.error {
+    border-color: var(--red, #cc0000);
+  }
+
+  .slippage-error {
+    font-size: 0.8rem;
+    color: var(--red, #cc0000);
+    font-weight: 600;
+  }
+
+  .slippage-warning {
+    font-size: 0.8rem;
+    color: var(--warning, #cc7a00);
+    padding: 0.4rem 0.5rem;
+    border: 2px solid var(--warning, #cc7a00);
+    background: var(--warning-bg, #f0f0f0);
+  }
+
+  .slippage-warning-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+
+  .confirm-btn,
+  .cancel-btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border, #000);
+  }
+
+  .confirm-btn {
+    background: var(--warning, #cc7a00);
+    color: var(--text-inverse, #fff);
+    border-color: var(--warning, #cc7a00);
+    font-weight: 600;
+  }
+
+  .cancel-btn {
+    background: var(--bg-card, #fff);
+    color: var(--text, #000);
   }
 
   .slippage-current {

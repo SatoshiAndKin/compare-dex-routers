@@ -15,9 +15,9 @@
    * - Body scroll locked while open
    * - Focus returned to opener on close
    */
-  import { settingsStore } from '../stores/settingsStore.svelte.js';
-  import { formStore } from '../stores/formStore.svelte.js';
-  import { walletStore } from '../stores/walletStore.svelte.js';
+  import { settingsStore } from "../stores/settingsStore.svelte.js";
+  import { formStore } from "../stores/formStore.svelte.js";
+  import { walletStore } from "../stores/walletStore.svelte.js";
 
   // ---------------------------------------------------------------------------
   // Chain ID constants (from src/client/config.ts)
@@ -31,15 +31,15 @@
   const POLYGON_CHAIN_ID = 137;
   const AVALANCHE_CHAIN_ID = 43114;
 
-  const FLASHBOTS_RPC_URL = 'https://rpc.flashbots.net';
-  const BLOXROUTE_BSC_RPC_URL = 'https://bsc.rpc.blxrbdn.com';
+  const FLASHBOTS_RPC_URL = "https://rpc.flashbots.net";
+  const BLOXROUTE_BSC_RPC_URL = "https://bsc.rpc.blxrbdn.com";
 
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
 
   let closeButtonEl = $state<HTMLButtonElement | null>(null);
-  let addNetworkError = $state('');
+  let addNetworkError = $state("");
 
   // ---------------------------------------------------------------------------
   // Derived
@@ -53,9 +53,9 @@
   // ---------------------------------------------------------------------------
 
   $effect(() => {
-    if (settingsStore.isMevModalOpen && typeof document !== 'undefined') {
+    if (settingsStore.isMevModalOpen && typeof document !== "undefined") {
       const original = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
       return () => {
         document.body.style.overflow = original;
       };
@@ -65,7 +65,7 @@
   // Focus close button when modal opens
   $effect(() => {
     if (settingsStore.isMevModalOpen) {
-      addNetworkError = '';
+      addNetworkError = "";
       closeButtonEl?.focus();
     }
   });
@@ -83,34 +83,34 @@
   }
 
   function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape') handleClose();
+    if (e.key === "Escape") handleClose();
   }
 
-  async function handleAddToWallet(type: 'ethereum' | 'bsc'): Promise<void> {
-    addNetworkError = '';
+  async function handleAddToWallet(type: "ethereum" | "bsc"): Promise<void> {
+    addNetworkError = "";
     const provider = walletStore.provider;
     if (!provider) return;
 
     const networkConfig =
-      type === 'ethereum'
+      type === "ethereum"
         ? {
-            chainId: '0x1',
-            chainName: 'Ethereum (Flashbots Protect)',
+            chainId: "0x1",
+            chainName: "Ethereum (Flashbots Protect)",
             rpcUrls: [FLASHBOTS_RPC_URL],
-            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-            blockExplorerUrls: ['https://etherscan.io'],
+            nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+            blockExplorerUrls: ["https://etherscan.io"],
           }
         : {
-            chainId: '0x38',
-            chainName: 'BSC (bloXroute Protect)',
+            chainId: "0x38",
+            chainName: "BSC (bloXroute Protect)",
             rpcUrls: [BLOXROUTE_BSC_RPC_URL],
-            nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-            blockExplorerUrls: ['https://bscscan.com'],
+            nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+            blockExplorerUrls: ["https://bscscan.com"],
           };
 
     try {
       await provider.request({
-        method: 'wallet_addEthereumChain',
+        method: "wallet_addEthereumChain",
         params: [networkConfig],
       });
     } catch (err) {
@@ -159,7 +159,7 @@
               type="button"
               class="add-to-wallet-btn"
               disabled={walletDisabled}
-              onclick={() => void handleAddToWallet('ethereum')}
+              onclick={() => void handleAddToWallet("ethereum")}
             >
               Add Flashbots Protect to Wallet
             </button>
@@ -172,14 +172,13 @@
           <div class="mev-chain-message bsc">
             <div class="mev-chain-title">BSC (BNB Chain)</div>
             <p class="modal-text">
-              BSC has active MEV bots. Add bloXroute BSC Protect for private transaction
-              submission.
+              BSC has active MEV bots. Add bloXroute BSC Protect for private transaction submission.
             </p>
             <button
               type="button"
               class="add-to-wallet-btn"
               disabled={walletDisabled}
-              onclick={() => void handleAddToWallet('bsc')}
+              onclick={() => void handleAddToWallet("bsc")}
             >
               Add bloXroute Protect to Wallet
             </button>
@@ -191,26 +190,25 @@
           <!-- L2: sequencer message -->
           {@const chainName =
             chainId === BASE_CHAIN_ID
-              ? 'Base'
+              ? "Base"
               : chainId === ARBITRUM_CHAIN_ID
-                ? 'Arbitrum'
-                : 'Optimism'}
+                ? "Arbitrum"
+                : "Optimism"}
           <div class="mev-chain-message l2">
             <div class="mev-chain-title">{chainName} (L2)</div>
             <p class="modal-text">
-              This chain uses a centralized sequencer that processes transactions in order
-              received. Sandwich attacks are significantly harder. No additional protection
-              needed.
+              This chain uses a centralized sequencer that processes transactions in order received.
+              Sandwich attacks are significantly harder. No additional protection needed.
             </p>
           </div>
         {:else if chainId === POLYGON_CHAIN_ID || chainId === AVALANCHE_CHAIN_ID}
           <!-- Polygon / Avalanche -->
-          {@const chainName = chainId === POLYGON_CHAIN_ID ? 'Polygon' : 'Avalanche'}
+          {@const chainName = chainId === POLYGON_CHAIN_ID ? "Polygon" : "Avalanche"}
           <div class="mev-chain-message other">
             <div class="mev-chain-title">{chainName}</div>
             <p class="modal-text">
-              MEV protection is useful on this chain but no free public protection RPC is
-              currently available.
+              MEV protection is useful on this chain but no free public protection RPC is currently
+              available.
             </p>
           </div>
         {:else}

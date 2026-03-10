@@ -4,13 +4,13 @@
    * Shows loading skeleton, error state, or full quote details.
    * Includes Approve and Swap transaction buttons when a quote is available.
    */
-  import type { SpandexQuote, CurveQuote } from '../stores/comparisonStore.svelte.js';
-  import QuoteDetails from './QuoteDetails.svelte';
-  import { transactionStore } from '../stores/transactionStore.svelte.js';
-  import { walletStore } from '../stores/walletStore.svelte.js';
+  import type { SpandexQuote, CurveQuote } from "../stores/comparisonStore.svelte.js";
+  import QuoteDetails from "./QuoteDetails.svelte";
+  import { transactionStore } from "../stores/transactionStore.svelte.js";
+  import { walletStore } from "../stores/walletStore.svelte.js";
 
   interface Props {
-    provider: 'spandex' | 'curve';
+    provider: "spandex" | "curve";
     quote?: SpandexQuote | CurveQuote | null;
     error?: string | null;
     loading?: boolean;
@@ -28,52 +28,44 @@
   }: Props = $props();
 
   const providerName = $derived(
-    provider === 'spandex'
-      ? `Spandex${(quote as SpandexQuote)?.provider ? ' / ' + (quote as SpandexQuote).provider : ''}`
-      : 'Curve',
+    provider === "spandex"
+      ? `Spandex${(quote as SpandexQuote)?.provider ? " / " + (quote as SpandexQuote).provider : ""}`
+      : "Curve"
   );
 
-  const isTargetOut = $derived(quote?.mode === 'targetOut');
-  const primaryAmount = $derived(
-    isTargetOut ? quote?.input_amount : quote?.output_amount,
-  );
-  const primarySymbol = $derived(
-    isTargetOut ? quote?.from_symbol : quote?.to_symbol,
-  );
-  const primaryLabel = $derived(
-    isTargetOut ? 'You pay (required)' : 'You receive (estimated)',
-  );
-  const hasGasCost = $derived(
-    Boolean(quote?.gas_cost_eth) && Number(quote?.gas_cost_eth) > 0,
-  );
+  const isTargetOut = $derived(quote?.mode === "targetOut");
+  const primaryAmount = $derived(isTargetOut ? quote?.input_amount : quote?.output_amount);
+  const primarySymbol = $derived(isTargetOut ? quote?.from_symbol : quote?.to_symbol);
+  const primaryLabel = $derived(isTargetOut ? "You pay (required)" : "You receive (estimated)");
+  const hasGasCost = $derived(Boolean(quote?.gas_cost_eth) && Number(quote?.gas_cost_eth) > 0);
 
   // ---------------------------------------------------------------------------
   // Transaction state
   // ---------------------------------------------------------------------------
 
   /** Router name key used in transactionStore status records */
-  const routerName = $derived(provider === 'spandex' ? 'spandex' : 'curve');
+  const routerName = $derived(provider === "spandex" ? "spandex" : "curve");
 
   /** Whether this quote requires an ERC-20 approval step */
   const needsApproval = $derived(
     quote != null &&
       (Boolean((quote as SpandexQuote).approval_token) ||
-        Boolean((quote as CurveQuote).approval_target)),
+        Boolean((quote as CurveQuote).approval_target))
   );
 
   /** Whether this quote has executable swap calldata */
   const canSwap = $derived(
-    quote != null && Boolean(quote.router_address) && Boolean(quote.router_calldata),
+    quote != null && Boolean(quote.router_address) && Boolean(quote.router_calldata)
   );
 
   const approveStatus = $derived(transactionStore.getApproveStatus(routerName));
   const swapStatus = $derived(transactionStore.getSwapStatus(routerName));
 
-  const approvePending = $derived(approveStatus === 'pending');
-  const swapPending = $derived(swapStatus === 'pending');
+  const approvePending = $derived(approveStatus === "pending");
+  const swapPending = $derived(swapStatus === "pending");
 
   /** Approve is locked once confirmed */
-  const approveConfirmed = $derived(approveStatus === 'confirmed');
+  const approveConfirmed = $derived(approveStatus === "confirmed");
 
   function handleApprove(): void {
     if (!quote) return;
@@ -86,33 +78,41 @@
   }
 </script>
 
-<div class="quote-card" class:winner={isRecommended} class:alternative={!isRecommended && !loading && !error}>
+<div
+  class="quote-card"
+  class:winner={isRecommended}
+  class:alternative={!isRecommended && !loading && !error}
+>
   {#if loading}
     <!-- Loading skeleton -->
     <div class="quote-loading" aria-busy="true" aria-label="Loading {provider} quote...">
       <div class="loading-badge">Loading...</div>
       <div class="loading-amount"></div>
-      <div class="loading-provider">Querying {provider === 'spandex' ? 'Spandex' : 'Curve'}...</div>
+      <div class="loading-provider">Querying {provider === "spandex" ? "Spandex" : "Curve"}...</div>
     </div>
   {:else if error}
     <!-- Error state -->
     <div class="quote-error" role="alert">
-      <div class="provider-label">{provider === 'spandex' ? 'Spandex' : 'Curve'}</div>
+      <div class="provider-label">{provider === "spandex" ? "Spandex" : "Curve"}</div>
       <div class="error-message">{error}</div>
     </div>
   {:else if quote}
     <!-- Quote result -->
     <div class="quote-result">
       <!-- Recommendation badge -->
-      <span class="recommendation-badge" class:winner-badge={isRecommended} class:alt-badge={!isRecommended}>
-        {isRecommended ? 'RECOMMENDED' : 'ALTERNATIVE'}
+      <span
+        class="recommendation-badge"
+        class:winner-badge={isRecommended}
+        class:alt-badge={!isRecommended}
+      >
+        {isRecommended ? "RECOMMENDED" : "ALTERNATIVE"}
       </span>
 
       <!-- Primary output -->
       <div class="output-label">{primaryLabel}</div>
       <div class="output-amount">
-        {primaryAmount ?? ''}
-        {primarySymbol ? ` ${primarySymbol}` : ''}
+        {primaryAmount ?? ""}
+        {primarySymbol ? ` ${primarySymbol}` : ""}
       </div>
 
       <!-- Provider info -->
@@ -138,7 +138,7 @@
       {/if}
 
       <!-- Expandable details -->
-      <QuoteDetails {quote} type={provider} gasPriceGwei={gasPriceGwei} />
+      <QuoteDetails {quote} type={provider} {gasPriceGwei} />
 
       <!-- Transaction actions -->
       {#if needsApproval || canSwap}
@@ -150,12 +150,12 @@
               class:confirmed={approveConfirmed}
               disabled={approvePending || approveConfirmed}
               aria-label={approveConfirmed
-                ? 'Already approved'
+                ? "Already approved"
                 : approvePending
-                  ? 'Approving...'
+                  ? "Approving..."
                   : walletStore.isConnected
-                    ? 'Approve token spending'
-                    : 'Connect wallet to approve'}
+                    ? "Approve token spending"
+                    : "Connect wallet to approve"}
               onclick={handleApprove}
             >
               {#if approveConfirmed}
@@ -174,10 +174,10 @@
               class="tx-btn swap-btn"
               disabled={swapPending}
               aria-label={swapPending
-                ? 'Swap in progress...'
+                ? "Swap in progress..."
                 : walletStore.isConnected
-                  ? 'Execute swap'
-                  : 'Connect wallet to swap'}
+                  ? "Execute swap"
+                  : "Connect wallet to swap"}
               onclick={handleSwap}
             >
               {#if swapPending}
@@ -189,11 +189,11 @@
           {/if}
 
           <!-- Transaction status indicator -->
-          {#if approveStatus === 'failed'}
+          {#if approveStatus === "failed"}
             <span class="tx-status error" role="alert">Approve failed</span>
-          {:else if swapStatus === 'confirmed'}
+          {:else if swapStatus === "confirmed"}
             <span class="tx-status success" role="status">Swap confirmed ✓</span>
-          {:else if swapStatus === 'failed'}
+          {:else if swapStatus === "failed"}
             <span class="tx-status error" role="alert">Swap failed</span>
           {/if}
         </div>
@@ -245,8 +245,13 @@
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
   }
 
   .loading-provider {
