@@ -22,13 +22,13 @@ services:
       retries: 3
     stop_grace_period: 35s
     networks:
-      - traefik
+      - traefik-proxy
     labels:
       - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`${DOMAIN:-localhost}`) && (PathPrefix(`/health`) || PathPrefix(`/chains`) || PathPrefix(`/compare`) || PathPrefix(`/quote`) || PathPrefix(`/tokenlist`) || PathPrefix(`/token-metadata`) || PathPrefix(`/metrics`) || PathPrefix(`/analytics`) || PathPrefix(`/errors`) || PathPrefix(`/config`) || PathPrefix(`/docs`) || PathPrefix(`/openapi`) || PathPrefix(`/.well-known`))
-      - traefik.http.routers.api.entrypoints=web
-      - traefik.http.services.api.loadbalancer.server.port=3100
-      - traefik.http.routers.api.priority=10
+      - traefik.http.routers.cdr-api.rule=Host(`${DOMAIN:-localhost}`) && (PathPrefix(`/health`) || PathPrefix(`/chains`) || PathPrefix(`/compare`) || PathPrefix(`/quote`) || PathPrefix(`/tokenlist`) || PathPrefix(`/token-metadata`) || PathPrefix(`/metrics`) || PathPrefix(`/analytics`) || PathPrefix(`/errors`) || PathPrefix(`/config`) || PathPrefix(`/docs`) || PathPrefix(`/openapi`) || PathPrefix(`/.well-known`))
+      - traefik.http.routers.cdr-api.entrypoints=web
+      - traefik.http.services.cdr-api.loadbalancer.server.port=3100
+      - traefik.http.routers.cdr-api.priority=10
     deploy:
       resources:
         limits:
@@ -45,19 +45,19 @@ services:
       retries: 3
     stop_grace_period: 35s
     networks:
-      - traefik
+      - traefik-proxy
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.rule=Host(`${DOMAIN:-localhost}`)
-      - traefik.http.routers.frontend.entrypoints=web
-      - traefik.http.routers.frontend.priority=1
-      - traefik.http.routers.api.priority=10
-      - traefik.http.services.frontend.loadbalancer.server.port=80
+      - traefik.http.routers.cdr-frontend.rule=Host(`${DOMAIN:-localhost}`)
+      - traefik.http.routers.cdr-frontend.entrypoints=web
+      - traefik.http.routers.cdr-frontend.priority=1
+      - traefik.http.services.cdr-frontend.loadbalancer.server.port=80
     deploy:
       resources:
         limits:
           memory: 128M
 
 networks:
-  traefik:
+  traefik-proxy:
     external: true
+    name: traefik-proxy
