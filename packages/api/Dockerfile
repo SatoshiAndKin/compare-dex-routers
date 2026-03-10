@@ -27,4 +27,4 @@ EXPOSE 3100
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD node -e "fetch('http://localhost:3100/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 
-CMD ["tsx", "packages/api/src/server.ts"]
+CMD ["node_modules/.bin/tsx", "packages/api/src/server.ts"]
