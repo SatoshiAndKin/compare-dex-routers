@@ -1,0 +1,186 @@
+{
+  "groupId": "ss-cross-group",
+  "milestone": "ui-fixes",
+  "testedAt": "2026-03-11T10:01:45Z",
+  "credentials": {
+    "account": "none (read-only app, no login)",
+    "namespace": "none"
+  },
+  "toolsUsed": ["file-inspection", "shell-commands", "agent-browser"],
+  "assertions": [
+    {
+      "id": "VAL-SS-001",
+      "title": "Screenshot shows dark mode with quote results",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check docs/screenshot.png existence",
+          "expected": "File exists",
+          "observed": "File exists at /Users/bryan/code/compare-dex-routers/docs/screenshot.png (315929 bytes, modified Mar 10 23:00)"
+        },
+        {
+          "action": "Visually inspect screenshot for dark mode and quote results",
+          "expected": "Dark background, at least one router's quote results visible",
+          "observed": "Screenshot shows dark theme (black background), WETH->USDC on Base chain, Curve quote panel showing 'YOU RECEIVE 3984...', router name 'CURVE', 'Via Curve', 'Gas Cost', 'Router address' all visible. Green 'RECOMMENDED' badge present."
+        }
+      ],
+      "evidence": {
+        "screenshots": ["docs/screenshot.png (original file inspected)"],
+        "consoleErrors": "n/a",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SS-002",
+      "title": "README image reference intact",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Grep README.md for screenshot reference",
+          "expected": "Contains ![Web UI screenshot](docs/screenshot.png)",
+          "observed": "Found exact match: '![Web UI screenshot](docs/screenshot.png)' in README.md"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "network": "n/a"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SS-003",
+      "title": "Screenshot resolution adequate",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check image dimensions using Python struct",
+          "expected": "Width >= 800px, legible text",
+          "observed": "Width: 1617px, Height: 1200px — well above the 800px minimum"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "network": "n/a",
+        "dimensions": "1617x1200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "Typecheck, lint, and tests pass",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run npm run typecheck",
+          "expected": "Exit code 0",
+          "observed": "svelte-check found 0 errors and 0 warnings. tsc --noEmit clean. Exit code 0."
+        },
+        {
+          "action": "Run npm run lint",
+          "expected": "Exit code 0 (0 errors)",
+          "observed": "3 warnings (pre-existing complexity warnings per AGENTS.md), 0 errors. Exit code 0."
+        },
+        {
+          "action": "Run npm test",
+          "expected": "Exit code 0, all tests pass",
+          "observed": "23 test files, 406 tests all passed. Exit code 0."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a",
+        "network": "n/a",
+        "typecheckOutput": "svelte-check found 0 errors and 0 warnings",
+        "lintOutput": "3 warnings (0 errors) — pre-existing complexity warnings",
+        "testOutput": "Test Files 23 passed (23), Tests 406 passed (406)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "No horizontal overflow at 375px",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:5173 with agent-browser session b833ce218e19__u3",
+          "expected": "Page loads successfully",
+          "observed": "Page loaded: 'Compare DEX Routers'"
+        },
+        {
+          "action": "Set viewport to 375x812",
+          "expected": "Viewport resized to 375px width",
+          "observed": "Viewport set successfully"
+        },
+        {
+          "action": "Take full-page screenshot at 375px",
+          "expected": "Full form visible without overflow",
+          "observed": "Screenshot shows chain selector, From/To token inputs, Exact Input/Output toggle, YOU SELL/RECEIVE fields, slippage buttons, COMPARE QUOTES button — all within 375px with no visible overflow"
+        },
+        {
+          "action": "Evaluate document.documentElement.scrollWidth vs clientWidth",
+          "expected": "scrollWidth <= clientWidth (no horizontal overflow)",
+          "observed": "scrollWidth: 375, clientWidth: 375, hasHorizontalOverflow: false, bodyScrollWidth: 375"
+        }
+      ],
+      "evidence": {
+        "screenshots": [".factory/validation/ui-fixes/user-testing/flows/375px-test.png"],
+        "consoleErrors": "none",
+        "network": "n/a",
+        "overflowCheck": "scrollWidth=375, clientWidth=375, hasHorizontalOverflow=false"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Dark mode consistency for new elements (clear buttons)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Click ThemeToggle button to switch to dark mode",
+          "expected": "data-theme attribute becomes 'dark'",
+          "observed": "Clicked theme toggle twice (system -> light -> dark). document.documentElement.getAttribute('data-theme') returned 'dark'"
+        },
+        {
+          "action": "Type 'WETH' in From token input to trigger clear button appearance",
+          "expected": "Clear button appears",
+          "observed": "button 'Clear from token' [ref=e5] appeared in accessibility snapshot"
+        },
+        {
+          "action": "Take annotated screenshot in dark mode with clear button visible",
+          "expected": "X button visible with correct dark mode styling",
+          "observed": "Screenshot shows dark background, 'WETH' text in input, '×' (clear) button visible at right edge of From token input"
+        },
+        {
+          "action": "Inspect computed styles of clear button",
+          "expected": "44x44px touch target, uses var(--text) or similar CSS custom property colors",
+          "observed": "box: 44x44 at (918, 209), color: rgb(224, 224, 224) (light grey appropriate for dark mode), font: 20px system-ui"
+        },
+        {
+          "action": "Check for console errors",
+          "expected": "No errors",
+          "observed": "No errors"
+        }
+      ],
+      "evidence": {
+        "screenshots": [".factory/validation/ui-fixes/user-testing/flows/dark-mode-clear-btn.png"],
+        "consoleErrors": "none",
+        "network": "n/a",
+        "computedStyles": "box: 44x44px, color: rgb(224, 224, 224), background: rgba(0,0,0,0)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "ThemeToggle button has aria-label 'Theme: system' (not 'ThemeToggle' or 'Toggle dark mode') and does not show up in agent-browser snapshot -i by default. Required JavaScript evaluation to discover its aria-label, then used `find role button click --name 'Theme: system'` to interact.",
+      "resolved": true,
+      "resolution": "Used `agent-browser eval` to list all buttons with aria-labels, then found the theme toggle's accessible name was 'Theme: system', then cycled it twice (system -> light -> dark) to reach dark mode",
+      "affectedAssertions": ["VAL-CROSS-003"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 6 assertions: all 6 passed. docs/screenshot.png exists (1617x1200px, dark mode with Curve quote results). README.md reference is intact. Typecheck/lint/tests all exit 0 (406 tests pass). At 375px no horizontal overflow (scrollWidth=clientWidth=375). In dark mode, clear (X) buttons render correctly with 44x44px touch target and appropriate light grey color on dark background."
+}
