@@ -104,8 +104,35 @@
     }
   }
 
-  /** Select a token and update store */
+  /** Select a token and update store, swapping sides when the new selection duplicates the opposite side */
   function selectToken(token: TokenInfo): void {
+    const currentSideToken = type === "from" ? formStore.fromToken : formStore.toToken;
+    const otherSideToken = type === "from" ? formStore.toToken : formStore.fromToken;
+    const normalizedSelectedAddress = normalizeAddress(token.address);
+
+    if (
+      currentSideToken === null &&
+      otherSideToken !== null &&
+      normalizeAddress(otherSideToken.address) === normalizedSelectedAddress
+    ) {
+      if (type === "from") {
+        formStore.toToken = null;
+      } else {
+        formStore.fromToken = null;
+      }
+    } else if (
+      currentSideToken !== null &&
+      normalizeAddress(currentSideToken.address) !== normalizedSelectedAddress &&
+      otherSideToken !== null &&
+      normalizeAddress(otherSideToken.address) === normalizedSelectedAddress
+    ) {
+      if (type === "from") {
+        formStore.toToken = currentSideToken;
+      } else {
+        formStore.fromToken = currentSideToken;
+      }
+    }
+
     inputValue = formatTokenDisplay(token.symbol, token.address);
     if (type === "from") {
       formStore.fromToken = token;

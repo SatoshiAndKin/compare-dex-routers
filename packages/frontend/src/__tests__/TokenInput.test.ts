@@ -194,6 +194,8 @@ describe("TokenInput", () => {
     const { getByPlaceholderText, container } = render(TokenInput, { props: { type: "from" } });
     const input = getByPlaceholderText("Sell token...");
 
+    await fireEvent.input(input, { target: { value: "DAI" } });
+    await new Promise((r) => setTimeout(r, 0));
     await fireEvent.focus(input);
     await fireEvent.input(input, { target: { value: "USDC" } });
     await new Promise((r) => setTimeout(r, 10));
@@ -303,5 +305,163 @@ describe("TokenInput", () => {
     expect(mouseDownEvent.defaultPrevented).toBe(true);
     expect(tokenListStore.unrecognizedModal).toBeNull();
     expect(queryByText(/Add Unrecognized Token/i)).toBeNull();
+  });
+
+  it("clears the opposite token when selecting a duplicate from token", async () => {
+    tokensStore.allTokens = [
+      {
+        address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        symbol: "USDT",
+        decimals: 6,
+        name: "Tether USD",
+        chainId: 1,
+      },
+    ];
+    (tokensStore as unknown as { fetched: boolean }).fetched = true;
+
+    formStore.fromToken = {
+      address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      symbol: "DAI",
+      decimals: 18,
+      name: "Dai Stablecoin",
+    };
+    formStore.toToken = {
+      address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      symbol: "USDT",
+      decimals: 6,
+      name: "Tether USD",
+    };
+
+    const { getByPlaceholderText, getAllByRole } = render(TokenInput, { props: { type: "from" } });
+    const input = getByPlaceholderText("Sell token...");
+
+    await fireEvent.focus(input);
+    await fireEvent.input(input, { target: { value: "USDT" } });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+
+    expect(formStore.fromToken).toMatchObject({
+      address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    });
+    expect(formStore.toToken).toBeNull();
+  });
+
+  it("clears the opposite token when selecting a duplicate to token", async () => {
+    tokensStore.allTokens = [
+      {
+        address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        symbol: "USDC",
+        decimals: 6,
+        name: "USD Coin",
+        chainId: 1,
+      },
+    ];
+    (tokensStore as unknown as { fetched: boolean }).fetched = true;
+
+    formStore.fromToken = {
+      address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+      decimals: 6,
+      name: "USD Coin",
+    };
+    formStore.toToken = {
+      address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      symbol: "DAI",
+      decimals: 18,
+      name: "Dai Stablecoin",
+    };
+
+    const { getByPlaceholderText, getAllByRole } = render(TokenInput, { props: { type: "to" } });
+    const input = getByPlaceholderText("Receive token...");
+
+    await fireEvent.focus(input);
+    await fireEvent.input(input, { target: { value: "USDC" } });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+
+    expect(formStore.toToken?.symbol).toBe("USDC");
+    expect(formStore.fromToken).toBeNull();
+  });
+
+  it("clears the other side when duplicate selection swaps against a null current token", async () => {
+    tokensStore.allTokens = [
+      {
+        address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        symbol: "USDT",
+        decimals: 6,
+        name: "Tether USD",
+        chainId: 1,
+      },
+    ];
+    (tokensStore as unknown as { fetched: boolean }).fetched = true;
+
+    formStore.fromToken = null;
+    formStore.toToken = {
+      address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      symbol: "USDT",
+      decimals: 6,
+      name: "Tether USD",
+    };
+
+    const { getByPlaceholderText, getAllByRole } = render(TokenInput, { props: { type: "from" } });
+    const input = getByPlaceholderText("Sell token...");
+
+    await fireEvent.focus(input);
+    await fireEvent.input(input, { target: { value: "USDT" } });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+
+    expect(formStore.fromToken).toMatchObject({
+      address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    });
+    expect(formStore.toToken).toBeNull();
+  });
+
+  it("keeps the other input display stable until an explicit clear updates it", async () => {
+    tokensStore.allTokens = [
+      {
+        address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        symbol: "USDT",
+        decimals: 6,
+        name: "Tether USD",
+        chainId: 1,
+      },
+    ];
+    (tokensStore as unknown as { fetched: boolean }).fetched = true;
+
+    formStore.fromToken = {
+      address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      symbol: "DAI",
+      decimals: 18,
+      name: "Dai Stablecoin",
+    };
+    formStore.toToken = {
+      address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      symbol: "USDT",
+      decimals: 6,
+      name: "Tether USD",
+    };
+
+    const { getByPlaceholderText, getAllByRole } = render(TokenInput, { props: { type: "from" } });
+    const { getByPlaceholderText: getToPlaceholder } = render(TokenInput, {
+      props: { type: "to" },
+    });
+    const fromInput = getByPlaceholderText("Sell token...") as HTMLInputElement;
+    const toInput = getToPlaceholder("Receive token...") as HTMLInputElement;
+
+    expect(fromInput.value).toBe("DAI (0x6B175474E89094C44Da98b954EedeAC495271d0F)");
+    expect(toInput.value).toBe("USDT (0xdAC17F958D2ee523a2206206994597C13D831ec7)");
+    await fireEvent.focus(fromInput);
+    await fireEvent.input(fromInput, { target: { value: "USDT" } });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fromInput.value).toBe("USDT (0xdAC17F958D2ee523a2206206994597C13D831ec7)");
+    expect(toInput.value).toBe("USDT (0xdAC17F958D2ee523a2206206994597C13D831ec7)");
   });
 });
