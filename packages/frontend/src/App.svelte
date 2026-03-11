@@ -149,7 +149,6 @@
   <header class="app-header">
     <h1>Compare DEX Routers</h1>
     <div class="header-actions">
-      <WalletButton onConnectClick={openWalletMenu} />
       <ThemeToggle />
       <a
         href="https://github.com/SatoshiAndKin/compare-dex-routers"
@@ -177,6 +176,10 @@
       </button>
     </div>
   </header>
+
+  <div class="wallet-row">
+    <WalletButton onConnectClick={openWalletMenu} />
+  </div>
 
   <ChainMismatchWarning />
 
@@ -241,6 +244,14 @@
   .github-link:focus {
     outline: 3px solid var(--accent, #0055ff);
     outline-offset: 0;
+  }
+
+  .wallet-row {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto 1rem;
   }
 
   .settings-btn {
