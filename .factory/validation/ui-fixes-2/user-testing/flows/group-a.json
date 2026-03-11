@@ -1,0 +1,156 @@
+{
+  "groupId": "group-a",
+  "testedAt": "2026-03-11T00:00:00.000Z",
+  "credentials": {
+    "account": "no-login-required",
+    "namespace": "37e9f585f0f2__u1"
+  },
+  "toolsUsed": ["agent-browser", "file-system-check", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-FAV-001",
+      "title": "SVG favicon exists and is referenced",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check file existence: packages/frontend/public/favicon.svg",
+          "expected": "File exists with SVG content",
+          "observed": "File exists: packages/frontend/public/favicon.svg — SVG with swap-arrows icon (viewBox 0 0 64 64, two arrow paths with light/dark mode @media support)"
+        },
+        {
+          "action": "Check index.html for <link rel=\"icon\"> tag",
+          "expected": "index.html contains <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />",
+          "observed": "Found exactly: <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> in packages/frontend/index.html"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not applicable (file check)",
+        "network": "curl http://localhost:5173/favicon.svg -> 200, returns SVG content",
+        "fileCheck": "packages/frontend/public/favicon.svg exists; index.html contains <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FAV-002",
+      "title": "Favicon renders in browser",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:5173",
+          "expected": "Page loads successfully",
+          "observed": "Page loaded: 'Compare DEX Routers'"
+        },
+        {
+          "action": "Evaluate document.querySelector(\"link[rel=icon]\").href in browser context",
+          "expected": "Returns the favicon URL",
+          "observed": "Returns 'http://localhost:5173/favicon.svg'"
+        },
+        {
+          "action": "Verify favicon served by dev server",
+          "expected": "HTTP 200 with SVG content",
+          "observed": "curl http://localhost:5173/favicon.svg -> 200 OK, SVG content returned"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          ".factory/validation/ui-fixes-2/user-testing/screenshots/fav-002-tab.png"
+        ],
+        "consoleErrors": "none",
+        "network": "curl http://localhost:5173/favicon.svg -> 200 with SVG content; browser DOM confirms link[rel=icon].href = 'http://localhost:5173/favicon.svg'"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SWAP-001",
+      "title": "Selecting From token swaps with To when duplicate",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Select USDC as To token (type 'USDC' in To input, click option)",
+          "expected": "To token = USDC",
+          "observed": "To token = USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48), From token = empty"
+        },
+        {
+          "action": "Select WETH as From token (type 'WETH' in From input, click option)",
+          "expected": "From token = WETH, To token = USDC (no swap, they're different)",
+          "observed": "From = WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2), To = USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48). No swap triggered — correct."
+        },
+        {
+          "action": "Select USDC as From token (same as current To=USDC)",
+          "expected": "Swap occurs: From becomes USDC, To becomes the old From value (WETH)",
+          "observed": "After selecting USDC as From: From = USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48), To = WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2). Spinbutton labels: 'YOU SELL USDC' and 'YOU RECEIVE WETH'. Swap occurred correctly."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          ".factory/validation/ui-fixes-2/user-testing/screenshots/swap-001-step1-to-usdc-dropdown.png",
+          ".factory/validation/ui-fixes-2/user-testing/screenshots/swap-001-step2-to-usdc-selected.png",
+          ".factory/validation/ui-fixes-2/user-testing/screenshots/swap-001-before-swap.png",
+          ".factory/validation/ui-fixes-2/user-testing/screenshots/swap-001-after-swap.png"
+        ],
+        "consoleErrors": "none",
+        "network": "not applicable",
+        "inputValues": "After swap: get value From = 'USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)', get value To = 'WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)'"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SWAP-002",
+      "title": "Selecting To token swaps with From when duplicate",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Starting state: From=USDC, To=WETH (from previous assertion flow)",
+          "expected": "From = USDC, To = WETH",
+          "observed": "From = USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48), To = WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)"
+        },
+        {
+          "action": "Select USDC as To token (same as current From=USDC)",
+          "expected": "Swap occurs: To becomes USDC, From becomes old To value (WETH)",
+          "observed": "After selecting USDC as To: From = WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2), To = USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48). Spinbutton labels: 'YOU SELL WETH' and 'YOU RECEIVE USDC'. Reverse swap occurred correctly."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          ".factory/validation/ui-fixes-2/user-testing/screenshots/swap-002-after-reverse-swap.png"
+        ],
+        "consoleErrors": "none",
+        "network": "not applicable",
+        "inputValues": "After reverse swap: get value From = 'WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)', get value To = 'USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)'"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SWAP-003",
+      "title": "Input display updates after swap",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Observe displayed text in both TokenInput components after each swap (VAL-SWAP-001 and VAL-SWAP-002)",
+          "expected": "Both inputs show the correct token symbol and address text after swaps",
+          "observed": "After VAL-SWAP-001 swap (From=WETH+To=USDC → From=USDC+To=WETH): From input displayed 'USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)', To input displayed 'WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)'. Spinbutton labels confirmed: 'YOU SELL USDC', 'YOU RECEIVE WETH'."
+        },
+        {
+          "action": "Observe display after VAL-SWAP-002 reverse swap",
+          "expected": "Both inputs update correctly",
+          "observed": "After VAL-SWAP-002 swap: From input = 'WETH (0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)', To input = 'USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)'. Spinbutton labels: 'YOU SELL WETH', 'YOU RECEIVE USDC'. Display text updated correctly in both fields."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          ".factory/validation/ui-fixes-2/user-testing/screenshots/swap-001-after-swap.png",
+          ".factory/validation/ui-fixes-2/user-testing/screenshots/swap-002-after-reverse-swap.png",
+          ".factory/validation/ui-fixes-2/user-testing/screenshots/swap-003-display-correct.png"
+        ],
+        "consoleErrors": "none",
+        "network": "not applicable",
+        "inputValues": "agent-browser get value confirmed correct display text in both From and To inputs after each swap"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. VAL-FAV-001 confirmed via file system check (favicon.svg exists in public/, index.html has correct link tag). VAL-FAV-002 confirmed via browser DOM evaluation and curl verification that favicon is served. VAL-SWAP-001/002/003 confirmed via agent-browser interaction: selecting From=USDC when To=USDC triggers swap (From↔To exchange), selecting To=USDC when From=USDC triggers reverse swap, and display text in both TokenInput components updates correctly after each swap."
+}

@@ -1,0 +1,26 @@
+{
+  "milestone": "ui-fixes-2",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-SWAP-001",
+    "VAL-SWAP-002",
+    "VAL-SWAP-003",
+    "VAL-FAV-001",
+    "VAL-FAV-002",
+    "VAL-WALLET-001",
+    "VAL-WALLET-002",
+    "VAL-TKLIST-001",
+    "VAL-TKLIST-002"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
