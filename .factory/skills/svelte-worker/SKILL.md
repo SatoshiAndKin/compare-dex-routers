@@ -60,6 +60,8 @@ const { data, error } = await client.GET('/compare', { params: { query: { chainI
    - Write component tests in `packages/frontend/src/__tests__/` using Vitest + @testing-library/svelte.
    - Test rendering, user interactions, state changes, API call triggering.
    - Run tests to confirm they fail (red phase).
+   - **Exception for CSS-only tasks** (e.g., font-size changes, touch-action, viewport meta): skip TDD. Verify via source inspection + typecheck + lint instead.
+   - **Exception for asset-only tasks** (e.g., screenshot capture, favicon creation): skip TDD. Verify via browser/file inspection.
 
 4. **Implement the Svelte component(s)**:
    - Create components in `packages/frontend/src/lib/components/`.
