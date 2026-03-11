@@ -39,6 +39,7 @@
   // ---------------------------------------------------------------------------
 
   let currentToken = $derived(type === "from" ? formStore.fromToken : formStore.toToken);
+  let showClearButton = $derived(inputValue.trim().length > 0 || currentToken !== null);
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -120,6 +121,25 @@
     dropdownVisible = false;
     matches = [];
     activeIdx = -1;
+  }
+
+  function clearToken(): void {
+    inputValue = "";
+    hideDropdown();
+    openedModal = false;
+    tokenListStore.unrecognizedModal = null;
+
+    if (type === "from") {
+      formStore.fromToken = null;
+    } else {
+      formStore.toToken = null;
+    }
+
+    inputEl?.focus();
+  }
+
+  function handleClearMousedown(e: MouseEvent): void {
+    e.preventDefault();
   }
 
   function setActive(index: number): void {
@@ -290,6 +310,18 @@
       autocomplete="off"
       aria-label={type === "from" ? "From token" : "To token"}
     />
+
+    {#if showClearButton}
+      <button
+        type="button"
+        class="clear-token-button"
+        aria-label={type === "from" ? "Clear from token" : "Clear to token"}
+        onmousedown={handleClearMousedown}
+        onclick={clearToken}
+      >
+        ×
+      </button>
+    {/if}
   </div>
 
   {#if dropdownVisible && matches.length > 0}
@@ -367,6 +399,35 @@
     font-size: 0.95rem;
     font-family: inherit;
     min-width: 0;
+  }
+
+  .clear-token-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+    border: none;
+    border-left: 2px solid var(--border, #000);
+    border-radius: 0;
+    background: transparent;
+    color: var(--text, #000);
+    font: inherit;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .clear-token-button:hover {
+    background: var(--bg-hover, #f0f0f0);
+  }
+
+  .clear-token-button:focus-visible {
+    outline: 2px solid var(--accent, #0055ff);
+    outline-offset: -2px;
   }
 
   .token-input:focus {
