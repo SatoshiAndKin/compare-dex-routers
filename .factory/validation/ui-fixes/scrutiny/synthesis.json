@@ -1,0 +1,58 @@
+{
+  "milestone": "ui-fixes",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test",
+      "exitCode": 0,
+      "note": "211 API tests + 406 frontend tests, all passed"
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "note": "svelte-check found 0 errors and 0 warnings; tsc --noEmit clean"
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0,
+      "note": "11 pre-existing warnings in API (complexity/line-count), 3 in frontend — all pre-existing, zero errors, zero new issues"
+    }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skill:svelte-worker",
+      "suggestion": "Add an explicit lightweight path for CSS-only and asset-only tasks. Step 3 (TDD: write tests first) and step 6 (manual browser verification) are mandated unconditionally. For pure CSS changes (clamp() typography, touch-action, global.css), TDD produces no meaningful unit coverage and the browser verification step is better scoped to 'source inspection + typecheck/lint'. For asset-only tasks (screenshot replacement), TDD is inapplicable. Add: 'CSS-only or static-asset-only tasks: skip TDD. Verification = source inspection + npm run typecheck + npm run lint + optional vite preview at target viewport.' Also document an explicit port-fallback: if declared ports (3100/5173) are occupied, `cd packages/frontend && npm run build && npx vite preview --host 127.0.0.1 --port 4173` is acceptable for CSS-only verification.",
+      "evidence": "Three of four features (fix-doubletap-zoom, responsive-address-fonts, update-readme-screenshot) had skillFeedback.followedProcedure=false with justified deviations from the TDD step. The token-clear-button worker also documented that reading the existing component before the TDD red phase is necessary for additions to components with complex surrounding state (blur/modal/focus logic). The pattern is systemic: the skill's TDD mandate doesn't distinguish between net-new logic (where TDD is valuable) and CSS-only/asset changes (where it is inapplicable).",
+      "isSystemic": true
+    },
+    {
+      "target": "skill:svelte-worker",
+      "suggestion": "Add a note to the TDD step: 'Exception: when adding a small button or element to an existing component with complex surrounding state (blur/modal/focus interactions), read the component first to understand the existing behavior before writing tests. The goal is to avoid breaking surrounding interactions, not to enforce strict red-green order on small additions.'",
+      "evidence": "token-clear-button worker: read TokenInput.svelte before writing tests because mousedown/blur/modal interaction required understanding the existing handleBlur and onblur wiring. This is sound engineering judgment. Current SKILL.md step 3 has no such exception documented.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "update-readme-screenshot: router address in screenshot shows only partial 0x prefix (~12 chars) due to horizontal crop",
+      "reason": "Documentation/cosmetic only — application code correctly displays full addresses. The cropped screenshot does not affect runtime behavior or the project's 'no truncated address' convention in the codebase. Not actionable as a library or guidance entry."
+    },
+    {
+      "observation": "responsive-address-fonts: .wallet-address-raw and .local-token-address use no-op clamp(0.625rem, 1.25vw, 0.625rem)",
+      "reason": "Already documented in the review as technically spec-compliant. The 0.625rem floor matches the original fixed value — there is nothing to scale down from. Not a library knowledge entry; already captured in review."
+    }
+  ],
+  "previousRound": null
+}

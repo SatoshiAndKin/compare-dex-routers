@@ -1,0 +1,40 @@
+{
+  "featureId": "token-clear-button",
+  "reviewedAt": "2026-03-11T05:40:00.000Z",
+  "commitId": "2cc57fac6cd41fa927a669ea3a53af6dd3ca9dd9",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation correctly meets all 10 specified requirements. The clear button is positioned inside `.token-input-field` after `<input>`, conditionally rendered via a `$derived` `showClearButton` state, clears only the connected field, prevents blur via `mousedown.preventDefault()`, restores focus, uses proper semantic HTML with ARIA labels, has a 44×44px touch target, and is styled with brutalist theme variables. Tests cover hidden/visible states, per-field clearing, dropdown dismissal, focus restoration, field independence, and mousedown modal-suppression. All validators (test, typecheck, lint) passed. Manual browser verification was performed.",
+    "issues": [
+      {
+        "file": "packages/frontend/src/__tests__/TokenInput.test.ts",
+        "line": 182,
+        "severity": "non_blocking",
+        "description": "The 'clears only the connected field' test only exercises the `from` direction — it renders `type: 'from'`, clicks 'Clear from token', and then checks that `formStore.toToken` is unaffected. There is no symmetric test that renders `type: 'to'`, clicks 'Clear to token', and confirms `formStore.fromToken` is unaffected. The implementation is symmetric so risk is low, but a reverse-direction independence test would make coverage complete."
+      },
+      {
+        "file": "packages/frontend/src/__tests__/TokenInput.test.ts",
+        "line": 167,
+        "severity": "non_blocking",
+        "description": "'hides clear buttons when fields are empty' only renders `type: 'from'` and queries for the from-button. A parallel assertion for `type: 'to'` is absent. Minor omission; symmetry of the derived expression `showClearButton` makes failure here very unlikely."
+      },
+      {
+        "file": "packages/frontend/src/__tests__/TokenInput.test.ts",
+        "line": 247,
+        "severity": "non_blocking",
+        "description": "The mousedown-prevention test types '0x1234' (a 6-char address that does NOT satisfy `isAddressLike`, which requires exactly 42 chars / 0x + 40 hex). So `checkUnrecognizedAddress` is never scheduled for this input value, and the test cannot actually prove that `mousedown.preventDefault()` blocks the blur-triggered modal flow. The test still verifies `e.defaultPrevented === true` and that `unrecognizedModal` remains null, but it does not exercise the scenario where blurring *would* have triggered the modal (i.e., a full 42-char address input). Non-blocking because the blur-prevention mechanism is verified in real browser interaction (Playwright) and the implementation of `handleClearMousedown` is straightforward."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The svelte-worker skill step 3 mandates writing tests first (TDD red phase) before implementing. The worker deviated: they read the existing component to understand blur/modal logic, implemented the button, then wrote tests. The justification is sound — for small additions to existing components with complex surrounding behavior, reading the component first reduces risk of accidentally breaking existing interactions. The worker's own `skillFeedback.suggestedChanges` captures this well. Consider adding a sentence to SKILL.md step 3 such as: 'Exception: when adding to an existing component with complex surrounding state (blur/modal/focus logic), reading the component before the red phase is acceptable to preserve surrounding behavior.'",
+      "evidence": "Handoff skillFeedback.deviations[0]: step '3. Write tests first (TDD)', worker read TokenInput.svelte before writing tests; justified by need to understand blur/modal handling before writing targeted tests."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The token-clear-button feature is a clean, complete implementation. All 10 specified requirements are met: conditional rendering, per-field isolation, mousedown-blur prevention, focus restoration, semantic HTML, ARIA labels, 44×44px touch target, brutalist styling with CSS variables, and light/dark mode support. Test coverage is comprehensive for the core cases with three minor gaps (missing symmetric 'to' direction independence test, missing empty-state test for 'to', and a mousedown-prevention test that uses a too-short address so the modal-trigger path is not actually at risk). All CI validators (test 406 pass, typecheck 0 errors, lint 0 new errors) passed. Manual Playwright verification confirmed the button dimensions (~44px), per-field clearing, and focus retention. Status: pass."
+}
