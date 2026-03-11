@@ -102,7 +102,7 @@
 
   .wallet-address {
     font-family: monospace;
-    font-size: 0.75rem;
+    font-size: clamp(0.625rem, 1.5vw, 0.75rem);
     word-break: break-all;
     color: var(--text-muted, #666);
     text-align: right;
@@ -110,7 +110,7 @@
 
   .wallet-address-raw {
     font-family: monospace;
-    font-size: 0.625rem;
+    font-size: clamp(0.625rem, 1.25vw, 0.625rem);
     word-break: break-all;
     color: var(--text-muted, #666);
     opacity: 0.7;

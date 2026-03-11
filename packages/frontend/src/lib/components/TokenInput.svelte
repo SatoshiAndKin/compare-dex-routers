@@ -509,7 +509,7 @@
 
   .autocomplete-addr {
     font-family: monospace;
-    font-size: 0.75rem;
+    font-size: clamp(0.625rem, 1.5vw, 0.75rem);
     color: var(--text-muted, #666);
     word-break: break-all;
   }

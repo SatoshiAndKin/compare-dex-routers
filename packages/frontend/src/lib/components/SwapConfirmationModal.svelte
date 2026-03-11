@@ -224,7 +224,7 @@
   }
 
   .trade-address {
-    font-size: 0.7rem;
+    font-size: clamp(0.625rem, 1.4vw, 0.7rem);
     font-family: monospace;
     color: var(--text-muted, #666);
     word-break: break-all;
@@ -259,7 +259,8 @@
   }
 
   .router-address {
-    font-size: 0.7rem;
+    font-size: clamp(0.625rem, 1.4vw, 0.7rem);
+    word-break: break-all;
   }
 
   .modal-footer {

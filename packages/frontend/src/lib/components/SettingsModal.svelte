@@ -623,7 +623,7 @@
 
   .local-token-address {
     font-family: monospace;
-    font-size: 0.625rem;
+    font-size: clamp(0.625rem, 1.25vw, 0.625rem);
     color: var(--text-muted, #666);
     flex: 1;
     word-break: break-all;
