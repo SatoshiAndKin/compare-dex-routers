@@ -57,14 +57,6 @@ function resetStore(): void {
     false;
 }
 
-function ensureDefaultList(defaultEnabled = true): void {
-  (
-    tokenListStore as unknown as {
-      _ensureDefaultList: (enabled: boolean) => void;
-    }
-  )._ensureDefaultList(defaultEnabled);
-}
-
 function makeDefaultGET(): typeof mockGetImpl {
   return async (path: string) => {
     if (path === "/tokenlist") {
@@ -121,7 +113,6 @@ describe("tokenListStore", () => {
     mockGetImpl = async () => ({ error: { error: "Server error" } });
 
     await tokenListStore.init();
-    ensureDefaultList();
 
     expect(tokenListStore.lists).toContainEqual({
       url: null,
@@ -136,7 +127,6 @@ describe("tokenListStore", () => {
     mockGetImpl = async () => ({ data: undefined });
 
     await tokenListStore.init();
-    ensureDefaultList();
 
     expect(tokenListStore.lists).toContainEqual({
       url: null,
@@ -162,7 +152,6 @@ describe("tokenListStore", () => {
     mockGetImpl = async () => ({ error: { error: "Server error" } });
     // Should not throw
     await expect(tokenListStore.init()).resolves.not.toThrow();
-    ensureDefaultList();
     expect(tokenListStore.lists).toHaveLength(1);
     expect(tokenListStore.lists[0]).toMatchObject({
       url: null,

@@ -134,14 +134,27 @@ class TokenListStore {
 
     try {
       const { data } = await apiClient.GET("/tokenlist");
-      if (!data) return;
+      if (data) {
+        const tokenlists = data.tokenlists ?? [];
 
-      const tokenlists = data.tokenlists ?? [];
-
-      if (tokenlists.length > 0) {
-        for (const entry of tokenlists) {
-          const name = entry.name ?? DEFAULT_TOKENLIST_NAME;
-          const tokens: Token[] = (entry.tokens ?? []).map((t) => ({
+        if (tokenlists.length > 0) {
+          for (const entry of tokenlists) {
+            const name = entry.name ?? DEFAULT_TOKENLIST_NAME;
+            const tokens: Token[] = (entry.tokens ?? []).map((t) => ({
+              address: t.address ?? "",
+              chainId: t.chainId ?? 0,
+              name: t.name ?? "",
+              symbol: t.symbol ?? "",
+              decimals: t.decimals ?? 18,
+              logoURI: t.logoURI,
+              _source: name,
+            }));
+            this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
+          }
+        } else if (data.tokens && data.tokens.length > 0) {
+          // Fallback: old flat response format
+          const name = data.name ?? DEFAULT_TOKENLIST_NAME;
+          const tokens: Token[] = data.tokens.map((t) => ({
             address: t.address ?? "",
             chainId: t.chainId ?? 0,
             name: t.name ?? "",
@@ -152,19 +165,6 @@ class TokenListStore {
           }));
           this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
         }
-      } else if (data.tokens && data.tokens.length > 0) {
-        // Fallback: old flat response format
-        const name = data.name ?? DEFAULT_TOKENLIST_NAME;
-        const tokens: Token[] = data.tokens.map((t) => ({
-          address: t.address ?? "",
-          chainId: t.chainId ?? 0,
-          name: t.name ?? "",
-          symbol: t.symbol ?? "",
-          decimals: t.decimals ?? 18,
-          logoURI: t.logoURI,
-          _source: name,
-        }));
-        this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
       }
     } catch {
       // Network error — default list stays empty
