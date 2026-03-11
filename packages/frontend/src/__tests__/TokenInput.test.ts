@@ -470,4 +470,50 @@ describe("TokenInput", () => {
       expect(toInput.value).toBe("USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)");
     });
   });
+
+  it("preserves the captured current token across multi-character typing before duplicate selection", async () => {
+    tokensStore.allTokens = [
+      {
+        address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+        symbol: "WETH",
+        decimals: 18,
+        name: "Wrapped Ether",
+        chainId: 1,
+      },
+    ];
+    (tokensStore as unknown as { fetched: boolean }).fetched = true;
+
+    formStore.fromToken = {
+      address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+      decimals: 6,
+      name: "USD Coin",
+    };
+    formStore.toToken = {
+      address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+      symbol: "WETH",
+      decimals: 18,
+      name: "Wrapped Ether",
+    };
+
+    const { getByPlaceholderText, getAllByRole } = render(TokenInput, { props: { type: "from" } });
+    const fromInput = getByPlaceholderText("Sell token...") as HTMLInputElement;
+
+    await fireEvent.focus(fromInput);
+    for (const value of ["W", "WE", "WET", "WETH"]) {
+      await fireEvent.input(fromInput, { target: { value } });
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
+    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+
+    await waitFor(() => {
+      expect(formStore.fromToken?.symbol).toBe("WETH");
+      expect(formStore.toToken).toMatchObject({
+        symbol: "USDC",
+        address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      });
+      expect(fromInput.value).toBe("WETH (0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2)");
+    });
+  });
 });

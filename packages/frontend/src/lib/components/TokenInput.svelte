@@ -176,13 +176,11 @@
     const target = e.target as HTMLInputElement;
     inputValue = target.value;
 
-    if (
-      pendingSelectedToken === null ||
-      normalizeAddress(pendingSelectedToken.address) !== normalizeAddress(target.value)
-    ) {
+    if (pendingCurrentSideToken === null) {
       pendingCurrentSideToken = type === "from" ? formStore.fromToken : formStore.toToken;
-      pendingSelectedToken = null;
     }
+
+    pendingSelectedToken = null;
 
     // Clear the store token when input changes manually
     if (type === "from") {
