@@ -37,6 +37,26 @@ async _loadDefaultLists() {
 
 This was the root cause of the `fix-default-tokenlist-always-present` regression: API error responses set `data` to `undefined`, triggering the early return before the fallback was created.
 
+## TokenInput.svelte — Capture-once guard for pending state variables
+
+When using a pending `$state` variable in `handleInput()` to capture the pre-selection token (see the "handleInput() clears token before selectToken()" pattern above), use a **capture-once guard** to ensure the variable is only set on the _first_ keystroke:
+
+```svelte
+// WRONG — always-true guard, overwrites on every keystroke
+if (pendingSelectedToken === null || ...) {  // pendingSelectedToken is immediately reset below
+  pendingCurrentSideToken = currentStore;    // ← overwritten with null on keystroke 2+
+  pendingSelectedToken = null;               // ← makes condition above always true
+}
+
+// CORRECT — capture-once guard
+if (pendingCurrentSideToken === null) {      // only fires on the first keystroke
+  pendingCurrentSideToken = currentStore;    // ← captures the pre-clear token once
+}
+formStore.fromToken = null;                  // store clearing happens unconditionally
+```
+
+The "always-true" anti-pattern occurs when the same block that evaluates the condition also resets the guard variable, making the guard always evaluate to `true`. The result: after the first keystroke clears the store, every subsequent keystroke overwrites `pendingCurrentSideToken` with `null` from the now-cleared store, making the swap degrade to a clear.
+
 ## SVG Favicons — Dark Mode Support
 
 SVG favicons that target both light and dark browser chrome should use embedded CSS media queries to switch colors:

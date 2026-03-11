@@ -1,0 +1,28 @@
+{
+  "featureId": "fix-tokenlist-early-return",
+  "reviewedAt": "2026-03-11T18:00:00.000Z",
+  "commitId": "c16c21f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix fully addresses all blocking issues identified in the prior review. The early `if (!data) return;` inside the try block is replaced with an `if (data) { ... }` conditional guard so the data-processing block is skipped on error responses rather than the entire function exiting. `_ensureDefaultList(defaultEnabled)` is called unconditionally after the try/catch block, making it reachable from all three code paths: (1) successful API response, (2) API error response (data=undefined), and (3) thrown network exception. All three tests that previously masked the bug by manually calling `ensureDefaultList()` after `init()` are now fixed — the manual calls are removed and the `ensureDefaultList` helper function itself is deleted from the test file. Each failure-mode test asserts on `tokenListStore.lists` directly after `await tokenListStore.init()` with no intervening helper call, proving that `init()` alone guarantees the fallback entry.",
+    "issues": [
+      {
+        "file": "packages/frontend/src/lib/stores/tokenListStore.svelte.ts",
+        "line": 188,
+        "severity": "non_blocking",
+        "description": "_ensureDefaultList has no access modifier (implicitly public). Since the `ensureDefaultList` test helper was deleted in this commit, there is no longer any test calling _ensureDefaultList directly. The method could safely be made `private` to match all other internal helpers (_loadDefaultLists, _restoreCustomLists, etc.). This is a leftover from the original feature that added the method and is outside the strict scope of this fix, but is worth cleaning up in a follow-on pass."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker again skipped the agent-browser step (same deviation as the prior failed feature). However, this feature's `verificationSteps` list contains no browser step at all, and the fix is purely a store-logic and test change with no UI surface. The deviation is justified here. The prior feature's browser step appeared in the validation contract but not in `verificationSteps`, which created ambiguity. The skill or mission AGENTS.md could clarify: when the feature's `verificationSteps` do not include a browser step, agent-browser verification is not required.",
+      "evidence": "Feature `verificationSteps`: ['cd packages/frontend && npm test -- tokenListStore.test.ts', 'npm run typecheck', 'npm run lint']. No browser step. handoff.skillFeedback.followedProcedure = false, deviations[0].step = '6. Manual verification with agent-browser', why = 'store-only logic fix with explicit non-UI verification steps'."
+    }
+  ],
+  "addressesFailureFrom": "/Users/bryan/code/compare-dex-routers/.factory/validation/ui-fixes-2/scrutiny/reviews/fix-default-tokenlist-always-present.json",
+  "summary": "PASS. The fix correctly resolves both blocking issues from the prior review. (1) `if (!data) return;` inside the try block is replaced with `if (data) { ... }`, ensuring the function always falls through to `_ensureDefaultList()`. (2) All three failure-mode tests no longer call `ensureDefaultList()` manually — the helper function is deleted entirely — and the assertions directly verify `tokenListStore.lists` after `init()` alone, proving the fallback entry is created by `init()` in every code path. One non-blocking cleanup remains: `_ensureDefaultList` could now be made `private` since no test accesses it directly."
+}
