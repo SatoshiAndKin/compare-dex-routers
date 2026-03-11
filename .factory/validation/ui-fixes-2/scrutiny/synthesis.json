@@ -1,0 +1,85 @@
+{
+  "milestone": "ui-fixes-2",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd packages/api && npm test -- --maxWorkers=7 && cd ../frontend && npm test",
+      "exitCode": 0,
+      "note": "API: 211 tests passed. Frontend: 412 tests passed. All 623 tests green."
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "note": "svelte-check: 0 errors, 0 warnings. tsc --noEmit: 0 errors."
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0,
+      "note": "15 warnings total (all pre-existing: max-lines-per-function, complexity). 0 errors."
+    }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 2,
+    "failed": 2,
+    "failedFeatures": ["token-swap-on-duplicate", "fix-default-tokenlist-always-present"]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "token-swap-on-duplicate",
+      "severity": "blocking",
+      "description": "The implementation performs a 'clear' (other side becomes null) instead of the required 'swap' (other side becomes the old current-side token). Root cause: handleInput() in TokenInput.svelte clears formStore.fromToken/toToken to null BEFORE selectToken() is called. Inside selectToken(), currentSideToken is therefore always null, making the true-swap else-if branch dead code that never executes in normal UI flow. All four new tests were adapted to match the wrong 'clear' behavior — they pass but validate incorrect behavior. VAL-SWAP-001 and VAL-SWAP-002 are not met.",
+      "suggestedFix": "Capture the current-side token value before handleInput() clears it — e.g. a component-level $state variable (savedCurrentToken) that is assigned from the store in handleInput() before the null assignment. Use savedCurrentToken inside selectToken() to populate the other side. Update the tests to assert formStore.toToken/fromToken equals the previously saved token (not null)."
+    },
+    {
+      "featureId": "fix-default-tokenlist-always-present",
+      "severity": "blocking",
+      "description": "Critical early-return bug: when the API returns an error response (data is undefined), _loadDefaultLists() hits `if (!data) return;` inside the try block and exits the function BEFORE _ensureDefaultList() is ever called. Only thrown exceptions (true network errors) reach the catch block and then fall through to _ensureDefaultList(). The most common failure scenario — API returning an HTTP error response — leaves the default list absent. Both new failure-mode tests mask this bug by calling ensureDefaultList() manually after init(), so tests pass regardless of whether init() itself creates the default list.",
+      "suggestedFix": "Replace `if (!data) return;` with a conditional guard around the data-processing block: `if (data) { /* process data */ }`. This allows the function to fall through to this._ensureDefaultList() in all code paths. Update the tests to assert on tokenListStore.lists directly after init() without any manual _ensureDefaultList() call — the tests should fail until the fix is correct."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Created .factory/library/frontend-component-patterns.md documenting: (1) TokenInput.svelte handleInput() clears store token before selectToken() runs — any feature needing the pre-selection token must capture it earlier; (2) async store init methods should avoid early returns inside try blocks when fallback logic follows after the try/catch; (3) SVG favicons need embedded prefers-color-scheme CSS for dark browser chrome support.",
+      "sourceFeature": "token-swap-on-duplicate, fix-default-tokenlist-always-present, add-favicon"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/svelte-worker",
+      "suggestion": "Add a note at TDD step (step 3): before writing tests for Svelte component event/interaction flows, first read and trace the existing reactive chain (event handlers → store mutations → $effects). Some Svelte flows have non-obvious ordering (e.g. handleInput clears state before selectToken fires) that must be understood before tests can be written correctly. TDD without this understanding leads to tests that validate the wrong behavior.",
+      "evidence": "token-swap-on-duplicate worker spent 8+ iterative fix cycles on tests after discovering the handleInput ordering issue mid-implementation. skillFeedback notes the worker deviated from TDD (implemented first, then debugged tests) specifically because of this ordering dependency.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills/svelte-worker",
+      "suggestion": "Clarify the TDD exception scope: the existing 'Exception for CSS-only tasks: skip TDD' should explicitly state it covers pure CSS changes only — NOT structural template/layout changes (moving components). For structural changes (e.g. relocating WalletButton from header to a new div), normal TDD applies and a placement test should be written.",
+      "evidence": "wallet-button-below-header worker used the CSS-only exception to skip writing a placement test for a structural template change. The existing App.test.ts is effectively empty (297 chars). Feature passed, but a structural placement test would have caught future regressions.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills/svelte-worker",
+      "suggestion": "For asset-only tasks (favicon, CSS files, images with no component logic), explicitly allow HTTP-level verification as an accepted alternative to agent-browser when the development server port is occupied or unavailable. Acceptable evidence: HTTP 200 status + correct Content-Type header + HTML link tag presence via curl.",
+      "evidence": "add-favicon worker found port 5173 occupied by an existing user process. Worker correctly substituted curl verification. skillFeedback documents the deviation and proposes this skill update. The deviation was well-reasoned and provided sufficient validation confidence.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills/svelte-worker",
+      "suggestion": "When the validation contract for a feature contains a mandatory browser evidence step (e.g. 'Manual: agent-browser — open Settings modal, verify X'), agent-browser verification is required and cannot be skipped solely on the grounds that the feature is 'store logic only'. The browser evidence step exists specifically to catch runtime issues not visible in unit tests.",
+      "evidence": "fix-default-tokenlist-always-present worker skipped agent-browser verification of the Settings modal (VAL-TKLIST-001 required it). The store bug (early return in init()) was only observable at runtime when the API returns an error response — precisely the kind of issue that browser verification could catch. skillFeedback.deviations[0] documents the skip.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Workers edit SKILL.md mid-session but do not commit those changes (wallet-button-below-header worker did this)",
+      "reason": "ambiguous — it is not clear whether mid-session SKILL.md edits should always be committed as part of feature work or whether they are exploratory notes. Recommending this requires orchestrator decision on the workflow. Not applying automatically."
+    }
+  ],
+  "previousRound": null
+}
