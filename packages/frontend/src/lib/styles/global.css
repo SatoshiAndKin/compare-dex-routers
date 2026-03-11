@@ -51,10 +51,13 @@
   --computed-bg: #1a1a1a;
   --icon-bg: #333;
 }
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  touch-action: manipulation;
 }
 html {
   font-size: 16px;
