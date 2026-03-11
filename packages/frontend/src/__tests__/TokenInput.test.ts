@@ -1,4 +1,4 @@
-import { render, fireEvent } from "@testing-library/svelte";
+import { render, fireEvent, waitFor } from "@testing-library/svelte";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import TokenInput from "../lib/components/TokenInput.svelte";
 import { formStore } from "../lib/stores/formStore.svelte.js";
@@ -307,53 +307,13 @@ describe("TokenInput", () => {
     expect(queryByText(/Add Unrecognized Token/i)).toBeNull();
   });
 
-  it("clears the opposite token when selecting a duplicate from token", async () => {
+  it("swaps the opposite token when selecting a duplicate from token", async () => {
     tokensStore.allTokens = [
       {
-        address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-        symbol: "USDT",
-        decimals: 6,
-        name: "Tether USD",
-        chainId: 1,
-      },
-    ];
-    (tokensStore as unknown as { fetched: boolean }).fetched = true;
-
-    formStore.fromToken = {
-      address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      symbol: "DAI",
-      decimals: 18,
-      name: "Dai Stablecoin",
-    };
-    formStore.toToken = {
-      address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-      symbol: "USDT",
-      decimals: 6,
-      name: "Tether USD",
-    };
-
-    const { getByPlaceholderText, getAllByRole } = render(TokenInput, { props: { type: "from" } });
-    const input = getByPlaceholderText("Sell token...");
-
-    await fireEvent.focus(input);
-    await fireEvent.input(input, { target: { value: "USDT" } });
-    await new Promise((r) => setTimeout(r, 10));
-
-    await fireEvent.mouseDown(getAllByRole("option")[0]!);
-
-    expect(formStore.fromToken).toMatchObject({
-      address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-    });
-    expect(formStore.toToken).toBeNull();
-  });
-
-  it("clears the opposite token when selecting a duplicate to token", async () => {
-    tokensStore.allTokens = [
-      {
-        address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        symbol: "USDC",
-        decimals: 6,
-        name: "USD Coin",
+        address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+        symbol: "WETH",
+        decimals: 18,
+        name: "Wrapped Ether",
         chainId: 1,
       },
     ];
@@ -366,23 +326,69 @@ describe("TokenInput", () => {
       name: "USD Coin",
     };
     formStore.toToken = {
-      address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      symbol: "DAI",
+      address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+      symbol: "WETH",
       decimals: 18,
-      name: "Dai Stablecoin",
+      name: "Wrapped Ether",
+    };
+
+    const { getByPlaceholderText, getAllByRole } = render(TokenInput, { props: { type: "from" } });
+    const input = getByPlaceholderText("Sell token...");
+
+    await fireEvent.focus(input);
+    await fireEvent.input(input, { target: { value: "WETH" } });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+
+    expect(formStore.fromToken).toMatchObject({
+      address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+    });
+    expect(formStore.toToken).toMatchObject({
+      address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+    });
+  });
+
+  it("swaps the opposite token when selecting a duplicate to token", async () => {
+    tokensStore.allTokens = [
+      {
+        address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+        symbol: "WETH",
+        decimals: 18,
+        name: "Wrapped Ether",
+        chainId: 1,
+      },
+    ];
+    (tokensStore as unknown as { fetched: boolean }).fetched = true;
+
+    formStore.fromToken = {
+      address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+      symbol: "WETH",
+      decimals: 18,
+      name: "Wrapped Ether",
+    };
+    formStore.toToken = {
+      address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+      decimals: 6,
+      name: "USD Coin",
     };
 
     const { getByPlaceholderText, getAllByRole } = render(TokenInput, { props: { type: "to" } });
     const input = getByPlaceholderText("Receive token...");
 
     await fireEvent.focus(input);
-    await fireEvent.input(input, { target: { value: "USDC" } });
+    await fireEvent.input(input, { target: { value: "WETH" } });
     await new Promise((r) => setTimeout(r, 10));
 
     await fireEvent.mouseDown(getAllByRole("option")[0]!);
 
-    expect(formStore.toToken?.symbol).toBe("USDC");
-    expect(formStore.fromToken).toBeNull();
+    expect(formStore.toToken?.symbol).toBe("WETH");
+    expect(formStore.fromToken).toMatchObject({
+      address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+    });
   });
 
   it("clears the other side when duplicate selection swaps against a null current token", async () => {
@@ -420,29 +426,29 @@ describe("TokenInput", () => {
     expect(formStore.toToken).toBeNull();
   });
 
-  it("keeps the other input display stable until an explicit clear updates it", async () => {
+  it("updates both input displays after a duplicate selection swap", async () => {
     tokensStore.allTokens = [
       {
-        address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-        symbol: "USDT",
-        decimals: 6,
-        name: "Tether USD",
+        address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+        symbol: "WETH",
+        decimals: 18,
+        name: "Wrapped Ether",
         chainId: 1,
       },
     ];
     (tokensStore as unknown as { fetched: boolean }).fetched = true;
 
     formStore.fromToken = {
-      address: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      symbol: "DAI",
-      decimals: 18,
-      name: "Dai Stablecoin",
+      address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      symbol: "USDC",
+      decimals: 6,
+      name: "USD Coin",
     };
     formStore.toToken = {
-      address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-      symbol: "USDT",
-      decimals: 6,
-      name: "Tether USD",
+      address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
+      symbol: "WETH",
+      decimals: 18,
+      name: "Wrapped Ether",
     };
 
     const { getByPlaceholderText, getAllByRole } = render(TokenInput, { props: { type: "from" } });
@@ -452,16 +458,16 @@ describe("TokenInput", () => {
     const fromInput = getByPlaceholderText("Sell token...") as HTMLInputElement;
     const toInput = getToPlaceholder("Receive token...") as HTMLInputElement;
 
-    expect(fromInput.value).toBe("DAI (0x6B175474E89094C44Da98b954EedeAC495271d0F)");
-    expect(toInput.value).toBe("USDT (0xdAC17F958D2ee523a2206206994597C13D831ec7)");
+    expect(fromInput.value).toBe("USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)");
+    expect(toInput.value).toBe("WETH (0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2)");
     await fireEvent.focus(fromInput);
-    await fireEvent.input(fromInput, { target: { value: "USDT" } });
+    await fireEvent.input(fromInput, { target: { value: "WETH" } });
     await new Promise((r) => setTimeout(r, 10));
 
     await fireEvent.mouseDown(getAllByRole("option")[0]!);
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(fromInput.value).toBe("USDT (0xdAC17F958D2ee523a2206206994597C13D831ec7)");
-    expect(toInput.value).toBe("USDT (0xdAC17F958D2ee523a2206206994597C13D831ec7)");
+    await waitFor(() => {
+      expect(fromInput.value).toBe("WETH (0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2)");
+      expect(toInput.value).toBe("USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)");
+    });
   });
 });

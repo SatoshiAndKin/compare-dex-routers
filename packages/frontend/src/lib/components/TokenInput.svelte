@@ -30,6 +30,8 @@
   let activeIdx = $state(-1);
   let inputEl = $state<HTMLInputElement | null>(null);
   let containerEl = $state<HTMLElement | null>(null);
+  let pendingSelectedToken = $state<TokenInfo | null>(null);
+  let pendingCurrentSideToken = $state<TokenInfo | null>(null);
 
   /** Track whether this TokenInput instance opened the unrecognized-token modal */
   let openedModal = $state(false);
@@ -106,42 +108,35 @@
 
   /** Select a token and update store, swapping sides when the new selection duplicates the opposite side */
   function selectToken(token: TokenInfo): void {
-    const currentSideToken = type === "from" ? formStore.fromToken : formStore.toToken;
+    const currentSideToken =
+      pendingCurrentSideToken ?? (type === "from" ? formStore.fromToken : formStore.toToken);
     const otherSideToken = type === "from" ? formStore.toToken : formStore.fromToken;
     const normalizedSelectedAddress = normalizeAddress(token.address);
 
-    if (
-      currentSideToken === null &&
-      otherSideToken !== null &&
-      normalizeAddress(otherSideToken.address) === normalizedSelectedAddress
-    ) {
-      if (type === "from") {
-        formStore.toToken = null;
-      } else {
-        formStore.fromToken = null;
-      }
-    } else if (
-      currentSideToken !== null &&
-      normalizeAddress(currentSideToken.address) !== normalizedSelectedAddress &&
-      otherSideToken !== null &&
-      normalizeAddress(otherSideToken.address) === normalizedSelectedAddress
-    ) {
-      if (type === "from") {
+    if (type === "from") {
+      formStore.fromToken = token;
+      if (
+        otherSideToken !== null &&
+        normalizeAddress(otherSideToken.address) === normalizedSelectedAddress
+      ) {
         formStore.toToken = currentSideToken;
-      } else {
+      }
+    } else {
+      formStore.toToken = token;
+      if (
+        otherSideToken !== null &&
+        normalizeAddress(otherSideToken.address) === normalizedSelectedAddress
+      ) {
         formStore.fromToken = currentSideToken;
       }
     }
 
     inputValue = formatTokenDisplay(token.symbol, token.address);
-    if (type === "from") {
-      formStore.fromToken = token;
-    } else {
-      formStore.toToken = token;
-    }
     matches = [];
     dropdownVisible = false;
     activeIdx = -1;
+    pendingSelectedToken = null;
+    pendingCurrentSideToken = null;
   }
 
   function hideDropdown(): void {
@@ -180,6 +175,14 @@
   async function handleInput(e: Event): Promise<void> {
     const target = e.target as HTMLInputElement;
     inputValue = target.value;
+
+    if (
+      pendingSelectedToken === null ||
+      normalizeAddress(pendingSelectedToken.address) !== normalizeAddress(target.value)
+    ) {
+      pendingCurrentSideToken = type === "from" ? formStore.fromToken : formStore.toToken;
+      pendingSelectedToken = null;
+    }
 
     // Clear the store token when input changes manually
     if (type === "from") {
@@ -238,6 +241,7 @@
 
   function handleItemMousedown(e: MouseEvent, token: TokenInfo): void {
     e.preventDefault();
+    pendingSelectedToken = token;
     selectToken(token);
   }
 
