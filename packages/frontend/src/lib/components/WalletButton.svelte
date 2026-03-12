@@ -71,6 +71,7 @@
     align-items: center;
     gap: 0.5rem;
     min-height: 44px;
+    width: 100%;
   }
 
   .wallet-connected {
@@ -118,6 +119,7 @@
   }
 
   .connect-btn {
+    width: 100%;
     height: 44px;
     padding: 0 0.9rem;
     font-size: 0.9rem;
