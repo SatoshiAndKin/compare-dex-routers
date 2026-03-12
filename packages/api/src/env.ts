@@ -1,7 +1,12 @@
 import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const envPath = resolve(process.cwd(), ".env");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Resolve .env from repo root (src/ -> api/ -> packages/ -> root)
+const envPath = resolve(__dirname, "../../../.env");
 if (existsSync(envPath)) {
   const content = readFileSync(envPath, "utf-8");
   for (const line of content.split("\n")) {
