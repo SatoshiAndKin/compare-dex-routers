@@ -11,6 +11,7 @@ export interface ChainInfo {
 class ConfigStore {
   walletConnectProjectId = $state("");
   supportedChains = $state<ChainInfo[]>([]);
+  defaultTokens = $state<Record<string, { from: string; to: string }>>({});
 
   async init(): Promise<void> {
     await Promise.all([this._fetchConfig(), this._fetchChains()]);
@@ -22,8 +23,10 @@ class ConfigStore {
       if (!response.ok) return;
       const data = (await response.json()) as {
         walletConnectProjectId?: string;
+        defaultTokens?: Record<string, { from: string; to: string }>;
       };
       this.walletConnectProjectId = data.walletConnectProjectId ?? "";
+      this.defaultTokens = data.defaultTokens ?? {};
     } catch {
       // Silently fail
     }

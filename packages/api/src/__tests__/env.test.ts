@@ -3,10 +3,14 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { writeFileSync, unlinkSync, existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const _dirname = dirname(fileURLToPath(import.meta.url));
 
 describe("env.ts", () => {
-  const envPath = resolve(process.cwd(), ".env");
+  // Match the path env.ts resolves: __tests__/ -> src/ -> api/ -> packages/ -> root
+  const envPath = resolve(_dirname, "../../../../.env");
   let hadExistingEnv = false;
   let existingContent = "";
 
