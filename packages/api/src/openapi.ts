@@ -80,16 +80,6 @@ const TokenMetadataQuerySchema = z.object({
   }),
 });
 
-const ProxyQuerySchema = z.object({
-  url: z
-    .string()
-    .url()
-    .openapi({
-      param: { name: "url", in: "query" },
-      description: "HTTPS URL of the remote token list to proxy",
-    }),
-});
-
 // --- Response schemas ---
 
 const ErrorSchema = z
@@ -399,23 +389,6 @@ registry.registerPath({
   responses: {
     200: jsonContent(TokenListResponseSchema, "Token list response"),
     500: errorResponse("Failed to load token list"),
-  },
-});
-
-registry.registerPath({
-  method: "get",
-  path: "/tokenlist/proxy",
-  operationId: "proxyTokenlist",
-  summary: "Proxy a remote token list URL",
-  description:
-    "Fetches a remote HTTPS token list URL server-side to avoid CORS issues. Validates JSON and tokens array.",
-  request: { query: ProxyQuerySchema },
-  responses: {
-    200: jsonContent(TokenListResponseSchema, "Proxied token list"),
-    400: errorResponse("Missing url, invalid URL format, or non-HTTPS URL"),
-    502: errorResponse(
-      "Remote fetch failed, invalid JSON, missing tokens array, or response too large"
-    ),
   },
 });
 

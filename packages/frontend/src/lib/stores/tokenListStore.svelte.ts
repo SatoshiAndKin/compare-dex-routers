@@ -18,6 +18,7 @@ const DEFAULT_TOKENLIST_ENABLED_KEY = "defaultTokenlistEnabled";
 
 export const DEFAULT_TOKENLIST_NAME = "Default Tokenlist";
 export const LOCAL_TOKENS_SOURCE_NAME = "Local Tokens";
+export const DEFAULT_UNISWAP_URL = "https://tokens.uniswap.org";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,6 +118,9 @@ class TokenListStore {
       // 2. Restore custom lists from localStorage (migrate old format if needed)
       await this._restoreCustomLists();
 
+      // 3. Auto-add Uniswap default tokenlist if not already present
+      await this._ensureUniswapList();
+
       this.initialized = true;
     } finally {
       this.isInitializing = false;
@@ -186,6 +190,22 @@ class TokenListStore {
         tokens: [],
       },
     ];
+  }
+
+  private async _ensureUniswapList(): Promise<void> {
+    const normalizedUniswap = this._normalizeUrl(DEFAULT_UNISWAP_URL);
+    const alreadyPresent = this.lists.some(
+      (l) => l.url && this._normalizeUrl(l.url) === normalizedUniswap
+    );
+    if (alreadyPresent) return;
+
+    try {
+      const { tokens, name } = await this._fetchCustomList(DEFAULT_UNISWAP_URL);
+      this.lists = [...this.lists, { url: DEFAULT_UNISWAP_URL, name, enabled: true, tokens }];
+      this._saveCustomLists();
+    } catch {
+      // Network error — skip, will retry next init
+    }
   }
 
   private async _restoreCustomLists(): Promise<void> {
@@ -268,23 +288,29 @@ class TokenListStore {
   }
 
   private async _fetchCustomList(url: string): Promise<{ tokens: Token[]; name: string }> {
-    const { data, error } = await apiClient.GET("/tokenlist/proxy", {
-      params: { query: { url } },
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(30000),
     });
 
-    if (error || !data) {
-      const msg = (error as { error?: string } | undefined)?.error ?? "Failed to fetch tokenlist";
-      throw new Error(msg);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch tokenlist: HTTP ${response.status}`);
+    }
+
+    const data = (await response.json()) as { name?: string; tokens?: Record<string, unknown>[] };
+
+    if (!data || !Array.isArray(data.tokens)) {
+      throw new Error("Invalid tokenlist: missing tokens array");
     }
 
     const name = data.name ?? url;
-    const tokens: Token[] = (data.tokens ?? []).map((t) => ({
-      address: t.address ?? "",
-      chainId: t.chainId ?? 0,
-      name: t.name ?? "",
-      symbol: t.symbol ?? "",
-      decimals: t.decimals ?? 18,
-      logoURI: t.logoURI,
+    const tokens: Token[] = data.tokens.map((t) => ({
+      address: (t.address as string) ?? "",
+      chainId: (t.chainId as number) ?? 0,
+      name: (t.name as string) ?? "",
+      symbol: (t.symbol as string) ?? "",
+      decimals: (t.decimals as number) ?? 18,
+      logoURI: t.logoURI as string | undefined,
       _source: name,
     }));
 

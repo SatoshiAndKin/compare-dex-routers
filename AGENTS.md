@@ -79,7 +79,6 @@ Svelte 5 SPA built with Vite. Source files in `packages/frontend/src/`:
 | `GET` | `/quote` | Single quote from Spandex router |
 | `GET` | `/quote-curve` | Single quote from Curve router |
 | `GET` | `/tokenlist` | Aggregated token list |
-| `GET` | `/tokenlist/proxy` | Proxy to external token lists |
 | `GET` | `/token-metadata` | On-chain token metadata lookup |
 | `GET` | `/metrics` | Prometheus-compatible metrics |
 | `GET` | `/analytics` | Quote analytics summary |
