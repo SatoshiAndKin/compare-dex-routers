@@ -24,6 +24,7 @@
   import { configStore } from "./lib/stores/configStore.svelte.js";
   import { settingsStore } from "./lib/stores/settingsStore.svelte.js";
   import { tokenListStore } from "./lib/stores/tokenListStore.svelte.js";
+  import type { TokenInfo } from "./lib/stores/formStore.svelte.js";
 
   let walletMenuOpen = $state(false);
 
@@ -96,6 +97,80 @@
       fromToken ? { address: fromToken.address, decimals: fromToken.decimals } : null,
       toToken ? { address: toToken.address, decimals: toToken.decimals } : null
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Auto-populate form defaults when config loads (enables auto-compare on load)
+  // ---------------------------------------------------------------------------
+
+  let defaultsApplied = false;
+
+  $effect(() => {
+    if (defaultsApplied) return;
+
+    // Wait for config to load with default tokens
+    const defaults = configStore.defaultTokens;
+    if (Object.keys(defaults).length === 0) return;
+
+    // If form already has all data needed for comparison, skip
+    const hasTokens = formStore.fromToken !== null && formStore.toToken !== null;
+    const hasAmount = formStore.sellAmount !== "" || formStore.receiveAmount !== "";
+    if (hasTokens && hasAmount) {
+      defaultsApplied = true;
+      return;
+    }
+
+    const chainId = formStore.chainId;
+    const chainDefaults = defaults[String(chainId)];
+    if (!chainDefaults) {
+      defaultsApplied = true;
+      return;
+    }
+
+    // Resolve full token info from token list if available
+    const allTokens = tokenListStore.allTokens;
+
+    if (!formStore.fromToken && chainDefaults.from) {
+      const found = allTokens.find(
+        (t) =>
+          t.address.toLowerCase() === chainDefaults.from.toLowerCase() &&
+          Number(t.chainId) === chainId
+      );
+      const token: TokenInfo = found
+        ? {
+            address: found.address,
+            symbol: found.symbol,
+            decimals: found.decimals,
+            name: found.name,
+            logoURI: found.logoURI,
+          }
+        : { address: chainDefaults.from, symbol: "", decimals: 18 };
+      formStore.fromToken = token;
+    }
+
+    if (!formStore.toToken && chainDefaults.to) {
+      const found = allTokens.find(
+        (t) =>
+          t.address.toLowerCase() === chainDefaults.to.toLowerCase() &&
+          Number(t.chainId) === chainId
+      );
+      const token: TokenInfo = found
+        ? {
+            address: found.address,
+            symbol: found.symbol,
+            decimals: found.decimals,
+            name: found.name,
+            logoURI: found.logoURI,
+          }
+        : { address: chainDefaults.to, symbol: "", decimals: 18 };
+      formStore.toToken = token;
+    }
+
+    if (!formStore.sellAmount && !formStore.receiveAmount) {
+      formStore.sellAmount = "1";
+    }
+
+    defaultsApplied = true;
   });
 
   onMount(() => {
