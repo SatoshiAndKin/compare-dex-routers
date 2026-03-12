@@ -109,26 +109,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/tokenlist/proxy": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Proxy a remote token list URL
-     * @description Fetches a remote HTTPS token list URL server-side to avoid CORS issues. Validates JSON and tokens array.
-     */
-    get: operations["proxyTokenlist"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/token-metadata": {
     parameters: {
       query?: never;
@@ -648,47 +628,6 @@ export interface operations {
       };
       /** @description Failed to load token list */
       500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  proxyTokenlist: {
-    parameters: {
-      query: {
-        /** @description HTTPS URL of the remote token list to proxy */
-        url: string;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Proxied token list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["TokenListResponse"];
-        };
-      };
-      /** @description Missing url, invalid URL format, or non-HTTPS URL */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-      /** @description Remote fetch failed, invalid JSON, missing tokens array, or response too large */
-      502: {
         headers: {
           [name: string]: unknown;
         };

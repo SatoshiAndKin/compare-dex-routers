@@ -25,8 +25,10 @@ services:
       - traefik-proxy
     labels:
       - traefik.enable=true
-      - traefik.http.routers.cdr-api.rule=Host(`${VIRTUAL_HOST:-localhost}`) && (PathPrefix(`/health`) || PathPrefix(`/chains`) || PathPrefix(`/compare`) || PathPrefix(`/quote`) || PathPrefix(`/tokenlist`) || PathPrefix(`/token-metadata`) || PathPrefix(`/metrics`) || PathPrefix(`/analytics`) || PathPrefix(`/errors`) || PathPrefix(`/config`) || PathPrefix(`/docs`) || PathPrefix(`/openapi`) || PathPrefix(`/.well-known`))
+      - traefik.http.routers.cdr-api.rule=Host(`${VIRTUAL_HOST:-localhost}`) && PathPrefix(`/api`)
       - traefik.http.routers.cdr-api.entrypoints=web
+      - traefik.http.middlewares.cdr-api-strip.stripprefix.prefixes=/api
+      - traefik.http.routers.cdr-api.middlewares=cdr-api-strip
       - traefik.http.services.cdr-api.loadbalancer.server.port=3100
       - traefik.http.routers.cdr-api.priority=10
     deploy:

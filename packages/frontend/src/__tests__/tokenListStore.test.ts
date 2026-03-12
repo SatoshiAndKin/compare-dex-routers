@@ -3,11 +3,12 @@ import {
   tokenListStore,
   DEFAULT_TOKENLIST_NAME,
   LOCAL_TOKENS_SOURCE_NAME,
+  DEFAULT_UNISWAP_URL,
   type Token,
 } from "../lib/stores/tokenListStore.svelte.js";
 
 // ---------------------------------------------------------------------------
-// Mock API client
+// Mock API client & global fetch
 // ---------------------------------------------------------------------------
 
 const mockUSDC: Token = {
@@ -41,6 +42,11 @@ vi.mock("../lib/api.js", () => ({
     GET: vi.fn((...args: unknown[]) => mockGetImpl(args[0] as string, args[1])),
   },
 }));
+
+// Mock for direct fetch calls (custom tokenlist fetching + Uniswap default)
+let mockFetchImpl: (url: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+const originalFetch = globalThis.fetch;
 
 // ---------------------------------------------------------------------------
 // Helper: reset store state between tests
@@ -87,11 +93,29 @@ describe("tokenListStore", () => {
     localStorage.clear();
     vi.clearAllMocks();
     mockGetImpl = makeDefaultGET();
+    // Default fetch mock: return empty tokenlist for Uniswap URL, 404 for others
+    mockFetchImpl = async (url: string | URL | Request) => {
+      const urlStr = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (urlStr === DEFAULT_UNISWAP_URL) {
+        return new Response(
+          JSON.stringify({ name: "Uniswap Labs Default", tokens: [mockBaseUSDC] }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    };
+    globalThis.fetch = vi.fn((...args: [string | URL | Request, RequestInit?]) =>
+      mockFetchImpl(...args)
+    );
   });
 
   afterEach(() => {
     resetStore();
     localStorage.clear();
+    globalThis.fetch = originalFetch;
   });
 
   // -------------------------------------------------------------------------
@@ -152,12 +176,18 @@ describe("tokenListStore", () => {
     mockGetImpl = async () => ({ error: { error: "Server error" } });
     // Should not throw
     await expect(tokenListStore.init()).resolves.not.toThrow();
-    expect(tokenListStore.lists).toHaveLength(1);
+    // Built-in default (empty due to API error) + auto-added Uniswap list
+    expect(tokenListStore.lists).toHaveLength(2);
     expect(tokenListStore.lists[0]).toMatchObject({
       url: null,
       name: "Built-in Tokenlist",
       enabled: true,
       tokens: [],
+    });
+    expect(tokenListStore.lists[1]).toMatchObject({
+      url: DEFAULT_UNISWAP_URL,
+      name: "Uniswap Labs Default",
+      enabled: true,
     });
   });
 
@@ -193,18 +223,28 @@ describe("tokenListStore", () => {
   });
 
   it("accepts https:// URL and fetches tokenlist", async () => {
-    mockGetImpl = async (path: string) => {
-      if (path === "/tokenlist") return makeDefaultGET()("/tokenlist");
-      if (path === "/tokenlist/proxy") {
-        return {
-          data: {
-            name: "Custom List",
-            tokens: [mockBaseUSDC],
-          },
-        };
+    mockFetchImpl = async (url: string | URL | Request) => {
+      const urlStr = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (urlStr === "https://example.com/tokens.json") {
+        return new Response(JSON.stringify({ name: "Custom List", tokens: [mockBaseUSDC] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
-      return { error: { error: "Not found" } };
+      if (urlStr === DEFAULT_UNISWAP_URL) {
+        return new Response(
+          JSON.stringify({ name: "Uniswap Labs Default", tokens: [mockBaseUSDC] }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      return new Response("Not found", { status: 404 });
     };
+    globalThis.fetch = vi.fn((...args: [string | URL | Request, RequestInit?]) =>
+      mockFetchImpl(...args)
+    );
 
     const err = await tokenListStore.addList("https://example.com/tokens.json");
     expect(err).toBeNull();
@@ -212,13 +252,28 @@ describe("tokenListStore", () => {
   });
 
   it("rejects duplicate URL", async () => {
-    mockGetImpl = async (path: string) => {
-      if (path === "/tokenlist") return makeDefaultGET()("/tokenlist");
-      if (path === "/tokenlist/proxy") {
-        return { data: { name: "List A", tokens: [mockBaseUSDC] } };
+    mockFetchImpl = async (url: string | URL | Request) => {
+      const urlStr = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (urlStr === "https://example.com/tokens.json") {
+        return new Response(JSON.stringify({ name: "List A", tokens: [mockBaseUSDC] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
-      return { error: { error: "Not found" } };
+      if (urlStr === DEFAULT_UNISWAP_URL) {
+        return new Response(
+          JSON.stringify({ name: "Uniswap Labs Default", tokens: [mockBaseUSDC] }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      return new Response("Not found", { status: 404 });
     };
+    globalThis.fetch = vi.fn((...args: [string | URL | Request, RequestInit?]) =>
+      mockFetchImpl(...args)
+    );
 
     await tokenListStore.addList("https://example.com/tokens.json");
     const err = await tokenListStore.addList("https://example.com/tokens.json");
@@ -227,13 +282,31 @@ describe("tokenListStore", () => {
   });
 
   it("rejects duplicate by name", async () => {
-    mockGetImpl = async (path: string) => {
-      if (path === "/tokenlist") return makeDefaultGET()("/tokenlist");
-      if (path === "/tokenlist/proxy") {
-        return { data: { name: DEFAULT_TOKENLIST_NAME, tokens: [mockBaseUSDC] } };
+    mockFetchImpl = async (url: string | URL | Request) => {
+      const urlStr = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (urlStr === "https://example.com/tokens.json") {
+        return new Response(
+          JSON.stringify({ name: DEFAULT_TOKENLIST_NAME, tokens: [mockBaseUSDC] }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
-      return { error: { error: "Not found" } };
+      if (urlStr === DEFAULT_UNISWAP_URL) {
+        return new Response(
+          JSON.stringify({ name: "Uniswap Labs Default", tokens: [mockBaseUSDC] }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      return new Response("Not found", { status: 404 });
     };
+    globalThis.fetch = vi.fn((...args: [string | URL | Request, RequestInit?]) =>
+      mockFetchImpl(...args)
+    );
 
     await tokenListStore.init();
     const err = await tokenListStore.addList("https://example.com/tokens.json");
@@ -265,13 +338,28 @@ describe("tokenListStore", () => {
   });
 
   it("removeList removes from lists array and saves to localStorage", async () => {
-    mockGetImpl = async (path: string) => {
-      if (path === "/tokenlist") return makeDefaultGET()("/tokenlist");
-      if (path === "/tokenlist/proxy") {
-        return { data: { name: "Custom List", tokens: [mockBaseUSDC] } };
+    mockFetchImpl = async (url: string | URL | Request) => {
+      const urlStr = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (urlStr === "https://example.com/tokens.json") {
+        return new Response(JSON.stringify({ name: "Custom List", tokens: [mockBaseUSDC] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
-      return { error: { error: "Not found" } };
+      if (urlStr === DEFAULT_UNISWAP_URL) {
+        return new Response(
+          JSON.stringify({ name: "Uniswap Labs Default", tokens: [mockBaseUSDC] }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      return new Response("Not found", { status: 404 });
     };
+    globalThis.fetch = vi.fn((...args: [string | URL | Request, RequestInit?]) =>
+      mockFetchImpl(...args)
+    );
 
     await tokenListStore.addList("https://example.com/tokens.json");
     expect(tokenListStore.lists.some((l) => l.url === "https://example.com/tokens.json")).toBe(
@@ -568,13 +656,28 @@ describe("tokenListStore", () => {
   // -------------------------------------------------------------------------
 
   it("addList persists custom list URL to localStorage", async () => {
-    mockGetImpl = async (path: string) => {
-      if (path === "/tokenlist") return makeDefaultGET()("/tokenlist");
-      if (path === "/tokenlist/proxy") {
-        return { data: { name: "My List", tokens: [mockBaseUSDC] } };
+    mockFetchImpl = async (url: string | URL | Request) => {
+      const urlStr = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (urlStr === "https://custom.example.com/list.json") {
+        return new Response(JSON.stringify({ name: "My List", tokens: [mockBaseUSDC] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
-      return { error: { error: "Not found" } };
+      if (urlStr === DEFAULT_UNISWAP_URL) {
+        return new Response(
+          JSON.stringify({ name: "Uniswap Labs Default", tokens: [mockBaseUSDC] }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      return new Response("Not found", { status: 404 });
     };
+    globalThis.fetch = vi.fn((...args: [string | URL | Request, RequestInit?]) =>
+      mockFetchImpl(...args)
+    );
 
     await tokenListStore.addList("https://custom.example.com/list.json");
 

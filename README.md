@@ -35,7 +35,7 @@ Open `http://localhost:5173` to use the UI.
 
 Token autocomplete reads from `packages/api/static/tokenlist.json` plus any custom remote tokenlists you add via the settings panel (gear icon next to the chain selector).
 
-- Add custom tokenlist URLs (fetched through `GET /tokenlist/proxy?url=...` to avoid CORS)
+- Add custom tokenlist URLs (fetched directly from the browser)
 - Toggle individual lists on/off; URLs and toggle states persist in `localStorage`
 - Chain mismatch warnings when a list has no tokens for the selected chain
 - Paste an unknown contract address to trigger on-chain ERC-20 metadata lookup, then save to your local token list
@@ -77,14 +77,6 @@ Single quote from the Spandex router. Same parameters as `/compare`.
 ### `GET /tokenlist`
 
 Returns the contents of `packages/api/static/tokenlist.json`.
-
-### `GET /tokenlist/proxy`
-
-Server-side proxy for fetching remote tokenlists. Avoids CORS restrictions.
-
-| Param | Required | Description                          |
-| ----- | -------- | ------------------------------------ |
-| `url` | yes      | Remote tokenlist URL to fetch        |
 
 ### `GET /token-metadata`
 
