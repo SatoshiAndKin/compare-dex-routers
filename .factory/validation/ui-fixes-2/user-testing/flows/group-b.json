@@ -1,0 +1,115 @@
+{
+  "groupId": "group-b",
+  "testedAt": "2026-03-11T00:00:00.000Z",
+  "credentials": {
+    "account": "no-login-required",
+    "namespace": "37e9f585f0f2__u2"
+  },
+  "toolsUsed": ["agent-browser"],
+  "assertions": [
+    {
+      "id": "VAL-WALLET-001",
+      "title": "Wallet button below header, above form",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:5173",
+          "expected": "App loads",
+          "observed": "App loaded with Compare DEX Routers title"
+        },
+        {
+          "action": "Take annotated screenshot and inspect DOM structure",
+          "expected": "Wallet button rendered between header and form",
+          "observed": "DOM structure: #app > .app > [header.app-header, div.wallet-row, main.app-main]. The wallet-row div (containing the WalletButton with class connect-btn) is a direct sibling of header.app-header and comes before main.app-main (which contains the CompareForm). Screenshot confirms CONNECT WALLET button appears visually between the header and the form."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          ".factory/validation/ui-fixes-2/user-testing/flows/wallet-initial.png"
+        ],
+        "consoleErrors": "none",
+        "dom": "div.wallet-row is a sibling of header.app-header and precedes main.app-main in .app container",
+        "walletButtonParent": "div.wallet-area > div.wallet-row (NOT inside header.app-header)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-WALLET-002",
+      "title": "Wallet button removed from header",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect .header-actions DOM element",
+          "expected": "header-actions contains only ThemeToggle and settings button, NO WalletButton",
+          "observed": "header-actions innerHTML: [button.theme-toggle, button.settings-btn] only. hasWalletButton: false. WalletButton's grandparent is div.wallet-row, not inside header-actions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          ".factory/validation/ui-fixes-2/user-testing/flows/wallet-initial.png"
+        ],
+        "consoleErrors": "none",
+        "dom": "header-actions children: [{tag: BUTTON, class: 'theme-toggle s-QC_WEnhYrrqh'}, {tag: BUTTON, class: 'settings-btn s-XsEmFtvddWTw'}]. No WalletButton present."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TKLIST-001",
+      "title": "Default tokenlist entry always appears in settings",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Click gear/settings icon",
+          "expected": "Settings modal opens",
+          "observed": "Settings modal opened with TOKEN LISTS section"
+        },
+        {
+          "action": "Inspect TOKEN LISTS section",
+          "expected": "Default tokenlist entry (url: null) is visible",
+          "observed": "Found div.tokenlist-entry with text 'Uniswap Labs Default 1367 tokens'. The entry has aria-label='Disable Uniswap Labs Default' (enabled state). DOM confirms this entry has url: null per code structure (tokenListStore._loadDefaultLists adds url: null entries)."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          ".factory/validation/ui-fixes-2/user-testing/flows/settings-modal.png"
+        ],
+        "consoleErrors": "none",
+        "dom": "div.tokenlist-entry text: 'Uniswap Labs Default 1367 tokens', button class: 'tokenlist-toggle on', aria-label: 'Disable Uniswap Labs Default' (enabled)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TKLIST-002",
+      "title": "Default tokenlist not removed by empty localStorage",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Clear localStorage via eval('localStorage.clear()')",
+          "expected": "localStorage cleared",
+          "observed": "localStorage.clear() returned 'cleared'"
+        },
+        {
+          "action": "Reload the page",
+          "expected": "Page reloads fresh with no localStorage data",
+          "observed": "Page reloaded at http://localhost:5173/ with networkidle"
+        },
+        {
+          "action": "Open Settings modal (gear icon) after reload",
+          "expected": "Default tokenlist still visible in TOKEN LISTS section",
+          "observed": "Settings modal opened and showed 'Uniswap Labs Default 1367 tokens' entry, identical to before localStorage was cleared. tokenListStore._ensureDefaultList() ensures url: null entry always exists."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          ".factory/validation/ui-fixes-2/user-testing/flows/settings-after-clear-localstorage.png"
+        ],
+        "consoleErrors": "none",
+        "network": "API call to /tokenlist succeeded and returned default tokenlist; _ensureDefaultList fallback also present in code for when API fails"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 4 assertions: all 4 passed. Wallet button is correctly placed in its own wallet-row div between the header and form (VAL-WALLET-001 pass). Header-actions div contains only ThemeToggle and settings button, no WalletButton (VAL-WALLET-002 pass). Default tokenlist 'Uniswap Labs Default' is present and enabled in Settings modal (VAL-TKLIST-001 pass). Default tokenlist persists after clearing localStorage and reloading (VAL-TKLIST-002 pass)."
+}

@@ -1,0 +1,45 @@
+{
+  "featureId": "fix-default-tokenlist-always-present",
+  "reviewedAt": "2026-03-11T18:00:00.000Z",
+  "commitId": "e6ebff8",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The worker added _ensureDefaultList() and wired it at the end of _loadDefaultLists(), but there is a critical early-return bug: when the API returns an error response (data is undefined), the code hits `if (!data) return;` inside the try block and exits the function BEFORE _ensureDefaultList() is ever called. Only genuine thrown exceptions (network errors) reach the catch block and then fall through to _ensureDefaultList(). The most common failure scenario — the API returning an error JSON response — leaves the default list absent. Compounding this, both new failure-mode tests manually call ensureDefaultList() after init(), which masks the bug: the tests pass regardless of whether _loadDefaultLists() correctly invokes _ensureDefaultList internally.",
+    "issues": [
+      {
+        "file": "packages/frontend/src/lib/stores/tokenListStore.svelte.ts",
+        "line": 145,
+        "severity": "blocking",
+        "description": "Early `return` inside the try block (`if (!data) return;`) exits `_loadDefaultLists()` before the trailing `this._ensureDefaultList(defaultEnabled)` call (line ~186) is reached. This means any API response where data is undefined (i.e. all error responses like `{ error: ... }`) skips the default list creation. Only thrown exceptions (network errors) fall through the catch block to reach _ensureDefaultList. The fix should replace `if (!data) return;` with a conditional guard that wraps the data-processing block rather than exiting the function, so _ensureDefaultList always runs at the end."
+      },
+      {
+        "file": "packages/frontend/src/__tests__/tokenListStore.test.ts",
+        "line": 117,
+        "severity": "blocking",
+        "description": "Test 'keeps default tokenlist present after failed API call' calls `ensureDefaultList()` manually after `tokenListStore.init()`. This causes the assertion to pass regardless of whether init() itself ensures the default list. The same pattern appears in 'keeps default tokenlist present with empty localStorage' (line ~133) and 'handles API error gracefully on init()' (line ~153). These tests are false positives: removing the `_ensureDefaultList` call from `_loadDefaultLists()` would not break any of them. The tests should instead assert on `tokenListStore.lists` directly after `init()` without any manual `ensureDefaultList()` call."
+      },
+      {
+        "file": "packages/frontend/src/lib/stores/tokenListStore.svelte.ts",
+        "line": 188,
+        "severity": "non_blocking",
+        "description": "_ensureDefaultList() has no access modifier (implicitly public), unlike the other internal helpers (_loadDefaultLists, _restoreCustomLists, etc.) which are explicitly `private`. The method was intentionally left public for testability (the test casts and calls it directly), but this inconsistency leaks an implementation detail into the public API. A comment explaining the intentional exposure, or refactoring the test to not need direct access, would clarify intent."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker skipped the mandatory agent-browser step for a feature whose validation contract (VAL-TKLIST-001, VAL-TKLIST-002) explicitly requires opening the Settings modal and observing the default tokenlist row in the browser. The feature's `verificationSteps` field also lists 'Manual: agent-browser — open Settings, verify default tokenlist is listed'. The deviation is documented in skillFeedback, but the worker's justification ('isolated to store initialization logic') is weakened by the fact that the store bug (early return) would only be observable via the UI at runtime. The skill's procedure should clarify: for features where the validation contract contains a browser evidence step, agent-browser verification is mandatory unless the validator explicitly waives it.",
+      "evidence": "validation-contract.md VAL-TKLIST-001: 'Evidence: open Settings modal, verify default tokenlist is listed even without API'. handoff.skillFeedback.followedProcedure = false, deviations[0].step = '6. Manual verification with agent-browser'."
+    },
+    {
+      "area": "conventions",
+      "observation": "The early-return-inside-try pattern was present in the existing code before this feature. The mission AGENTS.md documents the three exit paths as the bug, but does not record the underlying rule: in async store init methods, avoid early function returns from inside try blocks when there is cleanup or fallback logic after the try/catch. Recording this as a code pattern rule would prevent similar bugs in future store work.",
+      "evidence": "tokenListStore.svelte.ts line ~145: `if (!data) return;` inside try block. AGENTS.md 'Default Tokenlist Fix Notes' describes the three exit paths but does not prescribe avoiding early returns in favor of conditional guards."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL. The implementation has a critical bug: when the API returns an error response (the most common failure scenario), `_loadDefaultLists()` hits an early `return` inside its try block and exits before calling `_ensureDefaultList()`. Only thrown exceptions (true network errors) flow through the catch block and reach `_ensureDefaultList`. The tests added for failure scenarios all mask this bug by calling `_ensureDefaultList()` manually after `init()`, making the assertions pass even though `init()` alone does not create the default list in the error-response case. The fix requires replacing `if (!data) return;` with a conditional guard around the data-processing block (not a full function exit), and updating the tests to assert on `tokenListStore.lists` after `init()` without any manual `_ensureDefaultList()` call."
+}

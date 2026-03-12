@@ -1,0 +1,73 @@
+{
+  "milestone": "ui-fixes-2",
+  "round": 2,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd packages/api && npm test -- --maxWorkers=7 && cd ../frontend && npm test",
+      "exitCode": 0,
+      "note": "API: 211 tests passed. Frontend: 412 tests passed. All 623 tests green."
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "note": "svelte-check: 0 errors, 0 warnings. tsc --noEmit: 0 errors."
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0,
+      "note": "15 warnings total (all pre-existing: max-lines-per-function, complexity). 0 errors."
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 2,
+    "failed": 1,
+    "failedFeatures": ["fix-token-swap-logic"]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "fix-token-swap-logic",
+      "severity": "blocking",
+      "description": "The pendingCurrentSideToken capture guard is always-true: handleInput() uses `if (pendingSelectedToken === null || ...)` but pendingSelectedToken is immediately reset to null inside the same block, making the condition always evaluate to true. Sequence for typing 'W','E','T','H': (1) first keystroke — pendingCurrentSideToken = USDC, store → null; (2) second keystroke — pendingCurrentSideToken = null (store already null from step 1); (3-4) same; (5) click dropdown — swap sees null → clear behavior instead of swap. The bug only manifests with multi-character typing; unit tests and browser test both fill the full value in a single input event, so neither caught this.",
+      "suggestedFix": "Change the capture guard from `if (pendingSelectedToken === null || ...)` to `if (pendingCurrentSideToken === null)` so only the first keystroke captures the pre-clear token. The store-clearing assignment remains unconditional. This is the 'capture-once guard' pattern now documented in .factory/library/frontend-component-patterns.md."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Added 'Capture-once guard for pending state variables' section to .factory/library/frontend-component-patterns.md, documenting the anti-pattern (always-true guard overwrites on every keystroke) and the correct pattern (if (pendingFoo === null) { ... }).",
+      "sourceFeature": "fix-token-swap-logic"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/svelte-worker",
+      "suggestion": "Add a note to the verification step for autocomplete/selection interaction features: unit tests for token selection flows should exercise multi-keystroke input (fire multiple input events with incremental values: 'W', then 'WE', then 'WET', then 'WETH') in addition to single-event fill. This catches the class of bug where a state variable is accidentally overwritten on subsequent keystrokes. Alternatively, use `fireEvent.input(input, { target: { value: 'W' } })` followed by `fireEvent.input(input, { target: { value: 'WE' } })` etc.",
+      "evidence": "fix-token-swap-logic blocking bug was not caught by unit tests (single fireEvent.input with full value) or browser test (browser_type fills text at once, not char-by-char). The bug only manifests on second+ keystroke. Both fix features missed it because neither tested the incremental typing path.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills/svelte-worker",
+      "suggestion": "Clarify browser verification requirement: when a feature's verificationSteps list does not include a browser step AND the feature is a pure store/logic fix with no UI surface changes, agent-browser verification may be skipped. Workers should not be penalized for skipping browser verification that was not called for in verificationSteps. Conversely, if the validation contract (fulfills field) references browser-observable assertions, agent-browser is required regardless of verificationSteps.",
+      "evidence": "fix-tokenlist-early-return worker correctly skipped agent-browser (feature verificationSteps had no browser step; fix was store-logic only). This matches the deviation from fix-default-tokenlist-always-present where the browser step WAS required by the validation contract (VAL-TKLIST-001) but the worker skipped it — those are different situations and the skill should distinguish them.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills/svelte-worker",
+      "suggestion": "Clarify the asset-only exception: update 'Verify via browser/file inspection' to 'Verify via file/source inspection (browser inspection optional)'. The current wording implies browser inspection may be required, but for pure asset changes (favicon color tweak, CSS-only changes with no component logic) where verificationSteps are limited to grep/source inspection, file inspection alone is sufficient.",
+      "evidence": "fix-favicon-dark-mode worker correctly skipped browser verification because verificationSteps were grep-only. The skill exception wording 'browser/file inspection' is ambiguous. The worker documented a deviation where none was needed.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "tokenListStore._ensureDefaultList should be made private since tests no longer call it directly",
+      "reason": "non-blocking cleanup outside the scope of the fix feature; not a scrutiny concern"
+    }
+  ],
+  "previousRound": ".factory/validation/ui-fixes-2/scrutiny/synthesis-round-1.json"
+}

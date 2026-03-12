@@ -5,19 +5,19 @@
  * Ported from src/client/token-management.ts for Svelte 5.
  */
 
-import { apiClient } from '../api.js';
+import { apiClient } from "../api.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const CUSTOM_TOKENLISTS_KEY = 'customTokenlists';
-const LOCAL_TOKEN_LIST_KEY = 'localTokenList';
-const LOCAL_TOKENS_ENABLED_KEY = 'localTokensEnabled';
-const DEFAULT_TOKENLIST_ENABLED_KEY = 'defaultTokenlistEnabled';
+const CUSTOM_TOKENLISTS_KEY = "customTokenlists";
+const LOCAL_TOKEN_LIST_KEY = "localTokenList";
+const LOCAL_TOKENS_ENABLED_KEY = "localTokensEnabled";
+const DEFAULT_TOKENLIST_ENABLED_KEY = "defaultTokenlistEnabled";
 
-export const DEFAULT_TOKENLIST_NAME = 'Default Tokenlist';
-export const LOCAL_TOKENS_SOURCE_NAME = 'Local Tokens';
+export const DEFAULT_TOKENLIST_NAME = "Default Tokenlist";
+export const LOCAL_TOKENS_SOURCE_NAME = "Local Tokens";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,7 +63,7 @@ class TokenListStore {
   unrecognizedModal = $state<{
     address: string;
     chainId: number;
-    targetType: 'from' | 'to';
+    targetType: "from" | "to";
   } | null>(null);
 
   /**
@@ -127,51 +127,65 @@ class TokenListStore {
     let defaultEnabled = true;
     try {
       const stored = localStorage.getItem(DEFAULT_TOKENLIST_ENABLED_KEY);
-      if (stored !== null) defaultEnabled = stored === 'true';
+      if (stored !== null) defaultEnabled = stored === "true";
     } catch {
       // ignore
     }
 
     try {
-      const { data } = await apiClient.GET('/tokenlist');
-      if (!data) return;
+      const { data } = await apiClient.GET("/tokenlist");
+      if (data) {
+        const tokenlists = data.tokenlists ?? [];
 
-      const tokenlists = data.tokenlists ?? [];
-
-      if (tokenlists.length > 0) {
-        for (const entry of tokenlists) {
-          const name = entry.name ?? DEFAULT_TOKENLIST_NAME;
-          const tokens: Token[] = (entry.tokens ?? []).map((t) => ({
-            address: t.address ?? '',
+        if (tokenlists.length > 0) {
+          for (const entry of tokenlists) {
+            const name = entry.name ?? DEFAULT_TOKENLIST_NAME;
+            const tokens: Token[] = (entry.tokens ?? []).map((t) => ({
+              address: t.address ?? "",
+              chainId: t.chainId ?? 0,
+              name: t.name ?? "",
+              symbol: t.symbol ?? "",
+              decimals: t.decimals ?? 18,
+              logoURI: t.logoURI,
+              _source: name,
+            }));
+            this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
+          }
+        } else if (data.tokens && data.tokens.length > 0) {
+          // Fallback: old flat response format
+          const name = data.name ?? DEFAULT_TOKENLIST_NAME;
+          const tokens: Token[] = data.tokens.map((t) => ({
+            address: t.address ?? "",
             chainId: t.chainId ?? 0,
-            name: t.name ?? '',
-            symbol: t.symbol ?? '',
+            name: t.name ?? "",
+            symbol: t.symbol ?? "",
             decimals: t.decimals ?? 18,
             logoURI: t.logoURI,
             _source: name,
           }));
-          this.lists = [
-            ...this.lists,
-            { url: null, name, enabled: defaultEnabled, tokens },
-          ];
+          this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
         }
-      } else if (data.tokens && data.tokens.length > 0) {
-        // Fallback: old flat response format
-        const name = data.name ?? DEFAULT_TOKENLIST_NAME;
-        const tokens: Token[] = data.tokens.map((t) => ({
-          address: t.address ?? '',
-          chainId: t.chainId ?? 0,
-          name: t.name ?? '',
-          symbol: t.symbol ?? '',
-          decimals: t.decimals ?? 18,
-          logoURI: t.logoURI,
-          _source: name,
-        }));
-        this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
       }
     } catch {
       // Network error — default list stays empty
     }
+
+    this._ensureDefaultList(defaultEnabled);
+  }
+
+  _ensureDefaultList(defaultEnabled: boolean): void {
+    const hasDefaultList = this.lists.some((list) => list.url === null);
+    if (hasDefaultList) return;
+
+    this.lists = [
+      ...this.lists,
+      {
+        url: null,
+        name: "Built-in Tokenlist",
+        enabled: defaultEnabled,
+        tokens: [],
+      },
+    ];
   }
 
   private async _restoreCustomLists(): Promise<void> {
@@ -181,13 +195,11 @@ class TokenListStore {
     if (!saved || saved.length === 0) return;
 
     // Collect default list names to avoid duplicates
-    const defaultNames = new Set(
-      this.lists.map((l) => (l.name ?? '').trim().toLowerCase()),
-    );
+    const defaultNames = new Set(this.lists.map((l) => (l.name ?? "").trim().toLowerCase()));
 
     const loadPromises = saved.map(async (item) => {
       // Skip if name already matches a default
-      const nameNorm = (item.name ?? '').trim().toLowerCase();
+      const nameNorm = (item.name ?? "").trim().toLowerCase();
       if (nameNorm && defaultNames.has(nameNorm)) return;
 
       const idx = this.lists.length;
@@ -204,7 +216,7 @@ class TokenListStore {
       try {
         const { tokens, name } = await this._fetchCustomList(item.url);
         // Post-fetch dedup check
-        const fetchedNameNorm = (name ?? '').trim().toLowerCase();
+        const fetchedNameNorm = (name ?? "").trim().toLowerCase();
         if (defaultNames.has(fetchedNameNorm)) {
           // Remove this duplicate entry
           this.lists = this.lists.filter((_, i) => i !== idx);
@@ -232,11 +244,11 @@ class TokenListStore {
 
   private _migrateOldUrl(): PersistedList[] | null {
     try {
-      const oldUrl = localStorage.getItem('customTokenlistUrl');
+      const oldUrl = localStorage.getItem("customTokenlistUrl");
       if (oldUrl) {
         const newList: PersistedList[] = [{ url: oldUrl, enabled: true, name: oldUrl }];
         localStorage.setItem(CUSTOM_TOKENLISTS_KEY, JSON.stringify(newList));
-        localStorage.removeItem('customTokenlistUrl');
+        localStorage.removeItem("customTokenlistUrl");
         return newList;
       }
     } catch {
@@ -256,21 +268,21 @@ class TokenListStore {
   }
 
   private async _fetchCustomList(url: string): Promise<{ tokens: Token[]; name: string }> {
-    const { data, error } = await apiClient.GET('/tokenlist/proxy', {
+    const { data, error } = await apiClient.GET("/tokenlist/proxy", {
       params: { query: { url } },
     });
 
     if (error || !data) {
-      const msg = (error as { error?: string } | undefined)?.error ?? 'Failed to fetch tokenlist';
+      const msg = (error as { error?: string } | undefined)?.error ?? "Failed to fetch tokenlist";
       throw new Error(msg);
     }
 
     const name = data.name ?? url;
     const tokens: Token[] = (data.tokens ?? []).map((t) => ({
-      address: t.address ?? '',
+      address: t.address ?? "",
       chainId: t.chainId ?? 0,
-      name: t.name ?? '',
-      symbol: t.symbol ?? '',
+      name: t.name ?? "",
+      symbol: t.symbol ?? "",
       decimals: t.decimals ?? 18,
       logoURI: t.logoURI,
       _source: name,
@@ -288,39 +300,36 @@ class TokenListStore {
    */
   async addList(url: string): Promise<string | null> {
     const trimmed = url.trim();
-    if (!trimmed) return 'Enter a tokenlist URL';
+    if (!trimmed) return "Enter a tokenlist URL";
 
     try {
       new URL(trimmed);
     } catch {
-      return 'Invalid URL format';
+      return "Invalid URL format";
     }
 
-    if (!trimmed.toLowerCase().startsWith('https://')) {
-      return 'URL must use HTTPS';
+    if (!trimmed.toLowerCase().startsWith("https://")) {
+      return "URL must use HTTPS";
     }
 
     // Check for duplicate URL
     const normalizedNew = this._normalizeUrl(trimmed);
     const isDuplicateUrl = this.lists.some(
-      (l) => l.url && this._normalizeUrl(l.url) === normalizedNew,
+      (l) => l.url && this._normalizeUrl(l.url) === normalizedNew
     );
-    if (isDuplicateUrl) return 'This tokenlist is already added';
+    if (isDuplicateUrl) return "This tokenlist is already added";
 
     try {
       const { tokens, name } = await this._fetchCustomList(trimmed);
 
       // Check for duplicate by name
-      const nameNorm = (name ?? '').trim().toLowerCase();
+      const nameNorm = (name ?? "").trim().toLowerCase();
       const isDuplicateName = this.lists.some(
-        (l) => (l.name ?? '').trim().toLowerCase() === nameNorm,
+        (l) => (l.name ?? "").trim().toLowerCase() === nameNorm
       );
       if (isDuplicateName) return `This tokenlist is already loaded ("${name}")`;
 
-      this.lists = [
-        ...this.lists,
-        { url: trimmed, name, enabled: true, tokens },
-      ];
+      this.lists = [...this.lists, { url: trimmed, name, enabled: true, tokens }];
       this._saveCustomLists();
       return null; // success
     } catch (err) {
@@ -346,9 +355,9 @@ class TokenListStore {
   private _normalizeUrl(url: string): string {
     try {
       const parsed = new URL(url);
-      return parsed.origin.toLowerCase() + parsed.pathname.replace(/\/+$/, '');
+      return parsed.origin.toLowerCase() + parsed.pathname.replace(/\/+$/, "");
     } catch {
-      return url.toLowerCase().replace(/\/+$/, '');
+      return url.toLowerCase().replace(/\/+$/, "");
     }
   }
 
@@ -377,13 +386,10 @@ class TokenListStore {
     const addr = token.address.toLowerCase();
     const chainId = Number(token.chainId);
     const isDuplicate = this.localTokens.some(
-      (t) => t.address.toLowerCase() === addr && Number(t.chainId) === chainId,
+      (t) => t.address.toLowerCase() === addr && Number(t.chainId) === chainId
     );
     if (!isDuplicate) {
-      this.localTokens = [
-        ...this.localTokens,
-        { ...token, _source: LOCAL_TOKENS_SOURCE_NAME },
-      ];
+      this.localTokens = [...this.localTokens, { ...token, _source: LOCAL_TOKENS_SOURCE_NAME }];
       this._saveLocalTokens();
     }
   }
@@ -393,7 +399,7 @@ class TokenListStore {
     const addr = address.toLowerCase();
     const cid = Number(chainId);
     this.localTokens = this.localTokens.filter(
-      (t) => !(t.address.toLowerCase() === addr && Number(t.chainId) === cid),
+      (t) => !(t.address.toLowerCase() === addr && Number(t.chainId) === cid)
     );
     this._saveLocalTokens();
   }
@@ -410,7 +416,7 @@ class TokenListStore {
 
   private _saveLocalTokens(): void {
     const payload = {
-      name: 'Local Tokens',
+      name: "Local Tokens",
       timestamp: new Date().toISOString(),
       tokens: this.localTokens.map((t) => ({
         chainId: t.chainId,
@@ -437,10 +443,10 @@ class TokenListStore {
           this.localTokens = (parsed.tokens as Record<string, unknown>[])
             .filter(
               (t) =>
-                typeof t.chainId === 'number' &&
-                typeof t.address === 'string' &&
-                typeof t.symbol === 'string' &&
-                typeof t.decimals === 'number',
+                typeof t.chainId === "number" &&
+                typeof t.address === "string" &&
+                typeof t.symbol === "string" &&
+                typeof t.decimals === "number"
             )
             .map((t) => ({
               address: t.address as string,
@@ -458,7 +464,7 @@ class TokenListStore {
 
     try {
       const enabled = localStorage.getItem(LOCAL_TOKENS_ENABLED_KEY);
-      if (enabled !== null) this.localTokensEnabled = enabled === 'true';
+      if (enabled !== null) this.localTokensEnabled = enabled === "true";
     } catch {
       // ignore
     }
@@ -473,10 +479,10 @@ class TokenListStore {
    * Returns empty string (and error) if no tokens.
    */
   exportLocalTokens(): string {
-    if (this.localTokens.length === 0) return '';
+    if (this.localTokens.length === 0) return "";
 
     const payload = {
-      name: 'Local Tokens',
+      name: "Local Tokens",
       version: { major: 1, minor: 0, patch: 0 },
       timestamp: new Date().toISOString(),
       tokens: this.localTokens.map((t) => ({
@@ -500,30 +506,30 @@ class TokenListStore {
     try {
       parsed = JSON.parse(json) as { tokens?: unknown[] };
     } catch {
-      return { error: 'File is not valid JSON' };
+      return { error: "File is not valid JSON" };
     }
 
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.tokens)) {
-      return { error: 'File must contain a tokens array' };
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.tokens)) {
+      return { error: "File must contain a tokens array" };
     }
 
     if (parsed.tokens.length === 0) {
-      return { error: 'Tokenlist contains no tokens' };
+      return { error: "Tokenlist contains no tokens" };
     }
 
     const validTokens: Token[] = [];
     for (const t of parsed.tokens as Record<string, unknown>[]) {
       if (
-        typeof t.chainId === 'number' &&
-        typeof t.address === 'string' &&
+        typeof t.chainId === "number" &&
+        typeof t.address === "string" &&
         /^0x[a-fA-F0-9]{40}$/.test(t.address) &&
-        typeof t.symbol === 'string' &&
-        typeof t.decimals === 'number'
+        typeof t.symbol === "string" &&
+        typeof t.decimals === "number"
       ) {
         validTokens.push({
           chainId: t.chainId,
           address: t.address,
-          name: (t.name as string) || (t.symbol as string) || 'Unknown',
+          name: (t.name as string) || (t.symbol as string) || "Unknown",
           symbol: t.symbol,
           decimals: t.decimals,
         });
@@ -531,7 +537,7 @@ class TokenListStore {
     }
 
     if (validTokens.length === 0) {
-      return { error: 'No valid tokens found in file' };
+      return { error: "No valid tokens found in file" };
     }
 
     let addedCount = 0;
@@ -539,13 +545,10 @@ class TokenListStore {
       const addr = token.address.toLowerCase();
       const cid = Number(token.chainId);
       const isDuplicate = this.localTokens.some(
-        (t) => t.address.toLowerCase() === addr && Number(t.chainId) === cid,
+        (t) => t.address.toLowerCase() === addr && Number(t.chainId) === cid
       );
       if (!isDuplicate) {
-        this.localTokens = [
-          ...this.localTokens,
-          { ...token, _source: LOCAL_TOKENS_SOURCE_NAME },
-        ];
+        this.localTokens = [...this.localTokens, { ...token, _source: LOCAL_TOKENS_SOURCE_NAME }];
         addedCount++;
       }
     }
@@ -563,7 +566,7 @@ class TokenListStore {
     const addr = address.toLowerCase();
     const cid = Number(chainId);
     return this.allTokens.find(
-      (t) => t.address.toLowerCase() === addr && Number(t.chainId) === cid,
+      (t) => t.address.toLowerCase() === addr && Number(t.chainId) === cid
     );
   }
 }

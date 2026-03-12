@@ -30,6 +30,8 @@
   let activeIdx = $state(-1);
   let inputEl = $state<HTMLInputElement | null>(null);
   let containerEl = $state<HTMLElement | null>(null);
+  let pendingSelectedToken = $state<TokenInfo | null>(null);
+  let pendingCurrentSideToken = $state<TokenInfo | null>(null);
 
   /** Track whether this TokenInput instance opened the unrecognized-token modal */
   let openedModal = $state(false);
@@ -39,6 +41,7 @@
   // ---------------------------------------------------------------------------
 
   let currentToken = $derived(type === "from" ? formStore.fromToken : formStore.toToken);
+  let showClearButton = $derived(inputValue.trim().length > 0 || currentToken !== null);
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -103,23 +106,62 @@
     }
   }
 
-  /** Select a token and update store */
+  /** Select a token and update store, swapping sides when the new selection duplicates the opposite side */
   function selectToken(token: TokenInfo): void {
-    inputValue = formatTokenDisplay(token.symbol, token.address);
+    const currentSideToken =
+      pendingCurrentSideToken ?? (type === "from" ? formStore.fromToken : formStore.toToken);
+    const otherSideToken = type === "from" ? formStore.toToken : formStore.fromToken;
+    const normalizedSelectedAddress = normalizeAddress(token.address);
+
     if (type === "from") {
       formStore.fromToken = token;
+      if (
+        otherSideToken !== null &&
+        normalizeAddress(otherSideToken.address) === normalizedSelectedAddress
+      ) {
+        formStore.toToken = currentSideToken;
+      }
     } else {
       formStore.toToken = token;
+      if (
+        otherSideToken !== null &&
+        normalizeAddress(otherSideToken.address) === normalizedSelectedAddress
+      ) {
+        formStore.fromToken = currentSideToken;
+      }
     }
+
+    inputValue = formatTokenDisplay(token.symbol, token.address);
     matches = [];
     dropdownVisible = false;
     activeIdx = -1;
+    pendingSelectedToken = null;
+    pendingCurrentSideToken = null;
   }
 
   function hideDropdown(): void {
     dropdownVisible = false;
     matches = [];
     activeIdx = -1;
+  }
+
+  function clearToken(): void {
+    inputValue = "";
+    hideDropdown();
+    openedModal = false;
+    tokenListStore.unrecognizedModal = null;
+
+    if (type === "from") {
+      formStore.fromToken = null;
+    } else {
+      formStore.toToken = null;
+    }
+
+    inputEl?.focus();
+  }
+
+  function handleClearMousedown(e: MouseEvent): void {
+    e.preventDefault();
   }
 
   function setActive(index: number): void {
@@ -133,6 +175,12 @@
   async function handleInput(e: Event): Promise<void> {
     const target = e.target as HTMLInputElement;
     inputValue = target.value;
+
+    if (pendingCurrentSideToken === null) {
+      pendingCurrentSideToken = type === "from" ? formStore.fromToken : formStore.toToken;
+    }
+
+    pendingSelectedToken = null;
 
     // Clear the store token when input changes manually
     if (type === "from") {
@@ -191,6 +239,7 @@
 
   function handleItemMousedown(e: MouseEvent, token: TokenInfo): void {
     e.preventDefault();
+    pendingSelectedToken = token;
     selectToken(token);
   }
 
@@ -290,6 +339,18 @@
       autocomplete="off"
       aria-label={type === "from" ? "From token" : "To token"}
     />
+
+    {#if showClearButton}
+      <button
+        type="button"
+        class="clear-token-button"
+        aria-label={type === "from" ? "Clear from token" : "Clear to token"}
+        onmousedown={handleClearMousedown}
+        onclick={clearToken}
+      >
+        ×
+      </button>
+    {/if}
   </div>
 
   {#if dropdownVisible && matches.length > 0}
@@ -367,6 +428,35 @@
     font-size: 0.95rem;
     font-family: inherit;
     min-width: 0;
+  }
+
+  .clear-token-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+    border: none;
+    border-left: 2px solid var(--border, #000);
+    border-radius: 0;
+    background: transparent;
+    color: var(--text, #000);
+    font: inherit;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .clear-token-button:hover {
+    background: var(--bg-hover, #f0f0f0);
+  }
+
+  .clear-token-button:focus-visible {
+    outline: 2px solid var(--accent, #0055ff);
+    outline-offset: -2px;
   }
 
   .token-input:focus {
@@ -448,7 +538,7 @@
 
   .autocomplete-addr {
     font-family: monospace;
-    font-size: 0.75rem;
+    font-size: clamp(0.625rem, 1.5vw, 0.75rem);
     color: var(--text-muted, #666);
     word-break: break-all;
   }

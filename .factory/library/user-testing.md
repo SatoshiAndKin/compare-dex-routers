@@ -42,3 +42,41 @@ Testing surface, tools, URLs, setup steps, and known quirks.
 - lint: 0 errors
 - Dev server on 3100: starts, /health returns ok
 - agent-browser: navigates and interacts successfully
+
+---
+
+## Flow Validator Guidance: Frontend (Svelte SPA)
+
+This is a read-only DEX comparison app — no login, no user accounts, no shared mutable state between sessions. Multiple browser sessions can run simultaneously without interference.
+
+**Isolation rules:**
+- Each flow validator gets its own browser session ID (use the session suffix assigned by orchestrator)
+- No test data to isolate — all browser sessions read the same app state independently
+- Token autocomplete suggestions come from the shared token list (read-only)
+
+**Boundaries / off-limits:**
+- Do not modify source files during validation
+- Do not make API calls to external DEXes unless testing quote flow
+- viewport size changes are local to each browser session
+
+**Test URL:** http://localhost:5173
+
+**How to select tokens:**
+1. Click the From Token or To Token input
+2. Type a token name (e.g., "USDC" or "WETH")
+3. Wait for autocomplete dropdown to appear
+4. Click on a token in the dropdown to select it
+5. Selected token shows "SYMBOL (0xFullAddress)" in the input
+
+**Key selectors to know:**
+- Token input fields: `.token-input-field input`
+- Clear buttons: `button[aria-label^="Clear"]`
+- Autocomplete dropdown: `.autocomplete-list`
+- Token items in dropdown: `.autocomplete-list button`
+
+**Switching to dark mode:**
+- Click the ThemeToggle button (sun/moon icon) in the header
+
+**Viewport testing:**
+- Use browser_resize to set width=375 for mobile viewport testing
+- Use browser_resize to set width=1200 for desktop testing

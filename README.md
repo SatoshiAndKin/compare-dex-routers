@@ -26,8 +26,10 @@ Open `http://localhost:5173` to use the UI.
 - Gas-adjusted comparison with RPC fallback when Spandex omits gas price
 - MEV protection guidance (Flashbots Protect on Ethereum, sequencer details on L2s)
 - Slippage presets (10, 50, 100, 300 bps) plus custom input
+- Clear (X) button on token inputs to quickly reset selections
+- Duplicate token guard — selecting the same token in both fields swaps them automatically
 - Brutalist black/white design with WCAG AA color accents
-- Full addresses everywhere, no truncation
+- Full addresses everywhere, no truncation (responsive font sizing via CSS `clamp()`)
 
 ## Tokenlist management
 
@@ -39,6 +41,7 @@ Token autocomplete reads from `packages/api/static/tokenlist.json` plus any cust
 - Paste an unknown contract address to trigger on-chain ERC-20 metadata lookup, then save to your local token list
 - Export/import local tokens as [Uniswap-format tokenlist](https://tokenlists.org/) JSON
 - Trust warning for custom tokenlist sources
+- Built-in default tokenlist loads even when the API is unreachable
 
 ## Supported chains
 

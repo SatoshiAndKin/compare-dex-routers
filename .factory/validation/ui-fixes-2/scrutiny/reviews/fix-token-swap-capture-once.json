@@ -1,0 +1,28 @@
+{
+  "featureId": "fix-token-swap-capture-once",
+  "reviewedAt": "2026-03-11T18:15:00.000Z",
+  "commitId": "e9e08e176e0f2d676982d323bb2945b5248e032e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix is correct, minimal, and squarely addresses the blocking issue from the prior review. The always-true guard `if (pendingSelectedToken === null || ...)` is replaced with the capture-once guard `if (pendingCurrentSideToken === null)`, so only the first keystroke captures the pre-clear token. The `pendingSelectedToken = null` assignment is correctly moved unconditionally outside the guard. A new test fires four separate fireEvent.input events ('W', 'WE', 'WET', 'WETH') and asserts that the duplicate-selection swap path correctly sets From=WETH and To=USDC, directly covering the multi-keystroke regression scenario the prior review identified as missing. All automated validators (typecheck, lint, full test suite) passed, and browser verification was done using `playwright___browser_type` with `slowly: true`, which sends characters one at a time.",
+    "issues": [
+      {
+        "file": "packages/frontend/src/__tests__/TokenInput.test.ts",
+        "line": 517,
+        "severity": "non_blocking",
+        "description": "The new multi-keystroke test checks formStore.toToken via toMatchObject but does not assert the rendered toInput.value. The single-char swap test just above (around line 470) does assert toInput.value. This is non-blocking — asserting the store state is sufficient to verify swap semantics, and the view-binding is exercised by other tests — but adding `expect(toInput.value).toBe('USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)')` would make the test symmetrical with its sibling."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker was unable to start fresh services due to EADDRINUSE port conflicts and fell back to already-running servers. The svelte-worker skill's manual verification step does not document a fallback strategy for this situation. The worker's suggested change (allow explicit fallback to running healthy services) is reasonable and would prevent future session friction.",
+      "evidence": "skillFeedback.followedProcedure=false, deviations[0].step='6. Manual verification with agent-browser'. Worker confirmed health on :3100 and :5173 before proceeding with browser verification."
+    }
+  ],
+  "addressesFailureFrom": "/Users/bryan/code/compare-dex-routers/.factory/validation/ui-fixes-2/scrutiny/reviews/fix-token-swap-logic.json",
+  "summary": "PASS. The fix directly addresses both blocking issues from the prior review: (1) the always-true capture guard is replaced with a correct capture-once guard (`if (pendingCurrentSideToken === null)`), so the pre-clear token survives multi-character typing; (2) a new test exercises the exact four-keystroke sequence ('W', 'WE', 'WET', 'WETH') and asserts true swap behavior (From=WETH, To=USDC). The change is minimal (8 lines in the component, 46 lines in the test), matches the documented 'capture-once guard' pattern in .factory/library/frontend-component-patterns.md, and all validators passed. One non-blocking note: the new test could also assert toInput.value for full symmetry with adjacent swap tests."
+}

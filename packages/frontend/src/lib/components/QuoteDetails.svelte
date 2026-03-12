@@ -255,16 +255,17 @@
   }
 
   .detail-value {
-    font-size: 0.8125rem;
+    font-size: clamp(0.625rem, 1.6vw, 0.8125rem);
     word-break: break-all;
   }
 
   .detail-value.mono {
     font-family: monospace;
+    word-break: break-all;
   }
 
   .detail-value.compact {
-    font-size: 0.7rem;
+    font-size: clamp(0.625rem, 1.4vw, 0.7rem);
     word-break: break-all;
   }
 

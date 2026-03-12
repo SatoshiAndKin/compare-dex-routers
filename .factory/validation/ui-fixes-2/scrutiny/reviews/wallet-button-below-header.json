@@ -1,0 +1,26 @@
+{
+  "featureId": "wallet-button-below-header",
+  "reviewedAt": "2026-03-11T18:00:00.000Z",
+  "commitId": "9daeeb21d38677a602d8432cd8473e4172330e04",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation is minimal and correct. App.svelte was updated in a single commit (12 insertions, 1 deletion) that: (1) removes WalletButton from .header-actions, (2) adds a new .wallet-row div between </header> and <ChainMismatchWarning>, and (3) styles .wallet-row with display:flex, justify-content:center, width:100%, max-width:800px, and margin:0 auto 1rem. All four expected behaviors from the feature spec are satisfied. The openWalletMenu callback is preserved unchanged, so wallet connect/disconnect modal behavior remains intact. The browser screenshot confirms the wallet button appears in its own centered row below the header and above the form.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker modified .factory/skills/svelte-worker/SKILL.md during the session (visible in git status mid-transcript) but did not commit those changes — the feature commit only included packages/frontend/src/App.svelte. The skill update was silently abandoned. The worker's skillFeedback.followedProcedure=false notes two deviations (using npm run typecheck instead of npx tsc --noEmit, and using built-in Playwright instead of the agent-browser skill). The skill's procedure describes these steps in a slightly divergent way from how the project actually works, so the worker's edits to SKILL.md may have been intended to align the skill with reality. Those improvements are now lost.",
+      "evidence": "Mid-transcript git status showed: ' M .factory/skills/svelte-worker/SKILL.md M packages/frontend/src/App.svelte'. The final commit (9daeeb2) only contains packages/frontend/src/App.svelte per git show --stat. Worker skillFeedback lists two procedural deviations both of which suggest the skill text doesn't match project conventions."
+    },
+    {
+      "area": "conventions",
+      "observation": "The TDD exception in the skill ('Exception for CSS-only tasks: skip TDD') covers pure CSS changes but this feature was a structural layout change (moving a component in the template). No new tests were added for the relocated WalletButton's placement in App.svelte. The existing App.test.ts is a near-empty placeholder (Read showed it as only 297 chars). For layout/placement changes there is currently no guidance on whether tests are expected or not.",
+      "evidence": "Transcript shows worker read packages/frontend/src/__tests__/App.test.ts (tool result 297 chars, indicating a very small test file) and then proceeded without adding any new tests. Handoff tests.added is empty. Skill says CSS-only exception, but this is a template structure change."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The implementation precisely matches all four expectedBehavior items: WalletButton is removed from .header-actions, a new .wallet-row div is inserted between the header and the rest of the page, it is centered with max-width:800px matching the form, and the wallet connect/disconnect modal behavior is untouched. Typecheck, lint, and all 621 tests (API + frontend) passed. Browser screenshot confirms correct placement. Two non-blocking shared-state observations: (1) the worker's in-session edits to svelte-worker/SKILL.md were never committed, losing potential procedure improvements; (2) there is no guidance on whether structural layout moves in App.svelte warrant component placement tests."
+}

@@ -1,0 +1,51 @@
+{
+  "featureId": "token-swap-on-duplicate",
+  "reviewedAt": "2026-03-11T17:30:00.000Z",
+  "commitId": "e56e8d3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The implementation deviates critically from the stated requirements. The feature requires a true token **swap** when a duplicate is selected (e.g. From=DAI, To=USDT, user selects USDT for From → From=USDT, To=DAI). What was implemented instead is a **clear**: the other side always becomes null regardless of what was previously set. The root cause is that `handleInput()` clears the current-side store token to null before `selectToken()` is ever called. As a result, `currentSideToken` is always null inside `selectToken()`, and the true-swap `else if` branch (which requires `currentSideToken !== null`) is unreachable dead code in normal UI flow. The tests were rewritten to match the wrong behavior rather than the specified behavior, so they pass — but they test the wrong thing. VAL-SWAP-001 and VAL-SWAP-002 are not met.",
+    "issues": [
+      {
+        "file": "packages/frontend/src/lib/components/TokenInput.svelte",
+        "line": 107,
+        "severity": "blocking",
+        "description": "The `else if (currentSideToken !== null && ...)` branch is dead code. `handleInput()` (line ~183) always sets `formStore.fromToken` or `formStore.toToken` to null before `selectToken()` is called. Therefore `currentSideToken` is always null when `selectToken()` runs during normal dropdown selection. The true-swap code path (setting the other side to the old current-side token) is never exercised in production. To fix: capture the current side's token value *before* it is cleared — e.g. as a component-level `$state` variable updated in `handleInput()` before clearing, or by not clearing the current side until a new token is committed."
+      },
+      {
+        "file": "packages/frontend/src/__tests__/TokenInput.test.ts",
+        "line": 350,
+        "severity": "blocking",
+        "description": "Test 'clears the opposite token when selecting a duplicate from token': sets up From=DAI, To=USDT, then selects USDT for From, and asserts `formStore.toToken` is null. Per VAL-SWAP-001, the correct assertion should be `formStore.toToken` equals the old From value (DAI). The test was adapted to match the wrong implementation rather than the specified behavior."
+      },
+      {
+        "file": "packages/frontend/src/__tests__/TokenInput.test.ts",
+        "line": 390,
+        "severity": "blocking",
+        "description": "Test 'clears the opposite token when selecting a duplicate to token': sets up From=USDC, To=DAI, then selects USDC for To, and asserts `formStore.fromToken` is null. Per VAL-SWAP-002, the correct assertion should be `formStore.fromToken` equals the old To value (DAI). Same category of issue as test 1."
+      },
+      {
+        "file": "packages/frontend/src/__tests__/TokenInput.test.ts",
+        "line": 435,
+        "severity": "non_blocking",
+        "description": "Test 'keeps the other input display stable until an explicit clear updates it': after the duplicate selection the test asserts `toInput.value` still shows 'USDT (0x...)' even though `formStore.toToken` is now null. This reveals that the `$effect` sync (TokenInput.svelte ~line 294) only propagates non-null tokens to `inputValue` — it does not clear `inputValue` when the store token is externally set to null (unless `inputValue` is already empty). The test name implies this is intentional 'stable display', but in the context of a true swap the To display should show the old From value (DAI), not stale USDT. This is a UX consequence of the incomplete implementation and can be addressed once the swap logic is corrected."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The `handleInput()` function in TokenInput.svelte always clears the current-side store token to null (formStore.fromToken / formStore.toToken) whenever the user types in the input — *before* selectToken() is called. Any feature that needs to inspect or preserve the current token at selection time must account for this ordering. The mission AGENTS.md mentions the intervention point but does not call out this clearing-before-selection pattern as a constraint. This caused the worker to mis-implement the swap feature and should be documented prominently.",
+      "evidence": "TokenInput.svelte lines ~183-186 (handleInput clears store); selectToken() lines ~107-135 (currentSideToken is always null at this point). Worker skillFeedback.suggestedChanges also noted: 'Document in the skill or feature notes that handleInput() clears the current-side token before selectToken() executes.'"
+    },
+    {
+      "area": "skills",
+      "observation": "The worker deviated from TDD (skill step 3) — they implemented the component change before stabilizing tests — and skipped agent-browser manual verification (skill step 6). The TDD deviation was caused by the handleInput() clearing behavior making iterative test debugging necessary. The skill currently prescribes TDD without acknowledging that some Svelte component flows require understanding the existing reactive sequence before tests can be written correctly. A note in the skill about understanding the existing reactive/event order before writing tests for Svelte components could prevent this kind of deviation.",
+      "evidence": "Handoff skillFeedback.deviations entries for steps 3 and 6. Transcript skeleton shows multiple iterative test-fix cycles (8+ ApplyPatch calls on test file) after the initial component change."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL. The implementation performs a 'clear' (other side becomes null) instead of the required 'swap' (other side becomes the old current-side token). This directly violates VAL-SWAP-001 and VAL-SWAP-002. The root cause is that handleInput() clears formStore.fromToken/toToken to null before selectToken() runs, making the true-swap branch unreachable dead code. The four new tests were adapted to match the wrong 'clear' behavior — they pass but validate incorrect behavior. A fix must capture the pre-clear token value (e.g. a saved-token state variable) so selectToken() can use it to populate the other side."
+}

@@ -1,0 +1,49 @@
+{
+  "milestone": "ui-fixes-2",
+  "round": 3,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npm test",
+      "exitCode": 0,
+      "note": "API: 211 tests passed. Frontend: 413 tests passed. All 624 tests green."
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "note": "svelte-check: 0 errors, 0 warnings. tsc --noEmit: 0 errors."
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm run lint",
+      "exitCode": 0,
+      "note": "15 warnings total (all pre-existing: max-lines-per-function, complexity). 0 errors."
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/svelte-worker",
+      "suggestion": "Document a fallback strategy for EADDRINUSE port conflicts during manual browser verification. When services are already running on the expected ports and healthy (e.g., health check passes), workers should be explicitly allowed to use those running instances rather than failing or trying to start fresh services. Suggested language: 'If service start fails with EADDRINUSE, verify the existing service is healthy (curl /health or equivalent). If healthy, proceed with browser verification using the existing service.'",
+      "evidence": "fix-token-swap-capture-once worker encountered EADDRINUSE and fell back to already-running servers. This is the correct behavior, but the skill doesn't document it as an explicit option, causing the worker to log a deviation from procedure. Same pattern observed in prior rounds of this milestone.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills/svelte-worker",
+      "suggestion": "Add a note to the verification step for autocomplete/selection interaction features: unit tests for token selection flows should exercise multi-keystroke input (fire multiple input events with incremental values) in addition to single-event fill. This catches the class of bug where a state variable is accidentally overwritten on subsequent keystrokes. Example: fire `fireEvent.input(input, { target: { value: 'W' } })` followed by `fireEvent.input(input, { target: { value: 'WE' } })` etc.",
+      "evidence": "The fix-token-swap-logic blocking bug was not caught by unit tests (single fireEvent.input with full value) or browser test (browser_type fills text at once, not char-by-char). This was identified in round 2. The fix feature (fix-token-swap-capture-once) correctly added multi-keystroke tests to cover this gap.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/ui-fixes-2/scrutiny/synthesis-round-2.json"
+}
