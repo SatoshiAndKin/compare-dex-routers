@@ -2,7 +2,9 @@
  * Token list store — manages multiple token lists (default + custom), local tokens,
  * deduplication, export/import, and the unrecognized-token modal state.
  *
- * Ported from src/client/token-management.ts for Svelte 5.
+ * Default lists are loaded client-side (Uniswap from tokens.uniswap.org,
+ * project tokenlist from the API's /tokenlist endpoint which serves the
+ * committed static file). Custom lists are fetched directly by the browser.
  */
 
 import { apiClient } from "../api.js";
@@ -118,9 +120,6 @@ class TokenListStore {
       // 2. Restore custom lists from localStorage (migrate old format if needed)
       await this._restoreCustomLists();
 
-      // 3. Auto-add Uniswap default tokenlist if not already present
-      await this._ensureUniswapList();
-
       this.initialized = true;
     } finally {
       this.isInitializing = false;
@@ -136,11 +135,11 @@ class TokenListStore {
       // ignore
     }
 
+    // Load project's committed tokenlist from API (serves static file)
     try {
       const { data } = await apiClient.GET("/tokenlist");
       if (data) {
         const tokenlists = data.tokenlists ?? [];
-
         if (tokenlists.length > 0) {
           for (const entry of tokenlists) {
             const name = entry.name ?? DEFAULT_TOKENLIST_NAME;
@@ -156,7 +155,6 @@ class TokenListStore {
             this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
           }
         } else if (data.tokens && data.tokens.length > 0) {
-          // Fallback: old flat response format
           const name = data.name ?? DEFAULT_TOKENLIST_NAME;
           const tokens: Token[] = data.tokens.map((t) => ({
             address: t.address ?? "",
@@ -171,10 +169,13 @@ class TokenListStore {
         }
       }
     } catch {
-      // Network error — default list stays empty
+      // API unavailable — project tokenlist stays empty
     }
 
     this._ensureDefaultList(defaultEnabled);
+
+    // Load Uniswap tokenlist directly client-side (not proxied through our API)
+    await this._ensureUniswapList();
   }
 
   _ensureDefaultList(defaultEnabled: boolean): void {
