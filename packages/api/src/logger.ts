@@ -19,6 +19,20 @@ function scrubValue(value: string): string {
   return result;
 }
 
+const SENSITIVE_KEY_PATTERNS = [
+  "secret",
+  "password",
+  "apikey",
+  "api_key",
+  "private_key",
+  "authorization",
+];
+
+function isSensitiveKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  return SENSITIVE_KEY_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
 function scrubObject(obj: unknown): unknown {
   if (typeof obj === "string") return scrubValue(obj);
   if (typeof obj !== "object" || obj === null) return obj;
@@ -26,19 +40,7 @@ function scrubObject(obj: unknown): unknown {
 
   const scrubbed: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    const lowerKey = key.toLowerCase();
-    if (
-      lowerKey.includes("secret") ||
-      lowerKey.includes("password") ||
-      lowerKey.includes("apikey") ||
-      lowerKey.includes("api_key") ||
-      lowerKey.includes("private_key") ||
-      lowerKey.includes("authorization")
-    ) {
-      scrubbed[key] = "[REDACTED]";
-    } else {
-      scrubbed[key] = scrubObject(value);
-    }
+    scrubbed[key] = isSensitiveKey(key) ? "[REDACTED]" : scrubObject(value);
   }
   return scrubbed;
 }

@@ -124,13 +124,8 @@
           <span class="gas-label">Gas Cost</span>
           <span class="gas-value">{quote.gas_cost_eth} ETH</span>
         </div>
-        {#if gasPriceGwei}
-          <div class="gas-info">
-            <span class="gas-label">Gas Price</span>
-            <span class="gas-value">{gasPriceGwei} gwei</span>
-          </div>
-        {/if}
-      {:else if gasPriceGwei}
+      {/if}
+      {#if gasPriceGwei}
         <div class="gas-info">
           <span class="gas-label">Gas Price</span>
           <span class="gas-value">{gasPriceGwei} gwei</span>

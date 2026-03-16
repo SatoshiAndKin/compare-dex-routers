@@ -7,51 +7,30 @@
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
   import QuoteCard from "./QuoteCard.svelte";
 
-  // Derived: which provider goes in which tab
   const recommendedProvider = $derived(comparisonStore.recommendation ?? "spandex");
   const alternativeProvider = $derived(recommendedProvider === "spandex" ? "curve" : "spandex");
 
-  const recommendedQuote = $derived(
-    recommendedProvider === "spandex" ? comparisonStore.spandexResult : comparisonStore.curveResult
-  );
-  const recommendedError = $derived(
-    recommendedProvider === "spandex" ? comparisonStore.spandexError : comparisonStore.curveError
-  );
-  const recommendedLoading = $derived(
-    recommendedProvider === "spandex"
-      ? comparisonStore.spandexLoading
-      : comparisonStore.curveLoading
-  );
+  function getProviderData(provider: "spandex" | "curve") {
+    const isSpandex = provider === "spandex";
+    return {
+      quote: isSpandex ? comparisonStore.spandexResult : comparisonStore.curveResult,
+      error: isSpandex ? comparisonStore.spandexError : comparisonStore.curveError,
+      loading: isSpandex ? comparisonStore.spandexLoading : comparisonStore.curveLoading,
+    };
+  }
 
-  const alternativeQuote = $derived(
-    alternativeProvider === "spandex" ? comparisonStore.spandexResult : comparisonStore.curveResult
-  );
-  const alternativeError = $derived(
-    alternativeProvider === "spandex" ? comparisonStore.spandexError : comparisonStore.curveError
-  );
-  const alternativeLoading = $derived(
-    alternativeProvider === "spandex"
-      ? comparisonStore.spandexLoading
-      : comparisonStore.curveLoading
-  );
+  const recommended = $derived(getProviderData(recommendedProvider));
+  const alternative = $derived(getProviderData(alternativeProvider));
 
-  // Label for the recommended tab
-  const recommendedTabLabel = $derived(
-    comparisonStore.spandexLoading && comparisonStore.curveLoading
-      ? "Loading..."
-      : recommendedProvider === "spandex"
-        ? "Spandex"
-        : "Curve"
-  );
+  const bothLoading = $derived(comparisonStore.spandexLoading && comparisonStore.curveLoading);
 
-  // Label for the alternative tab
-  const alternativeTabLabel = $derived(
-    comparisonStore.spandexLoading && comparisonStore.curveLoading
-      ? "Loading..."
-      : alternativeProvider === "spandex"
-        ? "Spandex"
-        : "Curve"
-  );
+  function tabLabel(provider: "spandex" | "curve"): string {
+    if (bothLoading) return "Loading...";
+    return provider === "spandex" ? "Spandex" : "Curve";
+  }
+
+  const recommendedTabLabel = $derived(tabLabel(recommendedProvider));
+  const alternativeTabLabel = $derived(tabLabel(alternativeProvider));
 
   // Hide alternative tab in single router mode (once we know)
   const showAlternativeTab = $derived(!comparisonStore.isSingleRouterMode);
@@ -132,9 +111,9 @@
         {:else}
           <QuoteCard
             provider={recommendedProvider}
-            quote={recommendedQuote}
-            error={recommendedError}
-            loading={recommendedLoading}
+            quote={recommended.quote}
+            error={recommended.error}
+            loading={recommended.loading}
             isRecommended={true}
             gasPriceGwei={comparisonStore.gasPriceGwei}
           />
@@ -144,9 +123,9 @@
       <div class="tab-panel" role="tabpanel">
         <QuoteCard
           provider={alternativeProvider}
-          quote={alternativeQuote}
-          error={alternativeError}
-          loading={alternativeLoading}
+          quote={alternative.quote}
+          error={alternative.error}
+          loading={alternative.loading}
           isRecommended={false}
           gasPriceGwei={comparisonStore.gasPriceGwei}
         />

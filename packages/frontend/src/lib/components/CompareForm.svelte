@@ -65,53 +65,33 @@
   // Auto-refresh helpers
   // ---------------------------------------------------------------------------
 
-  /** Run comparison with the given params (used by both submit and auto-refresh) */
-  async function runCompare(params: CompareParams): Promise<void> {
+  /**
+   * Run comparison and schedule auto-refresh on success.
+   * @param isAutoRefresh — when true, keeps refreshing even on failure
+   */
+  async function runCompare(params: CompareParams, isAutoRefresh = false): Promise<void> {
     autoRefreshStore.setInFlight(true);
-
     await comparisonStore.compare(params);
-
     autoRefreshStore.setInFlight(false);
 
     const hasResults =
       comparisonStore.spandexResult !== null || comparisonStore.curveResult !== null;
 
     if (hasResults) {
-      const capturedParams = { ...params };
-      autoRefreshStore.reset(AUTO_REFRESH_SECONDS, () => {
-        void runAutoRefresh(capturedParams);
-      });
+      scheduleAutoRefresh(params);
+    } else if (isAutoRefresh) {
+      autoRefreshStore.setErrorMessage("Refresh failed. Keeping previous quotes.");
+      scheduleAutoRefresh(params);
     } else {
-      // Both failed — stop auto-refresh
       autoRefreshStore.stop();
     }
   }
 
-  /** Auto-refresh cycle: re-run compare with last known good params */
-  async function runAutoRefresh(params: CompareParams): Promise<void> {
-    autoRefreshStore.setInFlight(true);
-
-    await comparisonStore.compare(params);
-
-    autoRefreshStore.setInFlight(false);
-
-    const hasResults =
-      comparisonStore.spandexResult !== null || comparisonStore.curveResult !== null;
-
-    if (hasResults) {
-      // Restart countdown with updated params
-      const capturedParams = { ...params };
-      autoRefreshStore.reset(AUTO_REFRESH_SECONDS, () => {
-        void runAutoRefresh(capturedParams);
-      });
-    } else {
-      autoRefreshStore.setErrorMessage("Refresh failed. Keeping previous quotes.");
-      // Restart countdown despite error (matching original behavior)
-      const capturedParams = { ...params };
-      autoRefreshStore.reset(AUTO_REFRESH_SECONDS, () => {
-        void runAutoRefresh(capturedParams);
-      });
-    }
+  function scheduleAutoRefresh(params: CompareParams): void {
+    const capturedParams = { ...params };
+    autoRefreshStore.reset(AUTO_REFRESH_SECONDS, () => {
+      void runCompare(capturedParams, true);
+    });
   }
 
   // ---------------------------------------------------------------------------

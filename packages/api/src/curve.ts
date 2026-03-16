@@ -303,10 +303,8 @@ export async function findCurveQuote(
     toDecimals = undefined;
   }
 
-  const typedRoute = route;
-
   const tokenAddresses = new Set<string>();
-  for (const step of typedRoute) {
+  for (const step of route) {
     if (step.inputCoinAddress) tokenAddresses.add(step.inputCoinAddress.toLowerCase());
     if (step.outputCoinAddress) tokenAddresses.add(step.outputCoinAddress.toLowerCase());
   }
@@ -343,7 +341,7 @@ export async function findCurveQuote(
     input_amount_raw: inputAmountRaw,
     output_amount_raw: outputAmountRaw,
     mode,
-    route: typedRoute,
+    route,
     route_symbols: routeSymbols,
     router_address: swapTx.to,
     router_calldata: swapTx.data,
