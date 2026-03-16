@@ -113,7 +113,6 @@ function getDefaultTokenlistPaths(): string[] {
   if (!envValue || envValue.trim() === "") {
     return [resolve(process.cwd(), "static", "tokenlist.json")];
   }
-  // Split by comma, trim whitespace, resolve relative paths to cwd
   return envValue
     .split(",")
     .map((p) => p.trim())
@@ -141,7 +140,6 @@ async function loadDefaultTokenlists(): Promise<TokenlistEntry[]> {
       const fileContents = await readFile(path, "utf8");
       const parsed = JSON.parse(fileContents) as TokenListPayload;
       const tokens = Array.isArray(parsed.tokens) ? parsed.tokens : [];
-      // Use the name from the tokenlist, or derive from filename
       const name =
         typeof parsed.name === "string" && parsed.name.trim() !== ""
           ? parsed.name
@@ -149,7 +147,6 @@ async function loadDefaultTokenlists(): Promise<TokenlistEntry[]> {
       entries.push({ path, name, tokens });
     } catch (err) {
       logError(`Failed to load default tokenlist from ${path}`, err);
-      // Continue to next path - don't fail entirely if one is missing
     }
   }
 
@@ -286,133 +283,61 @@ const WETH_ADDRESSES: Record<number, string> = {
   43114: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", // Avalanche (WAVAX)
 };
 
-// Rate cache for output->ETH conversions (60s TTL)
-const OUTPUT_TO_ETH_RATE_CACHE_TTL_MS = 60 * 1000;
+const RATE_CACHE_TTL_MS = 60 * 1000;
 const outputToEthRateCache = new Map<string, { rate: number; timestamp: number }>();
-
-// Rate cache for input->ETH conversions (60s TTL) - used for targetOut mode
-const INPUT_TO_ETH_RATE_CACHE_TTL_MS = 60 * 1000;
 const inputToEthRateCache = new Map<string, { rate: number; timestamp: number }>();
 
-// Check if output token is ETH/WETH
-function isEthOutput(symbol: string, address: string, chainId: number): boolean {
+function isEthOrWeth(symbol: string, address: string, chainId: number): boolean {
   const normalizedSymbol = symbol.toUpperCase();
   if (normalizedSymbol === "ETH" || normalizedSymbol === "WETH") return true;
 
   const wethAddress = WETH_ADDRESSES[chainId];
-  if (wethAddress && address.toLowerCase() === wethAddress.toLowerCase()) return true;
-
-  return false;
+  return wethAddress !== undefined && address.toLowerCase() === wethAddress.toLowerCase();
 }
 
-// Fetch output->ETH rate via Spandex quote
-// Uses a small amount (1 unit of output token) to get the exchange rate
-// Caches the rate for 60 seconds since both quotes in a comparison use the same output token
-async function fetchOutputToEthRate(
+/**
+ * Fetch the ETH exchange rate for a token via a Spandex quote (1 unit of token → WETH).
+ * Results are cached per chain+token for 60 seconds.
+ */
+async function fetchTokenToEthRate(
   chainId: number,
-  outputToken: string,
-  outputDecimals: number
+  token: string,
+  tokenDecimals: number,
+  cache: Map<string, { rate: number; timestamp: number }>,
+  cacheTtlMs: number
 ): Promise<number | null> {
-  const cacheKey = `${chainId}:${outputToken.toLowerCase()}`;
-  const cached = outputToEthRateCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < OUTPUT_TO_ETH_RATE_CACHE_TTL_MS) {
+  const cacheKey = `${chainId}:${token.toLowerCase()}`;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < cacheTtlMs) {
     return cached.rate;
   }
 
   const wethAddress = WETH_ADDRESSES[chainId];
-  if (!wethAddress) {
-    // No WETH address for this chain, can't fetch rate
-    return null;
-  }
+  if (!wethAddress) return null;
 
   try {
-    // Use 1 unit of the output token to get the rate
-    const oneUnit = parseUnits("1", outputDecimals);
+    const oneUnit = parseUnits("1", tokenDecimals);
 
     const quote = await getQuote({
       config,
       swap: {
         chainId,
-        inputToken: outputToken as Address,
+        inputToken: token as Address,
         outputToken: wethAddress as Address,
         mode: "exactIn",
         inputAmount: oneUnit,
-        slippageBps: 1000, // 10% slippage for rate fetch (we just need an approximate rate)
+        slippageBps: 1000,
         swapperAccount: FALLBACK_ACCOUNT,
       },
       strategy: "bestPrice",
     });
 
-    if (!quote) {
-      return null;
-    }
+    if (!quote) return null;
 
-    // Rate = outputAmount (in ETH) / 1 unit of input
-    // Since we used 1 unit, the output amount IS the rate
     const rate = Number(formatUnits(quote.simulation.outputAmount, 18));
-
-    // Cache the rate
-    outputToEthRateCache.set(cacheKey, { rate, timestamp: Date.now() });
-
+    cache.set(cacheKey, { rate, timestamp: Date.now() });
     return rate;
   } catch {
-    // Rate fetch failed
-    return null;
-  }
-}
-
-// Fetch input->ETH rate via Spandex quote (for targetOut mode gas-adjusted comparison)
-// Uses a small amount (1 unit of input token) to get the exchange rate
-// Caches the rate for 60 seconds since both quotes in a comparison use the same input token
-async function fetchInputToEthRate(
-  chainId: number,
-  inputToken: string,
-  inputDecimals: number
-): Promise<number | null> {
-  const cacheKey = `${chainId}:${inputToken.toLowerCase()}`;
-  const cached = inputToEthRateCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < INPUT_TO_ETH_RATE_CACHE_TTL_MS) {
-    return cached.rate;
-  }
-
-  const wethAddress = WETH_ADDRESSES[chainId];
-  if (!wethAddress) {
-    // No WETH address for this chain, can't fetch rate
-    return null;
-  }
-
-  try {
-    // Use 1 unit of the input token to get the rate
-    const oneUnit = parseUnits("1", inputDecimals);
-
-    const quote = await getQuote({
-      config,
-      swap: {
-        chainId,
-        inputToken: inputToken as Address,
-        outputToken: wethAddress as Address,
-        mode: "exactIn",
-        inputAmount: oneUnit,
-        slippageBps: 1000, // 10% slippage for rate fetch (we just need an approximate rate)
-        swapperAccount: FALLBACK_ACCOUNT,
-      },
-      strategy: "bestPrice",
-    });
-
-    if (!quote) {
-      return null;
-    }
-
-    // Rate = outputAmount (in ETH) / 1 unit of input
-    // Since we used 1 unit, the output amount IS the rate
-    const rate = Number(formatUnits(quote.simulation.outputAmount, 18));
-
-    // Cache the rate
-    inputToEthRateCache.set(cacheKey, { rate, timestamp: Date.now() });
-
-    return rate;
-  } catch {
-    // Rate fetch failed
     return null;
   }
 }
@@ -475,38 +400,46 @@ async function compareQuotes(
   let inputToEthRate: number | null = null;
   let inputToEthRateStr: string | null = null;
 
-  // Determine if output is ETH/WETH
   const outputIsEth = spandex.result
-    ? isEthOutput(spandex.result.to_symbol, spandex.result.to, chainId)
+    ? isEthOrWeth(spandex.result.to_symbol, spandex.result.to, chainId)
     : curveResult.result
-      ? isEthOutput(curveResult.result.to_symbol, curveResult.result.to, chainId)
+      ? isEthOrWeth(curveResult.result.to_symbol, curveResult.result.to, chainId)
       : false;
 
-  // Determine if input is ETH/WETH (relevant for targetOut mode)
   const inputIsEth = spandex.result
-    ? isEthOutput(spandex.result.from_symbol, spandex.result.from, chainId)
+    ? isEthOrWeth(spandex.result.from_symbol, spandex.result.from, chainId)
     : curveResult.result
-      ? isEthOutput(curveResult.result.from_symbol, curveResult.result.from, chainId)
+      ? isEthOrWeth(curveResult.result.from_symbol, curveResult.result.from, chainId)
       : false;
 
   const outputSymbol = spandex.result?.to_symbol || curveResult.result?.to_symbol || "tokens";
   const inputSymbol = spandex.result?.from_symbol || curveResult.result?.from_symbol || "tokens";
 
-  // Fetch output->ETH rate for non-ETH outputs (needed for exactIn gas-adjusted comparison)
   if (mode === "exactIn" && !outputIsEth && (spandex.result || curveResult.result)) {
     const outputToken = spandex.result?.to || curveResult.result?.to;
     const outputDecimals = await getTokenDecimals(chainId, outputToken || "");
-    outputToEthRate = await fetchOutputToEthRate(chainId, outputToken || "", outputDecimals);
+    outputToEthRate = await fetchTokenToEthRate(
+      chainId,
+      outputToken || "",
+      outputDecimals,
+      outputToEthRateCache,
+      RATE_CACHE_TTL_MS
+    );
     if (outputToEthRate !== null) {
       outputToEthRateStr = outputToEthRate.toFixed(6);
     }
   }
 
-  // Fetch input->ETH rate for non-ETH inputs (needed for targetOut gas-adjusted comparison)
   if (mode === "targetOut" && !inputIsEth && (spandex.result || curveResult.result)) {
     const inputToken = spandex.result?.from || curveResult.result?.from;
     const inputDecimals = await getTokenDecimals(chainId, inputToken || "");
-    inputToEthRate = await fetchInputToEthRate(chainId, inputToken || "", inputDecimals);
+    inputToEthRate = await fetchTokenToEthRate(
+      chainId,
+      inputToken || "",
+      inputDecimals,
+      inputToEthRateCache,
+      RATE_CACHE_TTL_MS
+    );
     if (inputToEthRate !== null) {
       inputToEthRateStr = inputToEthRate.toFixed(6);
     }
@@ -556,22 +489,8 @@ async function compareQuotes(
     return { gasCostEth, inputValueEth, totalCostEth };
   }
 
-  // Helper to enrich quote with gas-adjusted fields
-  function enrichQuoteWithGasFields(
-    quote: QuoteResult | null,
-    gasCostEth: number,
-    outputValueEth: number,
-    netValueEth: number
-  ): void {
-    if (!quote) return;
-    quote.gas_cost_eth = formatEthValue(gasCostEth);
-    quote.output_value_eth = formatEthValue(outputValueEth);
-    quote.net_value_eth = formatEthValue(netValueEth);
-  }
-
-  // Enrich Curve quote with gas-adjusted fields
-  function enrichCurveQuoteWithGasFields(
-    quote: CurveQuoteResult | null,
+  function enrichWithGasFields(
+    quote: QuoteResult | CurveQuoteResult | null,
     gasCostEth: number,
     outputValueEth: number,
     netValueEth: number
@@ -605,13 +524,13 @@ async function compareQuotes(
       const curveValues = computeGasAdjustedValuesTargetOut(curveInput, curveGas, gasPriceWei);
 
       // Enrich quotes with gas fields (for targetOut, net_value_eth represents total cost)
-      enrichQuoteWithGasFields(
+      enrichWithGasFields(
         spandex.result,
         spandexValues.gasCostEth,
         spandexValues.inputValueEth,
         spandexValues.totalCostEth
       );
-      enrichCurveQuoteWithGasFields(
+      enrichWithGasFields(
         curveResult.result,
         curveValues.gasCostEth,
         curveValues.inputValueEth,
@@ -705,13 +624,13 @@ async function compareQuotes(
       const curveValues = computeGasAdjustedValuesExactIn(curveOutput, curveGas, gasPriceWei);
 
       // Enrich quotes with gas fields
-      enrichQuoteWithGasFields(
+      enrichWithGasFields(
         spandex.result,
         spandexValues.gasCostEth,
         spandexValues.outputValueEth,
         spandexValues.netValueEth
       );
-      enrichCurveQuoteWithGasFields(
+      enrichWithGasFields(
         curveResult.result,
         curveValues.gasCostEth,
         curveValues.outputValueEth,
@@ -792,7 +711,7 @@ async function compareQuotes(
     if (mode === "targetOut") {
       const spandexInput = Number(spandex.result.input_amount);
       const values = computeGasAdjustedValuesTargetOut(spandexInput, spandexGas, gasPriceWei);
-      enrichQuoteWithGasFields(
+      enrichWithGasFields(
         spandex.result,
         values.gasCostEth,
         values.inputValueEth,
@@ -801,7 +720,7 @@ async function compareQuotes(
     } else {
       const spandexOutput = Number(spandex.result.output_amount);
       const values = computeGasAdjustedValuesExactIn(spandexOutput, spandexGas, gasPriceWei);
-      enrichQuoteWithGasFields(
+      enrichWithGasFields(
         spandex.result,
         values.gasCostEth,
         values.outputValueEth,
@@ -817,7 +736,7 @@ async function compareQuotes(
     if (mode === "targetOut") {
       const curveInput = Number(curveResult.result.input_amount);
       const values = computeGasAdjustedValuesTargetOut(curveInput, curveGas, gasPriceWei);
-      enrichCurveQuoteWithGasFields(
+      enrichWithGasFields(
         curveResult.result,
         values.gasCostEth,
         values.inputValueEth,
@@ -826,7 +745,7 @@ async function compareQuotes(
     } else {
       const curveOutput = Number(curveResult.result.output_amount);
       const values = computeGasAdjustedValuesExactIn(curveOutput, curveGas, gasPriceWei);
-      enrichCurveQuoteWithGasFields(
+      enrichWithGasFields(
         curveResult.result,
         values.gasCostEth,
         values.outputValueEth,
@@ -1003,8 +922,6 @@ window.onload = function() {
   if (url.pathname === "/tokenlist" && req.method === "GET") {
     try {
       const defaultTokenlists = await loadDefaultTokenlists();
-      // Return structured response with all default tokenlists
-      // For backward compatibility, merge all tokens into a single array
       const allTokens = defaultTokenlists.flatMap((entry) => entry.tokens);
       const names = defaultTokenlists.map((entry) => entry.name);
       sendJson(res, 200, {

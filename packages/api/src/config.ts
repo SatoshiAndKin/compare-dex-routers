@@ -99,17 +99,21 @@ function buildProviders() {
 
 const clientCache = new Map<number, PublicClient>();
 
-export function getClient(chainId: number): PublicClient {
-  const cached = clientCache.get(chainId);
-  if (cached) return cached;
-
+function assertSupportedChain(chainId: number): { name: string; alchemySubdomain: string } {
   const chain = SUPPORTED_CHAINS[chainId];
   if (!chain) {
     throw new Error(
       `Unsupported chain: ${chainId}. Supported: ${Object.keys(SUPPORTED_CHAINS).join(", ")}`
     );
   }
+  return chain;
+}
 
+export function getClient(chainId: number): PublicClient {
+  const cached = clientCache.get(chainId);
+  if (cached) return cached;
+
+  assertSupportedChain(chainId);
   const rpcUrl = getRpcUrl(chainId);
 
   const client = createPublicClient({
@@ -121,13 +125,7 @@ export function getClient(chainId: number): PublicClient {
 }
 
 export function getRpcUrl(chainId: number): string {
-  const chain = SUPPORTED_CHAINS[chainId];
-  if (!chain) {
-    throw new Error(
-      `Unsupported chain: ${chainId}. Supported: ${Object.keys(SUPPORTED_CHAINS).join(", ")}`
-    );
-  }
-
+  const chain = assertSupportedChain(chainId);
   return (
     process.env[`RPC_URL_${chainId}`] ||
     `https://${chain.alchemySubdomain}.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`

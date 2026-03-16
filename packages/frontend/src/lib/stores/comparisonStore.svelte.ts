@@ -38,8 +38,6 @@ function computeRecommendation(
   mode: string,
   isSingleRouterMode: boolean
 ): { recommendation: "spandex" | "curve"; reason: string } | null {
-  const gasPriceGwei = spandex?.gas_price_gwei ?? null;
-
   if (spandex && curve) {
     if (mode === "targetOut") {
       const spandexInput = Number(spandex.input_amount);
@@ -107,8 +105,6 @@ function computeRecommendation(
     };
   }
 
-  // Suppress unused variable warning
-  void gasPriceGwei;
   return null;
 }
 
