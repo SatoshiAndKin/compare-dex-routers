@@ -25,16 +25,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.0.3",
+    "eslint": "^10.2.0",
     "husky": "^9.1.7",
-    "jscpd": "^4.0.8",
-    "knip": "^5.87.0",
+    "jscpd": "^4.0.9",
+    "knip": "^6.4.1",
     "lint-staged": "^16.4.0",
     "openapi-typescript": "^7.13.0",
-    "prettier": "^3.8.1",
+    "prettier": "^3.8.2",
     "prettier-plugin-svelte": "^3.5.1",
     "tsx": "^4.21.0",
-    "typescript-eslint": "^8.57.1"
+    "typescript-eslint": "^8.58.2"
   },
   "lint-staged": {
     "packages/**/*.ts": [
