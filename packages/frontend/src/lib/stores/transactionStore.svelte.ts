@@ -12,17 +12,17 @@
  *   - Pending action when wallet is not connected
  */
 
-import type { SpandexQuote, CurveQuote } from './comparisonStore.svelte.js';
-import { walletStore } from './walletStore.svelte.js';
-import { autoRefreshStore } from './autoRefreshStore.svelte.js';
-import { settingsStore } from './settingsStore.svelte.js';
-import { formStore } from './formStore.svelte.js';
+import type { SpandexQuote, CurveQuote } from "./comparisonStore.svelte.js";
+import { walletStore } from "./walletStore.svelte.js";
+import { autoRefreshStore } from "./autoRefreshStore.svelte.js";
+import { settingsStore } from "./settingsStore.svelte.js";
+import { formStore } from "./formStore.svelte.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type TxStatus = 'idle' | 'pending' | 'confirmed' | 'failed';
+export type TxStatus = "idle" | "pending" | "confirmed" | "failed";
 
 export interface SwapConfirmationData {
   routerName: string;
@@ -34,33 +34,30 @@ export interface SwapConfirmationData {
 // ---------------------------------------------------------------------------
 
 // ERC-20 function selectors
-const ALLOWANCE_SELECTOR = '0xdd62ed3e'; // allowance(address,address)
-const APPROVE_SELECTOR = '0x095ea7b3'; // approve(address,uint256)
+const ALLOWANCE_SELECTOR = "0xdd62ed3e"; // allowance(address,address)
+const APPROVE_SELECTOR = "0x095ea7b3"; // approve(address,uint256)
 
 /** Max uint256 as a 64-char hex string (no 0x prefix) */
-const MAX_UINT256_HEX = 'f'.repeat(64);
+const MAX_UINT256_HEX = "f".repeat(64);
 
 /** Flashbots Protect RPC URL */
-const FLASHBOTS_RPC_URL = 'https://rpc.flashbots.net';
+const FLASHBOTS_RPC_URL = "https://rpc.flashbots.net";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
 function isAddressLike(address: string): boolean {
-  return /^0x[a-fA-F0-9]{40}$/.test(String(address ?? '').trim());
+  return /^0x[a-fA-F0-9]{40}$/.test(String(address ?? "").trim());
 }
 
 function isUserRejectedError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
+  if (!err || typeof err !== "object") return false;
   const e = err as Record<string, unknown>;
   if (Number(e.code) === 4001) return true;
   const data = e.data as Record<string, unknown> | undefined;
   if (data && Number(data.code) === 4001) return true;
-  if (
-    data?.originalError &&
-    Number((data.originalError as Record<string, unknown>).code) === 4001
-  )
+  if (data?.originalError && Number((data.originalError as Record<string, unknown>).code) === 4001)
     return true;
   const error = e.error as Record<string, unknown> | undefined;
   if (error && Number(error.code) === 4001) return true;
@@ -69,13 +66,15 @@ function isUserRejectedError(err: unknown): boolean {
 
 /** Convert a decimal or 0x-prefixed value string to an 0x-prefixed hex quantity */
 function toHexQuantity(value: string): string {
-  const trimmed = String(value ?? '').trim().toLowerCase();
-  if (!trimmed) return '0x0';
-  if (trimmed.startsWith('0x')) return trimmed;
+  const trimmed = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (!trimmed) return "0x0";
+  if (trimmed.startsWith("0x")) return trimmed;
   try {
-    return '0x' + BigInt(trimmed).toString(16);
+    return "0x" + BigInt(trimmed).toString(16);
   } catch {
-    return '0x0';
+    return "0x0";
   }
 }
 
@@ -95,7 +94,7 @@ async function waitForReceipt(provider: ProviderLike, txHash: string): Promise<R
 
   while (Date.now() - start < timeoutMs) {
     const receipt = (await provider.request({
-      method: 'eth_getTransactionReceipt',
+      method: "eth_getTransactionReceipt",
       params: [txHash],
     })) as ReceiptLike | null;
 
@@ -104,7 +103,7 @@ async function waitForReceipt(provider: ProviderLike, txHash: string): Promise<R
     await new Promise<void>((r) => setTimeout(r, pollMs));
   }
 
-  throw new Error('Timed out waiting for transaction confirmation');
+  throw new Error("Timed out waiting for transaction confirmation");
 }
 
 // ---------------------------------------------------------------------------
@@ -121,31 +120,31 @@ async function waitForReceipt(provider: ProviderLike, txHash: string): Promise<R
  */
 async function sendTransactionViaMev(
   walletProvider: ProviderLike,
-  txParams: Record<string, unknown>,
+  txParams: Record<string, unknown>
 ): Promise<string> {
   let signedTx: string | undefined;
 
   try {
     signedTx = (await walletProvider.request({
-      method: 'eth_signTransaction',
+      method: "eth_signTransaction",
       params: [txParams],
     })) as string;
   } catch {
     // Wallet doesn't support eth_signTransaction — fall back to normal wallet send
     return (await walletProvider.request({
-      method: 'eth_sendTransaction',
+      method: "eth_sendTransaction",
       params: [txParams],
     })) as string;
   }
 
   // Submit raw signed tx to Flashbots Protect
   const response = await fetch(FLASHBOTS_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id: 1,
-      method: 'eth_sendRawTransaction',
+      method: "eth_sendRawTransaction",
       params: [signedTx],
     }),
   });
@@ -160,11 +159,11 @@ async function sendTransactionViaMev(
   };
 
   if (json.error) {
-    throw new Error(`Flashbots RPC error: ${json.error.message ?? 'unknown'}`);
+    throw new Error(`Flashbots RPC error: ${json.error.message ?? "unknown"}`);
   }
 
   if (!json.result) {
-    throw new Error('No transaction hash returned from Flashbots RPC');
+    throw new Error("No transaction hash returned from Flashbots RPC");
   }
 
   return json.result;
@@ -199,12 +198,12 @@ class TransactionStore {
 
   /** Get approve status for a router (defaults to 'idle') */
   getApproveStatus(routerName: string): TxStatus {
-    return this.approveStatus[routerName] ?? 'idle';
+    return this.approveStatus[routerName] ?? "idle";
   }
 
   /** Get swap status for a router (defaults to 'idle') */
   getSwapStatus(routerName: string): TxStatus {
-    return this.swapStatus[routerName] ?? 'idle';
+    return this.swapStatus[routerName] ?? "idle";
   }
 
   // ---------------------------------------------------------------------------
@@ -229,7 +228,7 @@ class TransactionStore {
 
   private _waitForConfirmation(
     routerName: string,
-    quote: SpandexQuote | CurveQuote,
+    quote: SpandexQuote | CurveQuote
   ): Promise<boolean> {
     this.swapConfirmation = { routerName, quote };
     return new Promise<boolean>((resolve) => {
@@ -253,7 +252,7 @@ class TransactionStore {
   async approve(routerName: string, quote: SpandexQuote | CurveQuote): Promise<void> {
     // No wallet connected: store pending action and open wallet menu
     if (!walletStore.isConnected) {
-      walletStore.pendingAction = { type: 'approve', params: { routerName, quote } };
+      walletStore.pendingAction = { type: "approve", params: { routerName, quote } };
       walletStore.requestMenu();
       return;
     }
@@ -262,7 +261,7 @@ class TransactionStore {
     const address = walletStore.address;
 
     if (!provider || !address) {
-      this._setApprove(routerName, 'failed');
+      this._setApprove(routerName, "failed");
       return;
     }
 
@@ -283,34 +282,34 @@ class TransactionStore {
       spenderAddress = curve.approval_target;
     } else {
       // No approval needed (native token swap or approval info missing)
-      this._setApprove(routerName, 'confirmed');
+      this._setApprove(routerName, "confirmed");
       return;
     }
 
     if (!isAddressLike(tokenAddress) || !isAddressLike(spenderAddress)) {
-      this._setApprove(routerName, 'failed');
+      this._setApprove(routerName, "failed");
       return;
     }
 
     // Check existing allowance — skip approve tx if already sufficient
-    const inputAmountRaw = quote.input_amount_raw ?? '';
+    const inputAmountRaw = quote.input_amount_raw ?? "";
     const requiredAmount = inputAmountRaw ? BigInt(inputAmountRaw) : 0n;
 
     if (requiredAmount > 0n) {
       try {
-        const ownerPadded = address.toLowerCase().replace(/^0x/, '').padStart(64, '0');
-        const spenderPadded = spenderAddress.toLowerCase().replace(/^0x/, '').padStart(64, '0');
+        const ownerPadded = address.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+        const spenderPadded = spenderAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
         const callData = ALLOWANCE_SELECTOR + ownerPadded + spenderPadded;
 
         const result = (await provider.request({
-          method: 'eth_call',
-          params: [{ to: tokenAddress, data: callData }, 'latest'],
+          method: "eth_call",
+          params: [{ to: tokenAddress, data: callData }, "latest"],
         })) as string;
 
         const allowance = BigInt(result);
         if (allowance >= requiredAmount) {
           // Already approved — mark as confirmed without sending a tx
-          this._setApprove(routerName, 'confirmed');
+          this._setApprove(routerName, "confirmed");
           return;
         }
       } catch {
@@ -319,34 +318,34 @@ class TransactionStore {
     }
 
     // Encode approve(spender, MAX_UINT256) calldata
-    const spenderWord = spenderAddress.toLowerCase().replace(/^0x/, '').padStart(64, '0');
+    const spenderWord = spenderAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
     const approveData = APPROVE_SELECTOR + spenderWord + MAX_UINT256_HEX;
 
-    this._setApprove(routerName, 'pending');
+    this._setApprove(routerName, "pending");
     autoRefreshStore.pause();
 
     try {
       const txHash = (await provider.request({
-        method: 'eth_sendTransaction',
-        params: [{ to: tokenAddress, data: approveData, value: '0x0', from: address }],
+        method: "eth_sendTransaction",
+        params: [{ to: tokenAddress, data: approveData, value: "0x0", from: address }],
       })) as string;
 
       const receipt = await waitForReceipt(provider, txHash);
-      const statusVal = String(receipt?.status ?? '').toLowerCase();
+      const statusVal = String(receipt?.status ?? "").toLowerCase();
 
-      if (statusVal === '0x1' || statusVal === '1') {
-        this._setApprove(routerName, 'confirmed');
-        walletStore.setMessage('');
+      if (statusVal === "0x1" || statusVal === "1") {
+        this._setApprove(routerName, "confirmed");
+        walletStore.setMessage("");
       } else {
-        throw new Error('Transaction failed on-chain');
+        throw new Error("Transaction failed on-chain");
       }
     } catch (err) {
       if (isUserRejectedError(err)) {
-        this._setApprove(routerName, 'idle');
-        walletStore.setMessage('Transaction canceled', true);
+        this._setApprove(routerName, "idle");
+        walletStore.setMessage("Transaction canceled", true);
       } else {
-        this._setApprove(routerName, 'failed');
-        walletStore.setMessage('Approve transaction failed. Please try again.', true);
+        this._setApprove(routerName, "failed");
+        walletStore.setMessage("Approve transaction failed. Please try again.", true);
       }
     } finally {
       autoRefreshStore.resume();
@@ -369,7 +368,7 @@ class TransactionStore {
   async swap(routerName: string, quote: SpandexQuote | CurveQuote): Promise<void> {
     // No wallet connected: store pending action and open wallet menu
     if (!walletStore.isConnected) {
-      walletStore.pendingAction = { type: 'swap', params: { routerName, quote } };
+      walletStore.pendingAction = { type: "swap", params: { routerName, quote } };
       walletStore.requestMenu();
       return;
     }
@@ -378,15 +377,15 @@ class TransactionStore {
     const confirmed = await this._waitForConfirmation(routerName, quote);
     if (!confirmed) return;
 
-    const routerAddress = quote.router_address ?? '';
-    const routerCalldata = quote.router_calldata ?? '';
+    const routerAddress = quote.router_address ?? "";
+    const routerCalldata = quote.router_calldata ?? "";
 
     // Spandex quotes may include a non-zero ETH value (e.g. for wrapping)
-    const routerValue = (quote as SpandexQuote).router_value ?? '0x0';
+    const routerValue = (quote as SpandexQuote).router_value ?? "0x0";
 
     if (!isAddressLike(routerAddress) || !routerCalldata) {
-      this._setSwap(routerName, 'failed');
-      walletStore.setMessage('Invalid swap parameters', true);
+      this._setSwap(routerName, "failed");
+      walletStore.setMessage("Invalid swap parameters", true);
       return;
     }
 
@@ -394,11 +393,11 @@ class TransactionStore {
     const address = walletStore.address;
 
     if (!provider || !address) {
-      this._setSwap(routerName, 'failed');
+      this._setSwap(routerName, "failed");
       return;
     }
 
-    this._setSwap(routerName, 'pending');
+    this._setSwap(routerName, "pending");
     autoRefreshStore.pause();
 
     // Build transaction parameters
@@ -415,26 +414,26 @@ class TransactionStore {
       const txHash = useMev
         ? await sendTransactionViaMev(provider, txParams)
         : ((await provider.request({
-            method: 'eth_sendTransaction',
+            method: "eth_sendTransaction",
             params: [txParams],
           })) as string);
 
       const receipt = await waitForReceipt(provider, txHash);
-      const statusVal = String(receipt?.status ?? '').toLowerCase();
+      const statusVal = String(receipt?.status ?? "").toLowerCase();
 
-      if (statusVal === '0x1' || statusVal === '1') {
-        this._setSwap(routerName, 'confirmed');
-        walletStore.setMessage('');
+      if (statusVal === "0x1" || statusVal === "1") {
+        this._setSwap(routerName, "confirmed");
+        walletStore.setMessage("");
       } else {
-        throw new Error('Transaction failed on-chain');
+        throw new Error("Transaction failed on-chain");
       }
     } catch (err) {
       if (isUserRejectedError(err)) {
-        this._setSwap(routerName, 'idle');
-        walletStore.setMessage('Swap canceled', true);
+        this._setSwap(routerName, "idle");
+        walletStore.setMessage("Swap canceled", true);
       } else {
-        this._setSwap(routerName, 'failed');
-        walletStore.setMessage('Swap transaction failed. Please try again.', true);
+        this._setSwap(routerName, "failed");
+        walletStore.setMessage("Swap transaction failed. Please try again.", true);
       }
     } finally {
       autoRefreshStore.resume();

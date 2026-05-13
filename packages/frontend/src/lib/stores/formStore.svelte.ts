@@ -16,9 +16,9 @@ class FormStore {
   chainId = $state(1); // default to Ethereum
   fromToken = $state<TokenInfo | null>(null);
   toToken = $state<TokenInfo | null>(null);
-  sellAmount = $state('');
-  receiveAmount = $state('');
-  mode = $state<'exactIn' | 'targetOut'>('exactIn');
+  sellAmount = $state("");
+  receiveAmount = $state("");
+  mode = $state<"exactIn" | "targetOut">("exactIn");
   slippageBps = $state(50); // default 50 bps (0.5%)
   isLoading = $state(false);
 
@@ -27,7 +27,7 @@ class FormStore {
     return (
       this.fromToken !== null &&
       this.toToken !== null &&
-      (this.sellAmount !== '' || this.receiveAmount !== '')
+      (this.sellAmount !== "" || this.receiveAmount !== "")
     );
   }
 }

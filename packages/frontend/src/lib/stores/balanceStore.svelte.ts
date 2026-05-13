@@ -4,13 +4,13 @@
  * Ported from src/client/balance.ts for Svelte 5.
  */
 
-import type { EIP1193Provider } from './walletStore.svelte.js';
+import type { EIP1193Provider } from "./walletStore.svelte.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+const NATIVE_TOKEN_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 const BALANCE_CACHE_TTL_MS = 30 * 1000; // 30 seconds
 
 // ---------------------------------------------------------------------------
@@ -39,9 +39,9 @@ const balanceCache = new Map<string, CachedBalance>();
 // ---------------------------------------------------------------------------
 
 function isNativeToken(address: string): boolean {
-  const addr = String(address ?? '').toLowerCase();
+  const addr = String(address ?? "").toLowerCase();
   return (
-    addr === '0x0000000000000000000000000000000000000000' ||
+    addr === "0x0000000000000000000000000000000000000000" ||
     addr === NATIVE_TOKEN_ADDRESS.toLowerCase()
   );
 }
@@ -57,16 +57,16 @@ export function formatBalance(balance: bigint, decimals: number): string {
   const fractionalPart = balance % divisor;
 
   // Format fractional part with leading zeros up to `dec` digits
-  let fractionalStr = fractionalPart.toString().padStart(dec, '0');
+  let fractionalStr = fractionalPart.toString().padStart(dec, "0");
   // Remove trailing zeros
-  fractionalStr = fractionalStr.replace(/0+$/, '');
+  fractionalStr = fractionalStr.replace(/0+$/, "");
   // Limit to 6 decimal places for display
   if (fractionalStr.length > 6) fractionalStr = fractionalStr.slice(0, 6);
 
   // Format whole part with thousand separators
-  const wholeStr = String(wholePart).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const wholeStr = String(wholePart).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
-  return fractionalStr ? wholeStr + '.' + fractionalStr : wholeStr;
+  return fractionalStr ? wholeStr + "." + fractionalStr : wholeStr;
 }
 
 /**
@@ -79,7 +79,7 @@ export async function fetchTokenBalance(
   tokenAddress: string,
   walletAddress: string,
   decimals: number,
-  chainId: number,
+  chainId: number
 ): Promise<string | null> {
   if (!provider || !walletAddress || !tokenAddress) return null;
 
@@ -95,18 +95,18 @@ export async function fetchTokenBalance(
     if (isNativeToken(tokenAddress)) {
       // Native token (ETH/BNB/etc): use eth_getBalance
       const result = (await provider.request({
-        method: 'eth_getBalance',
-        params: [walletAddress, 'latest'],
+        method: "eth_getBalance",
+        params: [walletAddress, "latest"],
       })) as string;
       balance = BigInt(result);
     } else {
       // ERC-20: use eth_call with balanceOf(address) selector
-      const balanceOfSelector = '0x70a08231'; // keccak256("balanceOf(address)")[0..4]
-      const paddedAddress = walletAddress.slice(2).padStart(64, '0');
+      const balanceOfSelector = "0x70a08231"; // keccak256("balanceOf(address)")[0..4]
+      const paddedAddress = walletAddress.slice(2).padStart(64, "0");
       const data = balanceOfSelector + paddedAddress;
       const result = (await provider.request({
-        method: 'eth_call',
-        params: [{ to: tokenAddress, data }, 'latest'],
+        method: "eth_call",
+        params: [{ to: tokenAddress, data }, "latest"],
       })) as string;
       balance = BigInt(result);
     }
@@ -139,7 +139,7 @@ class BalanceStore {
     walletAddress: string,
     chainId: number,
     fromToken: TokenRef | null,
-    toToken: TokenRef | null,
+    toToken: TokenRef | null
   ): Promise<void> {
     const promises: Promise<void>[] = [];
 
@@ -151,7 +151,7 @@ class BalanceStore {
           })
           .catch(() => {
             this.fromBalance = null;
-          }),
+          })
       );
     } else {
       this.fromBalance = null;
@@ -165,7 +165,7 @@ class BalanceStore {
           })
           .catch(() => {
             this.toBalance = null;
-          }),
+          })
       );
     } else {
       this.toBalance = null;

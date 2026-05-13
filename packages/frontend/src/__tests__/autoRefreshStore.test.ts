@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { autoRefreshStore, AUTO_REFRESH_SECONDS } from '../lib/stores/autoRefreshStore.svelte.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { autoRefreshStore, AUTO_REFRESH_SECONDS } from "../lib/stores/autoRefreshStore.svelte.js";
 
 // Reset store state between tests
 function resetStore() {
   autoRefreshStore.stop();
 }
 
-describe('autoRefreshStore', () => {
+describe("autoRefreshStore", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetStore();
@@ -21,7 +21,7 @@ describe('autoRefreshStore', () => {
   // AUTO_REFRESH_SECONDS constant
   // ---------------------------------------------------------------------------
 
-  it('AUTO_REFRESH_SECONDS is 15 (matching original config)', () => {
+  it("AUTO_REFRESH_SECONDS is 15 (matching original config)", () => {
     expect(AUTO_REFRESH_SECONDS).toBe(15);
   });
 
@@ -29,19 +29,19 @@ describe('autoRefreshStore', () => {
   // Initial state
   // ---------------------------------------------------------------------------
 
-  it('is inactive initially', () => {
+  it("is inactive initially", () => {
     expect(autoRefreshStore.active).toBe(false);
     expect(autoRefreshStore.countdown).toBe(0);
     expect(autoRefreshStore.paused).toBe(false);
     expect(autoRefreshStore.inFlight).toBe(false);
-    expect(autoRefreshStore.errorMessage).toBe('');
+    expect(autoRefreshStore.errorMessage).toBe("");
   });
 
   // ---------------------------------------------------------------------------
   // start()
   // ---------------------------------------------------------------------------
 
-  it('activates with correct countdown on start()', () => {
+  it("activates with correct countdown on start()", () => {
     const cb = vi.fn();
     autoRefreshStore.start(15, cb);
 
@@ -51,7 +51,7 @@ describe('autoRefreshStore', () => {
     expect(autoRefreshStore.inFlight).toBe(false);
   });
 
-  it('countdown decrements each second', () => {
+  it("countdown decrements each second", () => {
     const cb = vi.fn();
     autoRefreshStore.start(5, cb);
 
@@ -67,7 +67,7 @@ describe('autoRefreshStore', () => {
     expect(autoRefreshStore.countdown).toBe(2);
   });
 
-  it('fires callback when countdown reaches 0', () => {
+  it("fires callback when countdown reaches 0", () => {
     const cb = vi.fn();
     autoRefreshStore.start(3, cb);
 
@@ -76,7 +76,7 @@ describe('autoRefreshStore', () => {
     expect(cb).toHaveBeenCalledOnce();
   });
 
-  it('does NOT fire callback before countdown reaches 0', () => {
+  it("does NOT fire callback before countdown reaches 0", () => {
     const cb = vi.fn();
     autoRefreshStore.start(5, cb);
 
@@ -85,7 +85,7 @@ describe('autoRefreshStore', () => {
     expect(cb).not.toHaveBeenCalled();
   });
 
-  it('clears previous timer when start() is called again', () => {
+  it("clears previous timer when start() is called again", () => {
     const cb1 = vi.fn();
     const cb2 = vi.fn();
 
@@ -105,7 +105,7 @@ describe('autoRefreshStore', () => {
   // stop()
   // ---------------------------------------------------------------------------
 
-  it('stop() deactivates and resets state', () => {
+  it("stop() deactivates and resets state", () => {
     const cb = vi.fn();
     autoRefreshStore.start(10, cb);
 
@@ -117,7 +117,7 @@ describe('autoRefreshStore', () => {
     expect(autoRefreshStore.inFlight).toBe(false);
   });
 
-  it('stop() prevents the callback from firing', () => {
+  it("stop() prevents the callback from firing", () => {
     const cb = vi.fn();
     autoRefreshStore.start(3, cb);
 
@@ -132,7 +132,7 @@ describe('autoRefreshStore', () => {
   // pause() / resume()
   // ---------------------------------------------------------------------------
 
-  it('pause() stops countdown decrement', () => {
+  it("pause() stops countdown decrement", () => {
     const cb = vi.fn();
     autoRefreshStore.start(10, cb);
 
@@ -147,7 +147,7 @@ describe('autoRefreshStore', () => {
     expect(cb).not.toHaveBeenCalled();
   });
 
-  it('resume() restarts countdown after pause', () => {
+  it("resume() restarts countdown after pause", () => {
     const cb = vi.fn();
     autoRefreshStore.start(10, cb);
 
@@ -165,7 +165,7 @@ describe('autoRefreshStore', () => {
     expect(autoRefreshStore.countdown).toBe(7);
   });
 
-  it('resume() fires callback after enough ticks post-resume', () => {
+  it("resume() fires callback after enough ticks post-resume", () => {
     const cb = vi.fn();
     autoRefreshStore.start(5, cb);
 
@@ -180,12 +180,12 @@ describe('autoRefreshStore', () => {
     expect(cb).toHaveBeenCalledOnce();
   });
 
-  it('pause() on inactive store is a no-op', () => {
+  it("pause() on inactive store is a no-op", () => {
     expect(() => autoRefreshStore.pause()).not.toThrow();
     expect(autoRefreshStore.paused).toBe(false);
   });
 
-  it('resume() when not paused is a no-op', () => {
+  it("resume() when not paused is a no-op", () => {
     const cb = vi.fn();
     autoRefreshStore.start(10, cb);
 
@@ -200,7 +200,7 @@ describe('autoRefreshStore', () => {
   // reset()
   // ---------------------------------------------------------------------------
 
-  it('reset() restarts the countdown from the given value', () => {
+  it("reset() restarts the countdown from the given value", () => {
     const cb1 = vi.fn();
     const cb2 = vi.fn();
 
@@ -216,7 +216,7 @@ describe('autoRefreshStore', () => {
     expect(cb1).not.toHaveBeenCalled();
   });
 
-  it('new manual compare resets the timer (stop then start)', () => {
+  it("new manual compare resets the timer (stop then start)", () => {
     const autoRefreshCb = vi.fn();
 
     // Initial comparison starts auto-refresh
@@ -242,13 +242,13 @@ describe('autoRefreshStore', () => {
   // inFlight state
   // ---------------------------------------------------------------------------
 
-  it('setInFlight(true) marks as in-flight', () => {
+  it("setInFlight(true) marks as in-flight", () => {
     autoRefreshStore.start(10, vi.fn());
     autoRefreshStore.setInFlight(true);
     expect(autoRefreshStore.inFlight).toBe(true);
   });
 
-  it('countdown does NOT decrement while inFlight', () => {
+  it("countdown does NOT decrement while inFlight", () => {
     const cb = vi.fn();
     autoRefreshStore.start(5, cb);
 
@@ -259,7 +259,7 @@ describe('autoRefreshStore', () => {
     expect(cb).not.toHaveBeenCalled();
   });
 
-  it('countdown resumes after setInFlight(false)', () => {
+  it("countdown resumes after setInFlight(false)", () => {
     const cb = vi.fn();
     autoRefreshStore.start(5, cb);
 
@@ -276,21 +276,21 @@ describe('autoRefreshStore', () => {
   // errorMessage
   // ---------------------------------------------------------------------------
 
-  it('setErrorMessage sets the error message', () => {
-    autoRefreshStore.setErrorMessage('Something went wrong');
-    expect(autoRefreshStore.errorMessage).toBe('Something went wrong');
+  it("setErrorMessage sets the error message", () => {
+    autoRefreshStore.setErrorMessage("Something went wrong");
+    expect(autoRefreshStore.errorMessage).toBe("Something went wrong");
   });
 
-  it('setErrorMessage with empty string clears the error', () => {
-    autoRefreshStore.setErrorMessage('Error');
-    autoRefreshStore.setErrorMessage('');
-    expect(autoRefreshStore.errorMessage).toBe('');
+  it("setErrorMessage with empty string clears the error", () => {
+    autoRefreshStore.setErrorMessage("Error");
+    autoRefreshStore.setErrorMessage("");
+    expect(autoRefreshStore.errorMessage).toBe("");
   });
 
-  it('stop() clears the error message', () => {
+  it("stop() clears the error message", () => {
     autoRefreshStore.start(10, vi.fn());
-    autoRefreshStore.setErrorMessage('Error');
+    autoRefreshStore.setErrorMessage("Error");
     autoRefreshStore.stop();
-    expect(autoRefreshStore.errorMessage).toBe('');
+    expect(autoRefreshStore.errorMessage).toBe("");
   });
 });

@@ -4,8 +4,8 @@
  * Ported from src/client/url-sync.ts for Svelte 5.
  */
 
-import { formStore } from './formStore.svelte.js';
-import type { TokenInfo } from './formStore.svelte.js';
+import { formStore } from "./formStore.svelte.js";
+import type { TokenInfo } from "./formStore.svelte.js";
 
 export interface UrlParams {
   chainId?: number;
@@ -13,7 +13,7 @@ export interface UrlParams {
   to?: string;
   amount?: string;
   slippageBps?: number;
-  mode?: 'exactIn' | 'targetOut';
+  mode?: "exactIn" | "targetOut";
 }
 
 /**
@@ -23,32 +23,32 @@ export function parseUrlParams(): UrlParams {
   const params = new URLSearchParams(window.location.search);
   const result: UrlParams = {};
 
-  const chainId = params.get('chainId');
+  const chainId = params.get("chainId");
   if (chainId) {
     const parsed = parseInt(chainId, 10);
     if (!isNaN(parsed)) result.chainId = parsed;
   }
 
-  const from = params.get('from');
+  const from = params.get("from");
   if (from) result.from = from;
 
-  const to = params.get('to');
+  const to = params.get("to");
   if (to) result.to = to;
 
-  const amount = params.get('amount');
+  const amount = params.get("amount");
   if (amount) result.amount = amount;
 
-  const slippageBps = params.get('slippageBps');
+  const slippageBps = params.get("slippageBps");
   if (slippageBps) {
     const parsed = parseInt(slippageBps, 10);
     if (!isNaN(parsed)) result.slippageBps = parsed;
   }
 
-  const mode = params.get('mode');
-  if (mode === 'targetOut') {
-    result.mode = 'targetOut';
-  } else if (mode === 'exactIn') {
-    result.mode = 'exactIn';
+  const mode = params.get("mode");
+  if (mode === "targetOut") {
+    result.mode = "targetOut";
+  } else if (mode === "exactIn") {
+    result.mode = "exactIn";
   }
 
   return result;
@@ -60,10 +60,7 @@ export function parseUrlParams(): UrlParams {
 export function hasAllRequiredParams(): boolean {
   const params = new URLSearchParams(window.location.search);
   return Boolean(
-    params.get('chainId') &&
-      params.get('from') &&
-      params.get('to') &&
-      params.get('amount'),
+    params.get("chainId") && params.get("from") && params.get("to") && params.get("amount")
   );
 }
 
@@ -75,32 +72,32 @@ export function updateUrl(params: UrlParams): void {
   const url = new URL(window.location.href);
 
   if (params.chainId !== undefined) {
-    url.searchParams.set('chainId', String(params.chainId));
+    url.searchParams.set("chainId", String(params.chainId));
   }
   if (params.from) {
-    url.searchParams.set('from', params.from);
+    url.searchParams.set("from", params.from);
   }
   if (params.to) {
-    url.searchParams.set('to', params.to);
+    url.searchParams.set("to", params.to);
   }
   if (params.amount) {
-    url.searchParams.set('amount', params.amount);
+    url.searchParams.set("amount", params.amount);
   }
   if (params.slippageBps !== undefined) {
-    url.searchParams.set('slippageBps', String(params.slippageBps));
+    url.searchParams.set("slippageBps", String(params.slippageBps));
   }
   // Only add mode to URL if non-default
-  if (params.mode && params.mode !== 'exactIn') {
-    url.searchParams.set('mode', params.mode);
+  if (params.mode && params.mode !== "exactIn") {
+    url.searchParams.set("mode", params.mode);
   } else {
-    url.searchParams.delete('mode');
+    url.searchParams.delete("mode");
   }
   // Sender never written to URL
-  url.searchParams.delete('sender');
+  url.searchParams.delete("sender");
   // Remove stale params
-  url.searchParams.delete('mevProtection');
+  url.searchParams.delete("mevProtection");
 
-  window.history.pushState({}, '', url.toString());
+  window.history.pushState({}, "", url.toString());
 }
 
 /**
@@ -116,7 +113,7 @@ export function applyUrlParamsToForm(urlParams: UrlParams): void {
   if (urlParams.from) {
     const token: TokenInfo = {
       address: urlParams.from,
-      symbol: '',
+      symbol: "",
       decimals: 18,
     };
     formStore.fromToken = token;
@@ -125,19 +122,19 @@ export function applyUrlParamsToForm(urlParams: UrlParams): void {
   if (urlParams.to) {
     const token: TokenInfo = {
       address: urlParams.to,
-      symbol: '',
+      symbol: "",
       decimals: 18,
     };
     formStore.toToken = token;
   }
 
   if (urlParams.amount) {
-    if (urlParams.mode === 'targetOut') {
+    if (urlParams.mode === "targetOut") {
       formStore.receiveAmount = urlParams.amount;
-      formStore.sellAmount = '';
+      formStore.sellAmount = "";
     } else {
       formStore.sellAmount = urlParams.amount;
-      formStore.receiveAmount = '';
+      formStore.receiveAmount = "";
     }
   }
 

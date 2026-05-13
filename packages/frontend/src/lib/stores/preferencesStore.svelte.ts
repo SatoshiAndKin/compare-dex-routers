@@ -8,10 +8,10 @@
  * Priority: URL params > localStorage > DEFAULT_TOKENS defaults
  */
 
-import { formStore } from './formStore.svelte.js';
-import type { TokenInfo } from './formStore.svelte.js';
+import { formStore } from "./formStore.svelte.js";
+import type { TokenInfo } from "./formStore.svelte.js";
 
-const PREFERENCES_KEY = 'compare-dex-preferences';
+const PREFERENCES_KEY = "compare-dex-preferences";
 
 export interface ChainPreferences {
   fromToken?: { address: string; symbol: string; decimals: number; logoURI?: string };
@@ -32,7 +32,7 @@ export function loadPreferences(): Preferences | null {
     const raw = localStorage.getItem(PREFERENCES_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && 'chains' in parsed) {
+    if (parsed && typeof parsed === "object" && "chains" in parsed) {
       return parsed as Preferences;
     }
     return null;

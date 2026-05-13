@@ -5,13 +5,13 @@
  * MEV protection: only applicable on Ethereum mainnet (chainId 1).
  */
 
-import { formStore } from './formStore.svelte.js';
+import { formStore } from "./formStore.svelte.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const SETTINGS_KEY = 'compare-dex-settings';
+const SETTINGS_KEY = "compare-dex-settings";
 const ETHEREUM_CHAIN_ID = 1;
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ class SettingsStore {
   mevEnabled = $state(false);
 
   /** Custom RPC URL override (empty string = use default) */
-  customRpcUrl = $state('');
+  customRpcUrl = $state("");
 
   /** Whether the settings modal is open */
   isSettingsOpen = $state(false);
@@ -86,10 +86,10 @@ class SettingsStore {
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as PersistedSettings;
-      if (typeof parsed.mevEnabled === 'boolean') {
+      if (typeof parsed.mevEnabled === "boolean") {
         this.mevEnabled = parsed.mevEnabled;
       }
-      if (typeof parsed.customRpcUrl === 'string') {
+      if (typeof parsed.customRpcUrl === "string") {
         this.customRpcUrl = parsed.customRpcUrl;
       }
     } catch {
