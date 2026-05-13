@@ -5,9 +5,9 @@
  * returns from tokenListStore.allTokens (which includes custom lists and local tokens).
  */
 
-import { apiClient } from '../api.js';
-import type { TokenInfo } from './formStore.svelte.js';
-import { tokenListStore } from './tokenListStore.svelte.js';
+import { apiClient } from "../api.js";
+import type { TokenInfo } from "./formStore.svelte.js";
+import { tokenListStore } from "./tokenListStore.svelte.js";
 
 class TokensStore {
   allTokens = $state<TokenInfo[]>([]);
@@ -34,15 +34,15 @@ class TokensStore {
     this.isLoading = true;
     this.error = null;
     try {
-      const { data, error } = await apiClient.GET('/tokenlist');
+      const { data, error } = await apiClient.GET("/tokenlist");
       if (error) {
-        this.error = 'Failed to load token list';
+        this.error = "Failed to load token list";
         return;
       }
       if (data?.tokens) {
         this.allTokens = data.tokens.map((t) => ({
-          address: t.address ?? '',
-          symbol: t.symbol ?? '',
+          address: t.address ?? "",
+          symbol: t.symbol ?? "",
           decimals: t.decimals ?? 18,
           name: t.name,
           logoURI: t.logoURI,
@@ -51,7 +51,7 @@ class TokensStore {
         this.fetched = true;
       }
     } catch {
-      this.error = 'Network error loading token list';
+      this.error = "Network error loading token list";
     } finally {
       this.isLoading = false;
     }

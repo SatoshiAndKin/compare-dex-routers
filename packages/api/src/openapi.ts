@@ -3,6 +3,7 @@ import {
   OpenAPIRegistry,
   OpenApiGeneratorV3,
 } from "@asteasolutions/zod-to-openapi";
+import type { OpenAPIObject } from "openapi3-ts/oas30";
 import { z } from "zod";
 
 extendZodWithOpenApi(z);
@@ -478,7 +479,7 @@ registry.registerPath({
 
 const generator = new OpenApiGeneratorV3(registry.definitions);
 
-export const openapiDocument = generator.generateDocument({
+export const openapiDocument: OpenAPIObject = generator.generateDocument({
   openapi: "3.0.3",
   info: {
     title: "Compare DEX Routers API",

@@ -13,7 +13,7 @@ class AutoRefreshStore {
   active = $state(false);
   paused = $state(false);
   inFlight = $state(false);
-  errorMessage = $state('');
+  errorMessage = $state("");
 
   private timerId: ReturnType<typeof setInterval> | null = null;
   private onRefreshCallback: (() => void) | null = null;
@@ -29,7 +29,7 @@ class AutoRefreshStore {
     this.active = true;
     this.paused = false;
     this.inFlight = false;
-    this.errorMessage = '';
+    this.errorMessage = "";
     this._startTimer();
   }
 
@@ -40,7 +40,7 @@ class AutoRefreshStore {
     this.active = false;
     this.paused = false;
     this.inFlight = false;
-    this.errorMessage = '';
+    this.errorMessage = "";
     this.onRefreshCallback = null;
   }
 

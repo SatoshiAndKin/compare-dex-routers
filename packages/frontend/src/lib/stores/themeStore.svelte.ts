@@ -5,12 +5,12 @@
  * Ported from src/client/theme.ts for Svelte 5.
  */
 
-const THEME_KEY = 'compare-dex-theme';
+const THEME_KEY = "compare-dex-theme";
 
-export type Theme = 'light' | 'dark' | 'system';
+export type Theme = "light" | "dark" | "system";
 
 class ThemeStore {
-  theme = $state<Theme>('system');
+  theme = $state<Theme>("system");
 
   /**
    * Initialize theme from localStorage.
@@ -20,21 +20,21 @@ class ThemeStore {
   init(): void {
     try {
       const stored = localStorage.getItem(THEME_KEY);
-      if (stored === 'light' || stored === 'dark') {
+      if (stored === "light" || stored === "dark") {
         this.theme = stored;
       } else {
-        this.theme = 'system';
+        this.theme = "system";
       }
     } catch {
-      this.theme = 'system';
+      this.theme = "system";
     }
     this._apply(this.theme);
 
     // Watch for OS preference changes when in system mode
-    if (typeof window !== 'undefined') {
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        if (this.theme === 'system') {
-          this._apply('system');
+    if (typeof window !== "undefined") {
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        if (this.theme === "system") {
+          this._apply("system");
         }
       });
     }
@@ -44,12 +44,12 @@ class ThemeStore {
    * Cycle to the next theme: light → dark → system → light
    */
   cycle(): void {
-    if (this.theme === 'light') {
-      this.theme = 'dark';
-    } else if (this.theme === 'dark') {
-      this.theme = 'system';
+    if (this.theme === "light") {
+      this.theme = "dark";
+    } else if (this.theme === "dark") {
+      this.theme = "system";
     } else {
-      this.theme = 'light';
+      this.theme = "light";
     }
     this._save(this.theme);
     this._apply(this.theme);
@@ -60,9 +60,9 @@ class ThemeStore {
    * ☀ for light, ☾ for dark, ◐ for system.
    */
   get icon(): string {
-    if (this.theme === 'dark') return '\u263E'; // ☾
-    if (this.theme === 'light') return '\u2600'; // ☀
-    return '\u25D0'; // ◐
+    if (this.theme === "dark") return "\u263E"; // ☾
+    if (this.theme === "light") return "\u2600"; // ☀
+    return "\u25D0"; // ◐
   }
 
   /**
@@ -74,7 +74,7 @@ class ThemeStore {
 
   private _save(theme: Theme): void {
     try {
-      if (theme === 'system') {
+      if (theme === "system") {
         localStorage.removeItem(THEME_KEY);
       } else {
         localStorage.setItem(THEME_KEY, theme);
@@ -85,18 +85,17 @@ class ThemeStore {
   }
 
   private _apply(theme: Theme): void {
-    if (typeof document === 'undefined') return;
+    if (typeof document === "undefined") return;
     const root = document.documentElement;
-    if (theme === 'light') {
-      root.setAttribute('data-theme', 'light');
-    } else if (theme === 'dark') {
-      root.setAttribute('data-theme', 'dark');
+    if (theme === "light") {
+      root.setAttribute("data-theme", "light");
+    } else if (theme === "dark") {
+      root.setAttribute("data-theme", "dark");
     } else {
       // System: follow OS preference
       const prefersDark =
-        typeof window !== 'undefined' &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches;
-      root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+        typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.setAttribute("data-theme", prefersDark ? "dark" : "light");
     }
   }
 }
