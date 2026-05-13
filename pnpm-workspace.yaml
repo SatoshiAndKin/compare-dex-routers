@@ -1,0 +1,17 @@
+packages:
+  - "packages/*"
+
+# Supply chain security: wait 7 days (10080 min) before resolving
+# newly published versions. 1440 min = 1 day (pnpm default).
+minimumReleaseAge: 10080
+# When strict, install fails if the latest version is too new.
+# Non-strict falls back to the latest version that IS old enough.
+minimumReleaseAgeStrict: false
+minimumReleaseAgeIgnoreMissingTime: true
+
+# Block transitive deps from git repos / tarball URLs
+blockExoticSubdeps: true
+
+# Require explicit approval for dependency lifecycle scripts
+strictDepBuilds: true
+allowBuilds: { es5-ext: true, esbuild: true }

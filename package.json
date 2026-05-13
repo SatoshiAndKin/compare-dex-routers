@@ -2,21 +2,19 @@
   "name": "compare-dex-routers",
   "version": "1.0.0",
   "type": "module",
-  "workspaces": [
-    "packages/*"
-  ],
+  "packageManager": "pnpm@11.1.1",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "npm run dev --workspace=packages/api & npm run dev --workspace=packages/frontend",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "lint:fix": "npm run lint:fix --workspaces --if-present",
-    "format": "npm run format --workspaces --if-present",
-    "format:check": "npm run format:check --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "dev": "pnpm -r --parallel run dev",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "pnpm -r run lint",
+    "lint:fix": "pnpm -r run lint:fix",
+    "format": "pnpm -r run format",
+    "format:check": "pnpm -r run format:check",
+    "test": "pnpm -r run test",
+    "test:coverage": "pnpm -r run test:coverage",
     "dead-code": "knip",
     "duplicates": "jscpd packages/ --ignore 'node_modules/**' --ignore '**/__tests__/**'",
     "generate:types": "tsx scripts/generate-api-types.ts",
@@ -25,16 +23,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.0.3",
+    "eslint": "^10.3.0",
     "husky": "^9.1.7",
-    "jscpd": "^4.0.8",
-    "knip": "^5.87.0",
-    "lint-staged": "^16.4.0",
+    "jscpd": "^4.0.9",
+    "knip": "^6.12.0",
+    "lint-staged": "^17.0.2",
     "openapi-typescript": "^7.13.0",
-    "prettier": "^3.8.1",
+    "prettier": "^3.8.3",
     "prettier-plugin-svelte": "^3.5.1",
     "tsx": "^4.21.0",
-    "typescript-eslint": "^8.57.1"
+    "typescript-eslint": "^8.59.2"
   },
   "lint-staged": {
     "packages/**/*.ts": [
