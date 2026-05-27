@@ -8,6 +8,7 @@ import {
   lifi,
   relay,
   velora,
+  curve,
   type Config,
 } from "@spandex/core";
 import { createPublicClient, http, type PublicClient, getAddress } from "viem";
@@ -91,6 +92,7 @@ function buildProviders() {
     providers.push(lifi({}));
     providers.push(relay({}));
     providers.push(velora({}));
+    providers.push(curve({}));
     return providers;
   }
 

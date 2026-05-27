@@ -20,6 +20,8 @@ vi.mock("@spandex/core", () => ({
   lifi: vi.fn(() => ({})),
   relay: vi.fn(() => ({})),
   velora: vi.fn(() => ({})),
+  curve: vi.fn(() => ({})),
+  getQuotes: vi.fn(() => []),
 }));
 
 import { createPublicClient } from "viem";

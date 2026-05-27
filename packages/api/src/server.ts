@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { openapiDocument } from "./openapi.js";
-import { getQuote, serializeWithBigInt } from "@spandex/core";
+import { getQuote, getQuotes, serializeWithBigInt, type SimulatedQuote } from "@spandex/core";
 import type { Address } from "viem";
 import { parseUnits, formatUnits } from "viem";
 import { parseQuoteParams, type QuoteMode } from "./quote.js";
@@ -15,20 +15,11 @@ import {
   getTokenSymbol,
   getTokenName,
   getClient,
-  getRpcUrl,
   SUPPORTED_CHAINS,
   DEFAULT_TOKENS,
 } from "./config.js";
-import {
-  initAllCurveInstances,
-  findCurveQuote,
-  isCurveSupported,
-  isCurveInitialized,
-  getCurveInitError,
-  type CurveQuoteResult,
-} from "./curve.js";
 import { logger } from "./logger.js";
-import { captureException, captureMessage } from "./sentry.js";
+import { captureException } from "./sentry.js";
 import { getRequestId, setTraceHeaders } from "./tracing.js";
 import { recordRequest, getMetrics } from "./metrics.js";
 import { isEnabled, getAllFlags } from "./feature-flags.js";
@@ -38,7 +29,6 @@ import { getGasPriceWithCache } from "./gas-price.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
-const CURVE_ENABLED = isEnabled("curve_enabled");
 
 function log(message: string) {
   logger.info(message);
@@ -65,6 +55,7 @@ interface QuoteResult {
   output_amount_raw: string;
   mode: QuoteMode;
   provider: string;
+  source?: string;
   slippage_bps: number;
   gas_used: string;
   router_address: string;
@@ -240,6 +231,7 @@ async function findQuote(
     output_amount_raw: quote.simulation.outputAmount.toString(),
     mode,
     provider: quote.provider,
+    source: quote.provider,
     slippage_bps: slippageBps,
     gas_used: quote.simulation.gasUsed?.toString() ?? "0",
     router_address: quote.txData.to,
@@ -261,7 +253,7 @@ async function findQuote(
 interface CompareResult {
   spandex: QuoteResult | null;
   spandex_error: string | null;
-  curve: CurveQuoteResult | null;
+  curve: QuoteResult | null;
   curve_error: string | null;
   recommendation: "spandex" | "curve" | null;
   recommendation_reason: string;
@@ -358,40 +350,113 @@ async function compareQuotes(
   sender?: string,
   mode: QuoteMode = "exactIn"
 ): Promise<CompareResult> {
-  const spandexPromise = findQuote(chainId, from, to, amount, slippageBps, sender, mode)
-    .then((r) => ({ result: r, error: null }))
-    .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }));
+  const [inputDecimals, outputDecimals, fromSymbol, toSymbol] = await Promise.all([
+    getTokenDecimals(chainId, from),
+    getTokenDecimals(chainId, to),
+    getTokenSymbol(chainId, from),
+    getTokenSymbol(chainId, to),
+  ]);
 
-  const curveAvailable = CURVE_ENABLED && isCurveSupported(chainId) && isCurveInitialized(chainId);
-  const curvePromise = curveAvailable
-    ? findCurveQuote(chainId, from, to, amount, sender, getClient(chainId), mode)
-        .then((r) => ({ result: r, error: null }))
-        .catch((err) => ({ result: null, error: err instanceof Error ? err.message : String(err) }))
-    : Promise.resolve({
-        result: null,
-        error:
-          isCurveSupported(chainId) && !isCurveInitialized(chainId)
-            ? `Curve initialization failed for chain ${chainId}: ${getCurveInitError(chainId) || "Unknown error"}`
-            : isCurveSupported(chainId)
-              ? "Curve is disabled"
-              : `Curve does not support chain ${chainId}`,
-      });
+  const swapRequest =
+    mode === "targetOut"
+      ? {
+          chainId,
+          inputToken: from as Address,
+          outputToken: to as Address,
+          mode: "targetOut" as const,
+          outputAmount: parseUnits(amount, outputDecimals),
+          slippageBps,
+        }
+      : {
+          chainId,
+          inputToken: from as Address,
+          outputToken: to as Address,
+          mode: "exactIn" as const,
+          inputAmount: parseUnits(amount, inputDecimals),
+          slippageBps,
+        };
 
-  // Fetch gas price with per-block caching via RPC fallback
-  // This runs in parallel with the Spandex/Curve quote fetches
+  let allQuotes: SimulatedQuote[] = [];
+  let spandexError: string | null = null;
+  let curveError: string | null = null;
+
+  try {
+    allQuotes = await getQuotes({
+      config,
+      swap: { ...swapRequest, swapperAccount: (sender as Address) || FALLBACK_ACCOUNT },
+    });
+  } catch (err) {
+    spandexError = err instanceof Error ? err.message : String(err);
+    curveError = spandexError;
+  }
+
+  const formatQuote = (quote: import("@spandex/core").SuccessfulSimulatedQuote): QuoteResult => {
+    const res: QuoteResult = {
+      chainId,
+      from,
+      from_symbol: fromSymbol,
+      to,
+      to_symbol: toSymbol,
+      amount,
+      input_amount: formatUnits(quote.inputAmount, inputDecimals),
+      output_amount: formatUnits(quote.simulation.outputAmount, outputDecimals),
+      input_amount_raw: quote.inputAmount.toString(),
+      output_amount_raw: quote.simulation.outputAmount.toString(),
+      mode,
+      provider: quote.provider,
+      source: quote.provider,
+      slippage_bps: slippageBps,
+      gas_used: quote.simulation.gasUsed?.toString() ?? "0",
+      router_address: quote.txData.to,
+      router_calldata: quote.txData.data,
+    };
+    if (quote.txData.value) res.router_value = quote.txData.value.toString();
+    if (quote.approval) {
+      res.approval_token = quote.approval.token;
+      res.approval_spender = quote.approval.spender;
+    }
+    return res;
+  };
+
+  const successfulQuotes = allQuotes.filter(
+    (q): q is import("@spandex/core").SuccessfulSimulatedQuote => q.success === true
+  );
+  const curveQuotes = successfulQuotes.filter((q) => q.provider === "curve");
+  const otherQuotes = successfulQuotes.filter((q) => q.provider !== "curve");
+
+  let curveResult = null;
+  let spandexResult = null;
+
+  if (curveQuotes.length > 0) {
+    const best = curveQuotes.reduce((prev, current) => {
+      if (mode === "targetOut") return current.inputAmount < prev.inputAmount ? current : prev;
+      return current.simulation.outputAmount > prev.simulation.outputAmount ? current : prev;
+    });
+    curveResult = formatQuote(best);
+  } else if (!curveError) {
+    curveError = `Curve does not support or returned no quotes for chain ${chainId}`;
+  }
+
+  if (otherQuotes.length > 0) {
+    const best = otherQuotes.reduce((prev, current) => {
+      if (mode === "targetOut") return current.inputAmount < prev.inputAmount ? current : prev;
+      return current.simulation.outputAmount > prev.simulation.outputAmount ? current : prev;
+    });
+    spandexResult = formatQuote(best);
+  } else if (!spandexError) {
+    spandexError = "No providers returned a successful quote";
+  }
+
   const gasPricePromise = getGasPriceWithCache(chainId, getClient(chainId))
     .then((result) => result.gasPriceGwei)
     .catch(() => null);
 
-  const [spandex, curveResult, gasPriceGwei] = await Promise.all([
-    spandexPromise,
-    curvePromise,
-    gasPricePromise,
-  ]);
+  const spandex = { result: spandexResult, error: spandexError };
+  const curveRes = { result: curveResult, error: curveError };
 
-  // Prefer Spandex's gas_price_gwei if provided (future-proofing)
-  // Otherwise use the RPC fallback value
-  const effectiveGasPriceGwei = spandex.result?.gas_price_gwei ?? gasPriceGwei;
+  const [gasPriceGwei] = await Promise.all([gasPricePromise]);
+  const effectiveGasPriceGwei =
+    spandex.result?.gas_price_gwei ?? curveRes.result?.gas_price_gwei ?? gasPriceGwei;
 
   let recommendation: "spandex" | "curve" | null = null;
   let reason: string;
@@ -402,21 +467,21 @@ async function compareQuotes(
 
   const outputIsEth = spandex.result
     ? isEthOrWeth(spandex.result.to_symbol, spandex.result.to, chainId)
-    : curveResult.result
-      ? isEthOrWeth(curveResult.result.to_symbol, curveResult.result.to, chainId)
+    : curveRes.result
+      ? isEthOrWeth(curveRes.result.to_symbol, curveRes.result.to, chainId)
       : false;
 
   const inputIsEth = spandex.result
     ? isEthOrWeth(spandex.result.from_symbol, spandex.result.from, chainId)
-    : curveResult.result
-      ? isEthOrWeth(curveResult.result.from_symbol, curveResult.result.from, chainId)
+    : curveRes.result
+      ? isEthOrWeth(curveRes.result.from_symbol, curveRes.result.from, chainId)
       : false;
 
-  const outputSymbol = spandex.result?.to_symbol || curveResult.result?.to_symbol || "tokens";
-  const inputSymbol = spandex.result?.from_symbol || curveResult.result?.from_symbol || "tokens";
+  const outputSymbol = spandex.result?.to_symbol || curveRes.result?.to_symbol || "tokens";
+  const inputSymbol = spandex.result?.from_symbol || curveRes.result?.from_symbol || "tokens";
 
-  if (mode === "exactIn" && !outputIsEth && (spandex.result || curveResult.result)) {
-    const outputToken = spandex.result?.to || curveResult.result?.to;
+  if (mode === "exactIn" && !outputIsEth && (spandex.result || curveRes.result)) {
+    const outputToken = spandex.result?.to || curveRes.result?.to;
     const outputDecimals = await getTokenDecimals(chainId, outputToken || "");
     outputToEthRate = await fetchTokenToEthRate(
       chainId,
@@ -430,8 +495,8 @@ async function compareQuotes(
     }
   }
 
-  if (mode === "targetOut" && !inputIsEth && (spandex.result || curveResult.result)) {
-    const inputToken = spandex.result?.from || curveResult.result?.from;
+  if (mode === "targetOut" && !inputIsEth && (spandex.result || curveRes.result)) {
+    const inputToken = spandex.result?.from || curveRes.result?.from;
     const inputDecimals = await getTokenDecimals(chainId, inputToken || "");
     inputToEthRate = await fetchTokenToEthRate(
       chainId,
@@ -490,7 +555,7 @@ async function compareQuotes(
   }
 
   function enrichWithGasFields(
-    quote: QuoteResult | CurveQuoteResult | null,
+    quote: QuoteResult | null,
     gasCostEth: number,
     outputValueEth: number,
     netValueEth: number
@@ -503,9 +568,9 @@ async function compareQuotes(
 
   const gasPriceWei = effectiveGasPriceGwei ? Number(effectiveGasPriceGwei) * 1e9 : 0;
 
-  if (spandex.result && curveResult.result) {
+  if (spandex.result && curveRes.result) {
     const spandexGas = Number(spandex.result.gas_used || "0");
-    const curveGas = Number(curveResult.result.gas_used || "0");
+    const curveGas = Number(curveRes.result.gas_used || "0");
     const bothHaveGas = spandexGas > 0 && curveGas > 0 && effectiveGasPriceGwei !== null;
 
     if (mode === "targetOut") {
@@ -513,7 +578,7 @@ async function compareQuotes(
       // Compare by required INPUT amount (lower = better)
       // User specifies desired output, quotes return required input
       const spandexInput = Number(spandex.result.input_amount);
-      const curveInput = Number(curveResult.result.input_amount);
+      const curveInput = Number(curveRes.result.input_amount);
 
       // Compute gas-adjusted values for targetOut
       const spandexValues = computeGasAdjustedValuesTargetOut(
@@ -531,7 +596,7 @@ async function compareQuotes(
         spandexValues.totalCostEth
       );
       enrichWithGasFields(
-        curveResult.result,
+        curveRes.result,
         curveValues.gasCostEth,
         curveValues.inputValueEth,
         curveValues.totalCostEth
@@ -617,7 +682,7 @@ async function compareQuotes(
       // === EXACT_IN MODE (default) ===
       // Compare by OUTPUT amount (higher = better)
       const spandexOutput = Number(spandex.result.output_amount);
-      const curveOutput = Number(curveResult.result.output_amount);
+      const curveOutput = Number(curveRes.result.output_amount);
 
       // Compute gas-adjusted values for exactIn
       const spandexValues = computeGasAdjustedValuesExactIn(spandexOutput, spandexGas, gasPriceWei);
@@ -631,7 +696,7 @@ async function compareQuotes(
         spandexValues.netValueEth
       );
       enrichWithGasFields(
-        curveResult.result,
+        curveRes.result,
         curveValues.gasCostEth,
         curveValues.outputValueEth,
         curveValues.netValueEth
@@ -727,26 +792,26 @@ async function compareQuotes(
         values.netValueEth
       );
     }
-  } else if (curveResult.result) {
+  } else if (curveRes.result) {
     recommendation = "curve";
     reason = "Only Curve returned a quote";
 
     // Enrich with gas fields
-    const curveGas = Number(curveResult.result.gas_used || "0");
+    const curveGas = Number(curveRes.result.gas_used || "0");
     if (mode === "targetOut") {
-      const curveInput = Number(curveResult.result.input_amount);
+      const curveInput = Number(curveRes.result.input_amount);
       const values = computeGasAdjustedValuesTargetOut(curveInput, curveGas, gasPriceWei);
       enrichWithGasFields(
-        curveResult.result,
+        curveRes.result,
         values.gasCostEth,
         values.inputValueEth,
         values.totalCostEth
       );
     } else {
-      const curveOutput = Number(curveResult.result.output_amount);
+      const curveOutput = Number(curveRes.result.output_amount);
       const values = computeGasAdjustedValuesExactIn(curveOutput, curveGas, gasPriceWei);
       enrichWithGasFields(
-        curveResult.result,
+        curveRes.result,
         values.gasCostEth,
         values.outputValueEth,
         values.netValueEth
@@ -759,8 +824,8 @@ async function compareQuotes(
   return {
     spandex: spandex.result,
     spandex_error: spandex.error,
-    curve: curveResult.result,
-    curve_error: curveResult.error,
+    curve: curveRes.result,
+    curve_error: curveRes.error,
     recommendation,
     recommendation_reason: reason,
     gas_price_gwei: effectiveGasPriceGwei,
@@ -780,8 +845,7 @@ function sendError(res: http.ServerResponse, status: number, message: string) {
 }
 
 /**
- * Get a Curve quote for the given params.
- * Returns the CurveQuoteResult or throws an error.
+ * Get a Curve quote using Spandex.
  */
 async function getCurveQuote(
   chainId: number,
@@ -790,21 +854,77 @@ async function getCurveQuote(
   amount: string,
   sender?: string,
   mode: QuoteMode = "exactIn"
-): Promise<CurveQuoteResult> {
-  // Check if Curve is available for this chain
-  const curveAvailable = CURVE_ENABLED && isCurveSupported(chainId) && isCurveInitialized(chainId);
+): Promise<QuoteResult> {
+  const [inputDecimals, outputDecimals, fromSymbol, toSymbol] = await Promise.all([
+    getTokenDecimals(chainId, from),
+    getTokenDecimals(chainId, to),
+    getTokenSymbol(chainId, from),
+    getTokenSymbol(chainId, to),
+  ]);
 
-  if (!curveAvailable) {
-    const curveError =
-      isCurveSupported(chainId) && !isCurveInitialized(chainId)
-        ? `Curve initialization failed for chain ${chainId}: ${getCurveInitError(chainId) || "Unknown error"}`
-        : isCurveSupported(chainId)
-          ? "Curve is disabled"
-          : `Curve does not support chain ${chainId}`;
-    throw new Error(curveError);
+  const swapRequest =
+    mode === "targetOut"
+      ? {
+          chainId,
+          inputToken: from as Address,
+          outputToken: to as Address,
+          mode: "targetOut" as const,
+          outputAmount: parseUnits(amount, outputDecimals),
+          slippageBps: 100,
+        }
+      : {
+          chainId,
+          inputToken: from as Address,
+          outputToken: to as Address,
+          mode: "exactIn" as const,
+          inputAmount: parseUnits(amount, inputDecimals),
+          slippageBps: 100,
+        };
+
+  const allQuotes = await getQuotes({
+    config,
+    swap: { ...swapRequest, swapperAccount: (sender as Address) || FALLBACK_ACCOUNT },
+  });
+
+  const successfulQuotes = allQuotes.filter(
+    (q): q is import("@spandex/core").SuccessfulSimulatedQuote => q.success === true
+  );
+  const quote = successfulQuotes.find((q) => q.provider === "curve");
+
+  if (!quote) {
+    throw new Error(`Curve does not support or returned no quotes for chain ${chainId}`);
   }
 
-  return findCurveQuote(chainId, from, to, amount, sender, getClient(chainId), mode);
+  const res: QuoteResult = {
+    chainId,
+    from,
+    from_symbol: fromSymbol,
+    to,
+    to_symbol: toSymbol,
+    amount,
+    input_amount: formatUnits(quote.inputAmount, inputDecimals),
+    output_amount: formatUnits(quote.simulation.outputAmount, outputDecimals),
+    input_amount_raw: quote.inputAmount.toString(),
+    output_amount_raw: quote.simulation.outputAmount.toString(),
+    mode,
+    provider: quote.provider,
+    source: quote.provider,
+    slippage_bps: 100,
+    gas_used: quote.simulation.gasUsed?.toString() ?? "0",
+    router_address: quote.txData.to,
+    router_calldata: quote.txData.data,
+  };
+
+  if (quote.txData.value) {
+    res.router_value = quote.txData.value.toString();
+  }
+
+  if (quote.approval) {
+    res.approval_token = quote.approval.token;
+    res.approval_spender = quote.approval.spender;
+  }
+
+  return res;
 }
 
 export async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -1131,13 +1251,6 @@ window.onload = function() {
 }
 
 async function main() {
-  if (CURVE_ENABLED) {
-    log("Initializing Curve API for all supported chains...");
-    await initAllCurveInstances(getRpcUrl, log, logError);
-    log("Curve API initialization complete");
-    captureMessage("Curve API initialization complete");
-  }
-
   const server = http.createServer(handleRequest);
   server.listen(PORT, HOST, () => {
     log(`Server listening on http://${HOST}:${PORT}`);

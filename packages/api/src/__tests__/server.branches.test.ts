@@ -9,14 +9,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const {
   getQuoteMock,
+  getQuotesMock,
   getTokenDecimalsMock,
   getTokenSymbolMock,
   getTokenNameMock,
   getGasPriceMock,
   getBlockNumberMock,
   getClientMock,
-  findCurveQuoteMock,
-  isCurveSupportedMock,
   captureExceptionMock,
   captureMessageMock,
   flags,
@@ -31,14 +30,13 @@ const {
   const mkAddr = (c: string) => `0x${c.repeat(40)}`;
   return {
     getQuoteMock: vi.fn(),
+    getQuotesMock: vi.fn(),
     getTokenDecimalsMock: vi.fn(),
     getTokenSymbolMock: vi.fn(),
     getTokenNameMock: vi.fn(),
     getGasPriceMock: vi.fn(),
     getBlockNumberMock: vi.fn(),
     getClientMock: vi.fn(),
-    findCurveQuoteMock: vi.fn(),
-    isCurveSupportedMock: vi.fn(),
     captureExceptionMock: vi.fn(),
     captureMessageMock: vi.fn(),
     flags: { compareEndpoint: true, metricsEndpoint: true },
@@ -61,6 +59,8 @@ const {
 
 vi.mock("@spandex/core", () => ({
   getQuote: getQuoteMock,
+  getQuotes: getQuotesMock,
+  getQuotesMock,
   serializeWithBigInt: (data: unknown) =>
     JSON.stringify(data, (_key, value) => (typeof value === "bigint" ? value.toString() : value)),
 }));
@@ -86,8 +86,6 @@ vi.mock("../config.js", () => ({
 vi.mock("../curve.js", () => ({
   initAllCurveInstances: vi.fn(),
   initCurveInstance: vi.fn(),
-  findCurveQuote: findCurveQuoteMock,
-  isCurveSupported: isCurveSupportedMock,
   isCurveInitialized: vi.fn().mockReturnValue(true),
   getCurveInitError: vi.fn().mockReturnValue(undefined),
 }));
@@ -134,6 +132,7 @@ function makeQuote(overrides?: {
   txValue?: bigint;
 }) {
   return {
+    success: true,
     simulation: {
       outputAmount: overrides?.outputAmount ?? 2_500_000_000_000_000_000n,
       gasUsed: overrides?.gasUsed ?? 21000n,
@@ -149,8 +148,25 @@ function makeQuote(overrides?: {
   };
 }
 
-function makeCurveQuote(overrides?: { output?: string; input?: string; gas?: string }) {
+function makeCurveQuote(overrides?: {
+  output?: string;
+  input?: string;
+  gas?: string;
+  inputAmountRaw?: bigint;
+}) {
+  const outputAmount = overrides?.output
+    ? BigInt(parseFloat(overrides.output) * 1e18)
+    : 2_000_000_000_000_000_000n;
+  const gasUsed = overrides?.gas ? BigInt(overrides.gas) : 30000n;
+  const inputAmount =
+    overrides?.inputAmountRaw ??
+    (overrides?.input ? BigInt(parseFloat(overrides.input) * 1e6) : 1_000_000n);
+
   return {
+    success: true,
+    simulation: { outputAmount, gasUsed },
+    inputAmount,
+    provider: "curve",
     source: "curve",
     from: ADDR_FROM,
     from_symbol: "USDC",
@@ -163,6 +179,7 @@ function makeCurveQuote(overrides?: { output?: string; input?: string; gas?: str
     route_symbols: {},
     router_address: makeAddress("7"),
     router_calldata: "0xbeef",
+    txData: { to: makeAddress("7"), data: "0xbeef" },
     gas_used: overrides?.gas ?? "30000",
   };
 }
@@ -250,7 +267,6 @@ beforeEach(() => {
     getGasPrice: getGasPriceMock,
     getBlockNumber: getBlockNumberMock,
   });
-  isCurveSupportedMock.mockReturnValue(true);
 });
 
 // ===========================================================================
@@ -352,7 +368,7 @@ describe("/quote handler", () => {
 
 describe("/quote-curve handler", () => {
   it("returns successful curve quote", async () => {
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "2.5" }));
+    getQuotesMock.mockResolvedValue([makeCurveQuote({ output: "2.5" })]);
     const res = await req(
       `${baseUrl}/quote-curve?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
     );
@@ -361,7 +377,7 @@ describe("/quote-curve handler", () => {
   });
 
   it("returns 500 when curve fails", async () => {
-    findCurveQuoteMock.mockRejectedValue(new Error("Curve routing failed"));
+    getQuotesMock.mockRejectedValue(new Error("Curve routing failed"));
     const res = await req(
       `${baseUrl}/quote-curve?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
     );
@@ -380,10 +396,9 @@ describe("/quote-curve handler", () => {
 
 describe("/compare exactIn WETH output", () => {
   it("recommends curve when curve has higher net value", async () => {
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ outputAmount: 1_000_000_000_000_000_000n, gasUsed: 20000n })
-    );
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "2.5", gas: "30000" }));
+    const sq_65458 = makeQuote({ outputAmount: 1_000_000_000_000_000_000n, gasUsed: 20000n });
+    getQuoteMock.mockResolvedValue(sq_65458);
+    getQuotesMock.mockResolvedValue([sq_65458, makeCurveQuote({ output: "2.5", gas: "30000" })]);
 
     const res = await req(compareUrl(1));
     expect(res.status).toBe(200);
@@ -394,10 +409,9 @@ describe("/compare exactIn WETH output", () => {
   });
 
   it("recommends spandex when spandex has higher net value", async () => {
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ outputAmount: 3_000_000_000_000_000_000n, gasUsed: 20000n })
-    );
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "2.5", gas: "30000" }));
+    const sq_69094 = makeQuote({ outputAmount: 3_000_000_000_000_000_000n, gasUsed: 20000n });
+    getQuoteMock.mockResolvedValue(sq_69094);
+    getQuotesMock.mockResolvedValue([sq_69094, makeCurveQuote({ output: "2.5", gas: "30000" })]);
 
     const res = await req(compareUrl(1));
     expect(res.status).toBe(200);
@@ -405,10 +419,9 @@ describe("/compare exactIn WETH output", () => {
   });
 
   it("defaults to spandex when net values are equal", async () => {
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ outputAmount: 2_000_000_000_000_000_000n, gasUsed: 30000n })
-    );
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "2.0", gas: "30000" }));
+    const sq_92159 = makeQuote({ outputAmount: 2_000_000_000_000_000_000n, gasUsed: 30000n });
+    getQuoteMock.mockResolvedValue(sq_92159);
+    getQuotesMock.mockResolvedValue([sq_92159, makeCurveQuote({ output: "2.0", gas: "30000" })]);
 
     const res = await req(compareUrl(1));
     expect(res.status).toBe(200);
@@ -420,10 +433,9 @@ describe("/compare exactIn WETH output", () => {
   it("gas flip: high-gas route loses despite higher raw output", async () => {
     // Spandex: 1.50 ETH, 15M gas; Curve: 1.49 ETH, 10k gas
     // At 1 gwei: Spandex adjusted = 1.50 - 0.015 = 1.485, Curve adjusted = 1.49 - 0.00001 = 1.48999
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ outputAmount: 1_500_000_000_000_000_000n, gasUsed: 15_000_000n })
-    );
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "1.49", gas: "10000" }));
+    const sq_86782 = makeQuote({ outputAmount: 1_500_000_000_000_000_000n, gasUsed: 15_000_000n });
+    getQuoteMock.mockResolvedValue(sq_86782);
+    getQuotesMock.mockResolvedValue([sq_86782, makeCurveQuote({ output: "1.49", gas: "10000" })]);
 
     const res = await req(compareUrl(1));
     expect(res.status).toBe(200);
@@ -446,11 +458,15 @@ describe("/compare exactIn non-ETH output", () => {
   });
 
   it("gas-adjusted comparison with output->ETH rate", async () => {
-    mockQuoteWithRate(makeQuote({ outputAmount: 2_500_000_000n, gasUsed: 20000n }));
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ output: "2600", gas: "30000" }),
-      to_symbol: "DAI",
-    });
+    mockQuoteWithRate(null, "success");
+    const sq = makeQuote({ outputAmount: 2_500_000_000n, gasUsed: 20000n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ output: "2600", gas: "30000" }),
+        to_symbol: "DAI",
+      },
+    ]);
 
     const res = await req(compareUrl(1));
     expect(res.status).toBe(200);
@@ -464,14 +480,15 @@ describe("/compare exactIn non-ETH output", () => {
   it("!canDoGasAdjusted && bothHaveGas: Curve outputs more", async () => {
     // Use chainId=8453 to avoid rate cache from earlier tests
     // DAI is 18 decimals: 2000 DAI = 2_000e18
-    mockQuoteWithRate(
-      makeQuote({ outputAmount: 2_000_000_000_000_000_000_000n, gasUsed: 20000n }),
-      "null"
-    );
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ output: "2600", gas: "30000" }),
-      to_symbol: "DAI",
-    });
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ outputAmount: 2_000_000_000_000_000_000_000n, gasUsed: 20000n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ output: "2600", gas: "30000" }),
+        to_symbol: "DAI",
+      },
+    ]);
 
     const res = await req(compareUrl(8453));
     expect(res.status).toBe(200);
@@ -482,14 +499,15 @@ describe("/compare exactIn non-ETH output", () => {
   });
 
   it("!canDoGasAdjusted && bothHaveGas: Spandex outputs more", async () => {
-    mockQuoteWithRate(
-      makeQuote({ outputAmount: 3_000_000_000_000_000_000_000n, gasUsed: 20000n }),
-      "null"
-    );
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ output: "2600", gas: "30000" }),
-      to_symbol: "DAI",
-    });
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ outputAmount: 3_000_000_000_000_000_000_000n, gasUsed: 20000n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ output: "2600", gas: "30000" }),
+        to_symbol: "DAI",
+      },
+    ]);
 
     const res = await req(compareUrl(8453));
     expect(res.status).toBe(200);
@@ -499,14 +517,15 @@ describe("/compare exactIn non-ETH output", () => {
   });
 
   it("!canDoGasAdjusted && bothHaveGas: equal output", async () => {
-    mockQuoteWithRate(
-      makeQuote({ outputAmount: 2_600_000_000_000_000_000_000n, gasUsed: 20000n }),
-      "null"
-    );
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ output: "2600", gas: "30000" }),
-      to_symbol: "DAI",
-    });
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ outputAmount: 2_600_000_000_000_000_000_000n, gasUsed: 20000n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ output: "2600", gas: "30000" }),
+        to_symbol: "DAI",
+      },
+    ]);
 
     const res = await req(compareUrl(8453));
     expect(res.status).toBe(200);
@@ -516,14 +535,15 @@ describe("/compare exactIn non-ETH output", () => {
   });
 
   it("no gas fallback: Curve outputs more, missing Spandex gas", async () => {
-    mockQuoteWithRate(
-      makeQuote({ outputAmount: 2_000_000_000_000_000_000_000n, gasUsed: 0n }),
-      "null"
-    );
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ output: "2600", gas: "30000" }),
-      to_symbol: "DAI",
-    });
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ outputAmount: 2_000_000_000_000_000_000_000n, gasUsed: 0n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ output: "2600", gas: "30000" }),
+        to_symbol: "DAI",
+      },
+    ]);
 
     const res = await req(compareUrl(8453));
     expect(res.status).toBe(200);
@@ -534,15 +554,16 @@ describe("/compare exactIn non-ETH output", () => {
   });
 
   it("no gas fallback: Spandex outputs more, missing Curve gas", async () => {
-    mockQuoteWithRate(
-      makeQuote({ outputAmount: 3_000_000_000_000_000_000_000n, gasUsed: 20000n }),
-      "null"
-    );
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ output: "2600" }),
-      to_symbol: "DAI",
-      gas_used: undefined,
-    });
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ outputAmount: 3_000_000_000_000_000_000_000n, gasUsed: 20000n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ output: "2600", gas: "0" }),
+        to_symbol: "DAI",
+        gas_used: undefined,
+      },
+    ]);
 
     const res = await req(compareUrl(8453));
     expect(res.status).toBe(200);
@@ -553,15 +574,16 @@ describe("/compare exactIn non-ETH output", () => {
   });
 
   it("no gas fallback: equal output, both missing gas", async () => {
-    mockQuoteWithRate(
-      makeQuote({ outputAmount: 2_600_000_000_000_000_000_000n, gasUsed: 0n }),
-      "null"
-    );
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ output: "2600" }),
-      to_symbol: "DAI",
-      gas_used: undefined,
-    });
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ outputAmount: 2_600_000_000_000_000_000_000n, gasUsed: 0n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ output: "2600", gas: "0" }),
+        to_symbol: "DAI",
+        gas_used: undefined,
+      },
+    ]);
 
     const res = await req(compareUrl(8453));
     expect(res.status).toBe(200);
@@ -585,13 +607,19 @@ describe("/compare targetOut both results", () => {
     getTokenSymbolMock.mockResolvedValue("WETH");
     getTokenDecimalsMock.mockResolvedValue(18);
 
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ inputAmount: 1_010_000_000_000_000_000n, gasUsed: 15_000_000n })
-    );
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ input: "1.0", gas: "10000" }),
-      from_symbol: "WETH",
-    });
+    const sq_25450 = makeQuote({ inputAmount: 1_010_000_000_000_000_000n, gasUsed: 15_000_000n });
+    getQuoteMock.mockResolvedValue(sq_25450);
+    getQuotesMock.mockResolvedValue([
+      sq_25450,
+      {
+        ...makeCurveQuote({
+          inputAmountRaw: 1_000_000_000_000_000_000n,
+          input: "1.0",
+          gas: "10000",
+        }),
+        from_symbol: "WETH",
+      },
+    ]);
 
     const res = await req(targetOutUrl(1));
     expect(res.status).toBe(200);
@@ -606,13 +634,19 @@ describe("/compare targetOut both results", () => {
     getTokenSymbolMock.mockResolvedValue("WETH");
     getTokenDecimalsMock.mockResolvedValue(18);
 
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ inputAmount: 1_000_000_000_000_000_000n, gasUsed: 10000n })
-    );
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ input: "1.01", gas: "15000000" }),
-      from_symbol: "WETH",
-    });
+    const sq_62937 = makeQuote({ inputAmount: 1_000_000_000_000_000_000n, gasUsed: 10000n });
+    getQuoteMock.mockResolvedValue(sq_62937);
+    getQuotesMock.mockResolvedValue([
+      sq_62937,
+      {
+        ...makeCurveQuote({
+          inputAmountRaw: 1_010_000_000_000_000_000n,
+          input: "1.01",
+          gas: "15000000",
+        }),
+        from_symbol: "WETH",
+      },
+    ]);
 
     const res = await req(targetOutUrl(1));
     expect(res.status).toBe(200);
@@ -623,9 +657,10 @@ describe("/compare targetOut both results", () => {
 
   it("gas-adjusted: Curve wins, non-ETH input (with rate)", async () => {
     // USDC input -> need inputToEthRate
-    mockQuoteWithRate(makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n }));
+    mockQuoteWithRate(null, "success");
+    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n });
 
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ input: "2400", gas: "30000" }));
+    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2400", gas: "30000" })]);
 
     const res = await req(targetOutUrl(1));
     expect(res.status).toBe(200);
@@ -637,9 +672,10 @@ describe("/compare targetOut both results", () => {
   });
 
   it("gas-adjusted: Spandex wins, non-ETH input (with rate)", async () => {
-    mockQuoteWithRate(makeQuote({ inputAmount: 2_400_000_000n, gasUsed: 20000n }));
+    mockQuoteWithRate(null, "success");
+    const sq = makeQuote({ inputAmount: 2_400_000_000n, gasUsed: 20000n });
 
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ input: "2500", gas: "30000" }));
+    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2500", gas: "30000" })]);
 
     const res = await req(targetOutUrl(1));
     expect(res.status).toBe(200);
@@ -652,13 +688,19 @@ describe("/compare targetOut both results", () => {
     getTokenSymbolMock.mockResolvedValue("WETH");
     getTokenDecimalsMock.mockResolvedValue(18);
 
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ inputAmount: 1_000_000_000_000_000_000n, gasUsed: 30000n })
-    );
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ input: "1.0", gas: "30000" }),
-      from_symbol: "WETH",
-    });
+    const sq_67927 = makeQuote({ inputAmount: 1_000_000_000_000_000_000n, gasUsed: 30000n });
+    getQuoteMock.mockResolvedValue(sq_67927);
+    getQuotesMock.mockResolvedValue([
+      sq_67927,
+      {
+        ...makeCurveQuote({
+          inputAmountRaw: 1_000_000_000_000_000_000n,
+          input: "1.0",
+          gas: "30000",
+        }),
+        from_symbol: "WETH",
+      },
+    ]);
 
     const res = await req(targetOutUrl(1));
     expect(res.status).toBe(200);
@@ -669,8 +711,9 @@ describe("/compare targetOut both results", () => {
 
   it("!canDoGasAdjusted && bothHaveGas: Curve requires less", async () => {
     // Rate fetch fails -> canDoGasAdjusted = false
-    mockQuoteWithRate(makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n }), "null");
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ input: "2400", gas: "30000" }));
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n });
+    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2400", gas: "30000" })]);
 
     const res = await req(targetOutUrl(42161));
     expect(res.status).toBe(200);
@@ -681,8 +724,9 @@ describe("/compare targetOut both results", () => {
   });
 
   it("!canDoGasAdjusted && bothHaveGas: Spandex requires less", async () => {
-    mockQuoteWithRate(makeQuote({ inputAmount: 2_400_000_000n, gasUsed: 20000n }), "null");
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ input: "2500", gas: "30000" }));
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ inputAmount: 2_400_000_000n, gasUsed: 20000n });
+    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2500", gas: "30000" })]);
 
     const res = await req(targetOutUrl(42161));
     expect(res.status).toBe(200);
@@ -692,8 +736,9 @@ describe("/compare targetOut both results", () => {
   });
 
   it("!canDoGasAdjusted && bothHaveGas: equal input", async () => {
-    mockQuoteWithRate(makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n }), "null");
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ input: "2500", gas: "30000" }));
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n });
+    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2500", gas: "30000" })]);
 
     const res = await req(targetOutUrl(42161));
     expect(res.status).toBe(200);
@@ -703,11 +748,15 @@ describe("/compare targetOut both results", () => {
   });
 
   it("no gas fallback: Curve requires less, missing gas", async () => {
-    mockQuoteWithRate(makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 0n }), "null");
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ input: "2400" }),
-      gas_used: undefined,
-    });
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 0n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ input: "2400", gas: "0" }),
+        gas_used: undefined,
+      },
+    ]);
 
     const res = await req(targetOutUrl(8453));
     expect(res.status).toBe(200);
@@ -717,11 +766,15 @@ describe("/compare targetOut both results", () => {
   });
 
   it("no gas fallback: Spandex requires less, missing gas", async () => {
-    mockQuoteWithRate(makeQuote({ inputAmount: 2_400_000_000n, gasUsed: 0n }), "null");
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ input: "2500" }),
-      gas_used: undefined,
-    });
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ inputAmount: 2_400_000_000n, gasUsed: 0n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ input: "2500", gas: "0" }),
+        gas_used: undefined,
+      },
+    ]);
 
     const res = await req(targetOutUrl(8453));
     expect(res.status).toBe(200);
@@ -730,11 +783,15 @@ describe("/compare targetOut both results", () => {
   });
 
   it("no gas fallback: equal input, missing gas", async () => {
-    mockQuoteWithRate(makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 0n }), "null");
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ input: "2500" }),
-      gas_used: undefined,
-    });
+    mockQuoteWithRate(null, "null");
+    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 0n });
+    getQuotesMock.mockResolvedValue([
+      sq,
+      {
+        ...makeCurveQuote({ input: "2500", gas: "0" }),
+        gas_used: undefined,
+      },
+    ]);
 
     const res = await req(targetOutUrl(8453));
     expect(res.status).toBe(200);
@@ -750,10 +807,9 @@ describe("/compare targetOut both results", () => {
 
 describe("/compare single-router enrichment", () => {
   it("only Spandex, exactIn mode", async () => {
-    getQuoteMock.mockResolvedValue(
-      makeQuote({ outputAmount: 3_000_000_000_000_000_000n, gasUsed: 20000n })
-    );
-    findCurveQuoteMock.mockRejectedValue(new Error("curve down"));
+    getQuotesMock.mockResolvedValue([
+      makeQuote({ outputAmount: 3_000_000_000_000_000_000n, gasUsed: 20000n }),
+    ]);
 
     const res = await req(compareUrl(1));
     expect(res.status).toBe(200);
@@ -764,8 +820,7 @@ describe("/compare single-router enrichment", () => {
   });
 
   it("only Spandex, targetOut mode", async () => {
-    getQuoteMock.mockResolvedValue(makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n }));
-    findCurveQuoteMock.mockRejectedValue(new Error("curve down"));
+    getQuotesMock.mockResolvedValue([makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n })]);
 
     const res = await req(compareUrl(1, "&mode=targetOut"));
     expect(res.status).toBe(200);
@@ -776,8 +831,7 @@ describe("/compare single-router enrichment", () => {
   });
 
   it("only Curve, exactIn mode", async () => {
-    getQuoteMock.mockRejectedValue(new Error("spandex down"));
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ output: "2.5", gas: "30000" }));
+    getQuotesMock.mockResolvedValue([makeCurveQuote({ output: "2.5", gas: "30000" })]);
 
     const res = await req(compareUrl(1));
     expect(res.status).toBe(200);
@@ -788,8 +842,7 @@ describe("/compare single-router enrichment", () => {
   });
 
   it("only Curve, targetOut mode", async () => {
-    getQuoteMock.mockRejectedValue(new Error("spandex down"));
-    findCurveQuoteMock.mockResolvedValue(makeCurveQuote({ input: "2400", gas: "30000" }));
+    getQuotesMock.mockResolvedValue([makeCurveQuote({ input: "2400", gas: "30000" })]);
 
     const res = await req(compareUrl(1, "&mode=targetOut"));
     expect(res.status).toBe(200);
@@ -800,8 +853,7 @@ describe("/compare single-router enrichment", () => {
   });
 
   it("neither router returns a quote", async () => {
-    getQuoteMock.mockRejectedValue(new Error("spandex down"));
-    findCurveQuoteMock.mockRejectedValue(new Error("curve down"));
+    getQuotesMock.mockRejectedValue(new Error("both down"));
 
     const res = await req(compareUrl(1));
     expect(res.status).toBe(200);
@@ -835,11 +887,15 @@ describe("/compare edge cases", () => {
     getTokenSymbolMock.mockImplementation(async (_c: number, token: string) =>
       token.toLowerCase() === ADDR_FROM.toLowerCase() ? "USDC" : "DAI"
     );
-    getQuoteMock.mockResolvedValue(makeQuote({ outputAmount: 2_000_000_000n, gasUsed: 20000n }));
-    findCurveQuoteMock.mockResolvedValue({
-      ...makeCurveQuote({ output: "2600", gas: "30000" }),
-      to_symbol: "DAI",
-    });
+    const sq_71219 = makeQuote({ outputAmount: 2_000_000_000n, gasUsed: 20000n });
+    getQuoteMock.mockResolvedValue(sq_71219);
+    getQuotesMock.mockResolvedValue([
+      sq_71219,
+      {
+        ...makeCurveQuote({ output: "2600", gas: "30000" }),
+        to_symbol: "DAI",
+      },
+    ]);
     // First two getTokenDecimals calls succeed (findQuote), third throws (rate fetch)
     getTokenDecimalsMock
       .mockResolvedValueOnce(6)
