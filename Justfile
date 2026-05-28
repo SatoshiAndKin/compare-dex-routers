@@ -15,3 +15,6 @@ dev-update:
 dev-update-incompatible:
     pnpm update --recursive --latest
 
+deploy:
+    docker compose up --build -d
+
