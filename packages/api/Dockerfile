@@ -2,17 +2,20 @@ FROM node:24-slim
 
 WORKDIR /app
 
-# Copy root workspace config and package files for npm workspaces
-COPY package.json package-lock.json ./
+# Copy root workspace config and package files for pnpm workspaces
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/api/package.json ./packages/api/
-# Create empty placeholder for frontend (required for workspace install)
-RUN mkdir -p packages/frontend && echo '{"name":"@compare-dex/frontend","version":"1.0.0"}' > packages/frontend/package.json
+# Copy frontend package.json (required for workspace lockfile validation)
+COPY packages/frontend/package.json ./packages/frontend/
+
+# Enable pnpm
+RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
 
 # Disable husky git hooks (not applicable in Docker)
 ENV HUSKY=0
 
 # Install only API production dependencies
-RUN npm ci --workspace=packages/api --omit=dev
+RUN pnpm install --frozen-lockfile --filter @compare-dex/api... --prod
 
 # Copy API source code
 COPY packages/api/src/ ./packages/api/src/

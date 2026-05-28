@@ -30,7 +30,7 @@ const {
   const mkAddr = (c: string) => `0x${c.repeat(40)}`;
   return {
     getQuoteMock: vi.fn(),
-    getQuotesMock: vi.fn(),
+    getQuotesMock: vi.fn().mockResolvedValue([]),
     getTokenDecimalsMock: vi.fn(),
     getTokenSymbolMock: vi.fn(),
     getTokenNameMock: vi.fn(),
@@ -66,7 +66,7 @@ vi.mock("@spandex/core", () => ({
 }));
 
 vi.mock("../config.js", () => ({
-  getSpandexConfig: vi.fn(() => ({ mocked: true })),
+  getSpandexConfig: vi.fn(() => ({ mocked: true, clientLookup: vi.fn().mockReturnValue({}) })),
   getTokenDecimals: getTokenDecimalsMock,
   getTokenSymbol: getTokenSymbolMock,
   getTokenName: getTokenNameMock,

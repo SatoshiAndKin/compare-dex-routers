@@ -11,7 +11,7 @@ const ADDR_SENDER = makeAddress("6");
 const FALLBACK_ACCOUNT = `0x${"Ee7aE85f2Fe2239E27D9c1E2" + "3fFFe168D63b4055"}`;
 
 const getQuoteMock = vi.fn();
-const getQuotesMock = vi.fn();
+const getQuotesMock = vi.fn().mockResolvedValue([]);
 const getTokenDecimalsMock = vi.fn();
 const getTokenSymbolMock = vi.fn();
 const getGasPriceMock = vi.fn();
@@ -41,7 +41,7 @@ vi.mock("@spandex/core", () => ({
 }));
 
 vi.mock("../config.js", () => ({
-  getSpandexConfig: vi.fn(() => ({ mocked: true })),
+  getSpandexConfig: vi.fn(() => ({ mocked: true, clientLookup: vi.fn().mockReturnValue({}) })),
   getTokenDecimals: getTokenDecimalsMock,
   getTokenSymbol: getTokenSymbolMock,
   getClient: getClientMock,
