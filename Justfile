@@ -8,3 +8,10 @@ validate:
     pnpm run duplicates
     pnpm run dead-flags
     docker compose build
+
+dev-update:
+    pnpm update --recursive
+
+dev-update-incompatible:
+    pnpm update --recursive --latest
+
