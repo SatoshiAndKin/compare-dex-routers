@@ -150,3 +150,17 @@ docker compose down       # to stop
 ### Zero-downtime deploys
 
 Uses [docker-rollout](https://github.com/Wowu/docker-rollout) with Traefik for zero-downtime rolling deployments. See `scripts/deploy.sh`.
+
+### Subtree Synchronization
+
+The `traefik-proxy` directory is managed as a git subtree. To sync changes with the upstream repository:
+
+**Pull latest changes from upstream:**
+```bash
+git subtree pull --prefix traefik-proxy git@github.com:SatoshiAndKin/traefik-proxy.git main --squash
+```
+
+**Push local changes to upstream:**
+```bash
+git subtree push --prefix traefik-proxy git@github.com:SatoshiAndKin/traefik-proxy.git main
+```
