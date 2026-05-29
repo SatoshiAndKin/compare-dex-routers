@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "paths": {
-      "@spandex/core": ["./node_modules/@spandex/core/index.ts"]
+      "@spandex/core": [
+        "./node_modules/@spandex/core/index.ts",
+        "./node_modules/@spandex/core/packages/core/index.ts"
+      ]
     },
     "target": "ES2024",
     "module": "NodeNext",
