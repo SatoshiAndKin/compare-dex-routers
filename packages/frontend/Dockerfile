@@ -4,22 +4,25 @@ FROM node:24-slim AS builder
 WORKDIR /app
 
 # Copy workspace config
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/frontend/package.json ./packages/frontend/
-# Create empty API placeholder (required for workspace install)
-RUN mkdir -p packages/api && echo '{"name":"@compare-dex/api","version":"1.0.0"}' > packages/api/package.json
+# Copy API package.json (required for workspace lockfile validation)
+COPY packages/api/package.json ./packages/api/
+
+# Enable pnpm
+RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
 
 # Disable husky git hooks (not applicable in Docker)
 ENV HUSKY=0
 
 # Install frontend dependencies (includes devDeps for build tools)
-RUN npm ci --workspace=packages/frontend
+RUN pnpm install --frozen-lockfile --filter @compare-dex/frontend...
 
 # Copy frontend source
 COPY packages/frontend/ ./packages/frontend/
 
 # Build
-RUN npm run build --workspace=packages/frontend
+RUN pnpm --filter @compare-dex/frontend run build
 
 # Stage 2: Serve
 FROM nginx:alpine

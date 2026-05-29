@@ -10,7 +10,7 @@ const config: KnipConfig = {
     "packages/api": {
       entry: ["src/__tests__/**/*.test.ts"],
       project: ["src/**/*.ts"],
-      ignoreDependencies: ["pino-pretty"],
+      ignoreDependencies: ["pino-pretty", "@curvefi/api"],
       vitest: {
         config: ["vitest.config.ts"],
       },

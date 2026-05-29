@@ -11,7 +11,7 @@ vi.mock("viem", async (importOriginal) => {
 });
 
 vi.mock("@spandex/core", () => ({
-  createConfig: vi.fn(() => ({})),
+  createConfig: vi.fn(() => ({ clientLookup: vi.fn().mockReturnValue({}) })),
   defaultProviders: vi.fn(() => []),
   fabric: vi.fn(() => ({})),
   zeroX: vi.fn(() => ({})),
@@ -20,6 +20,8 @@ vi.mock("@spandex/core", () => ({
   lifi: vi.fn(() => ({})),
   relay: vi.fn(() => ({})),
   velora: vi.fn(() => ({})),
+  curve: vi.fn(() => ({})),
+  getQuotes: vi.fn(() => []),
 }));
 
 import { createPublicClient } from "viem";
