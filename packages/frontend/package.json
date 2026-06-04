@@ -22,9 +22,9 @@
     "vite": "^8.0.14"
   },
   "devDependencies": {
-    "eslint": "^10.4.0",
-    "svelte-check": "^4.4.8",
+    "eslint": "^10.4.1",
+    "svelte-check": "^4.5.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.8"
   }
 }
