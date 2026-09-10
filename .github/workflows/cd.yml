@@ -49,6 +49,12 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Set registry cache address
+        id: cache
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}-${PACKAGE}:buildcache" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -57,8 +63,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ steps.cache.outputs.image }}
+          cache-to: type=registry,ref=${{ steps.cache.outputs.image }},mode=max
 
   deploy:
     needs: build-and-push
