@@ -10,6 +10,7 @@ export interface ChainInfo {
 
 class ConfigStore {
   walletConnectProjectId = $state("");
+  flags = $state<Record<string, boolean>>({ curve_enabled: true, compare_endpoint: true });
   supportedChains = $state<ChainInfo[]>([]);
   defaultTokens = $state<Record<string, { from: string; to: string }>>({});
 
@@ -23,8 +24,10 @@ class ConfigStore {
       if (!response.ok) return;
       const data = (await response.json()) as {
         walletConnectProjectId?: string;
+        flags?: Record<string, boolean>;
         defaultTokens?: Record<string, { from: string; to: string }>;
       };
+      this.flags = data.flags ?? { curve_enabled: true, compare_endpoint: true };
       this.walletConnectProjectId = data.walletConnectProjectId ?? "";
       this.defaultTokens = data.defaultTokens ?? {};
     } catch {

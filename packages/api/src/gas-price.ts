@@ -4,7 +4,7 @@
  * Cache keyed by (chainId, blockNumber) with 5-minute TTL and 1000-entry max.
  */
 
-import type { PublicClient } from "viem";
+import { formatUnits, type PublicClient } from "viem";
 import { logger } from "./logger.js";
 
 export const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -56,6 +56,7 @@ function getCacheKey(chainId: number, blockNumber: bigint): string {
 
 export interface GasPriceResult {
   gasPriceGwei: string | null;
+  gasPriceWei: bigint | null;
   blockNumber: bigint | null;
   fromCache: boolean;
 }
@@ -73,7 +74,7 @@ export async function getGasPriceWithCache(
       { chainId, error: String(error) },
       "Failed to fetch block number for gas price cache"
     );
-    return { gasPriceGwei: null, blockNumber: null, fromCache: false };
+    return { gasPriceGwei: null, gasPriceWei: null, blockNumber: null, fromCache: false };
   }
 
   const cacheKey = getCacheKey(chainId, blockNumber);
@@ -81,9 +82,10 @@ export async function getGasPriceWithCache(
   const cached = gasPriceCache.get(cacheKey);
   if (cached) {
     if (Date.now() - cached.timestamp <= CACHE_TTL_MS) {
-      const gasPriceGwei = (Number(cached.gasPriceWei) / 1e9).toFixed(4);
+      const gasPriceGwei = formatUnits(cached.gasPriceWei, 9);
       return {
         gasPriceGwei,
+        gasPriceWei: cached.gasPriceWei,
         blockNumber: cached.blockNumber,
         fromCache: true,
       };
@@ -99,7 +101,7 @@ export async function getGasPriceWithCache(
       { chainId, blockNumber: blockNumber.toString(), error: String(error) },
       "Failed to fetch gas price from RPC"
     );
-    return { gasPriceGwei: null, blockNumber, fromCache: false };
+    return { gasPriceGwei: null, gasPriceWei: null, blockNumber, fromCache: false };
   }
 
   gasPriceCache.set(cacheKey, {
@@ -110,9 +112,10 @@ export async function getGasPriceWithCache(
 
   evictStaleEntries();
 
-  const gasPriceGwei = (Number(gasPriceWei) / 1e9).toFixed(4);
+  const gasPriceGwei = formatUnits(gasPriceWei, 9);
   return {
     gasPriceGwei,
+    gasPriceWei,
     blockNumber,
     fromCache: false,
   };
@@ -124,7 +127,7 @@ export function getCachedGasPrice(chainId: number, blockNumber: bigint): string 
   const cached = gasPriceCache.get(cacheKey);
   if (cached) {
     if (Date.now() - cached.timestamp <= CACHE_TTL_MS) {
-      return (Number(cached.gasPriceWei) / 1e9).toFixed(4);
+      return formatUnits(cached.gasPriceWei, 9);
     }
     gasPriceCache.delete(cacheKey);
   }
@@ -148,7 +151,7 @@ export function getGasPriceCacheStats(): {
     return {
       chainId: parseInt(chainIdStr, 10),
       blockNumber: blockNumberStr,
-      gasPriceGwei: (Number(value.gasPriceWei) / 1e9).toFixed(4),
+      gasPriceGwei: formatUnits(value.gasPriceWei, 9),
     };
   });
 

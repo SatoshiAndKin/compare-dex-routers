@@ -1,3 +1,5 @@
+import { configStore } from "../lib/stores/configStore.svelte.js";
+import { makeQuote, FROM, TO } from "./quote-fixture.js";
 import { render, fireEvent } from "@testing-library/svelte";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import QuoteResults from "../lib/components/QuoteResults.svelte";
@@ -12,60 +14,39 @@ function resetComparisonStore() {
   comparisonStore.curveResult = null;
   comparisonStore.spandexError = null;
   comparisonStore.curveError = null;
-  comparisonStore.spandexLoading = false;
-  comparisonStore.curveLoading = false;
+  comparisonStore.isLoading = false;
+  comparisonStore.isLoading = false;
   comparisonStore.gasPriceGwei = null;
   comparisonStore.recommendation = null;
   comparisonStore.recommendationReason = null;
   comparisonStore.activeTab = "recommended";
   comparisonStore.mode = "exactIn";
-  comparisonStore.isSingleRouterMode = false;
+  configStore.flags.curve_enabled = true;
 }
 
-const spandexQuote = {
-  chainId: 1,
-  from: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  from_symbol: "USDC",
-  to: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  to_symbol: "USDT",
-  amount: "100",
-  input_amount: "100",
-  output_amount: "99.95",
-  input_amount_raw: "100000000",
-  output_amount_raw: "99950000",
-  mode: "exactIn" as const,
-  provider: "0x",
-  slippage_bps: 50,
-  router_address: "0xdef1c0ded9bec7f1a1670819833240f027b25eff",
-  router_calldata: "0x",
-  router_value: "0",
-  approval_token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  approval_spender: "0x1111111254EEB25477B68fb85Ed929f73A960582",
-  gas_used: "21000",
-  gas_cost_eth: "0.0024",
-  output_value_eth: "0.5",
-  net_value_eth: "0.49",
-};
+const spandexQuote = makeQuote();
 
-const curveQuote = {
-  source: "curve" as const,
-  from: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  from_symbol: "USDC",
-  to: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  to_symbol: "USDT",
-  amount: "100",
-  input_amount: "100",
+const curveQuote = makeQuote({
+  provider: "curve",
   output_amount: "99.98",
-  mode: "exactIn" as const,
-  route: [],
-  route_symbols: {},
-  router_address: "0x99a58482bd75cbab83b27ec03ca68ff489b5788f",
-  router_calldata: "0x",
-  gas_used: "21000",
-  gas_cost_eth: "0.003",
-  output_value_eth: "0.5",
-  net_value_eth: "0.49",
-};
+  output_amount_raw: "99980000",
+  gas_cost_native: "0.003",
+  route: {
+    nodes: [
+      { address: FROM, symbol: "USDC" },
+      { address: TO, symbol: "USDT" },
+    ],
+    edges: [
+      {
+        source: FROM,
+        target: TO,
+        key: "pool1",
+        value: 1,
+        address: "0x0000000000000000000000000000000000000001",
+      },
+    ],
+  },
+});
 
 describe("QuoteResults", () => {
   beforeEach(() => {
@@ -107,7 +88,7 @@ describe("QuoteResults", () => {
     comparisonStore.spandexResult = spandexQuote;
     comparisonStore.recommendation = "spandex";
     comparisonStore.recommendationReason = "Spandex outputs more.";
-    comparisonStore.isSingleRouterMode = true;
+    configStore.flags.curve_enabled = false;
 
     const { getAllByRole } = render(QuoteResults);
     const tabs = getAllByRole("tab");
@@ -131,8 +112,8 @@ describe("QuoteResults", () => {
   });
 
   it("shows loading indicators when both are loading", () => {
-    comparisonStore.spandexLoading = true;
-    comparisonStore.curveLoading = true;
+    comparisonStore.isLoading = true;
+    comparisonStore.isLoading = true;
 
     const { getAllByRole } = render(QuoteResults);
     const tabs = getAllByRole("tab");
@@ -153,8 +134,8 @@ describe("QuoteResults", () => {
   it("shows combined error message when both routers fail", () => {
     comparisonStore.spandexError = "Insufficient liquidity";
     comparisonStore.curveError = "Pool not found";
-    comparisonStore.spandexLoading = false;
-    comparisonStore.curveLoading = false;
+    comparisonStore.isLoading = false;
+    comparisonStore.isLoading = false;
 
     const { getByRole } = render(QuoteResults);
     const alert = getByRole("alert");
@@ -164,11 +145,11 @@ describe("QuoteResults", () => {
     expect(alert.textContent).toContain("Pool not found");
   });
 
-  it("shows only one tab in single router mode", () => {
+  it("shows only one tab in Curve is disabled", () => {
     comparisonStore.spandexResult = spandexQuote;
     comparisonStore.recommendation = "spandex";
     comparisonStore.recommendationReason = "Only Spandex is available on this chain.";
-    comparisonStore.isSingleRouterMode = true;
+    configStore.flags.curve_enabled = false;
 
     const { getAllByRole } = render(QuoteResults);
     const tabs = getAllByRole("tab");
@@ -186,8 +167,8 @@ describe("QuoteResults", () => {
   });
 
   it("renders QuoteResults container when loading starts", () => {
-    comparisonStore.spandexLoading = true;
-    comparisonStore.curveLoading = true;
+    comparisonStore.isLoading = true;
+    comparisonStore.isLoading = true;
 
     const { container } = render(QuoteResults);
     const results = container.querySelector(".quote-results");

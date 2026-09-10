@@ -6,17 +6,18 @@ on:
   pull_request:
     branches: [main]
 
-# pnpm 11.1.1 caches the Git monorepo root metadata for @spandex/core.
-# Fresh installs resolve its package subdirectory; restoring that store fails.
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.0.10
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version-file: .node-version
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.4.0
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm run lint
@@ -32,7 +33,7 @@ jobs:
   validate-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Validate AGENTS.md exists and is non-empty
         run: |
           test -f AGENTS.md || (echo "AGENTS.md missing" && exit 1)
@@ -48,14 +49,17 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.0.10
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version-file: .node-version
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.4.0
       - run: pnpm install --frozen-lockfile
       - name: Audit dependencies
-        run: pnpm audit || true
+        run: pnpm audit --audit-level=high
       - name: Check for large files
         run: |
           find . -not -path './node_modules/*' -not -path './.git/*' -size +5M -type f | while read f; do

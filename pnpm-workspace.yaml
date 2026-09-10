@@ -14,4 +14,11 @@ blockExoticSubdeps: true
 
 # Require explicit approval for dependency lifecycle scripts
 strictDepBuilds: true
-allowBuilds: { es5-ext: true, esbuild: true }
+allowBuilds:
+  es5-ext: true
+  esbuild: true
+  "@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/04db5f3d814ad55fc740ef519ec347c9c6cec165#path:/packages/core": true
+
+# The OpenAPI generator pins 4.3.1; 4.3.2 fixes GHSA-2883-xcg3-v3hh.
+overrides:
+  "js-yaml@4.3.1": "4.3.2"

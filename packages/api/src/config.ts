@@ -1,17 +1,48 @@
 import {
   createConfig,
-  defaultProviders,
+  isNativeToken,
   fabric,
   zeroX,
   kyberswap,
-  odos,
+  nordstern,
   lifi,
   relay,
   velora,
   curve,
   type Config,
 } from "@spandex/core";
-import { createPublicClient, http, type PublicClient, getAddress } from "viem";
+import { createPublicClient, http, type PublicClient, getAddress, type Address } from "viem";
+import { mainnet, base, arbitrum, optimism, polygon, bsc, avalanche } from "viem/chains";
+import { isEnabled } from "./feature-flags.js";
+import { logger } from "./logger.js";
+
+const CHAIN_DEFINITIONS = {
+  1: mainnet,
+  8453: base,
+  42161: arbitrum,
+  10: optimism,
+  137: polygon,
+  56: bsc,
+  43114: avalanche,
+};
+const NATIVE_ASSETS: Record<
+  number,
+  { name: string; symbol: string; decimals: number; wrapped: Address }
+> = {
+  1: { ...mainnet.nativeCurrency, wrapped: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+  8453: { ...base.nativeCurrency, wrapped: "0x4200000000000000000000000000000000000006" },
+  42161: { ...arbitrum.nativeCurrency, wrapped: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1" },
+  10: { ...optimism.nativeCurrency, wrapped: "0x4200000000000000000000000000000000000006" },
+  137: { ...polygon.nativeCurrency, wrapped: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270" },
+  56: { ...bsc.nativeCurrency, wrapped: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" },
+  43114: { ...avalanche.nativeCurrency, wrapped: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7" },
+};
+export function getNativeAsset(chainId: number) {
+  const asset = NATIVE_ASSETS[chainId];
+  if (!asset) throw new Error(`Unsupported chain: ${chainId}`);
+  return asset;
+}
+
 const APP_ID = process.env.APP_ID || "compare-dex-routers";
 
 export const SUPPORTED_CHAINS: Record<number, { name: string; alchemySubdomain: string }> = {
@@ -80,23 +111,17 @@ const erc20Abi = [
 ] as const;
 
 function buildProviders() {
-  const zeroXApiKey = process.env.ZEROX_API_KEY;
-  const fabricApiKey = process.env.FABRIC_API_KEY;
-
-  if (zeroXApiKey || fabricApiKey) {
-    const providers = [];
-    providers.push(fabric({ appId: APP_ID, apiKey: fabricApiKey }));
-    if (zeroXApiKey) providers.push(zeroX({ apiKey: zeroXApiKey }));
-    providers.push(kyberswap({ clientId: APP_ID }));
-    providers.push(odos({}));
-    providers.push(lifi({}));
-    providers.push(relay({}));
-    providers.push(velora({}));
-    providers.push(curve({}));
-    return providers;
-  }
-
-  return defaultProviders({ appId: APP_ID });
+  const providers: Config["aggregators"] = [
+    fabric({ appId: APP_ID, apiKey: process.env.FABRIC_API_KEY }),
+    kyberswap({ clientId: APP_ID }),
+    nordstern({}),
+    lifi({}),
+    relay({}),
+    velora({}),
+  ];
+  if (process.env.ZEROX_API_KEY) providers.push(zeroX({ apiKey: process.env.ZEROX_API_KEY }));
+  if (isEnabled("curve_enabled")) providers.push(curve({ rpcUrlLookup: getRpcUrl }));
+  return providers;
 }
 
 const clientCache = new Map<number, PublicClient>();
@@ -119,6 +144,7 @@ export function getClient(chainId: number): PublicClient {
   const rpcUrl = getRpcUrl(chainId);
 
   const client = createPublicClient({
+    chain: CHAIN_DEFINITIONS[chainId as keyof typeof CHAIN_DEFINITIONS],
     transport: http(rpcUrl),
   });
 
@@ -138,6 +164,7 @@ export function getSpandexConfig(): Config {
   return createConfig({
     providers: buildProviders(),
     clients: (chainId: number) => getClient(chainId),
+    logging: { level: "info", fn: (_level, ...details) => logger.debug({ details }, "Spandex") },
     options: {
       deadlineMs: 5_000,
     },
@@ -148,6 +175,8 @@ const decimalsCache = new Map<string, number>();
 const symbolCache = new Map<string, string>();
 
 export async function getTokenDecimals(chainId: number, address: string): Promise<number> {
+  assertSupportedChain(chainId);
+  if (isNativeToken(address as Address)) return getNativeAsset(chainId).decimals;
   const key = `${chainId}:${address.toLowerCase()}`;
   const cached = decimalsCache.get(key);
   if (cached !== undefined) return cached;
@@ -166,6 +195,8 @@ export async function getTokenDecimals(chainId: number, address: string): Promis
 }
 
 export async function getTokenSymbol(chainId: number, address: string): Promise<string> {
+  assertSupportedChain(chainId);
+  if (isNativeToken(address as Address)) return getNativeAsset(chainId).symbol;
   const key = `${chainId}:${address.toLowerCase()}`;
   const cached = symbolCache.get(key);
   if (cached !== undefined) return cached;
@@ -190,6 +221,8 @@ export async function getTokenSymbol(chainId: number, address: string): Promise<
 const nameCache = new Map<string, string>();
 
 export async function getTokenName(chainId: number, address: string): Promise<string> {
+  assertSupportedChain(chainId);
+  if (isNativeToken(address as Address)) return getNativeAsset(chainId).name;
   const key = `${chainId}:${address.toLowerCase()}`;
   const cached = nameCache.get(key);
   if (cached !== undefined) return cached;

@@ -1,3 +1,4 @@
+import { redactText } from "./redaction.js";
 import { logger } from "./logger.js";
 
 interface ErrorPattern {
@@ -18,8 +19,9 @@ function normalizeErrorMessage(err: unknown): string {
 }
 
 export function trackError(err: unknown, context: string): void {
-  const message = normalizeErrorMessage(err);
-  const key = message.slice(0, 200);
+  const message = redactText(normalizeErrorMessage(err));
+  context = redactText(context);
+  const key = message;
   const now = new Date();
 
   const existing = errorPatterns.get(key);
@@ -47,7 +49,7 @@ export function trackError(err: unknown, context: string): void {
         count: existing.count,
         contexts: existing.contexts,
       },
-      `Recurring error pattern detected (${ERROR_THRESHOLD}+ occurrences): ${key.slice(0, 100)}`
+      `Recurring error pattern detected (${ERROR_THRESHOLD}+ occurrences): ${key}`
     );
   }
 }

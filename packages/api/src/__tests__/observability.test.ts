@@ -68,7 +68,8 @@ describe("observability modules", () => {
         { chainId: 1, count: 1 },
       ])
     );
-    expect(summary.topPairs[0]?.pair).toContain("from-token");
+    expect(summary.topPairs).toContainEqual({ pair: "from-token-alpha-to-token-beta", count: 1 });
+    expect(summary.topPairs).toContainEqual({ pair: "from-token-alpha-to-token-gamma", count: 1 });
     expect(mockLogger.debug).toHaveBeenCalled();
 
     for (let i = 0; i < 10005; i++) {
@@ -158,7 +159,7 @@ describe("observability modules", () => {
       })
     );
     expect(mockSentry.captureException).toHaveBeenCalledWith(
-      expect.any(Error),
+      expect.objectContaining({ name: "Error", message: "boom" }),
       expect.objectContaining({ extra: { route: "/quote" } })
     );
     expect(mockSentry.captureMessage).toHaveBeenCalledWith("warn", "warning");

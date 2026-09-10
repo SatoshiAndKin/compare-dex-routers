@@ -4,14 +4,15 @@
    * Shows loading skeleton, error state, or full quote details.
    * Includes Approve and Swap transaction buttons when a quote is available.
    */
-  import type { SpandexQuote, CurveQuote } from "../stores/comparisonStore.svelte.js";
+  import { untrack } from "svelte";
+  import type { Quote } from "../stores/comparisonStore.svelte.js";
   import QuoteDetails from "./QuoteDetails.svelte";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
 
   interface Props {
     provider: "spandex" | "curve";
-    quote?: SpandexQuote | CurveQuote | null;
+    quote?: Quote | null;
     error?: string | null;
     loading?: boolean;
     isRecommended?: boolean;
@@ -29,7 +30,7 @@
 
   const providerName = $derived(
     provider === "spandex"
-      ? `Spandex${(quote as SpandexQuote)?.provider ? " / " + (quote as SpandexQuote).provider : ""}`
+      ? `Spandex${(quote as Quote)?.provider ? " / " + (quote as Quote).provider : ""}`
       : "Curve"
   );
 
@@ -37,7 +38,9 @@
   const primaryAmount = $derived(isTargetOut ? quote?.input_amount : quote?.output_amount);
   const primarySymbol = $derived(isTargetOut ? quote?.from_symbol : quote?.to_symbol);
   const primaryLabel = $derived(isTargetOut ? "You pay (required)" : "You receive (estimated)");
-  const hasGasCost = $derived(Boolean(quote?.gas_cost_eth) && Number(quote?.gas_cost_eth) > 0);
+  const hasGasCost = $derived(
+    Boolean(quote?.gas_cost_native) && Number(quote?.gas_cost_native) > 0
+  );
 
   // ---------------------------------------------------------------------------
   // Transaction state
@@ -46,26 +49,26 @@
   /** Router name key used in transactionStore status records */
   const routerName = $derived(provider === "spandex" ? "spandex" : "curve");
 
-  /** Whether this quote requires an ERC-20 approval step */
-  const needsApproval = $derived(
-    quote != null &&
-      (Boolean((quote as SpandexQuote).approval_token) ||
-        Boolean((quote as CurveQuote).approval_target))
-  );
-
-  /** Whether this quote has executable swap calldata */
-  const canSwap = $derived(
-    quote != null && Boolean(quote.router_address) && Boolean(quote.router_calldata)
-  );
-
-  const approveStatus = $derived(transactionStore.getApproveStatus(routerName));
-  const swapStatus = $derived(transactionStore.getSwapStatus(routerName));
-
+  const needsApproval = $derived(Boolean(quote?.execution?.approval));
+  const canSwap = $derived(Boolean(quote?.execution));
+  const validContext = $derived(quote !== null && transactionStore.matches(quote));
+  const approveStatus = $derived(quote ? transactionStore.getApproveStatus(quote) : "idle");
+  const swapStatus = $derived(quote ? transactionStore.getSwapStatus(quote) : "idle");
   const approvePending = $derived(approveStatus === "pending");
   const swapPending = $derived(swapStatus === "pending");
-
-  /** Approve is locked once confirmed */
   const approveConfirmed = $derived(approveStatus === "confirmed");
+
+  $effect(() => {
+    const currentQuote = quote;
+    const account = walletStore.address;
+    const chainId = walletStore.chainId;
+    void account;
+    void chainId;
+    if (currentQuote)
+      untrack(() => {
+        void transactionStore.refreshAllowance(currentQuote);
+      });
+  });
 
   function handleApprove(): void {
     if (!quote) return;
@@ -122,7 +125,7 @@
       {#if hasGasCost}
         <div class="gas-info">
           <span class="gas-label">Gas Cost</span>
-          <span class="gas-value">{quote.gas_cost_eth} ETH</span>
+          <span class="gas-value">{quote.gas_cost_native} {quote.native_currency}</span>
         </div>
       {/if}
       {#if gasPriceGwei}
@@ -133,7 +136,18 @@
       {/if}
 
       <!-- Expandable details -->
-      <QuoteDetails {quote} type={provider} {gasPriceGwei} />
+      <QuoteDetails {quote} {gasPriceGwei} />
+
+      {#if !quote.execution}
+        <div class="tx-actions">
+          {#if !walletStore.isConnected}
+            <button type="button" class="tx-btn" onclick={() => walletStore.requestMenu()}
+              >Connect wallet</button
+            >
+          {/if}
+          <span>Preview only. Connect your wallet and review a fresh quote before swapping.</span>
+        </div>
+      {/if}
 
       <!-- Transaction actions -->
       {#if needsApproval || canSwap}
@@ -143,7 +157,10 @@
               type="button"
               class="tx-btn approve-btn"
               class:confirmed={approveConfirmed}
-              disabled={approvePending || approveConfirmed}
+              disabled={transactionStore.busy ||
+                !validContext ||
+                approvePending ||
+                approveConfirmed}
               aria-label={approveConfirmed
                 ? "Already approved"
                 : approvePending
@@ -167,7 +184,10 @@
             <button
               type="button"
               class="tx-btn swap-btn"
-              disabled={swapPending}
+              disabled={transactionStore.busy ||
+                !validContext ||
+                (needsApproval && !approveConfirmed) ||
+                swapPending}
               aria-label={swapPending
                 ? "Swap in progress..."
                 : walletStore.isConnected

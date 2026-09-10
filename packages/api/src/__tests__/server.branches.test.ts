@@ -1,909 +1,149 @@
-/**
- * Tests targeting uncovered branches in server.ts.
- *
- * Uses STATIC imports (no vi.resetModules()) so that v8 coverage
- * properly tracks all executed lines and branches.
- */
 import http from "node:http";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-const {
-  getQuoteMock,
-  getQuotesMock,
-  getTokenDecimalsMock,
-  getTokenSymbolMock,
-  getTokenNameMock,
-  getGasPriceMock,
-  getBlockNumberMock,
-  getClientMock,
-  captureExceptionMock,
-  captureMessageMock,
-  flags,
-  ADDR_FROM,
-  ADDR_TO,
-  ADDR_ROUTER,
-  ADDR_APPROVAL_TOKEN,
-  ADDR_APPROVAL_SPENDER,
-  ADDR_SENDER,
-  ALL_WETH,
-} = vi.hoisted(() => {
-  const mkAddr = (c: string) => `0x${c.repeat(40)}`;
-  return {
-    getQuoteMock: vi.fn(),
-    getQuotesMock: vi.fn().mockResolvedValue([]),
-    getTokenDecimalsMock: vi.fn(),
-    getTokenSymbolMock: vi.fn(),
-    getTokenNameMock: vi.fn(),
-    getGasPriceMock: vi.fn(),
-    getBlockNumberMock: vi.fn(),
-    getClientMock: vi.fn(),
-    captureExceptionMock: vi.fn(),
-    captureMessageMock: vi.fn(),
-    flags: { compareEndpoint: true, metricsEndpoint: true },
-    ADDR_FROM: mkAddr("1"),
-    ADDR_TO: mkAddr("2"),
-    ADDR_ROUTER: mkAddr("3"),
-    ADDR_APPROVAL_TOKEN: mkAddr("4"),
-    ADDR_APPROVAL_SPENDER: mkAddr("5"),
-    ADDR_SENDER: mkAddr("6"),
-    ALL_WETH: [
-      "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-      "0x4200000000000000000000000000000000000006",
-      "0x82aF49447D8a07e3340369C42921F5baB03F7D1D",
-      "0x7ceB23bD638e8c21a3e6f28A20c2eE60b7E34F54",
-      "0xbb4CdB9CBd36B01bD1cBaEB2Fe939D64f10c92b3",
-      "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7",
-    ].map((a) => a.toLowerCase()),
-  };
-});
-
-vi.mock("@spandex/core", () => ({
-  getQuote: getQuoteMock,
-  getQuotes: getQuotesMock,
-  getQuotesMock,
-  serializeWithBigInt: (data: unknown) =>
-    JSON.stringify(data, (_key, value) => (typeof value === "bigint" ? value.toString() : value)),
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const mocks = vi.hoisted(() => ({
+  decimals: vi.fn(),
+  symbol: vi.fn(),
+  name: vi.fn(),
+  metrics: true,
 }));
-
-vi.mock("../config.js", () => ({
-  getSpandexConfig: vi.fn(() => ({ mocked: true, clientLookup: vi.fn().mockReturnValue({}) })),
-  getTokenDecimals: getTokenDecimalsMock,
-  getTokenSymbol: getTokenSymbolMock,
-  getTokenName: getTokenNameMock,
-  getClient: getClientMock,
-  getRpcUrl: vi.fn().mockReturnValue("https://mock-rpc.example.com"),
-  SUPPORTED_CHAINS: {
-    1: { name: "Ethereum", alchemySubdomain: "eth-mainnet" },
-    8453: { name: "Base", alchemySubdomain: "base-mainnet" },
-    42161: { name: "Arbitrum", alchemySubdomain: "arb-mainnet" },
-  },
-  DEFAULT_TOKENS: {
-    1: { from: ADDR_FROM, to: ADDR_TO },
-    8453: { from: ADDR_FROM, to: ADDR_TO },
-  },
+vi.mock("../config.js", async (original) => ({
+  ...(await original<typeof import("../config.js")>()),
+  getTokenDecimals: mocks.decimals,
+  getTokenSymbol: mocks.symbol,
+  getTokenName: mocks.name,
 }));
-
-vi.mock("../curve.js", () => ({
-  initAllCurveInstances: vi.fn(),
-  initCurveInstance: vi.fn(),
-  isCurveInitialized: vi.fn().mockReturnValue(true),
-  getCurveInitError: vi.fn().mockReturnValue(undefined),
-}));
-
+vi.mock("../quotes.js", () => ({ compareQuotes: vi.fn(), singleQuote: vi.fn() }));
 vi.mock("../feature-flags.js", () => ({
-  isEnabled: (flag: string) => {
-    if (flag === "compare_endpoint") return flags.compareEndpoint;
-    if (flag === "metrics_endpoint") return flags.metricsEndpoint;
-    if (flag === "curve_enabled") return true;
-    return true;
-  },
-  getAllFlags: () => ({
-    curve_enabled: true,
-    compare_endpoint: flags.compareEndpoint,
-    metrics_endpoint: flags.metricsEndpoint,
-  }),
+  isEnabled: () => mocks.metrics,
+  getAllFlags: () => ({ metrics_endpoint: mocks.metrics }),
 }));
-
-vi.mock("../logger.js", () => ({
-  logger: { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() },
-}));
-
-vi.mock("../sentry.js", () => ({
-  captureException: captureExceptionMock,
-  captureMessage: captureMessageMock,
-}));
-
-// STATIC import so v8 coverage tracks all branches
-import { handleRequest } from "../server.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const makeAddress = (char: string) => `0x${char.repeat(40)}`;
-
-let blockCounter = 1000n;
-
-function makeQuote(overrides?: {
-  outputAmount?: bigint;
-  inputAmount?: bigint;
-  gasUsed?: bigint;
-  provider?: string;
-  txValue?: bigint;
-}) {
-  return {
-    success: true,
-    simulation: {
-      outputAmount: overrides?.outputAmount ?? 2_500_000_000_000_000_000n,
-      gasUsed: overrides?.gasUsed ?? 21000n,
-    },
-    inputAmount: overrides?.inputAmount ?? 1_000_000n,
-    provider: overrides?.provider ?? "fabric",
-    txData: {
-      to: ADDR_ROUTER,
-      data: "0xdeadbeef",
-      ...(overrides?.txValue !== undefined ? { value: overrides.txValue } : {}),
-    },
-    approval: { token: ADDR_APPROVAL_TOKEN, spender: ADDR_APPROVAL_SPENDER },
-  };
-}
-
-function makeCurveQuote(overrides?: {
-  output?: string;
-  input?: string;
-  gas?: string;
-  inputAmountRaw?: bigint;
-}) {
-  const outputAmount = overrides?.output
-    ? BigInt(parseFloat(overrides.output) * 1e18)
-    : 2_000_000_000_000_000_000n;
-  const gasUsed = overrides?.gas ? BigInt(overrides.gas) : 30000n;
-  const inputAmount =
-    overrides?.inputAmountRaw ??
-    (overrides?.input ? BigInt(parseFloat(overrides.input) * 1e6) : 1_000_000n);
-
-  return {
-    success: true,
-    simulation: { outputAmount, gasUsed },
-    inputAmount,
-    provider: "curve",
-    source: "curve",
-    from: ADDR_FROM,
-    from_symbol: "USDC",
-    to: ADDR_TO,
-    to_symbol: "WETH",
-    amount: "1",
-    input_amount: overrides?.input ?? "1000",
-    output_amount: overrides?.output ?? "2.0",
-    route: [],
-    route_symbols: {},
-    router_address: makeAddress("7"),
-    router_calldata: "0xbeef",
-    txData: { to: makeAddress("7"), data: "0xbeef" },
-    gas_used: overrides?.gas ?? "30000",
-  };
-}
-
-function req(
-  url: string,
-  method = "GET"
+let server: http.Server;
+let base: string;
+function request(
+  path: string,
+  options: http.RequestOptions = {}
 ): Promise<{ status: number; body: string; headers: http.IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    const r = http.request(
-      { hostname: u.hostname, port: u.port, path: u.pathname + u.search, method },
-      (res) => {
+    http
+      .get(`${base}${path}`, options, (response) => {
         let body = "";
-        res.on("data", (chunk: string) => (body += chunk));
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, body, headers: res.headers }));
-      }
-    );
-    r.on("error", reject);
-    r.end();
+        response.setEncoding("utf8");
+        response.on("data", (part: string) => {
+          body += part;
+        });
+        response.on("end", () =>
+          resolve({ status: response.statusCode ?? 0, body, headers: response.headers })
+        );
+      })
+      .on("error", reject);
   });
 }
-
-/** Configure getQuoteMock to return `quote` for regular calls and optionally handle rate fetches. */
-function mockQuoteWithRate(
-  quote: ReturnType<typeof makeQuote> | null,
-  rateResult: "success" | "null" | "error" = "success"
-) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getQuoteMock.mockImplementation(async (params: any) => {
-    const out: string = params.swap.outputToken?.toLowerCase() ?? "";
-    if (ALL_WETH.includes(out)) {
-      if (rateResult === "null") return null;
-      if (rateResult === "error") throw new Error("Rate fetch failed");
-      return {
-        simulation: { outputAmount: 400_000_000_000_000n, gasUsed: 50000n },
-        inputAmount: params.swap.inputAmount,
-        provider: "fabric",
-        txData: { to: ADDR_ROUTER, data: "0xdeadbeef" },
-      };
-    }
-    return quote;
-  });
-}
-
-function compareUrl(chainId: number, extra = "") {
-  return `${baseUrl}/compare?chainId=${chainId}&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50${extra}`;
-}
-
-// ---------------------------------------------------------------------------
-// Server lifecycle
-// ---------------------------------------------------------------------------
-
-let server: http.Server;
-let baseUrl: string;
-
-beforeAll(async () => {
-  process.env.ALCHEMY_API_KEY ??= "test-key";
-  server = http.createServer((r, s) => void handleRequest(r, s));
+beforeEach(async () => {
+  vi.resetModules();
+  vi.clearAllMocks();
+  mocks.metrics = true;
+  mocks.decimals.mockResolvedValue(6);
+  mocks.symbol.mockResolvedValue("USDC");
+  mocks.name.mockResolvedValue("USD Coin");
+  const { handleRequest } = await import("../server.js");
+  server = http.createServer(handleRequest);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const a = server.address();
-  if (a && typeof a === "object") baseUrl = `http://127.0.0.1:${a.port}`;
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("No listener");
+  base = `http://127.0.0.1:${address.port}`;
 });
-
-afterAll(async () => {
+afterEach(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  flags.compareEndpoint = true;
-  flags.metricsEndpoint = true;
-  blockCounter += 1n;
-
-  getTokenDecimalsMock.mockImplementation(async (_c: number, token: string) =>
-    token.toLowerCase() === ADDR_FROM.toLowerCase() ? 6 : 18
+const metadata = "/token-metadata?chainId=1&address=0x1111111111111111111111111111111111111111";
+describe("HTTP boundaries", () => {
+  it.each(["[", "host:bad", "user:secret@example.test", "host/path", "host?query"])(
+    "rejects malformed Host %s and keeps serving requests",
+    async (host) => {
+      const response = await request("/health", { headers: { host } });
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body).code).toBe("INVALID_REQUEST");
+      expect((await request("/health")).status).toBe(200);
+    }
   );
-  getTokenSymbolMock.mockImplementation(async (_c: number, token: string) =>
-    token.toLowerCase() === ADDR_FROM.toLowerCase() ? "USDC" : "WETH"
+  it("replaces unsafe request identifiers", async () => {
+    const response = await request("/health", {
+      headers: { "x-request-id": "secret in a very long untrusted request id" },
+    });
+    expect(response.headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+  it("retains safe request identifiers in errors", async () => {
+    const response = await request("/missing", { headers: { "x-request-id": "client-123" } });
+    expect(JSON.parse(response.body)).toEqual({
+      error: "Not found",
+      code: "NOT_FOUND",
+      requestId: "client-123",
+    });
+  });
+  it("returns 204 for OPTIONS", async () => {
+    expect((await request("/compare", { method: "OPTIONS" })).status).toBe(204);
+  });
+  it.each(["/openapi.json", "/openapi.yaml"])(
+    "%s publishes the current quote contract",
+    async (path) => {
+      const response = await request(path);
+      expect(response.status).toBe(200);
+      const spec = JSON.parse(response.body);
+      expect(spec.components.schemas.Quote.properties.execution).toBeDefined();
+      expect(spec.components.schemas.Quote.properties.router_address).toBeUndefined();
+      expect(spec.components.schemas.CompareResult.properties.recommendation_basis).toBeDefined();
+    }
   );
-  getTokenNameMock.mockResolvedValue("Mock Token");
-  getGasPriceMock.mockResolvedValue(1_000_000_000n); // 1 gwei
-  getBlockNumberMock.mockResolvedValue(blockCounter);
-  getClientMock.mockReturnValue({
-    getGasPrice: getGasPriceMock,
-    getBlockNumber: getBlockNumberMock,
+  it("docs resolve their schema through the same API prefix", async () => {
+    const response = await request("/docs");
+    expect(response.headers["content-type"]).toContain("text/html");
+    expect(response.body).toContain('url: "./openapi.json"');
   });
-});
-
-// ===========================================================================
-// 1. Static endpoints
-// ===========================================================================
-
-describe("static endpoints", () => {
-  it("OPTIONS returns 204", async () => {
-    const res = await req(`${baseUrl}/health`, "OPTIONS");
-    expect(res.status).toBe(204);
-    expect(res.headers["access-control-allow-origin"]).toBe("*");
+  it("builds the Farcaster manifest from the request origin", async () => {
+    const response = await request("/.well-known/farcaster.json", {
+      headers: { host: "dex.example", "x-forwarded-proto": "https" },
+    });
+    expect(JSON.parse(response.body).miniapp.homeUrl).toBe("https://dex.example/?miniApp=true");
   });
-
-  it("GET /openapi.json returns spec", async () => {
-    const res = await req(`${baseUrl}/openapi.json`);
-    expect(res.status).toBe(200);
-    expect(res.headers["content-type"]).toContain("application/json");
-    const body = JSON.parse(res.body);
-    expect(body.openapi).toBeDefined();
+  it("serves metrics only when enabled", async () => {
+    expect((await request("/metrics")).body).toContain("spandex_requests_total");
+    mocks.metrics = false;
+    expect((await request("/metrics")).status).toBe(404);
   });
-
-  it("GET /openapi.yaml also returns JSON spec", async () => {
-    const res = await req(`${baseUrl}/openapi.yaml`);
-    expect(res.status).toBe(200);
+  it("returns full token metadata including zero decimals and empty optional names", async () => {
+    mocks.decimals.mockResolvedValue(0);
+    mocks.symbol.mockResolvedValue("");
+    mocks.name.mockResolvedValue("");
+    const response = await request(metadata);
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ name: "", symbol: "", decimals: 0 });
   });
-
-  it("GET /docs returns Swagger UI HTML", async () => {
-    const res = await req(`${baseUrl}/docs`);
-    expect(res.status).toBe(200);
-    expect(res.headers["content-type"]).toContain("text/html");
-    expect(res.body).toContain("swagger-ui");
-  });
-
-  it("GET /.well-known/farcaster.json returns manifest", async () => {
-    const res = await req(`${baseUrl}/.well-known/farcaster.json`);
-    expect(res.status).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.miniapp.name).toBe("Compare DEX Routers");
-  });
-
-  it("GET /metrics returns prometheus data when enabled", async () => {
-    flags.metricsEndpoint = true;
-    const res = await req(`${baseUrl}/metrics`);
-    expect(res.status).toBe(200);
-    expect(res.headers["content-type"]).toContain("text/plain");
-  });
-
-  it("GET /metrics returns 404 when disabled", async () => {
-    flags.metricsEndpoint = false;
-    const res = await req(`${baseUrl}/metrics`);
-    expect(res.status).toBe(404);
-  });
-});
-
-// ===========================================================================
-// 2. /quote handler
-// ===========================================================================
-
-describe("/quote handler", () => {
-  it("returns successful quote with approval and router value", async () => {
-    getQuoteMock.mockResolvedValue(makeQuote({ txValue: 42n }));
-    const res = await req(
-      `${baseUrl}/quote?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
-    );
-    expect(res.status).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.provider).toBe("fabric");
-    expect(body.router_value).toBe("42");
-    expect(body.approval_token).toBe(ADDR_APPROVAL_TOKEN);
-  });
-
-  it("falls back to fallback account when sender quote is null", async () => {
-    getQuoteMock.mockResolvedValueOnce(null).mockResolvedValueOnce(makeQuote({ provider: "fb" }));
-    const res = await req(
-      `${baseUrl}/quote?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50&sender=${ADDR_SENDER}`
-    );
-    expect(res.status).toBe(200);
-    expect(JSON.parse(res.body).provider).toBe("fb");
-  });
-
-  it("returns 500 when all sources fail", async () => {
-    getQuoteMock.mockResolvedValue(null);
-    const res = await req(
-      `${baseUrl}/quote?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
-    );
-    expect(res.status).toBe(500);
-    expect(captureExceptionMock).toHaveBeenCalled();
-  });
-
-  it("returns 400 for bad params", async () => {
-    const res = await req(`${baseUrl}/quote?chainId=1&from=bad&to=${ADDR_TO}&amount=1`);
-    expect(res.status).toBe(400);
-  });
-});
-
-// ===========================================================================
-// 3. /quote-curve handler
-// ===========================================================================
-
-describe("/quote-curve handler", () => {
-  it("returns successful curve quote", async () => {
-    getQuotesMock.mockResolvedValue([makeCurveQuote({ output: "2.5" })]);
-    const res = await req(
-      `${baseUrl}/quote-curve?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
-    );
-    expect(res.status).toBe(200);
-    expect(JSON.parse(res.body).source).toBe("curve");
-  });
-
-  it("returns 500 when curve fails", async () => {
-    getQuotesMock.mockRejectedValue(new Error("Curve routing failed"));
-    const res = await req(
-      `${baseUrl}/quote-curve?chainId=1&from=${ADDR_FROM}&to=${ADDR_TO}&amount=1&slippageBps=50`
-    );
-    expect(res.status).toBe(500);
-  });
-
-  it("returns 400 for bad params", async () => {
-    const res = await req(`${baseUrl}/quote-curve?chainId=999&from=bad&to=bad&amount=1`);
-    expect(res.status).toBe(400);
-  });
-});
-
-// ===========================================================================
-// 4. /compare — exactIn with WETH output (gas-adjusted, default case)
-// ===========================================================================
-
-describe("/compare exactIn WETH output", () => {
-  it("recommends curve when curve has higher net value", async () => {
-    const sq_65458 = makeQuote({ outputAmount: 1_000_000_000_000_000_000n, gasUsed: 20000n });
-    getQuoteMock.mockResolvedValue(sq_65458);
-    getQuotesMock.mockResolvedValue([sq_65458, makeCurveQuote({ output: "2.5", gas: "30000" })]);
-
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.recommendation_reason).toContain("after gas");
-    expect(b.gas_price_gwei).toBeDefined();
-  });
-
-  it("recommends spandex when spandex has higher net value", async () => {
-    const sq_69094 = makeQuote({ outputAmount: 3_000_000_000_000_000_000n, gasUsed: 20000n });
-    getQuoteMock.mockResolvedValue(sq_69094);
-    getQuotesMock.mockResolvedValue([sq_69094, makeCurveQuote({ output: "2.5", gas: "30000" })]);
-
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(200);
-    expect(JSON.parse(res.body).recommendation).toBe("spandex");
-  });
-
-  it("defaults to spandex when net values are equal", async () => {
-    const sq_92159 = makeQuote({ outputAmount: 2_000_000_000_000_000_000n, gasUsed: 30000n });
-    getQuoteMock.mockResolvedValue(sq_92159);
-    getQuotesMock.mockResolvedValue([sq_92159, makeCurveQuote({ output: "2.0", gas: "30000" })]);
-
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Equal");
-  });
-
-  it("gas flip: high-gas route loses despite higher raw output", async () => {
-    // Spandex: 1.50 ETH, 15M gas; Curve: 1.49 ETH, 10k gas
-    // At 1 gwei: Spandex adjusted = 1.50 - 0.015 = 1.485, Curve adjusted = 1.49 - 0.00001 = 1.48999
-    const sq_86782 = makeQuote({ outputAmount: 1_500_000_000_000_000_000n, gasUsed: 15_000_000n });
-    getQuoteMock.mockResolvedValue(sq_86782);
-    getQuotesMock.mockResolvedValue([sq_86782, makeCurveQuote({ output: "1.49", gas: "10000" })]);
-
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.recommendation_reason).toContain("after gas");
-  });
-});
-
-// ===========================================================================
-// 5. /compare — exactIn with non-ETH output (rate fetch path)
-// ===========================================================================
-
-describe("/compare exactIn non-ETH output", () => {
-  beforeEach(() => {
-    // Output token is DAI (not ETH/WETH)
-    getTokenSymbolMock.mockImplementation(async (_c: number, token: string) =>
-      token.toLowerCase() === ADDR_FROM.toLowerCase() ? "USDC" : "DAI"
-    );
-  });
-
-  it("gas-adjusted comparison with output->ETH rate", async () => {
-    mockQuoteWithRate(null, "success");
-    const sq = makeQuote({ outputAmount: 2_500_000_000n, gasUsed: 20000n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ output: "2600", gas: "30000" }),
-        to_symbol: "DAI",
-      },
-    ]);
-
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.output_to_eth_rate).toBeDefined();
-    expect(b.recommendation_reason).toContain("ETH");
-    expect(b.recommendation_reason).toContain("after gas");
-  });
-
-  it("!canDoGasAdjusted && bothHaveGas: Curve outputs more", async () => {
-    // Use chainId=8453 to avoid rate cache from earlier tests
-    // DAI is 18 decimals: 2000 DAI = 2_000e18
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ outputAmount: 2_000_000_000_000_000_000_000n, gasUsed: 20000n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ output: "2600", gas: "30000" }),
-        to_symbol: "DAI",
-      },
-    ]);
-
-    const res = await req(compareUrl(8453));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.recommendation_reason).toContain("Gas costs");
-    expect(b.recommendation_reason).toContain("rate unavailable");
-  });
-
-  it("!canDoGasAdjusted && bothHaveGas: Spandex outputs more", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ outputAmount: 3_000_000_000_000_000_000_000n, gasUsed: 20000n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ output: "2600", gas: "30000" }),
-        to_symbol: "DAI",
-      },
-    ]);
-
-    const res = await req(compareUrl(8453));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("rate unavailable");
-  });
-
-  it("!canDoGasAdjusted && bothHaveGas: equal output", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ outputAmount: 2_600_000_000_000_000_000_000n, gasUsed: 20000n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ output: "2600", gas: "30000" }),
-        to_symbol: "DAI",
-      },
-    ]);
-
-    const res = await req(compareUrl(8453));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Equal output");
-  });
-
-  it("no gas fallback: Curve outputs more, missing Spandex gas", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ outputAmount: 2_000_000_000_000_000_000_000n, gasUsed: 0n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ output: "2600", gas: "30000" }),
-        to_symbol: "DAI",
-      },
-    ]);
-
-    const res = await req(compareUrl(8453));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.recommendation_reason).toContain("Gas estimates unavailable");
-    expect(b.recommendation_reason).toContain("Spandex");
-  });
-
-  it("no gas fallback: Spandex outputs more, missing Curve gas", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ outputAmount: 3_000_000_000_000_000_000_000n, gasUsed: 20000n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ output: "2600", gas: "0" }),
-        to_symbol: "DAI",
-        gas_used: undefined,
-      },
-    ]);
-
-    const res = await req(compareUrl(8453));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Gas estimates unavailable");
-    expect(b.recommendation_reason).toContain("Curve");
-  });
-
-  it("no gas fallback: equal output, both missing gas", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ outputAmount: 2_600_000_000_000_000_000_000n, gasUsed: 0n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ output: "2600", gas: "0" }),
-        to_symbol: "DAI",
-        gas_used: undefined,
-      },
-    ]);
-
-    const res = await req(compareUrl(8453));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Equal output");
-    expect(b.recommendation_reason).toContain("Gas estimates unavailable");
-  });
-});
-
-// ===========================================================================
-// 6. /compare — targetOut mode (both routers return results)
-// ===========================================================================
-
-describe("/compare targetOut both results", () => {
-  const targetOutUrl = (chainId: number) => compareUrl(chainId, "&mode=targetOut");
-
-  it("gas-adjusted: Curve wins, inputIsEth=true", async () => {
-    // Input is ETH -> inputIsEth = true, canDoGasAdjusted = true
-    // Both tokens treated as 18 decimals (WETH)
-    getTokenSymbolMock.mockResolvedValue("WETH");
-    getTokenDecimalsMock.mockResolvedValue(18);
-
-    const sq_25450 = makeQuote({ inputAmount: 1_010_000_000_000_000_000n, gasUsed: 15_000_000n });
-    getQuoteMock.mockResolvedValue(sq_25450);
-    getQuotesMock.mockResolvedValue([
-      sq_25450,
-      {
-        ...makeCurveQuote({
-          inputAmountRaw: 1_000_000_000_000_000_000n,
-          input: "1.0",
-          gas: "10000",
-        }),
-        from_symbol: "WETH",
-      },
-    ]);
-
-    const res = await req(targetOutUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.recommendation_reason).toContain("ETH total");
-    expect(b.recommendation_reason).toContain("Curve recommended");
-    expect(b.mode).toBe("targetOut");
-  });
-
-  it("gas-adjusted: Spandex wins, inputIsEth=true", async () => {
-    getTokenSymbolMock.mockResolvedValue("WETH");
-    getTokenDecimalsMock.mockResolvedValue(18);
-
-    const sq_62937 = makeQuote({ inputAmount: 1_000_000_000_000_000_000n, gasUsed: 10000n });
-    getQuoteMock.mockResolvedValue(sq_62937);
-    getQuotesMock.mockResolvedValue([
-      sq_62937,
-      {
-        ...makeCurveQuote({
-          inputAmountRaw: 1_010_000_000_000_000_000n,
-          input: "1.01",
-          gas: "15000000",
-        }),
-        from_symbol: "WETH",
-      },
-    ]);
-
-    const res = await req(targetOutUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Spandex");
-  });
-
-  it("gas-adjusted: Curve wins, non-ETH input (with rate)", async () => {
-    // USDC input -> need inputToEthRate
-    mockQuoteWithRate(null, "success");
-    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n });
-
-    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2400", gas: "30000" })]);
-
-    const res = await req(targetOutUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.input_to_eth_rate).toBeDefined();
-    expect(b.recommendation_reason).toContain("Rate:");
-    expect(b.recommendation_reason).toContain("Curve recommended");
-  });
-
-  it("gas-adjusted: Spandex wins, non-ETH input (with rate)", async () => {
-    mockQuoteWithRate(null, "success");
-    const sq = makeQuote({ inputAmount: 2_400_000_000n, gasUsed: 20000n });
-
-    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2500", gas: "30000" })]);
-
-    const res = await req(targetOutUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Spandex");
-  });
-
-  it("gas-adjusted: equal total cost", async () => {
-    getTokenSymbolMock.mockResolvedValue("WETH");
-    getTokenDecimalsMock.mockResolvedValue(18);
-
-    const sq_67927 = makeQuote({ inputAmount: 1_000_000_000_000_000_000n, gasUsed: 30000n });
-    getQuoteMock.mockResolvedValue(sq_67927);
-    getQuotesMock.mockResolvedValue([
-      sq_67927,
-      {
-        ...makeCurveQuote({
-          inputAmountRaw: 1_000_000_000_000_000_000n,
-          input: "1.0",
-          gas: "30000",
-        }),
-        from_symbol: "WETH",
-      },
-    ]);
-
-    const res = await req(targetOutUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Equal total cost");
-  });
-
-  it("!canDoGasAdjusted && bothHaveGas: Curve requires less", async () => {
-    // Rate fetch fails -> canDoGasAdjusted = false
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n });
-    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2400", gas: "30000" })]);
-
-    const res = await req(targetOutUrl(42161));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.recommendation_reason).toContain("less");
-    expect(b.recommendation_reason).toContain("rate unavailable");
-  });
-
-  it("!canDoGasAdjusted && bothHaveGas: Spandex requires less", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ inputAmount: 2_400_000_000n, gasUsed: 20000n });
-    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2500", gas: "30000" })]);
-
-    const res = await req(targetOutUrl(42161));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("less");
-  });
-
-  it("!canDoGasAdjusted && bothHaveGas: equal input", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n });
-    getQuotesMock.mockResolvedValue([sq, makeCurveQuote({ input: "2500", gas: "30000" })]);
-
-    const res = await req(targetOutUrl(42161));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Equal input");
-  });
-
-  it("no gas fallback: Curve requires less, missing gas", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 0n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ input: "2400", gas: "0" }),
-        gas_used: undefined,
-      },
-    ]);
-
-    const res = await req(targetOutUrl(8453));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.recommendation_reason).toContain("Gas estimates unavailable");
-  });
-
-  it("no gas fallback: Spandex requires less, missing gas", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ inputAmount: 2_400_000_000n, gasUsed: 0n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ input: "2500", gas: "0" }),
-        gas_used: undefined,
-      },
-    ]);
-
-    const res = await req(targetOutUrl(8453));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-  });
-
-  it("no gas fallback: equal input, missing gas", async () => {
-    mockQuoteWithRate(null, "null");
-    const sq = makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 0n });
-    getQuotesMock.mockResolvedValue([
-      sq,
-      {
-        ...makeCurveQuote({ input: "2500", gas: "0" }),
-        gas_used: undefined,
-      },
-    ]);
-
-    const res = await req(targetOutUrl(8453));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Equal input");
-  });
-});
-
-// ===========================================================================
-// 7. /compare — single router + neither router
-// ===========================================================================
-
-describe("/compare single-router enrichment", () => {
-  it("only Spandex, exactIn mode", async () => {
-    getQuotesMock.mockResolvedValue([
-      makeQuote({ outputAmount: 3_000_000_000_000_000_000n, gasUsed: 20000n }),
-    ]);
-
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Only Spandex");
-    expect(b.spandex.gas_cost_eth).toBeDefined();
-  });
-
-  it("only Spandex, targetOut mode", async () => {
-    getQuotesMock.mockResolvedValue([makeQuote({ inputAmount: 2_500_000_000n, gasUsed: 20000n })]);
-
-    const res = await req(compareUrl(1, "&mode=targetOut"));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("spandex");
-    expect(b.recommendation_reason).toContain("Only Spandex");
-    expect(b.spandex.gas_cost_eth).toBeDefined();
-  });
-
-  it("only Curve, exactIn mode", async () => {
-    getQuotesMock.mockResolvedValue([makeCurveQuote({ output: "2.5", gas: "30000" })]);
-
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.recommendation_reason).toContain("Only Curve");
-    expect(b.curve.gas_cost_eth).toBeDefined();
-  });
-
-  it("only Curve, targetOut mode", async () => {
-    getQuotesMock.mockResolvedValue([makeCurveQuote({ input: "2400", gas: "30000" })]);
-
-    const res = await req(compareUrl(1, "&mode=targetOut"));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBe("curve");
-    expect(b.recommendation_reason).toContain("Only Curve");
-    expect(b.curve.gas_cost_eth).toBeDefined();
-  });
-
-  it("neither router returns a quote", async () => {
-    getQuotesMock.mockRejectedValue(new Error("both down"));
-
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(200);
-    const b = JSON.parse(res.body);
-    expect(b.recommendation).toBeNull();
-    expect(b.recommendation_reason).toContain("Neither");
-  });
-});
-
-// ===========================================================================
-// 8. /compare feature flag & validation
-// ===========================================================================
-
-describe("/compare edge cases", () => {
-  it("returns 404 when compare_endpoint is disabled", async () => {
-    flags.compareEndpoint = false;
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(404);
-  });
-
-  it("returns 400 for invalid params", async () => {
-    const res = await req(
-      `${baseUrl}/compare?chainId=1&from=bad&to=${ADDR_TO}&amount=1&slippageBps=50`
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("handles compare error gracefully (500 from unhandled throw)", async () => {
-    // Both quotes succeed, but getTokenDecimals throws on the rate fetch call
-    // (3rd call), making compareQuotes throw unhandled
-    getTokenSymbolMock.mockImplementation(async (_c: number, token: string) =>
-      token.toLowerCase() === ADDR_FROM.toLowerCase() ? "USDC" : "DAI"
-    );
-    const sq_71219 = makeQuote({ outputAmount: 2_000_000_000n, gasUsed: 20000n });
-    getQuoteMock.mockResolvedValue(sq_71219);
-    getQuotesMock.mockResolvedValue([
-      sq_71219,
-      {
-        ...makeCurveQuote({ output: "2600", gas: "30000" }),
-        to_symbol: "DAI",
-      },
-    ]);
-    // First two getTokenDecimals calls succeed (findQuote), third throws (rate fetch)
-    getTokenDecimalsMock
-      .mockResolvedValueOnce(6)
-      .mockResolvedValueOnce(18)
-      .mockRejectedValueOnce(new Error("decimals failed"));
-
-    const res = await req(compareUrl(1));
-    expect(res.status).toBe(500);
-    expect(JSON.parse(res.body).error).toContain("decimals failed");
-  });
+  it.each(["execution reverted", "returned no data", "not a contract"])(
+    "returns 404 for invalid tokens: %s",
+    async (message) => {
+      mocks.decimals.mockRejectedValue(new Error(message));
+      expect((await request(metadata)).status).toBe(404);
+    }
+  );
+  it.each(["timeout", "ECONNREFUSED", "unexpected failure"])(
+    "does not disclose RPC error details: %s",
+    async (message) => {
+      mocks.decimals.mockRejectedValue(
+        new Error(`${message} https://user:secret@rpc.example/v2/key?apiKey=secret-value`)
+      );
+      const response = await request(metadata);
+      expect(response.status).toBe(500);
+      expect(JSON.parse(response.body)).toMatchObject({
+        error: "Token metadata is unavailable. Please try again.",
+        code: "UPSTREAM_ERROR",
+      });
+    }
+  );
+  it.each(["1junk", "1.5", "1e0", "", "-1", "0"])(
+    "rejects malformed metadata chain IDs: %s",
+    async (chain) => {
+      expect((await request(metadata.replace("chainId=1", `chainId=${chain}`))).status).toBe(400);
+      expect(mocks.decimals).not.toHaveBeenCalled();
+    }
+  );
 });

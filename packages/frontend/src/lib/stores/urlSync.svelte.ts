@@ -114,7 +114,8 @@ export function applyUrlParamsToForm(urlParams: UrlParams): void {
     const token: TokenInfo = {
       address: urlParams.from,
       symbol: "",
-      decimals: 18,
+      decimals: null,
+      chainId: formStore.chainId,
     };
     formStore.fromToken = token;
   }
@@ -123,7 +124,8 @@ export function applyUrlParamsToForm(urlParams: UrlParams): void {
     const token: TokenInfo = {
       address: urlParams.to,
       symbol: "",
-      decimals: 18,
+      decimals: null,
+      chainId: formStore.chainId,
     };
     formStore.toToken = token;
   }

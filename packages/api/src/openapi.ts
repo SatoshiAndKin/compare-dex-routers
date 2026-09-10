@@ -5,6 +5,7 @@ import {
 } from "@asteasolutions/zod-to-openapi";
 import type { OpenAPIObject } from "openapi3-ts/oas30";
 import { z } from "zod";
+import { QuoteSchema, CompareSchema } from "./quote-response.js";
 
 extendZodWithOpenApi(z);
 
@@ -68,7 +69,7 @@ const QuoteQuerySchema = z.object({
   slippageBps: SlippageBpsParam,
   sender: AddressSchema.optional().openapi({
     param: { name: "sender", in: "query" },
-    description: "Sender address for approval checks",
+    description: "Account bound to execution data. Omit for a preview with no execution data.",
   }),
   mode: ModeParam,
 });
@@ -86,107 +87,13 @@ const TokenMetadataQuerySchema = z.object({
 const ErrorSchema = z
   .object({
     error: z.string(),
+    code: z.enum(["INVALID_REQUEST", "NOT_FOUND", "UPSTREAM_ERROR"]),
+    requestId: z.string(),
   })
   .openapi("Error");
 
-const SpandexQuoteSchema = z
-  .object({
-    chainId: z.number().int(),
-    from: z.string(),
-    from_symbol: z.string(),
-    to: z.string(),
-    to_symbol: z.string(),
-    amount: z.string(),
-    input_amount: z
-      .string()
-      .openapi({ description: "Human-readable input amount (relevant for targetOut mode)" }),
-    output_amount: z.string().openapi({ description: "Human-readable output amount" }),
-    input_amount_raw: z.string(),
-    output_amount_raw: z.string(),
-    mode: z.enum(["exactIn", "targetOut"]),
-    provider: z.string(),
-    slippage_bps: z.number().int(),
-    gas_used: z.string(),
-    gas_cost_eth: z
-      .string()
-      .openapi({ description: "Gas cost in ETH (gas_used * gas_price / 1e18)" }),
-    output_value_eth: z.string().openapi({
-      description: "Output value converted to ETH (or input value for targetOut mode)",
-    }),
-    net_value_eth: z.string().openapi({
-      description:
-        "Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost).",
-    }),
-    router_address: z.string(),
-    router_calldata: z.string(),
-    router_value: z.string(),
-    approval_token: z.string(),
-    approval_spender: z.string(),
-  })
-  .openapi("SpandexQuote");
-
-const CurveRouteStep = z.object({
-  poolId: z.string(),
-  poolName: z.string(),
-  poolAddress: z.string(),
-  inputCoinAddress: z.string(),
-  outputCoinAddress: z.string(),
-});
-
-const CurveQuoteSchema = z
-  .object({
-    source: z.literal("curve"),
-    from: z.string(),
-    from_symbol: z.string(),
-    to: z.string(),
-    to_symbol: z.string(),
-    amount: z.string(),
-    input_amount: z
-      .string()
-      .openapi({ description: "Human-readable input amount (relevant for targetOut mode)" }),
-    output_amount: z.string(),
-    mode: z.enum(["exactIn", "targetOut"]),
-    route: z.array(CurveRouteStep),
-    route_symbols: z.record(z.string(), z.string()),
-    router_address: z.string(),
-    router_calldata: z.string(),
-    approval_target: z.string().optional().openapi({
-      description: "Spender address for ERC-20 approval (present when approval is required)",
-    }),
-    gas_used: z.string(),
-    gas_cost_eth: z.string().openapi({ description: "Gas cost in ETH" }),
-    output_value_eth: z.string().openapi({
-      description: "Output value converted to ETH (or input value for targetOut mode)",
-    }),
-    net_value_eth: z.string().openapi({
-      description:
-        "Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost).",
-    }),
-  })
-  .openapi("CurveQuote");
-
-const CompareResultSchema = z
-  .object({
-    spandex: SpandexQuoteSchema.nullable(),
-    spandex_error: z.string().nullable(),
-    curve: CurveQuoteSchema.nullable(),
-    curve_error: z.string().nullable(),
-    recommendation: z.enum(["spandex", "curve"]).nullable(),
-    recommendation_reason: z.string(),
-    gas_price_gwei: z.string().nullable(),
-    output_to_eth_rate: z.string().nullable().openapi({
-      description:
-        "Rate used to convert output to ETH for gas-adjusted comparison (exactIn mode, null if output is ETH)",
-    }),
-    input_to_eth_rate: z.string().nullable().openapi({
-      description:
-        "Rate used to convert input to ETH for gas-adjusted comparison (targetOut mode, null if input is ETH)",
-    }),
-    mode: z
-      .enum(["exactIn", "targetOut"])
-      .openapi({ description: "The quote mode used for this comparison" }),
-  })
-  .openapi("CompareResult");
+const QuoteResponseSchema = QuoteSchema.openapi("Quote");
+const CompareResultSchema = CompareSchema.openapi("CompareResult");
 
 const TokenMetadataSchema = z
   .object({
@@ -272,6 +179,7 @@ const DefaultTokenPairSchema = z
 
 const ConfigSchema = z
   .object({
+    flags: z.record(z.string(), z.boolean()),
     defaultTokens: z
       .record(z.string(), DefaultTokenPairSchema)
       .openapi({ description: "Map of chainId to default token pair" }),
@@ -350,7 +258,7 @@ registry.registerPath({
   summary: "Get best Spandex quote",
   request: { query: QuoteQuerySchema },
   responses: {
-    200: jsonContent(SpandexQuoteSchema, "Best quote found"),
+    200: jsonContent(QuoteResponseSchema, "Best quote found"),
     400: errorResponse("Invalid parameters"),
     500: errorResponse("Quote failed"),
   },
@@ -375,7 +283,7 @@ registry.registerPath({
   summary: "Get a single Curve Finance quote",
   request: { query: QuoteQuerySchema },
   responses: {
-    200: jsonContent(CurveQuoteSchema, "Curve quote"),
+    200: jsonContent(QuoteResponseSchema, "Curve quote"),
     400: errorResponse("Invalid parameters or Curve not supported on this chain"),
     500: errorResponse("Quote failed"),
   },

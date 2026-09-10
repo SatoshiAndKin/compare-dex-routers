@@ -1,3 +1,4 @@
+import { deferred, FROM, SENDER, TO } from "./quote-fixture.js";
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   balanceStore,
@@ -275,6 +276,54 @@ describe("balanceStore", () => {
       )
     ).resolves.not.toThrow();
 
+    expect(balanceStore.fromBalance).toBeNull();
+  });
+});
+
+describe("balance metadata and request identity", () => {
+  beforeEach(() => {
+    balanceStore.clear();
+    balanceStore.clearCache();
+  });
+  it.each([0, 6, 18, 255])("supports %i token decimals", (decimals) => {
+    expect(formatBalance(7n * 10n ** BigInt(decimals), decimals)).toBe("7");
+  });
+  it("reformats cached raw balances after metadata changes", async () => {
+    const provider = makeProvider(async () => "0x64");
+    expect(await fetchTokenBalance(provider, FROM, SENDER, 0, 1)).toBe("100");
+    expect(await fetchTokenBalance(provider, FROM, SENDER, 2, 1)).toBe("1");
+    expect(provider.request).toHaveBeenCalledTimes(1);
+  });
+  it("ignores an old wallet balance after the new wallet request completes", async () => {
+    const slow = deferred<unknown>();
+    const provider = makeProvider(
+      vi.fn().mockReturnValueOnce(slow.promise).mockResolvedValue("0x9")
+    );
+    const old = balanceStore.fetchBalances(
+      provider,
+      SENDER,
+      1,
+      { address: FROM, decimals: 0 },
+      null
+    );
+    await balanceStore.fetchBalances(provider, TO, 1, { address: FROM, decimals: 0 }, null);
+    slow.resolve("0x7");
+    await old;
+    expect(balanceStore.fromBalance).toBe("9");
+  });
+  it("does not restore a balance after disconnect", async () => {
+    const slow = deferred<unknown>();
+    const provider = makeProvider(() => slow.promise);
+    const pending = balanceStore.fetchBalances(
+      provider,
+      SENDER,
+      1,
+      { address: FROM, decimals: 0 },
+      null
+    );
+    balanceStore.clear();
+    slow.resolve("0x7");
+    await pending;
     expect(balanceStore.fromBalance).toBeNull();
   });
 });

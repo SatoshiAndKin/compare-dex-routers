@@ -1,444 +1,301 @@
-/**
- * Transaction store managing approve/swap transaction state per router.
- * Ported from src/client/transactions.ts for Svelte 5.
- *
- * Each router (Spandex, Curve) has independent approve/swap status.
- * The store handles:
- *   - ERC-20 allowance check before approve
- *   - approve(spender, MAX_UINT256) via eth_sendTransaction
- *   - Swap confirmation modal flow
- *   - Router swap via eth_sendTransaction
- *   - Auto-refresh pause/resume around transactions
- *   - Pending action when wallet is not connected
- */
-
-import type { SpandexQuote, CurveQuote } from "./comparisonStore.svelte.js";
-import { walletStore } from "./walletStore.svelte.js";
+import { comparisonStore, type Quote } from "./comparisonStore.svelte.js";
+import { walletStore, type EIP1193Provider } from "./walletStore.svelte.js";
 import { autoRefreshStore } from "./autoRefreshStore.svelte.js";
-import { settingsStore } from "./settingsStore.svelte.js";
 import { formStore } from "./formStore.svelte.js";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export type TxStatus = "idle" | "pending" | "confirmed" | "failed";
-
 export interface SwapConfirmationData {
   routerName: string;
-  quote: SpandexQuote | CurveQuote;
+  quote: Quote;
 }
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-// ERC-20 function selectors
-const ALLOWANCE_SELECTOR = "0xdd62ed3e"; // allowance(address,address)
-const APPROVE_SELECTOR = "0x095ea7b3"; // approve(address,uint256)
-
-/** Max uint256 as a 64-char hex string (no 0x prefix) */
-const MAX_UINT256_HEX = "f".repeat(64);
-
-/** Flashbots Protect RPC URL */
-const FLASHBOTS_RPC_URL = "https://rpc.flashbots.net";
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-function isAddressLike(address: string): boolean {
-  return /^0x[a-fA-F0-9]{40}$/.test(String(address ?? "").trim());
+interface Allowance {
+  amount: bigint | null;
+  status: TxStatus;
 }
+const MAX_UINT256 = "f".repeat(64);
 
-function isUserRejectedError(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const e = err as Record<string, unknown>;
-  if (Number(e.code) === 4001) return true;
-  const data = e.data as Record<string, unknown> | undefined;
-  if (data && Number(data.code) === 4001) return true;
-  if (data?.originalError && Number((data.originalError as Record<string, unknown>).code) === 4001)
-    return true;
-  const error = e.error as Record<string, unknown> | undefined;
-  if (error && Number(error.code) === 4001) return true;
-  return false;
-}
-
-/** Convert a decimal or 0x-prefixed value string to an 0x-prefixed hex quantity */
-function toHexQuantity(value: string): string {
-  const trimmed = String(value ?? "")
-    .trim()
-    .toLowerCase();
-  if (!trimmed) return "0x0";
-  if (trimmed.startsWith("0x")) return trimmed;
-  try {
-    return "0x" + BigInt(trimmed).toString(16);
-  } catch {
-    return "0x0";
-  }
-}
-
-interface ReceiptLike {
-  status?: string;
-}
-
-type ProviderLike = {
-  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
-};
-
-/** Poll for transaction receipt with 2-minute timeout */
-async function waitForReceipt(provider: ProviderLike, txHash: string): Promise<ReceiptLike> {
-  const timeoutMs = 120_000;
-  const pollMs = 1_500;
-  const start = Date.now();
-
-  while (Date.now() - start < timeoutMs) {
-    const receipt = (await provider.request({
-      method: "eth_getTransactionReceipt",
-      params: [txHash],
-    })) as ReceiptLike | null;
-
-    if (receipt) return receipt;
-
-    await new Promise<void>((r) => setTimeout(r, pollMs));
-  }
-
-  throw new Error("Timed out waiting for transaction confirmation");
-}
-
-// ---------------------------------------------------------------------------
-// MEV helper: attempt to route swap through Flashbots Protect RPC
-// ---------------------------------------------------------------------------
-
-/**
- * Attempt to send a transaction via Flashbots Protect RPC.
- *
- * Strategy:
- *   1. Ask the wallet to sign the tx via `eth_signTransaction`.
- *   2. Submit the signed raw tx to Flashbots via `eth_sendRawTransaction`.
- *   3. If signing is unsupported or fails, fall back to normal `eth_sendTransaction`.
- */
-async function sendTransactionViaMev(
-  walletProvider: ProviderLike,
-  txParams: Record<string, unknown>
-): Promise<string> {
-  let signedTx: string | undefined;
-
-  try {
-    signedTx = (await walletProvider.request({
-      method: "eth_signTransaction",
-      params: [txParams],
-    })) as string;
-  } catch {
-    // Wallet doesn't support eth_signTransaction — fall back to normal wallet send
-    return (await walletProvider.request({
-      method: "eth_sendTransaction",
-      params: [txParams],
-    })) as string;
-  }
-
-  // Submit raw signed tx to Flashbots Protect
-  const response = await fetch(FLASHBOTS_RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "eth_sendRawTransaction",
-      params: [signedTx],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Flashbots RPC HTTP error: ${response.status}`);
-  }
-
-  const json = (await response.json()) as {
-    result?: string;
-    error?: { message?: string };
+function rejected(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as {
+    code?: number;
+    data?: unknown;
+    error?: unknown;
+    originalError?: unknown;
   };
-
-  if (json.error) {
-    throw new Error(`Flashbots RPC error: ${json.error.message ?? "unknown"}`);
-  }
-
-  if (!json.result) {
-    throw new Error("No transaction hash returned from Flashbots RPC");
-  }
-
-  return json.result;
+  return (
+    value.code === 4001 ||
+    rejected(value.data) ||
+    rejected(value.error) ||
+    rejected(value.originalError)
+  );
 }
-
-// ---------------------------------------------------------------------------
-// TransactionStore
-// ---------------------------------------------------------------------------
+function hex(value: string | number): string {
+  return `0x${BigInt(value).toString(16)}`;
+}
+function allowanceKey(quote: Quote): string | null {
+  const approval = quote.execution?.approval;
+  return approval && quote.sender
+    ? [quote.chainId, quote.sender, approval.token, approval.spender].join(":").toLowerCase()
+    : null;
+}
+function quoteKey(quote: Quote): string {
+  return JSON.stringify([
+    quote.chainId,
+    quote.sender,
+    quote.from,
+    quote.to,
+    quote.input_amount_raw,
+    quote.execution,
+  ]);
+}
 
 class TransactionStore {
-  /** Approve status keyed by router name */
-  approveStatus = $state<Record<string, TxStatus>>({});
-  /** Swap status keyed by router name */
+  allowances = $state<Record<string, Allowance>>({});
   swapStatus = $state<Record<string, TxStatus>>({});
-  /** Non-null when the swap confirmation modal should be shown */
   swapConfirmation = $state<SwapConfirmationData | null>(null);
+  busy = $state(false);
+  private confirmationResolve: ((confirmed: boolean) => void) | null = null;
+  private allowanceRequests = new Map<string, number>();
 
-  /** Internal promise resolver for confirmation modal */
-  private _confirmResolve: ((confirmed: boolean) => void) | null = null;
-
-  // ---------------------------------------------------------------------------
-  // Status helpers
-  // ---------------------------------------------------------------------------
-
-  private _setApprove(routerName: string, status: TxStatus): void {
-    this.approveStatus = { ...this.approveStatus, [routerName]: status };
+  matches(quote: Quote): boolean {
+    return Boolean(
+      quote.execution &&
+      quote.sender &&
+      walletStore.provider &&
+      walletStore.chainId === quote.chainId &&
+      formStore.chainId === quote.chainId &&
+      walletStore.address?.toLowerCase() === quote.sender.toLowerCase() &&
+      formStore.fromToken?.address.toLowerCase() === quote.from.toLowerCase() &&
+      formStore.toToken?.address.toLowerCase() === quote.to.toLowerCase() &&
+      formStore.mode === quote.mode &&
+      formStore.slippageBps === quote.slippage_bps &&
+      (quote.mode === "exactIn" ? formStore.sellAmount : formStore.receiveAmount) ===
+        quote.amount &&
+      comparisonStore.isCurrent(quote)
+    );
   }
 
-  private _setSwap(routerName: string, status: TxStatus): void {
-    this.swapStatus = { ...this.swapStatus, [routerName]: status };
+  private async assertContext(quote: Quote, provider: EIP1193Provider): Promise<void> {
+    if (!this.matches(quote) || walletStore.provider !== provider)
+      throw new Error("Wallet or quote changed. Refresh quotes.");
+    const [chain, accounts] = await Promise.all([
+      provider.request({ method: "eth_chainId" }),
+      provider.request({ method: "eth_accounts" }),
+    ]);
+    if (
+      !this.matches(quote) ||
+      walletStore.provider !== provider ||
+      typeof chain !== "string" ||
+      Number(BigInt(chain)) !== quote.chainId ||
+      !Array.isArray(accounts) ||
+      typeof accounts[0] !== "string" ||
+      accounts[0].toLowerCase() !== quote.sender?.toLowerCase()
+    ) {
+      throw new Error("Wallet or quote changed. Refresh quotes.");
+    }
   }
 
-  /** Get approve status for a router (defaults to 'idle') */
-  getApproveStatus(routerName: string): TxStatus {
-    return this.approveStatus[routerName] ?? "idle";
+  getApproveStatus(quote: Quote): TxStatus {
+    if (!this.matches(quote)) return "idle";
+    const key = allowanceKey(quote);
+    if (!key) return "confirmed";
+    const entry = this.allowances[key];
+    if (!entry) return "idle";
+    if (entry.status === "pending") return "pending";
+    return entry.amount !== null && entry.amount >= BigInt(quote.input_amount_raw)
+      ? "confirmed"
+      : entry.status;
   }
 
-  /** Get swap status for a router (defaults to 'idle') */
-  getSwapStatus(routerName: string): TxStatus {
-    return this.swapStatus[routerName] ?? "idle";
+  getSwapStatus(quote: Quote): TxStatus {
+    return this.swapStatus[quoteKey(quote)] ?? "idle";
   }
 
-  // ---------------------------------------------------------------------------
-  // Swap confirmation modal
-  // ---------------------------------------------------------------------------
-
-  /** Called by SwapConfirmationModal when user clicks "Confirm Swap" */
-  confirmSwap(): void {
-    const resolve = this._confirmResolve;
-    this._confirmResolve = null;
-    this.swapConfirmation = null;
-    resolve?.(true);
-  }
-
-  /** Called by SwapConfirmationModal when user clicks "Cancel" or presses Escape */
-  cancelSwap(): void {
-    const resolve = this._confirmResolve;
-    this._confirmResolve = null;
-    this.swapConfirmation = null;
-    resolve?.(false);
-  }
-
-  private _waitForConfirmation(
-    routerName: string,
-    quote: SpandexQuote | CurveQuote
-  ): Promise<boolean> {
-    this.swapConfirmation = { routerName, quote };
-    return new Promise<boolean>((resolve) => {
-      this._confirmResolve = resolve;
+  private async readAllowance(quote: Quote, provider: EIP1193Provider): Promise<bigint> {
+    const approval = quote.execution?.approval;
+    if (!approval || !quote.sender) throw new Error("No approval data for this quote");
+    const data = `0xdd62ed3e${quote.sender.slice(2).toLowerCase().padStart(64, "0")}${approval.spender.slice(2).toLowerCase().padStart(64, "0")}`;
+    const amount = await provider.request({
+      method: "eth_call",
+      params: [{ to: approval.token, data }, "latest"],
     });
+    if (typeof amount !== "string" || !/^0x[0-9a-f]+$/i.test(amount))
+      throw new Error("Cannot read token allowance");
+    return BigInt(amount);
   }
 
-  // ---------------------------------------------------------------------------
-  // Approve
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Execute an ERC-20 approve transaction for the given quote.
-   *
-   * 1. If no wallet connected, stores a pending action and requests the wallet menu.
-   * 2. Checks existing allowance via eth_call; skips if already sufficient.
-   * 3. Sends approve(spender, MAX_UINT256) via eth_sendTransaction.
-   * 4. Updates approveStatus: idle → pending → confirmed/failed.
-   * 5. Pauses auto-refresh for the duration.
-   */
-  async approve(routerName: string, quote: SpandexQuote | CurveQuote): Promise<void> {
-    // No wallet connected: store pending action and open wallet menu
-    if (!walletStore.isConnected) {
-      walletStore.pendingAction = { type: "approve", params: { routerName, quote } };
-      walletStore.requestMenu();
-      return;
-    }
-
+  async refreshAllowance(quote: Quote): Promise<void> {
+    const key = allowanceKey(quote);
     const provider = walletStore.provider;
-    const address = walletStore.address;
-
-    if (!provider || !address) {
-      this._setApprove(routerName, "failed");
-      return;
-    }
-
-    // Determine token address and spender address from quote type
-    let tokenAddress: string;
-    let spenderAddress: string;
-
-    const spandex = quote as SpandexQuote;
-    const curve = quote as CurveQuote;
-
-    if (spandex.approval_token && spandex.approval_spender) {
-      // SpandexQuote
-      tokenAddress = spandex.approval_token;
-      spenderAddress = spandex.approval_spender;
-    } else if (curve.approval_target && quote.from) {
-      // CurveQuote: token is the input token (from), spender is approval_target
-      tokenAddress = quote.from;
-      spenderAddress = curve.approval_target;
-    } else {
-      // No approval needed (native token swap or approval info missing)
-      this._setApprove(routerName, "confirmed");
-      return;
-    }
-
-    if (!isAddressLike(tokenAddress) || !isAddressLike(spenderAddress)) {
-      this._setApprove(routerName, "failed");
-      return;
-    }
-
-    // Check existing allowance — skip approve tx if already sufficient
-    const inputAmountRaw = quote.input_amount_raw ?? "";
-    const requiredAmount = inputAmountRaw ? BigInt(inputAmountRaw) : 0n;
-
-    if (requiredAmount > 0n) {
-      try {
-        const ownerPadded = address.toLowerCase().replace(/^0x/, "").padStart(64, "0");
-        const spenderPadded = spenderAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
-        const callData = ALLOWANCE_SELECTOR + ownerPadded + spenderPadded;
-
-        const result = (await provider.request({
-          method: "eth_call",
-          params: [{ to: tokenAddress, data: callData }, "latest"],
-        })) as string;
-
-        const allowance = BigInt(result);
-        if (allowance >= requiredAmount) {
-          // Already approved — mark as confirmed without sending a tx
-          this._setApprove(routerName, "confirmed");
-          return;
-        }
-      } catch {
-        // Allowance check failed (network error, etc.) — fall through to send approve tx
-      }
-    }
-
-    // Encode approve(spender, MAX_UINT256) calldata
-    const spenderWord = spenderAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
-    const approveData = APPROVE_SELECTOR + spenderWord + MAX_UINT256_HEX;
-
-    this._setApprove(routerName, "pending");
-    autoRefreshStore.pause();
-
+    if (!key || !provider || !this.matches(quote) || this.busy) return;
+    const sequence = (this.allowanceRequests.get(key) ?? 0) + 1;
+    this.allowanceRequests.set(key, sequence);
+    this.allowances[key] = { amount: null, status: "idle" };
     try {
-      const txHash = (await provider.request({
+      await this.assertContext(quote, provider);
+      const amount = await this.readAllowance(quote, provider);
+      await this.assertContext(quote, provider);
+      if (this.allowanceRequests.get(key) === sequence)
+        this.allowances[key] = { amount, status: "idle" };
+    } catch {
+      if (this.allowanceRequests.get(key) === sequence)
+        this.allowances[key] = { amount: null, status: "failed" };
+    }
+  }
+
+  confirmSwap(): void {
+    this.finishConfirmation(true);
+  }
+  cancelSwap(): void {
+    this.finishConfirmation(false);
+  }
+  private finishConfirmation(confirmed: boolean): void {
+    const resolve = this.confirmationResolve;
+    this.confirmationResolve = null;
+    this.swapConfirmation = null;
+    resolve?.(confirmed);
+  }
+
+  private async receipt(provider: EIP1193Provider, hash: string, quote: Quote): Promise<void> {
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      await this.assertContext(quote, provider);
+      const receipt = (await provider.request({
+        method: "eth_getTransactionReceipt",
+        params: [hash],
+      })) as { status?: string } | null;
+      if (receipt) {
+        if (receipt.status !== "0x1" && receipt.status !== "1")
+          throw new Error("Transaction failed on chain");
+        return;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+    }
+    throw new Error(`Confirmation is still pending for ${hash}`);
+  }
+
+  private start(): boolean {
+    if (this.busy) return false;
+    this.busy = true;
+    autoRefreshStore.pause();
+    comparisonStore.cancel();
+    return true;
+  }
+  private finish(): void {
+    this.busy = false;
+    autoRefreshStore.resume();
+  }
+  private requestConnection(): void {
+    walletStore.requestMenu();
+    walletStore.setMessage("Connect your wallet, then review a fresh quote.");
+  }
+
+  async approve(_routerName: string, quote: Quote): Promise<void> {
+    const provider = walletStore.provider;
+    if (!walletStore.isConnected || !provider) {
+      this.requestConnection();
+      return;
+    }
+    if (!this.start()) return;
+    const key = allowanceKey(quote);
+    try {
+      await this.assertContext(quote, provider);
+      const approval = quote.execution?.approval;
+      if (!key || !approval) return;
+      // Supersede a display-only allowance read that may still be in flight.
+      this.allowanceRequests.set(key, (this.allowanceRequests.get(key) ?? 0) + 1);
+      const amount = await this.readAllowance(quote, provider);
+      await this.assertContext(quote, provider);
+      if (amount >= BigInt(quote.input_amount_raw)) {
+        this.allowances[key] = { amount, status: "idle" };
+        return;
+      }
+      this.allowances[key] = { amount: null, status: "pending" };
+      const hash = await provider.request({
         method: "eth_sendTransaction",
-        params: [{ to: tokenAddress, data: approveData, value: "0x0", from: address }],
-      })) as string;
-
-      const receipt = await waitForReceipt(provider, txHash);
-      const statusVal = String(receipt?.status ?? "").toLowerCase();
-
-      if (statusVal === "0x1" || statusVal === "1") {
-        this._setApprove(routerName, "confirmed");
-        walletStore.setMessage("");
-      } else {
-        throw new Error("Transaction failed on-chain");
-      }
-    } catch (err) {
-      if (isUserRejectedError(err)) {
-        this._setApprove(routerName, "idle");
-        walletStore.setMessage("Transaction canceled", true);
-      } else {
-        this._setApprove(routerName, "failed");
-        walletStore.setMessage("Approve transaction failed. Please try again.", true);
-      }
+        params: [
+          {
+            from: quote.sender,
+            chainId: hex(quote.chainId),
+            to: approval.token,
+            value: "0x0",
+            data: `0x095ea7b3${approval.spender.slice(2).toLowerCase().padStart(64, "0")}${MAX_UINT256}`,
+          },
+        ],
+      });
+      if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
+      walletStore.setMessage(`Approval submitted: ${hash}`);
+      await this.receipt(provider, hash, quote);
+      const confirmedAmount = await this.readAllowance(quote, provider);
+      await this.assertContext(quote, provider);
+      this.allowances[key] = { amount: confirmedAmount, status: "idle" };
+      walletStore.setMessage(`Approval confirmed: ${hash}`);
+    } catch (error) {
+      if (key) this.allowances[key] = { amount: null, status: rejected(error) ? "idle" : "failed" };
+      walletStore.setMessage(
+        rejected(error)
+          ? "Transaction canceled"
+          : error instanceof Error
+            ? error.message
+            : "Approval failed",
+        true
+      );
     } finally {
-      autoRefreshStore.resume();
+      this.finish();
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Swap
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Execute a swap transaction for the given quote.
-   *
-   * 1. If no wallet connected, stores a pending action and requests the wallet menu.
-   * 2. Shows a swap confirmation modal and waits for user confirmation.
-   * 3. Sends the router calldata via eth_sendTransaction.
-   * 4. Updates swapStatus: idle → pending → confirmed/failed.
-   * 5. Pauses auto-refresh for the duration, resumes after.
-   */
-  async swap(routerName: string, quote: SpandexQuote | CurveQuote): Promise<void> {
-    // No wallet connected: store pending action and open wallet menu
-    if (!walletStore.isConnected) {
-      walletStore.pendingAction = { type: "swap", params: { routerName, quote } };
-      walletStore.requestMenu();
-      return;
-    }
-
-    // Show confirmation modal and wait for user to confirm or cancel
-    const confirmed = await this._waitForConfirmation(routerName, quote);
-    if (!confirmed) return;
-
-    const routerAddress = quote.router_address ?? "";
-    const routerCalldata = quote.router_calldata ?? "";
-
-    // Spandex quotes may include a non-zero ETH value (e.g. for wrapping)
-    const routerValue = (quote as SpandexQuote).router_value ?? "0x0";
-
-    if (!isAddressLike(routerAddress) || !routerCalldata) {
-      this._setSwap(routerName, "failed");
-      walletStore.setMessage("Invalid swap parameters", true);
-      return;
-    }
-
+  async swap(routerName: string, quote: Quote): Promise<void> {
     const provider = walletStore.provider;
-    const address = walletStore.address;
-
-    if (!provider || !address) {
-      this._setSwap(routerName, "failed");
+    if (!walletStore.isConnected || !provider) {
+      this.requestConnection();
       return;
     }
-
-    this._setSwap(routerName, "pending");
-    autoRefreshStore.pause();
-
-    // Build transaction parameters
-    const txParams = {
-      to: routerAddress,
-      data: routerCalldata,
-      value: toHexQuantity(String(routerValue)),
-      from: address,
-    };
-
+    if (!this.start()) return;
+    const key = quoteKey(quote);
     try {
-      // Use MEV protection (Flashbots) for Ethereum swaps when enabled
-      const useMev = settingsStore.mevEnabled && formStore.chainId === 1;
-      const txHash = useMev
-        ? await sendTransactionViaMev(provider, txParams)
-        : ((await provider.request({
-            method: "eth_sendTransaction",
-            params: [txParams],
-          })) as string);
-
-      const receipt = await waitForReceipt(provider, txHash);
-      const statusVal = String(receipt?.status ?? "").toLowerCase();
-
-      if (statusVal === "0x1" || statusVal === "1") {
-        this._setSwap(routerName, "confirmed");
-        walletStore.setMessage("");
-      } else {
-        throw new Error("Transaction failed on-chain");
+      await this.assertContext(quote, provider);
+      const confirmed = await new Promise<boolean>((resolve) => {
+        this.confirmationResolve = resolve;
+        this.swapConfirmation = { routerName, quote };
+      });
+      if (!confirmed) return;
+      await this.assertContext(quote, provider);
+      if (quote.execution?.approval) {
+        const amount = await this.readAllowance(quote, provider);
+        if (amount < BigInt(quote.input_amount_raw))
+          throw new Error("Approve token spending before this swap.");
       }
-    } catch (err) {
-      if (isUserRejectedError(err)) {
-        this._setSwap(routerName, "idle");
-        walletStore.setMessage("Swap canceled", true);
-      } else {
-        this._setSwap(routerName, "failed");
-        walletStore.setMessage("Swap transaction failed. Please try again.", true);
-      }
+      await this.assertContext(quote, provider);
+      const execution = quote.execution;
+      if (!execution) throw new Error("Quote has no execution data. Refresh quotes.");
+      this.swapStatus[key] = "pending";
+      const hash = await provider.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from: quote.sender,
+            chainId: hex(quote.chainId),
+            to: execution.to,
+            data: execution.data,
+            value: hex(execution.value),
+          },
+        ],
+      });
+      if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
+      walletStore.setMessage(`Swap submitted: ${hash}`);
+      await this.receipt(provider, hash, quote);
+      this.swapStatus[key] = "confirmed";
+      walletStore.setMessage(`Swap confirmed: ${hash}`);
+    } catch (error) {
+      this.swapStatus[key] = rejected(error) ? "idle" : "failed";
+      walletStore.setMessage(
+        rejected(error) ? "Swap canceled" : error instanceof Error ? error.message : "Swap failed",
+        true
+      );
     } finally {
-      autoRefreshStore.resume();
+      this.finish();
     }
   }
 }
-
 export const transactionStore = new TransactionStore();

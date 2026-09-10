@@ -74,7 +74,7 @@ class PreferencesStore {
       slippageBps: formStore.slippageBps,
     };
 
-    if (formStore.fromToken) {
+    if (formStore.fromToken && formStore.fromToken.decimals !== null) {
       chainPrefs.fromToken = {
         address: formStore.fromToken.address,
         symbol: formStore.fromToken.symbol,
@@ -83,7 +83,7 @@ class PreferencesStore {
       };
     }
 
-    if (formStore.toToken) {
+    if (formStore.toToken && formStore.toToken.decimals !== null) {
       chainPrefs.toToken = {
         address: formStore.toToken.address,
         symbol: formStore.toToken.symbol,
@@ -109,7 +109,8 @@ class PreferencesStore {
       const token: TokenInfo = {
         address: chainPrefs.fromToken.address,
         symbol: chainPrefs.fromToken.symbol,
-        decimals: chainPrefs.fromToken.decimals,
+        decimals: null,
+        chainId,
         logoURI: chainPrefs.fromToken.logoURI,
       };
       formStore.fromToken = token;
@@ -119,7 +120,8 @@ class PreferencesStore {
       const token: TokenInfo = {
         address: chainPrefs.toToken.address,
         symbol: chainPrefs.toToken.symbol,
-        decimals: chainPrefs.toToken.decimals,
+        decimals: null,
+        chainId,
         logoURI: chainPrefs.toToken.logoURI,
       };
       formStore.toToken = token;

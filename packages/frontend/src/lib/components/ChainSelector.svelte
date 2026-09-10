@@ -3,6 +3,7 @@
    * ChainSelector — searchable chain dropdown with keyboard navigation.
    * Ports behavior from src/client/chain-selector.ts.
    */
+  import { selectChain as selectFormChain } from "../stores/formLifecycle.svelte.js";
   import { formStore } from "../stores/formStore.svelte.js";
   import { configStore } from "../stores/configStore.svelte.js";
 
@@ -86,7 +87,7 @@
   }
 
   function selectChain(chain: ChainDefinition): void {
-    formStore.chainId = Number(chain.id);
+    selectFormChain(Number(chain.id));
     previousChainId = null;
     closeDropdown();
   }

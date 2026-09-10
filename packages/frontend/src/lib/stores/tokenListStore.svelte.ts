@@ -113,12 +113,14 @@ class TokenListStore {
     if (this.initialized || this.isInitializing) return;
     this.isInitializing = true;
 
+    const saved = this._loadPersistedCustomLists() ?? [];
     try {
-      // 1. Load default list(s) from server
+      // Restore every saved identity before any asynchronous load can persist state.
+      const restored = this._restoreCustomLists(saved);
       await this._loadDefaultLists();
-
-      // 2. Restore custom lists from localStorage (migrate old format if needed)
-      await this._restoreCustomLists();
+      await restored;
+      await this._ensureUniswapList();
+      this._saveCustomLists();
 
       this.initialized = true;
     } finally {
@@ -143,28 +145,38 @@ class TokenListStore {
         if (tokenlists.length > 0) {
           for (const entry of tokenlists) {
             const name = entry.name ?? DEFAULT_TOKENLIST_NAME;
-            const tokens: Token[] = (entry.tokens ?? []).map((t) => ({
-              address: t.address ?? "",
-              chainId: t.chainId ?? 0,
-              name: t.name ?? "",
-              symbol: t.symbol ?? "",
-              decimals: t.decimals ?? 18,
-              logoURI: t.logoURI,
-              _source: name,
-            }));
+            const tokens: Token[] = (entry.tokens ?? [])
+              .filter((t) => Number.isInteger(t.decimals) && t.decimals >= 0 && t.decimals <= 255)
+              .map((t) => ({
+                address: t.address ?? "",
+                chainId: t.chainId ?? 0,
+                name: t.name ?? "",
+                symbol: t.symbol ?? "",
+                decimals: t.decimals,
+                logoURI: t.logoURI,
+                _source: name,
+              }));
             this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
           }
         } else if (data.tokens && data.tokens.length > 0) {
           const name = data.name ?? DEFAULT_TOKENLIST_NAME;
-          const tokens: Token[] = data.tokens.map((t) => ({
-            address: t.address ?? "",
-            chainId: t.chainId ?? 0,
-            name: t.name ?? "",
-            symbol: t.symbol ?? "",
-            decimals: t.decimals ?? 18,
-            logoURI: t.logoURI,
-            _source: name,
-          }));
+          const tokens: Token[] = data.tokens
+            .filter(
+              (t) =>
+                typeof t.decimals === "number" &&
+                Number.isInteger(t.decimals) &&
+                t.decimals >= 0 &&
+                t.decimals <= 255
+            )
+            .map((t) => ({
+              address: t.address ?? "",
+              chainId: t.chainId ?? 0,
+              name: t.name ?? "",
+              symbol: t.symbol ?? "",
+              decimals: t.decimals,
+              logoURI: t.logoURI,
+              _source: name,
+            }));
           this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
         }
       }
@@ -173,9 +185,6 @@ class TokenListStore {
     }
 
     this._ensureDefaultList(defaultEnabled);
-
-    // Load Uniswap tokenlist directly client-side (not proxied through our API)
-    await this._ensureUniswapList();
   }
 
   _ensureDefaultList(defaultEnabled: boolean): void {
@@ -203,85 +212,61 @@ class TokenListStore {
     try {
       const { tokens, name } = await this._fetchCustomList(DEFAULT_UNISWAP_URL);
       this.lists = [...this.lists, { url: DEFAULT_UNISWAP_URL, name, enabled: true, tokens }];
-      this._saveCustomLists();
     } catch {
-      // Network error — skip, will retry next init
+      // Network error — retry on the next page load
     }
   }
 
-  private async _restoreCustomLists(): Promise<void> {
-    // Migrate old single-URL format
-    let saved: PersistedList[] | null = this._migrateOldUrl();
-    if (!saved) saved = this._loadPersistedCustomLists();
-    if (!saved || saved.length === 0) return;
-
-    // Collect default list names to avoid duplicates
-    const defaultNames = new Set(this.lists.map((l) => (l.name ?? "").trim().toLowerCase()));
-
-    const loadPromises = saved.map(async (item) => {
-      // Skip if name already matches a default
-      const nameNorm = (item.name ?? "").trim().toLowerCase();
-      if (nameNorm && defaultNames.has(nameNorm)) return;
-
-      const idx = this.lists.length;
-      this.lists = [
-        ...this.lists,
-        {
-          url: item.url,
-          name: item.name ?? item.url,
-          enabled: item.enabled !== false,
-          tokens: [],
-        },
-      ];
-
-      try {
-        const { tokens, name } = await this._fetchCustomList(item.url);
-        // Post-fetch dedup check
-        const fetchedNameNorm = (name ?? "").trim().toLowerCase();
-        if (defaultNames.has(fetchedNameNorm)) {
-          // Remove this duplicate entry
-          this.lists = this.lists.filter((_, i) => i !== idx);
-          return;
+  private async _restoreCustomLists(saved: PersistedList[]): Promise<void> {
+    const unique = new Map(saved.map((entry) => [this._normalizeUrl(entry.url), entry]));
+    this.lists = [
+      ...this.lists,
+      ...[...unique.values()].map((entry) => ({
+        url: entry.url,
+        name: entry.name,
+        enabled: entry.enabled,
+        tokens: [] as Token[],
+      })),
+    ];
+    await Promise.all(
+      [...unique.entries()].map(async ([key, item]) => {
+        try {
+          const { tokens, name } = await this._fetchCustomList(item.url);
+          this.lists = this.lists.map((entry) =>
+            entry.url && this._normalizeUrl(entry.url) === key
+              ? { ...entry, tokens, name, error: undefined }
+              : entry
+          );
+        } catch (error) {
+          this.lists = this.lists.map((entry) =>
+            entry.url && this._normalizeUrl(entry.url) === key
+              ? {
+                  ...entry,
+                  tokens: [],
+                  error: error instanceof Error ? error.message : "Token list request failed",
+                }
+              : entry
+          );
         }
-        const updated = [...this.lists];
-        const entry = updated[idx];
-        if (entry) {
-          updated[idx] = { ...entry, tokens, name };
-          this.lists = updated;
-        }
-      } catch (err) {
-        const updated = [...this.lists];
-        const entry = updated[idx];
-        if (entry) {
-          const msg = err instanceof Error ? err.message : String(err);
-          updated[idx] = { ...entry, error: msg, tokens: [] };
-          this.lists = updated;
-        }
-      }
-    });
-
-    await Promise.all(loadPromises);
-  }
-
-  private _migrateOldUrl(): PersistedList[] | null {
-    try {
-      const oldUrl = localStorage.getItem("customTokenlistUrl");
-      if (oldUrl) {
-        const newList: PersistedList[] = [{ url: oldUrl, enabled: true, name: oldUrl }];
-        localStorage.setItem(CUSTOM_TOKENLISTS_KEY, JSON.stringify(newList));
-        localStorage.removeItem("customTokenlistUrl");
-        return newList;
-      }
-    } catch {
-      // ignore
-    }
-    return null;
+      })
+    );
   }
 
   private _loadPersistedCustomLists(): PersistedList[] | null {
     try {
       const raw = localStorage.getItem(CUSTOM_TOKENLISTS_KEY);
-      if (raw) return JSON.parse(raw) as PersistedList[];
+      if (raw) {
+        const saved: unknown = JSON.parse(raw);
+        if (Array.isArray(saved))
+          return saved.filter(
+            (entry): entry is PersistedList =>
+              entry !== null &&
+              typeof entry === "object" &&
+              typeof entry.url === "string" &&
+              typeof entry.name === "string" &&
+              typeof entry.enabled === "boolean"
+          );
+      }
     } catch {
       // corrupt data
     }
@@ -305,15 +290,23 @@ class TokenListStore {
     }
 
     const name = data.name ?? url;
-    const tokens: Token[] = data.tokens.map((t) => ({
-      address: (t.address as string) ?? "",
-      chainId: (t.chainId as number) ?? 0,
-      name: (t.name as string) ?? "",
-      symbol: (t.symbol as string) ?? "",
-      decimals: (t.decimals as number) ?? 18,
-      logoURI: t.logoURI as string | undefined,
-      _source: name,
-    }));
+    const tokens: Token[] = data.tokens
+      .filter(
+        (t) =>
+          typeof t.decimals === "number" &&
+          Number.isInteger(t.decimals) &&
+          t.decimals >= 0 &&
+          t.decimals <= 255
+      )
+      .map((t) => ({
+        address: (t.address as string) ?? "",
+        chainId: (t.chainId as number) ?? 0,
+        name: (t.name as string) ?? "",
+        symbol: (t.symbol as string) ?? "",
+        decimals: t.decimals as number,
+        logoURI: t.logoURI as string | undefined,
+        _source: name,
+      }));
 
     return { tokens, name };
   }
@@ -382,7 +375,7 @@ class TokenListStore {
   private _normalizeUrl(url: string): string {
     try {
       const parsed = new URL(url);
-      return parsed.origin.toLowerCase() + parsed.pathname.replace(/\/+$/, "");
+      return parsed.origin.toLowerCase() + parsed.pathname.replace(/\/+$/, "") + parsed.search;
     } catch {
       return url.toLowerCase().replace(/\/+$/, "");
     }
