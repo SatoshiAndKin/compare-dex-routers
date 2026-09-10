@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [main]
 
+# pnpm 11.1.1 caches the Git monorepo root metadata for @spandex/core.
+# Fresh installs resolve its package subdirectory; restoring that store fails.
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -15,7 +17,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm run lint
@@ -52,7 +53,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Audit dependencies
         run: pnpm audit || true
