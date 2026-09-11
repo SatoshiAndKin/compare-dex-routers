@@ -8,6 +8,6 @@
 
 ## Checklist
 
-- [ ] Tests pass (`npm test`)
-- [ ] Type check passes (`npm run typecheck`)
-- [ ] Linting passes (`npm run lint`)
+- [ ] Tests pass (`pnpm test`)
+- [ ] Type check passes (`pnpm run typecheck`)
+- [ ] Linting passes (`pnpm run lint`)

@@ -24,7 +24,7 @@ export interface TokenRef {
 }
 
 interface CachedBalance {
-  balance: string;
+  balance: bigint;
   timestamp: number;
 }
 
@@ -51,8 +51,10 @@ function isNativeToken(address: string): boolean {
  * Exported for testing.
  */
 export function formatBalance(balance: bigint, decimals: number): string {
-  const dec = Math.max(0, Number(decimals) || 18);
-  const divisor = BigInt(10 ** dec);
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255)
+    throw new Error("Invalid token decimals");
+  const dec = decimals;
+  const divisor = 10n ** BigInt(dec);
   const wholePart = balance / divisor;
   const fractionalPart = balance % divisor;
 
@@ -86,7 +88,7 @@ export async function fetchTokenBalance(
   const cacheKey = `${chainId}:${tokenAddress.toLowerCase()}:${walletAddress.toLowerCase()}`;
   const cached = balanceCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL_MS) {
-    return cached.balance;
+    return formatBalance(cached.balance, decimals);
   }
 
   try {
@@ -112,7 +114,7 @@ export async function fetchTokenBalance(
     }
 
     const formatted = formatBalance(balance, decimals);
-    balanceCache.set(cacheKey, { balance: formatted, timestamp: Date.now() });
+    balanceCache.set(cacheKey, { balance, timestamp: Date.now() });
     return formatted;
   } catch {
     // Silently fail — don't show RPC errors for balance fetching
@@ -125,6 +127,7 @@ export async function fetchTokenBalance(
 // ---------------------------------------------------------------------------
 
 class BalanceStore {
+  private sequence = 0;
   /** Formatted balance for the "from" token (null when unknown / not connected) */
   fromBalance = $state<string | null>(null);
   /** Formatted balance for the "to" token (null when unknown / not connected) */
@@ -141,41 +144,26 @@ class BalanceStore {
     fromToken: TokenRef | null,
     toToken: TokenRef | null
   ): Promise<void> {
-    const promises: Promise<void>[] = [];
-
-    if (fromToken) {
-      promises.push(
-        fetchTokenBalance(provider, fromToken.address, walletAddress, fromToken.decimals, chainId)
-          .then((bal) => {
-            this.fromBalance = bal;
-          })
-          .catch(() => {
-            this.fromBalance = null;
-          })
-      );
-    } else {
-      this.fromBalance = null;
+    const sequence = ++this.sequence;
+    this.fromBalance = null;
+    this.toBalance = null;
+    const [fromBalance, toBalance] = await Promise.all([
+      fromToken
+        ? fetchTokenBalance(provider, fromToken.address, walletAddress, fromToken.decimals, chainId)
+        : null,
+      toToken
+        ? fetchTokenBalance(provider, toToken.address, walletAddress, toToken.decimals, chainId)
+        : null,
+    ]);
+    if (sequence === this.sequence) {
+      this.fromBalance = fromBalance;
+      this.toBalance = toBalance;
     }
-
-    if (toToken) {
-      promises.push(
-        fetchTokenBalance(provider, toToken.address, walletAddress, toToken.decimals, chainId)
-          .then((bal) => {
-            this.toBalance = bal;
-          })
-          .catch(() => {
-            this.toBalance = null;
-          })
-      );
-    } else {
-      this.toBalance = null;
-    }
-
-    await Promise.all(promises);
   }
 
   /** Clear displayed balances (e.g. on wallet disconnect or token change). */
   clear(): void {
+    this.sequence++;
     this.fromBalance = null;
     this.toBalance = null;
   }

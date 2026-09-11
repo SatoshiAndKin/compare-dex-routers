@@ -48,7 +48,7 @@ export function getAnalyticsSummary(): AnalyticsSummary {
   const chainCounts = new Map<number, number>();
 
   for (const event of events) {
-    const pair = `${event.fromToken.slice(0, 10)}-${event.toToken.slice(0, 10)}`;
+    const pair = `${event.fromToken}-${event.toToken}`;
     pairCounts.set(pair, (pairCounts.get(pair) ?? 0) + 1);
     chainCounts.set(event.chainId, (chainCounts.get(event.chainId) ?? 0) + 1);
   }

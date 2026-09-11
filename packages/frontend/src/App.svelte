@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import CompareForm from "./lib/components/CompareForm.svelte";
   import QuoteResults from "./lib/components/QuoteResults.svelte";
   import ThemeToggle from "./lib/components/ThemeToggle.svelte";
@@ -11,20 +11,17 @@
 
   import { themeStore } from "./lib/stores/themeStore.svelte.js";
   import { preferencesStore } from "./lib/stores/preferencesStore.svelte.js";
-  import {
-    parseUrlParams,
-    hasAllRequiredParams,
-    applyUrlParamsToForm,
-  } from "./lib/stores/urlSync.svelte.js";
+  import { parseUrlParams, applyUrlParamsToForm } from "./lib/stores/urlSync.svelte.js";
   import { formStore } from "./lib/stores/formStore.svelte.js";
-  import { comparisonStore } from "./lib/stores/comparisonStore.svelte.js";
   import { walletStore } from "./lib/stores/walletStore.svelte.js";
   import { transactionStore } from "./lib/stores/transactionStore.svelte.js";
   import { balanceStore } from "./lib/stores/balanceStore.svelte.js";
   import { configStore } from "./lib/stores/configStore.svelte.js";
   import { settingsStore } from "./lib/stores/settingsStore.svelte.js";
   import { tokenListStore } from "./lib/stores/tokenListStore.svelte.js";
-  import type { TokenInfo } from "./lib/stores/formStore.svelte.js";
+  import { applyDefaults, resolveSelectedTokens } from "./lib/stores/formLifecycle.svelte.js";
+
+  let metadataError = $state<string | null>(null);
 
   let walletMenuOpen = $state(false);
 
@@ -48,44 +45,18 @@
   });
 
   // ---------------------------------------------------------------------------
-  // Auto-execute pending action after wallet connects
-  // ---------------------------------------------------------------------------
-
-  $effect(() => {
-    const connected = walletStore.isConnected;
-    const pending = walletStore.pendingAction;
-
-    if (connected && pending && (pending.type === "approve" || pending.type === "swap")) {
-      // Clear the pending action first to avoid re-execution
-      walletStore.pendingAction = null;
-
-      const params = pending.params as { routerName?: string; quote?: unknown } | null;
-      if (params?.routerName && params.quote) {
-        const routerName = params.routerName;
-        const quote = params.quote;
-        if (pending.type === "approve") {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          void transactionStore.approve(routerName, quote as any);
-        } else {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          void transactionStore.swap(routerName, quote as any);
-        }
-      }
-    }
-  });
-
-  // ---------------------------------------------------------------------------
   // Reactive balance fetching: re-fetch when wallet, chain, or tokens change
   // ---------------------------------------------------------------------------
 
   $effect(() => {
     const address = walletStore.address;
     const chainId = walletStore.chainId;
+    const selectedChain = formStore.chainId;
     const provider = walletStore.provider;
     const fromToken = formStore.fromToken;
     const toToken = formStore.toToken;
 
-    if (!address || chainId === null || !provider) {
+    if (!address || chainId === null || chainId !== selectedChain || !provider) {
       balanceStore.clear();
       return;
     }
@@ -94,128 +65,63 @@
       provider,
       address,
       chainId,
-      fromToken ? { address: fromToken.address, decimals: fromToken.decimals } : null,
-      toToken ? { address: toToken.address, decimals: toToken.decimals } : null
+      fromToken && fromToken.decimals !== null
+        ? { address: fromToken.address, decimals: fromToken.decimals }
+        : null,
+      toToken && toToken.decimals !== null
+        ? { address: toToken.address, decimals: toToken.decimals }
+        : null
     );
   });
 
   // ---------------------------------------------------------------------------
-  // Auto-populate form defaults when config loads (enables auto-compare on load)
-  // ---------------------------------------------------------------------------
-
-  let defaultsApplied = false;
-
+  // Resolve token metadata as selections or available lists change.
   $effect(() => {
-    if (defaultsApplied) return;
-
-    // Wait for config to load with default tokens
-    const defaults = configStore.defaultTokens;
-    if (Object.keys(defaults).length === 0) return;
-
-    // If form already has all data needed for comparison, skip
-    const hasTokens = formStore.fromToken !== null && formStore.toToken !== null;
-    const hasAmount = formStore.sellAmount !== "" || formStore.receiveAmount !== "";
-    if (hasTokens && hasAmount) {
-      defaultsApplied = true;
-      return;
-    }
-
+    const from = formStore.fromToken;
+    const to = formStore.toToken;
     const chainId = formStore.chainId;
-    const chainDefaults = defaults[String(chainId)];
-    if (!chainDefaults) {
-      defaultsApplied = true;
-      return;
-    }
-
-    // Resolve full token info from token list if available
-    const allTokens = tokenListStore.allTokens;
-
-    if (!formStore.fromToken && chainDefaults.from) {
-      const found = allTokens.find(
-        (t) =>
-          t.address.toLowerCase() === chainDefaults.from.toLowerCase() &&
-          Number(t.chainId) === chainId
-      );
-      const token: TokenInfo = found
-        ? {
-            address: found.address,
-            symbol: found.symbol,
-            decimals: found.decimals,
-            name: found.name,
-            logoURI: found.logoURI,
-          }
-        : { address: chainDefaults.from, symbol: "", decimals: 18 };
-      formStore.fromToken = token;
-    }
-
-    if (!formStore.toToken && chainDefaults.to) {
-      const found = allTokens.find(
-        (t) =>
-          t.address.toLowerCase() === chainDefaults.to.toLowerCase() &&
-          Number(t.chainId) === chainId
-      );
-      const token: TokenInfo = found
-        ? {
-            address: found.address,
-            symbol: found.symbol,
-            decimals: found.decimals,
-            name: found.name,
-            logoURI: found.logoURI,
-          }
-        : { address: chainDefaults.to, symbol: "", decimals: 18 };
-      formStore.toToken = token;
-    }
-
-    if (!formStore.sellAmount && !formStore.receiveAmount) {
-      formStore.sellAmount = "1";
-    }
-
-    defaultsApplied = true;
+    const tokens = tokenListStore.allTokens;
+    void from;
+    void to;
+    void chainId;
+    void tokens;
+    let active = true;
+    untrack(() => {
+      metadataError = null;
+      void resolveSelectedTokens().then((error) => {
+        if (active) metadataError = error;
+      });
+    });
+    return () => {
+      active = false;
+    };
   });
 
   onMount(() => {
-    // 1. Initialize theme from localStorage (applies data-theme to <html>)
+    let active = true;
     themeStore.init();
-
-    // 1b. Load persisted settings
-    settingsStore.load();
-
-    // 1c. Initialize token lists (default + custom lists from localStorage)
+    // Discard the removed app-signing settings. They must never affect wallet submission.
+    try {
+      localStorage.removeItem("compare-dex-settings");
+    } catch {
+      /* Storage can be unavailable. */
+    }
     void tokenListStore.init();
     tokenListStore.loadLocalTokens();
-
-    // 2. Fetch server config (for WalletConnect project ID)
-    void configStore.init();
-
-    // 3. Start EIP-6963 wallet discovery
     walletStore.startDiscovery();
-
-    // 4. Parse URL params
     const urlParams = parseUrlParams();
-    const allRequired = hasAllRequiredParams();
-
-    if (allRequired) {
-      // 5. URL has all required params — populate form and auto-trigger comparison
-      applyUrlParamsToForm(urlParams);
-      void comparisonStore.compare({
-        chainId: formStore.chainId,
-        from: urlParams.from!,
-        to: urlParams.to!,
-        amount: urlParams.amount!,
-        slippageBps: formStore.slippageBps,
-        mode: formStore.mode,
-      });
-    } else if (Object.keys(urlParams).length > 0) {
-      // 6a. Partial URL params — apply what we have
-      applyUrlParamsToForm(urlParams);
-    } else {
-      // 6b. No URL params — restore preferences for default chain
-      preferencesStore.applyToForm(formStore.chainId);
-    }
-
-    // Cleanup on unmount
+    formStore.isLoading = true;
+    if (Object.keys(urlParams).length) applyUrlParamsToForm(urlParams);
+    else preferencesStore.applyToForm(formStore.chainId);
+    void configStore.init().then(() => {
+      if (!active) return;
+      applyDefaults();
+      formStore.isLoading = false;
+    });
     return () => {
+      active = false;
       walletStore.stopDiscovery();
+      transactionStore.cancelSwap();
     };
   });
 </script>
@@ -259,6 +165,7 @@
   <ChainMismatchWarning />
 
   <main class="app-main">
+    {#if metadataError}<p role="alert">{metadataError}. Select the token again to retry.</p>{/if}
     <CompareForm />
     <QuoteResults />
   </main>

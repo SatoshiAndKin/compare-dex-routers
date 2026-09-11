@@ -10,13 +10,14 @@ vi.mock("viem", async (importOriginal) => {
   };
 });
 
-vi.mock("@spandex/core", () => ({
+vi.mock("@spandex/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@spandex/core")>()),
   createConfig: vi.fn(() => ({ clientLookup: vi.fn().mockReturnValue({}) })),
   defaultProviders: vi.fn(() => []),
   fabric: vi.fn(() => ({})),
   zeroX: vi.fn(() => ({})),
   kyberswap: vi.fn(() => ({})),
-  odos: vi.fn(() => ({})),
+  nordstern: vi.fn(() => ({})),
   lifi: vi.fn(() => ({})),
   relay: vi.fn(() => ({})),
   velora: vi.fn(() => ({})),
@@ -31,6 +32,7 @@ describe("config", () => {
 
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
     process.env = { ...originalEnv };
   });
 
@@ -105,13 +107,14 @@ describe("config", () => {
   });
 
   describe("buildProviders via getSpandexConfig", () => {
-    it("uses default providers when no API keys set", async () => {
+    it("includes Curve without optional provider API keys", async () => {
       delete process.env.ZEROX_API_KEY;
       delete process.env.FABRIC_API_KEY;
       const { getSpandexConfig } = await loadConfig();
-      const { defaultProviders } = await import("@spandex/core");
+      const { curve, zeroX } = await import("@spandex/core");
       getSpandexConfig();
-      expect(defaultProviders).toHaveBeenCalled();
+      expect(curve).toHaveBeenCalledWith({ rpcUrlLookup: expect.any(Function) });
+      expect(zeroX).not.toHaveBeenCalled();
     });
 
     it("uses custom providers when FABRIC_API_KEY is set", async () => {
@@ -202,4 +205,20 @@ describe("config", () => {
       expect(result).toBe("");
     });
   });
+  it.each([
+    [1, "ETH"],
+    [137, "POL"],
+    [56, "BNB"],
+    [43114, "AVAX"],
+  ] as const)(
+    "returns native metadata for chain %i without ERC-20 calls",
+    async (chainId, symbol) => {
+      const { getTokenDecimals, getTokenSymbol, getTokenName } = await loadConfig();
+      const address = "0x0000000000000000000000000000000000000000";
+      expect(await getTokenDecimals(chainId, address)).toBe(18);
+      expect(await getTokenSymbol(chainId, address)).toBe(symbol);
+      expect(await getTokenName(chainId, address)).not.toBe("");
+      expect(createPublicClient).not.toHaveBeenCalled();
+    }
+  );
 });

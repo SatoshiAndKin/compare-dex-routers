@@ -1,65 +1,36 @@
+import { makeQuote, FROM, TO } from "./quote-fixture.js";
 import { render, fireEvent } from "@testing-library/svelte";
 import { describe, it, expect } from "vitest";
 import QuoteDetails from "../lib/components/QuoteDetails.svelte";
-import type { SpandexQuote, CurveQuote } from "../lib/stores/comparisonStore.svelte.js";
 
-const mockSpandexQuote: SpandexQuote = {
-  chainId: 1,
-  from: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  from_symbol: "USDC",
-  to: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  to_symbol: "USDT",
-  amount: "100",
-  input_amount: "100",
-  output_amount: "99.95",
-  input_amount_raw: "100000000",
-  output_amount_raw: "99950000",
-  mode: "exactIn",
-  provider: "0x",
-  slippage_bps: 50,
-  router_address: "0xdef1c0ded9bec7f1a1670819833240f027b25eff",
-  router_calldata: "0xabcdef1234567890",
-  router_value: "0x0",
-  approval_token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  approval_spender: "0xdef1c0ded9bec7f1a1670819833240f027b25eff",
-  gas_used: "120000",
-  gas_cost_eth: "0.0024",
-  output_value_eth: "0.5",
-  net_value_eth: "0.0976",
-};
+const mockSpandexQuote = makeQuote();
 
-const mockCurveQuote: CurveQuote = {
-  source: "curve",
-  from: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  from_symbol: "USDC",
-  to: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  to_symbol: "USDT",
-  amount: "100",
-  input_amount: "100",
+const mockCurveQuote = makeQuote({
+  provider: "curve",
   output_amount: "99.98",
-  mode: "exactIn",
-  route: [
-    {
-      poolId: "pool1",
-      poolName: "USDC/USDT Pool",
-      poolAddress: "0x0000000000000000000000000000000000000000",
-      inputCoinAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      outputCoinAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-    },
-  ],
-  route_symbols: {},
-  router_address: "0x99a58482bd75cbab83b27ec03ca68ff489b5788f",
-  router_calldata: "0x987654321",
-  gas_used: "150000",
-  gas_cost_eth: "0.003",
-  output_value_eth: "0.5",
-  net_value_eth: "0.49",
-};
+  output_amount_raw: "99980000",
+  gas_cost_native: "0.003",
+  route: {
+    nodes: [
+      { address: FROM, symbol: "USDC" },
+      { address: TO, symbol: "USDT" },
+    ],
+    edges: [
+      {
+        source: FROM,
+        target: TO,
+        key: "pool1",
+        value: 1,
+        address: "0x0000000000000000000000000000000000000001",
+      },
+    ],
+  },
+});
 
 describe("QuoteDetails", () => {
   it("is hidden by default — details content not shown", () => {
     const { container } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
     const detailsContent = container.querySelector(".details-content");
     expect(detailsContent).toBeNull();
@@ -67,7 +38,7 @@ describe("QuoteDetails", () => {
 
   it("shows details content after toggle button is clicked", async () => {
     const { container, getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
 
     const toggle = getByText(/Details/);
@@ -79,7 +50,7 @@ describe("QuoteDetails", () => {
 
   it("collapses details when toggle is clicked again", async () => {
     const { container, getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
 
     const toggle = getByText(/Details/);
@@ -92,7 +63,7 @@ describe("QuoteDetails", () => {
 
   it("displays FULL router address — never truncated", async () => {
     const { container, getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
 
     await fireEvent.click(getByText(/Details/));
@@ -105,7 +76,7 @@ describe("QuoteDetails", () => {
 
   it("router address is never truncated (no ellipsis pattern)", async () => {
     const { container, getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
 
     await fireEvent.click(getByText(/Details/));
@@ -118,7 +89,7 @@ describe("QuoteDetails", () => {
 
   it("displays FULL from token address", async () => {
     const { container, getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
 
     await fireEvent.click(getByText(/Details/));
@@ -130,7 +101,7 @@ describe("QuoteDetails", () => {
 
   it("displays FULL to token address", async () => {
     const { container, getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
 
     await fireEvent.click(getByText(/Details/));
@@ -142,7 +113,7 @@ describe("QuoteDetails", () => {
 
   it("displays gas cost when available", async () => {
     const { getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
 
     await fireEvent.click(getByText(/Details/));
@@ -151,7 +122,7 @@ describe("QuoteDetails", () => {
 
   it("displays gas price in gwei when provided", async () => {
     const { getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex", gasPriceGwei: "30" },
+      props: { quote: mockSpandexQuote, gasPriceGwei: "30" },
     });
 
     await fireEvent.click(getByText(/Details/));
@@ -160,7 +131,7 @@ describe("QuoteDetails", () => {
 
   it("displays slippage for Spandex quotes", async () => {
     const { getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
 
     await fireEvent.click(getByText(/Details/));
@@ -169,7 +140,7 @@ describe("QuoteDetails", () => {
 
   it("displays amounts in wei", async () => {
     const { getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
 
     await fireEvent.click(getByText(/Details/));
@@ -179,16 +150,16 @@ describe("QuoteDetails", () => {
 
   it("displays Curve route steps when available", async () => {
     const { getByText } = render(QuoteDetails, {
-      props: { quote: mockCurveQuote, type: "curve" },
+      props: { quote: mockCurveQuote },
     });
 
     await fireEvent.click(getByText(/Details/));
-    expect(getByText(/USDC\/USDT Pool/)).toBeTruthy();
+    expect(getByText("Pool: 0x0000000000000000000000000000000000000001")).toBeTruthy();
   });
 
   it("shows details toggle button", () => {
     const { getByText } = render(QuoteDetails, {
-      props: { quote: mockSpandexQuote, type: "spandex" },
+      props: { quote: mockSpandexQuote },
     });
     expect(getByText(/Details/)).toBeTruthy();
   });

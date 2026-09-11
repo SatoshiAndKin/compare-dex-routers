@@ -230,16 +230,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
-    SpandexQuote: {
+    Quote: {
       chainId: number;
       from: string;
       from_symbol: string;
       to: string;
       to_symbol: string;
       amount: string;
-      /** @description Human-readable input amount (relevant for targetOut mode) */
       input_amount: string;
-      /** @description Human-readable output amount */
       output_amount: string;
       input_amount_raw: string;
       output_amount_raw: string;
@@ -247,76 +245,147 @@ export interface components {
       mode: "exactIn" | "targetOut";
       provider: string;
       slippage_bps: number;
-      gas_used: string;
-      /** @description Gas cost in ETH (gas_used * gas_price / 1e18) */
-      gas_cost_eth: string;
-      /** @description Output value converted to ETH (or input value for targetOut mode) */
-      output_value_eth: string;
-      /** @description Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost). */
-      net_value_eth: string;
-      router_address: string;
-      router_calldata: string;
-      router_value: string;
-      approval_token: string;
-      approval_spender: string;
+      sender: string | null;
+      execution: {
+        to: string;
+        data: string;
+        value: string;
+        approval: {
+          token: string;
+          spender: string;
+        } | null;
+      } | null;
+      route: {
+        nodes: {
+          address: string;
+          symbol?: string;
+        }[];
+        edges: {
+          source: string;
+          target: string;
+          address?: string;
+          key: string;
+          value: number;
+        }[];
+      } | null;
+      gas_used: string | null;
+      gas_price_gwei: string | null;
+      native_currency: string;
+      gas_cost_native: string | null;
+      trade_value_native: string | null;
+      net_value_native: string | null;
     };
     Error: {
       error: string;
+      /** @enum {string} */
+      code: "INVALID_REQUEST" | "NOT_FOUND" | "UPSTREAM_ERROR";
+      requestId: string;
     };
     CompareResult: {
-      spandex: components["schemas"]["SpandexQuote"] & unknown;
+      spandex: {
+        chainId: number;
+        from: string;
+        from_symbol: string;
+        to: string;
+        to_symbol: string;
+        amount: string;
+        input_amount: string;
+        output_amount: string;
+        input_amount_raw: string;
+        output_amount_raw: string;
+        /** @enum {string} */
+        mode: "exactIn" | "targetOut";
+        provider: string;
+        slippage_bps: number;
+        sender: string | null;
+        execution: {
+          to: string;
+          data: string;
+          value: string;
+          approval: {
+            token: string;
+            spender: string;
+          } | null;
+        } | null;
+        route: {
+          nodes: {
+            address: string;
+            symbol?: string;
+          }[];
+          edges: {
+            source: string;
+            target: string;
+            address?: string;
+            key: string;
+            value: number;
+          }[];
+        } | null;
+        gas_used: string | null;
+        gas_price_gwei: string | null;
+        native_currency: string;
+        gas_cost_native: string | null;
+        trade_value_native: string | null;
+        net_value_native: string | null;
+      } | null;
       spandex_error: string | null;
-      curve: components["schemas"]["CurveQuote"];
+      curve: {
+        chainId: number;
+        from: string;
+        from_symbol: string;
+        to: string;
+        to_symbol: string;
+        amount: string;
+        input_amount: string;
+        output_amount: string;
+        input_amount_raw: string;
+        output_amount_raw: string;
+        /** @enum {string} */
+        mode: "exactIn" | "targetOut";
+        provider: string;
+        slippage_bps: number;
+        sender: string | null;
+        execution: {
+          to: string;
+          data: string;
+          value: string;
+          approval: {
+            token: string;
+            spender: string;
+          } | null;
+        } | null;
+        route: {
+          nodes: {
+            address: string;
+            symbol?: string;
+          }[];
+          edges: {
+            source: string;
+            target: string;
+            address?: string;
+            key: string;
+            value: number;
+          }[];
+        } | null;
+        gas_used: string | null;
+        gas_price_gwei: string | null;
+        native_currency: string;
+        gas_cost_native: string | null;
+        trade_value_native: string | null;
+        net_value_native: string | null;
+      } | null;
       curve_error: string | null;
       /** @enum {string|null} */
       recommendation: "spandex" | "curve" | null;
       recommendation_reason: string;
+      /** @enum {string} */
+      recommendation_basis: "gas_adjusted" | "raw_amount" | "single_quote" | "none";
       gas_price_gwei: string | null;
-      /** @description Rate used to convert output to ETH for gas-adjusted comparison (exactIn mode, null if output is ETH) */
-      output_to_eth_rate: string | null;
-      /** @description Rate used to convert input to ETH for gas-adjusted comparison (targetOut mode, null if input is ETH) */
-      input_to_eth_rate: string | null;
-      /**
-       * @description The quote mode used for this comparison
-       * @enum {string}
-       */
+      native_currency: string;
+      output_to_native_rate: string | null;
+      input_to_native_rate: string | null;
+      /** @enum {string} */
       mode: "exactIn" | "targetOut";
     };
-    CurveQuote: {
-      /** @enum {string} */
-      source: "curve";
-      from: string;
-      from_symbol: string;
-      to: string;
-      to_symbol: string;
-      amount: string;
-      /** @description Human-readable input amount (relevant for targetOut mode) */
-      input_amount: string;
-      output_amount: string;
-      /** @enum {string} */
-      mode: "exactIn" | "targetOut";
-      route: {
-        poolId: string;
-        poolName: string;
-        poolAddress: string;
-        inputCoinAddress: string;
-        outputCoinAddress: string;
-      }[];
-      route_symbols: {
-        [key: string]: string;
-      };
-      router_address: string;
-      router_calldata: string;
-      /** @description Spender address for ERC-20 approval (present when approval is required) */
-      approval_target?: string;
-      gas_used: string;
-      /** @description Gas cost in ETH */
-      gas_cost_eth: string;
-      /** @description Output value converted to ETH (or input value for targetOut mode) */
-      output_value_eth: string;
-      /** @description Net ETH value. For exactIn: output_value_eth - gas_cost_eth. For targetOut: input_value_eth + gas_cost_eth (total cost). */
-      net_value_eth: string;
-    } | null;
     TokenListResponse: {
       /** @description Name of the token list (or "Default Tokenlists" if multiple) */
       name: string;
@@ -374,6 +443,9 @@ export interface components {
       recurringPatterns: number;
     };
     Config: {
+      flags: {
+        [key: string]: boolean;
+      };
       /** @description Map of chainId to default token pair */
       defaultTokens: {
         [key: string]: components["schemas"]["DefaultTokenPair"];
@@ -471,7 +543,7 @@ export interface operations {
         amount: string;
         /** @description Slippage tolerance in basis points */
         slippageBps?: number | null;
-        /** @description Sender address for approval checks */
+        /** @description Account bound to execution data. Omit for a preview with no execution data. */
         sender?: string;
         /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
         mode?: "exactIn" | "targetOut";
@@ -488,7 +560,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["SpandexQuote"];
+          "application/json": components["schemas"]["Quote"];
         };
       };
       /** @description Invalid parameters */
@@ -524,7 +596,7 @@ export interface operations {
         amount: string;
         /** @description Slippage tolerance in basis points */
         slippageBps?: number | null;
-        /** @description Sender address for approval checks */
+        /** @description Account bound to execution data. Omit for a preview with no execution data. */
         sender?: string;
         /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
         mode?: "exactIn" | "targetOut";
@@ -568,7 +640,7 @@ export interface operations {
         amount: string;
         /** @description Slippage tolerance in basis points */
         slippageBps?: number | null;
-        /** @description Sender address for approval checks */
+        /** @description Account bound to execution data. Omit for a preview with no execution data. */
         sender?: string;
         /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
         mode?: "exactIn" | "targetOut";
@@ -585,7 +657,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["CurveQuote"];
+          "application/json": components["schemas"]["Quote"];
         };
       };
       /** @description Invalid parameters or Curve not supported on this chain */

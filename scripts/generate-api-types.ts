@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -14,8 +14,8 @@ const typesPath = resolve(__dirname, "../packages/frontend/src/generated/api-typ
 writeFileSync(specPath, JSON.stringify(openapiDocument, null, 2));
 console.log(`Wrote OpenAPI spec to ${specPath}`);
 
-execSync(`npx openapi-typescript ${specPath} -o ${typesPath}`, {
-  cwd: resolve(__dirname, "../packages/frontend"),
+execFileSync("pnpm", ["exec", "openapi-typescript", specPath, "-o", typesPath], {
+  cwd: resolve(__dirname, ".."),
   stdio: "inherit",
 });
 

@@ -5,12 +5,11 @@ const config: KnipConfig = {
   workspaces: {
     ".": {
       project: ["*.ts", "*.js", "scripts/**/*.ts"],
-      ignoreDependencies: ["openapi-typescript"],
     },
     "packages/api": {
       entry: ["src/__tests__/**/*.test.ts"],
       project: ["src/**/*.ts"],
-      ignoreDependencies: ["pino-pretty", "@curvefi/api"],
+      ignoreDependencies: ["pino-pretty"],
       vitest: {
         config: ["vitest.config.ts"],
       },

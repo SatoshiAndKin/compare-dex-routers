@@ -34,7 +34,7 @@ describe("gas-price module", () => {
 
       const result = await getGasPriceWithCache(1, mockClient);
 
-      expect(result.gasPriceGwei).toBe("20.0000");
+      expect(result.gasPriceGwei).toBe("20");
       expect(result.blockNumber).toBe(1000n);
       expect(result.fromCache).toBe(false);
 
@@ -53,7 +53,7 @@ describe("gas-price module", () => {
 
       // Second call - same chain, same block - should hit cache
       const result2 = await getGasPriceWithCache(1, mockClient);
-      expect(result2.gasPriceGwei).toBe("20.0000");
+      expect(result2.gasPriceGwei).toBe("20");
       expect(result2.fromCache).toBe(true);
 
       // getGasPrice should only be called once (first time)
@@ -75,7 +75,7 @@ describe("gas-price module", () => {
 
       const result2 = await getGasPriceWithCache(1, mockClient);
       expect(result2.blockNumber).toBe(1001n);
-      expect(result2.gasPriceGwei).toBe("25.0000");
+      expect(result2.gasPriceGwei).toBe("25");
       expect(result2.fromCache).toBe(false);
 
       // getGasPrice should be called twice (once per block)
@@ -88,14 +88,14 @@ describe("gas-price module", () => {
       vi.mocked(mockClient.getGasPrice).mockResolvedValue(20_000_000_000n);
 
       const result1 = await getGasPriceWithCache(1, mockClient);
-      expect(result1.gasPriceGwei).toBe("20.0000");
+      expect(result1.gasPriceGwei).toBe("20");
 
       // Chain 8453 (Base) - same block number but different chain
       // Should NOT hit cache from chain 1
       vi.mocked(mockClient.getGasPrice).mockResolvedValue(5_000_000_000n); // 5 gwei on Base
 
       const result2 = await getGasPriceWithCache(8453, mockClient);
-      expect(result2.gasPriceGwei).toBe("5.0000");
+      expect(result2.gasPriceGwei).toBe("5");
       expect(result2.fromCache).toBe(false); // Cache miss for new chain
 
       // getGasPrice should be called twice (once per chain)
@@ -127,13 +127,13 @@ describe("gas-price module", () => {
       expect(result.fromCache).toBe(false);
     });
 
-    it("formats gas price with 4 decimal places", async () => {
+    it("preserves the exact gas price without rounding", async () => {
       vi.mocked(mockClient.getBlockNumber).mockResolvedValue(1000n);
       vi.mocked(mockClient.getGasPrice).mockResolvedValue(1_234_567_890n); // ~1.2346 gwei
 
       const result = await getGasPriceWithCache(1, mockClient);
 
-      expect(result.gasPriceGwei).toBe("1.2346");
+      expect(result.gasPriceGwei).toBe("1.23456789");
     });
   });
 
@@ -150,7 +150,7 @@ describe("gas-price module", () => {
       await getGasPriceWithCache(1, mockClient);
 
       const cached = getCachedGasPrice(1, 1000n);
-      expect(cached).toBe("20.0000");
+      expect(cached).toBe("20");
     });
 
     it("returns null for different block number", async () => {
@@ -183,7 +183,7 @@ describe("gas-price module", () => {
       expect(stats.entries[0]).toEqual({
         chainId: 1,
         blockNumber: "1000",
-        gasPriceGwei: "20.0000",
+        gasPriceGwei: "20",
       });
     });
   });
@@ -249,7 +249,7 @@ describe("gas-price module", () => {
 
       // All should return the same value
       for (const result of results) {
-        expect(result.gasPriceGwei).toBe("20.0000");
+        expect(result.gasPriceGwei).toBe("20");
       }
 
       // Note: Due to async nature, we might get multiple RPC calls
@@ -278,7 +278,7 @@ describe("gas-price module", () => {
 
       const result2 = await getGasPriceWithCache(1, mockClient);
       expect(result2.fromCache).toBe(false);
-      expect(result2.gasPriceGwei).toBe("25.0000");
+      expect(result2.gasPriceGwei).toBe("25");
 
       vi.useRealTimers();
     });
@@ -349,7 +349,7 @@ describe("gas-price module", () => {
       // But a recent entry should still be there
       vi.mocked(mockClient.getBlockNumber).mockResolvedValue(BigInt(2000 + MAX_CACHE_SIZE - 1));
       const recentCached = getCachedGasPrice(1, BigInt(2000 + MAX_CACHE_SIZE - 1));
-      expect(recentCached).toBe("20.0000");
+      expect(recentCached).toBe("20");
 
       vi.useRealTimers();
     });

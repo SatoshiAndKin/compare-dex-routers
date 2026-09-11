@@ -3,7 +3,7 @@ import type http from "node:http";
 
 export function getRequestId(req: http.IncomingMessage): string {
   const existing = req.headers["x-request-id"];
-  if (typeof existing === "string" && existing.length > 0) return existing;
+  if (typeof existing === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(existing)) return existing;
   return randomUUID();
 }
 

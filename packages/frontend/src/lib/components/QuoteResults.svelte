@@ -1,10 +1,11 @@
 <script lang="ts">
   /**
    * QuoteResults — tab-based container showing comparison results.
-   * Displays Spandex and Curve quotes progressively as they arrive.
+   * Displays the quotes and recommendation from one comparison response.
    * The "Recommended" tab shows the winning quote; "Alternative" shows the other.
    */
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
+  import { configStore } from "../stores/configStore.svelte.js";
   import QuoteCard from "./QuoteCard.svelte";
 
   const recommendedProvider = $derived(comparisonStore.recommendation ?? "spandex");
@@ -15,14 +16,14 @@
     return {
       quote: isSpandex ? comparisonStore.spandexResult : comparisonStore.curveResult,
       error: isSpandex ? comparisonStore.spandexError : comparisonStore.curveError,
-      loading: isSpandex ? comparisonStore.spandexLoading : comparisonStore.curveLoading,
+      loading: comparisonStore.isLoading,
     };
   }
 
   const recommended = $derived(getProviderData(recommendedProvider));
   const alternative = $derived(getProviderData(alternativeProvider));
 
-  const bothLoading = $derived(comparisonStore.spandexLoading && comparisonStore.curveLoading);
+  const bothLoading = $derived(comparisonStore.isLoading);
 
   function tabLabel(provider: "spandex" | "curve"): string {
     if (bothLoading) return "Loading...";
@@ -33,13 +34,13 @@
   const alternativeTabLabel = $derived(tabLabel(alternativeProvider));
 
   // Hide alternative tab in single router mode (once we know)
-  const showAlternativeTab = $derived(!comparisonStore.isSingleRouterMode);
+  const showAlternativeTab = $derived(configStore.flags.curve_enabled !== false);
 
   // Combined error when both fail
   const bothFailed = $derived(
     !comparisonStore.isLoading &&
       comparisonStore.spandexError !== null &&
-      (comparisonStore.isSingleRouterMode || comparisonStore.curveError !== null) &&
+      comparisonStore.curveError !== null &&
       comparisonStore.spandexResult === null &&
       comparisonStore.curveResult === null
   );

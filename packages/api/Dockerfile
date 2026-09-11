@@ -1,4 +1,8 @@
-FROM node:24-slim
+FROM oven/bun:1.4.0 AS bun
+
+FROM node:24.21.0-slim
+
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
 
@@ -9,7 +13,7 @@ COPY packages/api/package.json ./packages/api/
 COPY packages/frontend/package.json ./packages/frontend/
 
 # Enable pnpm
-RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
+RUN corepack enable && corepack prepare pnpm@12.3.1 --activate
 
 # Disable husky git hooks (not applicable in Docker)
 ENV HUSKY=0
@@ -30,4 +34,6 @@ EXPOSE 3100
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD node -e "fetch('http://localhost:3100/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 
-CMD ["pnpm", "--filter", "@compare-dex/api", "start"]
+WORKDIR /app/packages/api
+
+CMD ["node", "--import", "tsx", "src/server.ts"]

@@ -1,3 +1,4 @@
+import { deferred } from "./quote-fixture.js";
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   tokenListStore,
@@ -698,5 +699,88 @@ describe("tokenListStore", () => {
 
     expect(() => tokenListStore.addLocalToken(mockUSDC)).not.toThrow();
     setItemSpy.mockRestore();
+  });
+  it("preserves all saved lists and a disabled Uniswap list across asynchronous startup", async () => {
+    const custom = "https://custom.example/tokens.json";
+    const saved = [
+      { url: custom, name: "My tokens", enabled: true },
+      { url: DEFAULT_UNISWAP_URL, name: "Uniswap", enabled: false },
+    ];
+    localStorage.setItem("customTokenlists", JSON.stringify(saved));
+    const slow = deferred<Response>();
+    const baseFetch = mockFetchImpl;
+    mockFetchImpl = (url, init) => (String(url) === custom ? slow.promise : baseFetch(url, init));
+    const pending = tokenListStore.init();
+    await vi.waitFor(() =>
+      expect(tokenListStore.lists.some((list) => list.url === null)).toBe(true)
+    );
+    expect(JSON.parse(localStorage.getItem("customTokenlists")!)).toEqual(saved);
+    expect(tokenListStore.lists.find((list) => list.url === DEFAULT_UNISWAP_URL)?.enabled).toBe(
+      false
+    );
+    slow.resolve(new Response(JSON.stringify({ name: "My tokens", tokens: [mockUSDC] })));
+    await pending;
+    expect(JSON.parse(localStorage.getItem("customTokenlists")!)).toEqual(
+      expect.arrayContaining([saved[0], { ...saved[1], name: "Uniswap Labs Default" }])
+    );
+    expect(tokenListStore.lists.find((list) => list.url === custom)?.tokens).toEqual([
+      expect.objectContaining(mockUSDC),
+    ]);
+  });
+  it("does not let a late response recreate a removed list or change another list", async () => {
+    const first = "https://first.example/list.json";
+    const second = "https://second.example/list.json";
+    localStorage.setItem(
+      "customTokenlists",
+      JSON.stringify([
+        { url: first, name: "First", enabled: true },
+        { url: second, name: "Second", enabled: false },
+      ])
+    );
+    const slow = deferred<Response>();
+    const baseFetch = mockFetchImpl;
+    mockFetchImpl = (url, init) =>
+      String(url) === first
+        ? slow.promise
+        : String(url) === second
+          ? Promise.resolve(new Response(JSON.stringify({ name: "Second", tokens: [mockDAI] })))
+          : baseFetch(url, init);
+    const pending = tokenListStore.init();
+    tokenListStore.removeList(first);
+    tokenListStore.toggleList(second);
+    slow.resolve(new Response(JSON.stringify({ name: "First", tokens: [mockUSDC] })));
+    await pending;
+    expect(tokenListStore.lists.some((list) => list.url === first)).toBe(false);
+    expect(tokenListStore.lists.find((list) => list.url === second)).toMatchObject({
+      name: "Second",
+      enabled: true,
+      tokens: [expect.objectContaining(mockDAI)],
+    });
+  });
+  it("keeps unavailable custom lists saved for the next startup", async () => {
+    const saved = { url: "https://offline.example/list.json", name: "Offline", enabled: false };
+    localStorage.setItem("customTokenlists", JSON.stringify([saved]));
+    await tokenListStore.init();
+    expect(tokenListStore.lists.find((list) => list.url === saved.url)).toMatchObject({
+      ...saved,
+      error: expect.any(String),
+    });
+    expect(JSON.parse(localStorage.getItem("customTokenlists")!)).toContainEqual(saved);
+  });
+  it("does not invent decimals for tokens missing metadata", async () => {
+    mockFetchImpl = async () =>
+      new Response(
+        JSON.stringify({
+          name: "Incomplete",
+          tokens: [
+            { ...mockUSDC, decimals: undefined },
+            { ...mockDAI, decimals: 0 },
+          ],
+        })
+      );
+    expect(await tokenListStore.addList("https://metadata.example/list.json")).toBeNull();
+    expect(tokenListStore.allTokens).toEqual([
+      expect.objectContaining({ address: mockDAI.address, decimals: 0 }),
+    ]);
   });
 });

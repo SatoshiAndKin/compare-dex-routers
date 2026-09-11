@@ -20,10 +20,7 @@ vi.mock("../lib/api.js", () => ({
 // ---------------------------------------------------------------------------
 
 function resetSettingsStore(): void {
-  settingsStore.mevEnabled = false;
-  settingsStore.customRpcUrl = "";
   settingsStore.isSettingsOpen = false;
-  settingsStore.isMevModalOpen = false;
 }
 
 function resetTokenListStore(): void {

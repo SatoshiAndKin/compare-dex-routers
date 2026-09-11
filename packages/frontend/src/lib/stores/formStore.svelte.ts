@@ -6,7 +6,7 @@
 export interface TokenInfo {
   address: string;
   symbol: string;
-  decimals: number;
+  decimals: number | null;
   name?: string;
   logoURI?: string;
   chainId?: number;
@@ -27,6 +27,9 @@ class FormStore {
     return (
       this.fromToken !== null &&
       this.toToken !== null &&
+      this.fromToken.decimals !== null &&
+      this.toToken.decimals !== null &&
+      !this.isLoading &&
       (this.sellAmount !== "" || this.receiveAmount !== "")
     );
   }

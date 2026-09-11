@@ -1,550 +1,300 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { transactionStore } from "../lib/stores/transactionStore.svelte.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { transactionStore as transactions } from "../lib/stores/transactionStore.svelte.js";
+import { comparisonStore } from "../lib/stores/comparisonStore.svelte.js";
 import { walletStore } from "../lib/stores/walletStore.svelte.js";
+import { formStore } from "../lib/stores/formStore.svelte.js";
 import { autoRefreshStore } from "../lib/stores/autoRefreshStore.svelte.js";
-import type { SpandexQuote, CurveQuote } from "../lib/stores/comparisonStore.svelte.js";
+import { makeQuote, SENDER, FROM, TO, ROUTER, deferred } from "./quote-fixture.js";
 
-// ---------------------------------------------------------------------------
-// Mock helpers
-// ---------------------------------------------------------------------------
-
-type MockProvider = {
-  request: ReturnType<typeof vi.fn>;
-};
-
-function makeProvider(overrides?: Partial<MockProvider>): MockProvider {
-  return {
-    request: vi.fn().mockResolvedValue(null),
-    ...overrides,
-  };
+const HASH = `0x${"a".repeat(64)}`;
+const request =
+  vi.fn<(args: { method: string; params?: unknown[] | object }) => Promise<unknown>>();
+let allowance: bigint;
+let actualChain: string;
+let actualAccount: string;
+function current(overrides: Parameters<typeof makeQuote>[0] = {}) {
+  comparisonStore.spandexResult = makeQuote(overrides);
+  return comparisonStore.spandexResult;
+}
+function sent() {
+  return request.mock.calls.filter(([args]) => args.method === "eth_sendTransaction");
+}
+async function confirmation() {
+  await vi.waitFor(() => expect(transactions.swapConfirmation).not.toBeNull());
 }
 
-const mockSpandexQuote: SpandexQuote = {
-  chainId: 1,
-  from: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  from_symbol: "USDC",
-  to: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  to_symbol: "USDT",
-  amount: "100",
-  input_amount: "100",
-  output_amount: "99.95",
-  input_amount_raw: "100000000",
-  output_amount_raw: "99950000",
-  mode: "exactIn",
-  provider: "0x",
-  slippage_bps: 50,
-  router_address: "0xdef1c0ded9bec7f1a1670819833240f027b25eff",
-  router_calldata: "0xabcdef1234",
-  router_value: "0x0",
-  approval_token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  approval_spender: "0xdef1c0ded9bec7f1a1670819833240f027b25eff",
-  gas_used: "120000",
-  gas_cost_eth: "0.0024",
-  output_value_eth: "0.5",
-  net_value_eth: "0.49",
-};
-
-const mockCurveQuote: CurveQuote = {
-  source: "curve",
-  from: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  from_symbol: "USDC",
-  to: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  to_symbol: "USDT",
-  amount: "100",
-  input_amount: "100",
-  output_amount: "99.98",
-  input_amount_raw: "100000000",
-  output_amount_raw: "99980000",
-  mode: "exactIn",
-  route: [],
-  route_symbols: {},
-  approval_target: "0x99a58482bd75cbab83b27ec03ca68ff489b5788f",
-  router_address: "0x99a58482bd75cbab83b27ec03ca68ff489b5788f",
-  router_calldata: "0x123456789a",
-  gas_used: "150000",
-  gas_cost_eth: "0.003",
-  output_value_eth: "0.5",
-  net_value_eth: "0.49",
-};
-
-// Reset all store state between tests
-function resetStores(): void {
-  // Reset transactionStore
-  transactionStore.approveStatus = {};
-  transactionStore.swapStatus = {};
-  transactionStore.cancelSwap(); // resolves any pending confirmation promise
-
-  // Reset walletStore
-  walletStore.address = null;
-  walletStore.chainId = null;
-  walletStore.provider = null;
-  walletStore.walletInfo = null;
-  walletStore.isConnecting = false;
-  walletStore.message = "";
-  walletStore.messageIsError = false;
-  walletStore.pendingAction = null;
-  walletStore.walletMenuRequested = false;
-
-  // Stop auto-refresh
+beforeEach(() => {
+  comparisonStore.invalidate();
+  transactions.cancelSwap();
+  transactions.allowances = {};
+  transactions.swapStatus = {};
+  transactions.busy = false;
   autoRefreshStore.stop();
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe("transactionStore", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    resetStores();
+  walletStore.address = SENDER;
+  walletStore.chainId = 1;
+  walletStore.provider = { request };
+  walletStore.walletMenuRequested = false;
+  formStore.chainId = 1;
+  formStore.mode = "exactIn";
+  formStore.slippageBps = 50;
+  formStore.sellAmount = "100";
+  formStore.fromToken = { address: FROM, symbol: "USDC", decimals: 6, chainId: 1 };
+  formStore.toToken = { address: TO, symbol: "USDT", decimals: 6, chainId: 1 };
+  allowance = 0n;
+  actualChain = "0x1";
+  actualAccount = SENDER;
+  request.mockReset().mockImplementation(async ({ method }) => {
+    switch (method) {
+      case "eth_accounts":
+        return [actualAccount];
+      case "eth_chainId":
+        return actualChain;
+      case "eth_call":
+        return `0x${allowance.toString(16)}`;
+      case "eth_sendTransaction":
+        allowance = 2n ** 256n - 1n;
+        return HASH;
+      case "eth_getTransactionReceipt":
+        return { status: "0x1" };
+      default:
+        throw new Error(`Unexpected wallet method: ${method}`);
+    }
   });
+});
+afterEach(() => {
+  transactions.cancelSwap();
+  autoRefreshStore.stop();
+  vi.restoreAllMocks();
+});
 
-  afterEach(() => {
-    resetStores();
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+describe("quote-bound wallet actions", () => {
+  it.each(["approve", "swap"] as const)(
+    "%s asks for a connection without saving a transaction",
+    async (action) => {
+      walletStore.address = null;
+      await transactions[action]("spandex", current({ sender: null, execution: null }));
+      expect(walletStore.walletMenuRequested).toBe(true);
+      expect(request).not.toHaveBeenCalled();
+      expect(walletStore.message).toContain("fresh quote");
+    }
+  );
+  it.each([
+    "preview",
+    "wrong chain",
+    "wrong account",
+    "wrong provider account",
+    "wrong provider chain",
+    "old quote",
+    "changed amount",
+    "changed slippage",
+  ])("blocks %s before approval or swap", async (scenario) => {
+    const quote = current(scenario === "preview" ? { sender: null, execution: null } : {});
+    if (scenario === "wrong chain") walletStore.chainId = 8453;
+    if (scenario === "wrong account") walletStore.address = ROUTER;
+    if (scenario === "wrong provider account") actualAccount = ROUTER;
+    if (scenario === "wrong provider chain") actualChain = "0x2105";
+    if (scenario === "old quote") current();
+    if (scenario === "changed amount") formStore.sellAmount = "200";
+    if (scenario === "changed slippage") formStore.slippageBps = 100;
+    await transactions.approve("spandex", quote);
+    await transactions.swap("spandex", quote);
+    expect(sent()).toEqual([]);
+    expect(transactions.swapConfirmation).toBeNull();
   });
-
-  // ---------------------------------------------------------------------------
-  // Initial state
-  // ---------------------------------------------------------------------------
-
-  it("starts with all statuses idle", () => {
-    expect(transactionStore.approveStatus).toEqual({});
-    expect(transactionStore.swapStatus).toEqual({});
-    expect(transactionStore.swapConfirmation).toBeNull();
+  it("uses the connected account, chain, token, and spender for approval", async () => {
+    const quote = current();
+    autoRefreshStore.start(15, vi.fn());
+    await transactions.approve("spandex", quote);
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0]?.[0].params).toEqual([
+      {
+        from: SENDER,
+        chainId: "0x1",
+        to: FROM,
+        value: "0x0",
+        data: `0x095ea7b3${ROUTER.slice(2).padStart(64, "0")}${"f".repeat(64)}`,
+      },
+    ]);
+    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
+    expect(walletStore.message).toContain(HASH);
+    expect(autoRefreshStore.paused).toBe(false);
   });
-
-  it("getApproveStatus returns idle for unknown routers", () => {
-    expect(transactionStore.getApproveStatus("spandex")).toBe("idle");
-    expect(transactionStore.getApproveStatus("curve")).toBe("idle");
+  it("reads allowance and skips an unnecessary approval", async () => {
+    allowance = 100000000n;
+    const quote = current();
+    await transactions.approve("spandex", quote);
+    expect(sent()).toEqual([]);
+    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
   });
-
-  it("getSwapStatus returns idle for unknown routers", () => {
-    expect(transactionStore.getSwapStatus("spandex")).toBe("idle");
-    expect(transactionStore.getSwapStatus("curve")).toBe("idle");
+  it("checks the allowance amount for every new quote", async () => {
+    allowance = 100000000n;
+    const quote = current();
+    await transactions.refreshAllowance(quote);
+    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
+    formStore.sellAmount = "200";
+    const larger = current({ amount: "200", input_amount: "200", input_amount_raw: "200000000" });
+    expect(transactions.getApproveStatus(larger)).toBe("idle");
   });
-
-  // ---------------------------------------------------------------------------
-  // approve() — no wallet connected
-  // ---------------------------------------------------------------------------
-
-  it("approve sets pendingAction when wallet not connected", async () => {
-    await transactionStore.approve("spandex", mockSpandexQuote);
-
-    expect(walletStore.pendingAction).not.toBeNull();
-    expect(walletStore.pendingAction?.type).toBe("approve");
-  });
-
-  it("approve stores routerName and quote in pendingAction params", async () => {
-    await transactionStore.approve("spandex", mockSpandexQuote);
-
-    const params = walletStore.pendingAction?.params as { routerName: string; quote: unknown };
-    expect(params.routerName).toBe("spandex");
-    expect(params.quote).toEqual(mockSpandexQuote);
-  });
-
-  it("approve requests wallet menu when not connected", async () => {
-    await transactionStore.approve("spandex", mockSpandexQuote);
-
-    expect(walletStore.walletMenuRequested).toBe(true);
-  });
-
-  it("approve does not change approveStatus when not connected", async () => {
-    await transactionStore.approve("spandex", mockSpandexQuote);
-
-    expect(transactionStore.getApproveStatus("spandex")).toBe("idle");
-  });
-
-  // ---------------------------------------------------------------------------
-  // swap() — no wallet connected
-  // ---------------------------------------------------------------------------
-
-  it("swap sets pendingAction when wallet not connected", async () => {
-    await transactionStore.swap("spandex", mockSpandexQuote);
-
-    expect(walletStore.pendingAction).not.toBeNull();
-    expect(walletStore.pendingAction?.type).toBe("swap");
-  });
-
-  it("swap stores routerName and quote in pendingAction params", async () => {
-    await transactionStore.swap("spandex", mockSpandexQuote);
-
-    const params = walletStore.pendingAction?.params as { routerName: string; quote: unknown };
-    expect(params.routerName).toBe("spandex");
-    expect(params.quote).toEqual(mockSpandexQuote);
-  });
-
-  it("swap requests wallet menu when not connected", async () => {
-    await transactionStore.swap("spandex", mockSpandexQuote);
-
-    expect(walletStore.walletMenuRequested).toBe(true);
-  });
-
-  // ---------------------------------------------------------------------------
-  // approve() — allowance sufficient (no tx sent)
-  // ---------------------------------------------------------------------------
-
-  it("approve marks confirmed without tx when allowance sufficient", async () => {
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_call") {
-          // Return allowance > input_amount_raw (100000000)
-          return Promise.resolve("0x" + 200000000n.toString(16).padStart(64, "0"));
-        }
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    await transactionStore.approve("spandex", mockSpandexQuote);
-
-    expect(transactionStore.getApproveStatus("spandex")).toBe("confirmed");
-    // eth_sendTransaction should NOT have been called
-    const calls = (provider.request as ReturnType<typeof vi.fn>).mock.calls;
-    const txCalls = calls.filter(
-      (c: unknown[]) => (c[0] as { method: string }).method === "eth_sendTransaction"
+  it.each(["token", "spender", "sender", "chain"])(
+    "does not reuse allowance after a %s change",
+    async (field) => {
+      allowance = 100000000n;
+      await transactions.refreshAllowance(current());
+      const quote = makeQuote();
+      if (field === "token") {
+        quote.from = ROUTER;
+        quote.execution!.approval!.token = ROUTER;
+        formStore.fromToken!.address = ROUTER;
+      }
+      if (field === "spender") quote.execution!.approval!.spender = TO;
+      if (field === "sender") {
+        quote.sender = TO;
+        walletStore.address = TO;
+      }
+      if (field === "chain") {
+        quote.chainId = 8453;
+        formStore.chainId = 8453;
+        walletStore.chainId = 8453;
+      }
+      expect(transactions.getApproveStatus(current(quote))).toBe("idle");
+    }
+  );
+  it("does not allow an older allowance response to overwrite a newer read", async () => {
+    const first = deferred<unknown>();
+    let reads = 0;
+    const base = request.getMockImplementation()!;
+    request.mockImplementation((args) =>
+      args.method === "eth_call" && ++reads === 1 ? first.promise : base(args)
     );
-    expect(txCalls).toHaveLength(0);
+    const quote = current();
+    const pending = transactions.refreshAllowance(quote);
+    await vi.waitFor(() => expect(reads).toBe(1));
+    allowance = 100000000n;
+    await transactions.refreshAllowance(quote);
+    first.resolve("0x0");
+    await pending;
+    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
   });
-
-  // ---------------------------------------------------------------------------
-  // approve() — sends tx when allowance insufficient
-  // ---------------------------------------------------------------------------
-
-  it("approve transitions idle → pending → confirmed on success", async () => {
-    const txHash = "0xabc123txhash";
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_call") {
-          // Allowance is 0 — needs approval
-          return Promise.resolve("0x" + "0".repeat(64));
-        }
-        if (method === "eth_sendTransaction") {
-          return Promise.resolve(txHash);
-        }
-        if (method === "eth_getTransactionReceipt") {
-          return Promise.resolve({ status: "0x1" });
-        }
-        return Promise.resolve(null);
-      }),
+  it("requires confirmation and sends only through the wallet RPC", async () => {
+    allowance = 100000000n;
+    const quote = current();
+    const pending = transactions.swap("spandex", quote);
+    await confirmation();
+    expect(sent()).toEqual([]);
+    transactions.confirmSwap();
+    await pending;
+    expect(sent()).toHaveLength(1);
+    expect(sent()[0]?.[0].params).toEqual([
+      { from: SENDER, chainId: "0x1", to: ROUTER, data: "0xabcdef", value: "0x0" },
+    ]);
+    expect(transactions.getSwapStatus(quote)).toBe("confirmed");
+    expect(walletStore.message).toContain(HASH);
+  });
+  it.each(["account", "chain", "form", "quote", "provider"])(
+    "blocks a %s change while the confirmation is open",
+    async (field) => {
+      allowance = 100000000n;
+      const pending = transactions.swap("spandex", current());
+      await confirmation();
+      if (field === "account") actualAccount = ROUTER;
+      if (field === "chain") actualChain = "0x2105";
+      if (field === "form") formStore.slippageBps = 100;
+      if (field === "quote") comparisonStore.invalidate();
+      if (field === "provider") walletStore.provider = { request: vi.fn() };
+      transactions.confirmSwap();
+      await pending;
+      expect(sent()).toEqual([]);
+    }
+  );
+  it("rechecks context after an allowance read before opening the wallet", async () => {
+    const quote = current();
+    const base = request.getMockImplementation()!;
+    request.mockImplementation(async (args) => {
+      if (args.method === "eth_call") {
+        actualChain = "0x2105";
+        return "0xffffffffffff";
+      }
+      return base(args);
     });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    const approvePromise = transactionStore.approve("spandex", mockSpandexQuote);
-
-    // Status goes pending immediately when tx sent
-    await approvePromise;
-
-    expect(transactionStore.getApproveStatus("spandex")).toBe("confirmed");
+    const pending = transactions.swap("spandex", quote);
+    await confirmation();
+    transactions.confirmSwap();
+    await pending;
+    expect(sent()).toEqual([]);
   });
-
-  it("approve transitions to failed when tx receipt status is 0", async () => {
-    const txHash = "0xfailed";
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_call") return Promise.resolve("0x" + "0".repeat(64));
-        if (method === "eth_sendTransaction") return Promise.resolve(txHash);
-        if (method === "eth_getTransactionReceipt") return Promise.resolve({ status: "0x0" });
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    await transactionStore.approve("spandex", mockSpandexQuote);
-
-    expect(transactionStore.getApproveStatus("spandex")).toBe("failed");
+  it("blocks a swap if allowance fell below the quote input", async () => {
+    const quote = current();
+    const pending = transactions.swap("spandex", quote);
+    await confirmation();
+    transactions.confirmSwap();
+    await pending;
+    expect(sent()).toEqual([]);
+    expect(walletStore.message).toContain("Approve token spending");
   });
-
-  it("approve transitions to idle when user rejects (code 4001)", async () => {
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_call") return Promise.resolve("0x" + "0".repeat(64));
-        if (method === "eth_sendTransaction") return Promise.reject({ code: 4001 });
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    await transactionStore.approve("spandex", mockSpandexQuote);
-
-    expect(transactionStore.getApproveStatus("spandex")).toBe("idle");
-    expect(walletStore.messageIsError).toBe(true);
+  it("cancels without a wallet prompt", async () => {
+    const pending = transactions.swap("spandex", current());
+    await confirmation();
+    transactions.cancelSwap();
+    await pending;
+    expect(sent()).toEqual([]);
+    expect(transactions.busy).toBe(false);
   });
-
-  // ---------------------------------------------------------------------------
-  // approve() — auto-refresh pause/resume
-  // ---------------------------------------------------------------------------
-
-  it("approve pauses auto-refresh during transaction", async () => {
-    const pauseSpy = vi.spyOn(autoRefreshStore, "pause");
-    const txHash = "0xhash";
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_call") return Promise.resolve("0x" + "0".repeat(64));
-        if (method === "eth_sendTransaction") return Promise.resolve(txHash);
-        if (method === "eth_getTransactionReceipt") return Promise.resolve({ status: "0x1" });
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    await transactionStore.approve("spandex", mockSpandexQuote);
-
-    expect(pauseSpy).toHaveBeenCalledOnce();
-  });
-
-  it("approve resumes auto-refresh after transaction", async () => {
-    const resumeSpy = vi.spyOn(autoRefreshStore, "resume");
-    const txHash = "0xhash";
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_call") return Promise.resolve("0x" + "0".repeat(64));
-        if (method === "eth_sendTransaction") return Promise.resolve(txHash);
-        if (method === "eth_getTransactionReceipt") return Promise.resolve({ status: "0x1" });
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    await transactionStore.approve("spandex", mockSpandexQuote);
-
-    expect(resumeSpy).toHaveBeenCalledOnce();
-  });
-
-  // ---------------------------------------------------------------------------
-  // swap() — confirmation modal flow
-  // ---------------------------------------------------------------------------
-
-  it("swap sets swapConfirmation when wallet connected", async () => {
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = makeProvider() as never;
-
-    // Don't await — we need to check state while modal is showing
-    const swapPromise = transactionStore.swap("spandex", mockSpandexQuote);
-
-    // Modal should now be showing
-    expect(transactionStore.swapConfirmation).not.toBeNull();
-    expect(transactionStore.swapConfirmation?.routerName).toBe("spandex");
-
-    // Cancel to resolve the promise
-    transactionStore.cancelSwap();
-    await swapPromise;
-  });
-
-  it("swap cancels without executing when cancelSwap called", async () => {
-    const provider = makeProvider();
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    const swapPromise = transactionStore.swap("spandex", mockSpandexQuote);
-
-    transactionStore.cancelSwap();
-    await swapPromise;
-
-    expect(transactionStore.getSwapStatus("spandex")).toBe("idle");
-    const calls = (provider.request as ReturnType<typeof vi.fn>).mock.calls;
-    const txCalls = calls.filter(
-      (c: unknown[]) => (c[0] as { method: string }).method === "eth_sendTransaction"
+  it.each(["approve", "swap"] as const)(
+    "stops after wallet rejection during %s, including obsolete saved MEV settings",
+    async (action) => {
+      localStorage.setItem(
+        "compare-dex-settings",
+        JSON.stringify({ mevEnabled: true, customRpcUrl: "https://rpc.flashbots.net" })
+      );
+      allowance = action === "swap" ? 100000000n : 0n;
+      const base = request.getMockImplementation()!;
+      request.mockImplementation((args) =>
+        args.method === "eth_sendTransaction" ? Promise.reject({ code: 4001 }) : base(args)
+      );
+      const quote = current();
+      const pending = transactions[action]("spandex", quote);
+      if (action === "swap") {
+        await confirmation();
+        transactions.confirmSwap();
+      }
+      await pending;
+      expect(sent()).toHaveLength(1);
+      expect(request.mock.calls.some(([args]) => /sign|RawTransaction/.test(args.method))).toBe(
+        false
+      );
+      expect(transactions.busy).toBe(false);
+      expect(walletStore.message).toContain("canceled");
+      localStorage.removeItem("compare-dex-settings");
+    }
+  );
+  it("marks a reverted receipt as failed", async () => {
+    const base = request.getMockImplementation()!;
+    request.mockImplementation((args) =>
+      args.method === "eth_getTransactionReceipt" ? Promise.resolve({ status: "0x0" }) : base(args)
     );
-    expect(txCalls).toHaveLength(0);
+    const quote = current();
+    await transactions.approve("spandex", quote);
+    expect(transactions.getApproveStatus(quote)).toBe("failed");
   });
-
-  it("swap closes confirmation modal on cancel", async () => {
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = makeProvider() as never;
-
-    const swapPromise = transactionStore.swap("spandex", mockSpandexQuote);
-
-    transactionStore.cancelSwap();
-    await swapPromise;
-
-    expect(transactionStore.swapConfirmation).toBeNull();
+  it("does not run concurrent wallet actions", async () => {
+    const quote = current();
+    const pending = transactions.swap("spandex", quote);
+    await confirmation();
+    await transactions.approve("spandex", quote);
+    expect(sent()).toEqual([]);
+    transactions.cancelSwap();
+    await pending;
   });
-
-  it("swap transitions idle → pending → confirmed on success after confirm", async () => {
-    const txHash = "0xswaptx";
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_sendTransaction") return Promise.resolve(txHash);
-        if (method === "eth_getTransactionReceipt") return Promise.resolve({ status: "0x1" });
-        return Promise.resolve(null);
-      }),
+  it("native token swaps do not request ERC-20 approval", async () => {
+    const quote = current({
+      execution: { to: ROUTER, data: "0xab", value: "100", approval: null },
     });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    const swapPromise = transactionStore.swap("spandex", mockSpandexQuote);
-
-    // Confirm the swap
-    transactionStore.confirmSwap();
-    await swapPromise;
-
-    expect(transactionStore.getSwapStatus("spandex")).toBe("confirmed");
-  });
-
-  it("swap transitions to failed when tx receipt is 0", async () => {
-    const txHash = "0xfailed";
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_sendTransaction") return Promise.resolve(txHash);
-        if (method === "eth_getTransactionReceipt") return Promise.resolve({ status: "0x0" });
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    const swapPromise = transactionStore.swap("spandex", mockSpandexQuote);
-    transactionStore.confirmSwap();
-    await swapPromise;
-
-    expect(transactionStore.getSwapStatus("spandex")).toBe("failed");
-  });
-
-  it("swap transitions to idle when user rejects (code 4001)", async () => {
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_sendTransaction") return Promise.reject({ code: 4001 });
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    const swapPromise = transactionStore.swap("spandex", mockSpandexQuote);
-    transactionStore.confirmSwap();
-    await swapPromise;
-
-    expect(transactionStore.getSwapStatus("spandex")).toBe("idle");
-    expect(walletStore.messageIsError).toBe(true);
-  });
-
-  // ---------------------------------------------------------------------------
-  // swap() — auto-refresh pause/resume
-  // ---------------------------------------------------------------------------
-
-  it("swap pauses auto-refresh during transaction", async () => {
-    const pauseSpy = vi.spyOn(autoRefreshStore, "pause");
-    const txHash = "0xswaptx";
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_sendTransaction") return Promise.resolve(txHash);
-        if (method === "eth_getTransactionReceipt") return Promise.resolve({ status: "0x1" });
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    const swapPromise = transactionStore.swap("spandex", mockSpandexQuote);
-    transactionStore.confirmSwap();
-    await swapPromise;
-
-    expect(pauseSpy).toHaveBeenCalledOnce();
-  });
-
-  it("swap resumes auto-refresh after transaction", async () => {
-    const resumeSpy = vi.spyOn(autoRefreshStore, "resume");
-    const txHash = "0xswaptx";
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_sendTransaction") return Promise.resolve(txHash);
-        if (method === "eth_getTransactionReceipt") return Promise.resolve({ status: "0x1" });
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    const swapPromise = transactionStore.swap("spandex", mockSpandexQuote);
-    transactionStore.confirmSwap();
-    await swapPromise;
-
-    expect(resumeSpy).toHaveBeenCalledOnce();
-  });
-
-  // ---------------------------------------------------------------------------
-  // CurveQuote approve
-  // ---------------------------------------------------------------------------
-
-  it("approve works with CurveQuote (uses from as token address)", async () => {
-    const txHash = "0xcurveapprove";
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_call") return Promise.resolve("0x" + "0".repeat(64));
-        if (method === "eth_sendTransaction") return Promise.resolve(txHash);
-        if (method === "eth_getTransactionReceipt") return Promise.resolve({ status: "0x1" });
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    await transactionStore.approve("curve", mockCurveQuote);
-
-    expect(transactionStore.getApproveStatus("curve")).toBe("confirmed");
-
-    // Verify eth_call was made to the correct token address (from = USDC)
-    const calls = (provider.request as ReturnType<typeof vi.fn>).mock.calls;
-    const ethCallArgs = calls.find(
-      (c: unknown[]) => (c[0] as { method: string }).method === "eth_call"
-    )?.[0] as { params: [{ to: string }] } | undefined;
-    expect(ethCallArgs?.params[0].to.toLowerCase()).toBe(mockCurveQuote.from?.toLowerCase());
-  });
-
-  // ---------------------------------------------------------------------------
-  // Independent status per router
-  // ---------------------------------------------------------------------------
-
-  it("spandex and curve have independent approve status", async () => {
-    const provider = makeProvider({
-      request: vi.fn().mockImplementation(({ method }: { method: string }) => {
-        if (method === "eth_call")
-          return Promise.resolve("0x" + 999999999n.toString(16).padStart(64, "0"));
-        return Promise.resolve(null);
-      }),
-    });
-
-    walletStore.address = "0xaBC1230000000000000000000000000000000001";
-    walletStore.provider = provider as never;
-
-    await transactionStore.approve("spandex", mockSpandexQuote);
-    // curve is still idle
-    expect(transactionStore.getApproveStatus("spandex")).toBe("confirmed");
-    expect(transactionStore.getApproveStatus("curve")).toBe("idle");
-  });
-
-  // ---------------------------------------------------------------------------
-  // walletStore.requestMenu / ackMenuRequest
-  // ---------------------------------------------------------------------------
-
-  it("walletStore.requestMenu sets walletMenuRequested to true", () => {
-    walletStore.requestMenu();
-    expect(walletStore.walletMenuRequested).toBe(true);
-  });
-
-  it("walletStore.ackMenuRequest clears walletMenuRequested", () => {
-    walletStore.requestMenu();
-    walletStore.ackMenuRequest();
-    expect(walletStore.walletMenuRequested).toBe(false);
+    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
+    const pending = transactions.swap("spandex", quote);
+    await confirmation();
+    transactions.confirmSwap();
+    await pending;
+    expect(request.mock.calls.some(([args]) => args.method === "eth_call")).toBe(false);
+    expect(sent()[0]?.[0].params).toEqual([expect.objectContaining({ value: "0x64" })]);
   });
 });

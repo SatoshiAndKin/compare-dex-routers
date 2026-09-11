@@ -2,9 +2,9 @@
   "name": "compare-dex-routers",
   "version": "1.0.0",
   "type": "module",
-  "packageManager": "pnpm@11.1.1",
+  "packageManager": "pnpm@12.3.1",
   "engines": {
-    "node": ">=20"
+    "node": ">=24.21.0"
   },
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
@@ -21,34 +21,19 @@
     "dead-flags": "tsx scripts/detect-dead-flags.ts",
     "prepare": "if test -d .git; then husky; fi"
   },
-  "pnpm": {
-    "packageExtensions": {
-      "@spandex/core": {
-        "main": "./index.ts",
-        "module": "./index.ts",
-        "types": "./index.ts",
-        "exports": {
-          ".": {
-            "types": "./index.ts",
-            "import": "./index.ts",
-            "require": "./index.ts"
-          }
-        }
-      }
-    }
-  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.4.1",
+    "eslint": "^10.9.1",
     "husky": "^9.1.7",
-    "jscpd": "^4.2.4",
-    "knip": "^6.15.0",
-    "lint-staged": "^17.0.7",
+    "jscpd": "^5.1.2",
+    "knip": "^6.34.0",
+    "lint-staged": "^17.4.1",
     "openapi-typescript": "^7.13.0",
-    "prettier": "^3.8.3",
-    "prettier-plugin-svelte": "^4.1.0",
-    "tsx": "^4.22.3",
-    "typescript-eslint": "^8.60.1"
+    "prettier": "^3.9.6",
+    "prettier-plugin-svelte": "^4.1.1",
+    "tsx": "^4.23.13",
+    "typescript-eslint": "^8.69.0",
+    "typescript": "^5.9.3"
   },
   "lint-staged": {
     "packages/**/*.ts": [

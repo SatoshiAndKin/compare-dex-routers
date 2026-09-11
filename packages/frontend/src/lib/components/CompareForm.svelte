@@ -3,6 +3,7 @@
    * CompareForm — container assembling all form components.
    * Calls the comparison API and updates the comparison store on submit.
    */
+  import { configStore } from "../stores/configStore.svelte.js";
   import { formStore } from "../stores/formStore.svelte.js";
   import { comparisonStore, type CompareParams } from "../stores/comparisonStore.svelte.js";
   import { updateUrl } from "../stores/urlSync.svelte.js";
@@ -10,7 +11,8 @@
   import { autoRefreshStore, AUTO_REFRESH_SECONDS } from "../stores/autoRefreshStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
   import { balanceStore } from "../stores/balanceStore.svelte.js";
-  import { onDestroy } from "svelte";
+  import { onDestroy, untrack } from "svelte";
+  import { transactionStore } from "../stores/transactionStore.svelte.js";
   import ChainSelector from "./ChainSelector.svelte";
   import TokenInput from "./TokenInput.svelte";
   import AmountFields from "./AmountFields.svelte";
@@ -18,116 +20,94 @@
   import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
 
   const AUTO_COMPARE_DELAY_MS = 600;
-  let autoCompareTimer: ReturnType<typeof setTimeout> | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let generation = 0;
+  let wasBusy = false;
 
-  function clearAutoCompareTimer(): void {
-    if (autoCompareTimer !== null) {
-      clearTimeout(autoCompareTimer);
-      autoCompareTimer = null;
-    }
+  function clearTimer(): void {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
   }
-
-  onDestroy(clearAutoCompareTimer);
-
-  $effect(() => {
-    // Track amount changes to auto-trigger comparison
-    const _sellAmount = formStore.sellAmount;
-    const _receiveAmount = formStore.receiveAmount;
-    const _mode = formStore.mode;
-
-    // Also need tokens to be selected
-    const from = formStore.fromToken?.address;
-    const to = formStore.toToken?.address;
-
-    clearAutoCompareTimer();
-
-    const amount = _mode === "exactIn" ? _sellAmount : _receiveAmount;
-    if (!from || !to || !amount) return;
-
-    autoCompareTimer = setTimeout(() => {
-      const params: CompareParams = {
-        chainId: formStore.chainId,
-        from,
-        to,
-        amount,
-        slippageBps: formStore.slippageBps,
-        mode: _mode,
-      };
-
-      autoRefreshStore.stop();
-      updateUrl(params);
-      void runCompare(params);
-      preferencesStore.saveForChain(formStore.chainId);
-    }, AUTO_COMPARE_DELAY_MS);
-  });
-
-  // ---------------------------------------------------------------------------
-  // Auto-refresh helpers
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Run comparison and schedule auto-refresh on success.
-   * @param isAutoRefresh — when true, keeps refreshing even on failure
-   */
-  async function runCompare(params: CompareParams, isAutoRefresh = false): Promise<void> {
-    autoRefreshStore.setInFlight(true);
-    await comparisonStore.compare(params);
-    autoRefreshStore.setInFlight(false);
-
-    const hasResults =
-      comparisonStore.spandexResult !== null || comparisonStore.curveResult !== null;
-
-    if (hasResults) {
-      scheduleAutoRefresh(params);
-    } else if (isAutoRefresh) {
-      autoRefreshStore.setErrorMessage("Refresh failed. Keeping previous quotes.");
-      scheduleAutoRefresh(params);
-    } else {
-      autoRefreshStore.stop();
-    }
-  }
-
-  function scheduleAutoRefresh(params: CompareParams): void {
-    const capturedParams = { ...params };
-    autoRefreshStore.reset(AUTO_REFRESH_SECONDS, () => {
-      void runCompare(capturedParams, true);
-    });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Submit handler
-  // ---------------------------------------------------------------------------
-
-  async function handleSubmit(e: Event): Promise<void> {
-    e.preventDefault();
-
-    if (!formStore.canSubmit) return;
-
+  function currentParams(): CompareParams | null {
+    const chainId = formStore.chainId;
     const from = formStore.fromToken?.address;
     const to = formStore.toToken?.address;
     const amount = formStore.mode === "exactIn" ? formStore.sellAmount : formStore.receiveAmount;
+    const sender = walletStore.address ?? undefined;
+    const slippageBps = formStore.slippageBps;
+    const mode = formStore.mode;
+    if (
+      configStore.flags.compare_endpoint === false ||
+      !formStore.canSubmit ||
+      !from ||
+      !to ||
+      !amount
+    )
+      return null;
+    return { chainId, from, to, amount, sender, slippageBps, mode };
+  }
 
-    if (!from || !to || !amount) return;
+  $effect(() => {
+    const params = currentParams();
+    const walletChain = walletStore.chainId;
+    const provider = walletStore.provider;
+    // Wallet state is part of the execution context even when the form chain stays fixed.
+    void walletChain;
+    void provider;
+    untrack(() => {
+      generation++;
+      clearTimer();
+      transactionStore.cancelSwap();
+      comparisonStore.invalidate();
+      autoRefreshStore.stop();
+      if (params)
+        timer = setTimeout(() => {
+          void runCompare(params, generation);
+        }, AUTO_COMPARE_DELAY_MS);
+    });
+    return clearTimer;
+  });
 
-    const params: CompareParams = {
-      chainId: formStore.chainId,
-      from,
-      to,
-      amount,
-      slippageBps: formStore.slippageBps,
-      mode: formStore.mode,
-    };
+  $effect(() => {
+    const busy = transactionStore.busy;
+    if (wasBusy && !busy)
+      untrack(() => {
+        clearTimer();
+        const params = currentParams();
+        if (params) void runCompare(params, generation);
+      });
+    wasBusy = busy;
+  });
 
-    // Stop any existing auto-refresh before starting a new comparison
+  onDestroy(() => {
+    generation++;
+    clearTimer();
+    comparisonStore.invalidate();
     autoRefreshStore.stop();
+    transactionStore.cancelSwap();
+  });
 
-    // Update URL before compare so it's shareable immediately
+  async function runCompare(params: CompareParams, epoch: number): Promise<void> {
+    if (epoch !== generation || transactionStore.busy) return;
+    autoRefreshStore.stop();
     updateUrl(params);
+    preferencesStore.saveForChain(params.chainId);
+    await comparisonStore.compare(params);
+    if (epoch !== generation || transactionStore.busy) return;
+    autoRefreshStore.start(AUTO_REFRESH_SECONDS, () => {
+      const current = currentParams();
+      if (current) void runCompare(current, epoch);
+    });
+    if (!comparisonStore.spandexResult && !comparisonStore.curveResult) {
+      autoRefreshStore.setErrorMessage("Quote request failed. The next refresh will retry.");
+    }
+  }
 
-    await runCompare(params);
-
-    // Save preferences to localStorage after compare completes
-    preferencesStore.saveForChain(formStore.chainId);
+  async function handleSubmit(event: Event): Promise<void> {
+    event.preventDefault();
+    clearTimer();
+    const params = currentParams();
+    if (params) await runCompare(params, generation);
   }
 </script>
 
@@ -171,7 +151,10 @@
     <button
       class="submit-btn"
       type="submit"
-      disabled={!formStore.canSubmit || comparisonStore.isLoading}
+      disabled={configStore.flags.compare_endpoint === false ||
+        !formStore.canSubmit ||
+        comparisonStore.isLoading ||
+        transactionStore.busy}
       aria-busy={comparisonStore.isLoading}
     >
       {#if comparisonStore.isLoading}

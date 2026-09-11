@@ -53,7 +53,6 @@ function resetWalletStore(): void {
   walletStore.isConnecting = false;
   walletStore.message = "";
   walletStore.messageIsError = false;
-  walletStore.pendingAction = null;
   walletStore.discoveredProviders = [];
 }
 
@@ -89,10 +88,6 @@ describe("walletStore", () => {
 
   it("starts with empty discovered providers", () => {
     expect(walletStore.discoveredProviders).toHaveLength(0);
-  });
-
-  it("starts with no pending action", () => {
-    expect(walletStore.pendingAction).toBeNull();
   });
 
   it("starts with no message", () => {
@@ -177,7 +172,6 @@ describe("walletStore", () => {
     expect(walletStore.isConnected).toBe(false);
     expect(walletStore.message).toBe("Connection canceled");
     expect(walletStore.messageIsError).toBe(true);
-    expect(walletStore.pendingAction).toBeNull();
   });
 
   it("connect handles other errors gracefully", async () => {
@@ -274,32 +268,6 @@ describe("walletStore", () => {
   // ---------------------------------------------------------------------------
   // Pending action
   // ---------------------------------------------------------------------------
-
-  it("pendingAction can be set before connect", () => {
-    walletStore.pendingAction = { type: "approve", params: { token: "0xabc" } };
-    expect(walletStore.pendingAction).toEqual({ type: "approve", params: { token: "0xabc" } });
-  });
-
-  it("pendingAction can be set to swap type", () => {
-    walletStore.pendingAction = { type: "swap", params: { from: "0x1", to: "0x2" } };
-    expect(walletStore.pendingAction?.type).toBe("swap");
-  });
-
-  it("pendingAction is cleared on user rejection (4001)", async () => {
-    walletStore.pendingAction = { type: "swap", params: {} };
-
-    const rejectedProvider = makeProvider({
-      request: vi.fn().mockRejectedValue({ code: 4001 }),
-    });
-    const detail: EIP6963ProviderDetail = {
-      info: { uuid: "test", name: "Test" },
-      provider: rejectedProvider,
-    };
-
-    await walletStore.connect(detail);
-
-    expect(walletStore.pendingAction).toBeNull();
-  });
 
   // ---------------------------------------------------------------------------
   // EIP-6963 discovery

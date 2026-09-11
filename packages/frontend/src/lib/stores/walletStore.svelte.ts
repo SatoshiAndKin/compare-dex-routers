@@ -29,12 +29,6 @@ export interface EIP6963ProviderDetail {
   provider: EIP1193Provider;
 }
 
-/** Pending wallet action (auto-approve / auto-swap after connect) */
-export interface PendingAction {
-  type: "approve" | "swap";
-  params: unknown;
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -102,8 +96,6 @@ class WalletStore {
   message = $state("");
   /** Whether message is an error */
   messageIsError = $state(false);
-  /** Pending action stored for auto-approve/swap after connect */
-  pendingAction = $state<PendingAction | null>(null);
   /** EIP-6963 discovered providers */
   discoveredProviders = $state<EIP6963ProviderDetail[]>([]);
   /** Set to true when a transaction action needs the wallet menu to open */
@@ -243,7 +235,6 @@ class WalletStore {
         err && typeof err === "object" ? (err as Record<string, unknown>).code : undefined;
       if (code === 4001) {
         this.setMessage("Connection canceled", true);
-        this.pendingAction = null;
       } else {
         const msg = err instanceof Error ? err.message : String(err);
         this.setMessage("Connection failed: " + msg, true);
@@ -381,7 +372,6 @@ class WalletStore {
         err && typeof err === "object" ? (err as Record<string, unknown>).code : undefined;
       if (code === 4001) {
         this.setMessage("WalletConnect connection canceled", true);
-        this.pendingAction = null;
       } else {
         const msg = err instanceof Error ? err.message : String(err);
         this.setMessage("WalletConnect failed: " + msg, true);

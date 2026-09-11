@@ -1,52 +1,31 @@
+import { makeQuote, FROM, TO } from "./quote-fixture.js";
 import { render } from "@testing-library/svelte";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import QuoteCard from "../lib/components/QuoteCard.svelte";
-import type { SpandexQuote, CurveQuote } from "../lib/stores/comparisonStore.svelte.js";
 
-const mockSpandexQuote: SpandexQuote = {
-  chainId: 1,
-  from: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  from_symbol: "USDC",
-  to: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  to_symbol: "USDT",
-  amount: "100",
-  input_amount: "100",
-  output_amount: "99.95",
-  input_amount_raw: "100000000",
-  output_amount_raw: "99950000",
-  mode: "exactIn",
-  provider: "0x",
-  slippage_bps: 50,
-  router_address: "0xdef1c0ded9bec7f1a1670819833240f027b25eff",
-  router_calldata: "0xabcdef",
-  router_value: "0",
-  approval_token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  approval_spender: "0x1111111254EEB25477B68fb85Ed929f73A960582",
-  gas_used: "120000",
-  gas_cost_eth: "0.0024",
-  output_value_eth: "0.5",
-  net_value_eth: "0.0976",
-};
+const mockSpandexQuote = makeQuote();
 
-const mockCurveQuote: CurveQuote = {
-  source: "curve",
-  from: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  from_symbol: "USDC",
-  to: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  to_symbol: "USDT",
-  amount: "100",
-  input_amount: "100",
+const mockCurveQuote = makeQuote({
+  provider: "curve",
   output_amount: "99.98",
-  mode: "exactIn",
-  route: [],
-  route_symbols: {},
-  router_address: "0x99a58482bd75cbab83b27ec03ca68ff489b5788f",
-  router_calldata: "0x123456",
-  gas_used: "150000",
-  gas_cost_eth: "0.003",
-  output_value_eth: "0.5",
-  net_value_eth: "0.49",
-};
+  output_amount_raw: "99980000",
+  gas_cost_native: "0.003",
+  route: {
+    nodes: [
+      { address: FROM, symbol: "USDC" },
+      { address: TO, symbol: "USDT" },
+    ],
+    edges: [
+      {
+        source: FROM,
+        target: TO,
+        key: "pool1",
+        value: 1,
+        address: "0x0000000000000000000000000000000000000001",
+      },
+    ],
+  },
+});
 
 describe("QuoteCard", () => {
   beforeEach(() => {

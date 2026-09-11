@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import http from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import * as config from "../config.js";
 import { handleRequest } from "../server.js";
 
 const TEST_PORT = 0; // Let OS assign a free port
@@ -568,10 +569,16 @@ describe("server integration", () => {
     });
 
     it("returns application/json content-type", async () => {
+      vi.spyOn(config, "getTokenDecimals").mockResolvedValue(6);
+      vi.spyOn(config, "getTokenSymbol").mockResolvedValue("USDC");
+      vi.spyOn(config, "getTokenName").mockResolvedValue("USD Coin");
       const res = await request(
         `${baseUrl}/token-metadata?chainId=1&address=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`
       );
+      expect(res.status).toBe(200);
+      expect(JSON.parse(res.body)).toEqual({ name: "USD Coin", symbol: "USDC", decimals: 6 });
       expect(res.headers["content-type"]).toContain("application/json");
+      vi.restoreAllMocks();
     });
   });
 

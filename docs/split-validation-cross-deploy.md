@@ -67,7 +67,7 @@ User connects wallet via provider menu, compares quotes (which now include `send
 - "Connect Wallet" button opens provider menu modal
 - After connecting, wallet address displays in the form area
 - Compare request includes `&sender=0x...` (connected address)
-- Quote results include `approval_token`, `approval_spender`, `router_address`, `router_calldata`
+- Executable quote results include `execution.approval.token`, `execution.approval.spender`, `execution.to`, and `execution.data`. Preview results have `execution: null`.
 - Approve button triggers wallet signature request
 - After approval, Swap button becomes active
 - Swap button triggers wallet transaction
