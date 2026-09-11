@@ -158,8 +158,8 @@ importers:
         specifier: ^10.73.0
         version: 10.73.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(supports-color@10.2.2)
       '@spandex/core':
-        specifier: github:SatoshiAndKin/spandex#04db5f3d814ad55fc740ef519ec347c9c6cec165&path:/packages/core
-        version: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/04db5f3d814ad55fc740ef519ec347c9c6cec165#path:/packages/core(typescript@6.0.3)(viem@2.56.3(typescript@6.0.3)(zod@4.5.4))
+        specifier: github:SatoshiAndKin/spandex#58fdf818a658fe804ed4454bdaba887f8a53f26e&path:/packages/core
+        version: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/58fdf818a658fe804ed4454bdaba887f8a53f26e#path:/packages/core(typescript@6.0.3)(viem@2.56.3(typescript@6.0.3)(zod@4.5.4))
       openapi3-ts:
         specifier: ^4.6.1
         version: 4.6.1
@@ -1048,8 +1048,8 @@ packages:
     resolution: {integrity: sha512-QskripdKFbM/+gipC6mpa2crLwL7+VbkX84IpHg2z9UlYQ1kNKd3aMT+Qk9NLRSw/zu1rSIAvlbWfx4D3rgNAA==}
     engines: {node: '>=18'}
 
-  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/04db5f3d814ad55fc740ef519ec347c9c6cec165#path:/packages/core':
-    resolution: {gitHosted: true, integrity: sha512-tWUbhM1CdRytZCnNvwXfvxpe4dM/nfag7cQKDuFvixb43o+93c/9NEEtQMThrIrsnXQ26gS5hsFgBTvME0MQig==, path: /packages/core, tarball: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/04db5f3d814ad55fc740ef519ec347c9c6cec165}
+  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/58fdf818a658fe804ed4454bdaba887f8a53f26e#path:/packages/core':
+    resolution: {gitHosted: true, integrity: sha512-OKo2XKKSI8POUJWgpd5/nGCpfrXBzlGrf0vrugbCAudO15ct91v6SbUbrJPQ2geoswAZ7oe87LfbkuxbBQKTjg==, path: /packages/core, tarball: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/58fdf818a658fe804ed4454bdaba887f8a53f26e}
     version: 0.11.0
     peerDependencies:
       typescript: '>=5.0.4'
@@ -3014,7 +3014,7 @@ snapshots:
       '@sentry/conventions': 0.16.0
       '@sentry/core': 10.73.0
 
-  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/04db5f3d814ad55fc740ef519ec347c9c6cec165#path:/packages/core(typescript@6.0.3)(viem@2.56.3(typescript@6.0.3)(zod@4.5.4))':
+  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/58fdf818a658fe804ed4454bdaba887f8a53f26e#path:/packages/core(typescript@6.0.3)(viem@2.56.3(typescript@6.0.3)(zod@4.5.4))':
     dependencies:
       '@curvefi/api': 2.69.18
       viem: 2.56.3(typescript@6.0.3)(zod@4.5.4)

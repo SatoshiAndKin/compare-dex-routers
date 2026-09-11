@@ -14,7 +14,7 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@sentry/node": "^10.73.0",
-    "@spandex/core": "github:SatoshiAndKin/spandex#04db5f3d814ad55fc740ef519ec347c9c6cec165&path:/packages/core",
+    "@spandex/core": "github:SatoshiAndKin/spandex#58fdf818a658fe804ed4454bdaba887f8a53f26e&path:/packages/core",
     "openapi3-ts": "^4.6.1",
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3",

@@ -24,7 +24,7 @@ This change addresses the repository audit of `bb26ee5`. It uses one quote respo
 | Zero-decimal balances                   | Scale with BigInt and cache raw balances. Ignore late balance responses.                                                                                                                       | Decimal counts 0, 6, 18, and 255; cache reformatting and account-change tests               |
 | Successful quote with failed simulation | Require both quote success and simulation success before selection or execution.                                                                                                               | Failed simulation fixtures cannot win or expose execution data                              |
 
-The Spandex fork also retries failed SDK initialization, isolates SDK instances by chain and RPC URL, and always returns the ERC-20 approval identity. The fork review is [SatoshiAndKin/spandex#2](https://github.com/SatoshiAndKin/spandex/pull/2). The app pins commit `04db5f3d814ad55fc740ef519ec347c9c6cec165`.
+The Spandex fork also retries failed SDK initialization, isolates SDK instances by chain and RPC URL, and always returns the ERC-20 approval identity. The fork review is [SatoshiAndKin/spandex#2](https://github.com/SatoshiAndKin/spandex/pull/2). The app pins commit `58fdf818a658fe804ed4454bdaba887f8a53f26e`.
 
 Dependency updates retain the seven-day release age policy and strict build allowlist. The runtime/build baseline is Node 24.21.0, pnpm 12.3.1, and Bun 1.4.0. TypeScript versions follow the supported peer ranges of the Svelte, ESLint, and OpenAPI tools. The `js-yaml` override replaces the generator's vulnerable 4.3.1 pin with 4.3.2. CI now fails on high or critical dependency advisories.
 
@@ -32,7 +32,7 @@ Live validation uses the supplied Ethereum node with HTTPS and confirms chain ID
 
 A cold Curve request can exceed the existing five-second provider deadline. The next refresh uses the initialized SDK. Missing conversion data produces a stated raw-amount comparison. `targetOut` estimates required input and output; it does not promise exact-output settlement.
 
-The fork's full upstream test run has four failures in unchanged Base RPC/anvil cases: 194 pass and six skip. The supplied Ethereum endpoint cannot serve Base state. Focused fork tests and Ethereum quote checks pass.
+The full fork suite passes with the configured Alchemy Base RPC: 198 pass, six skip, and zero fail. All four earlier Base failures pass. The six optional Fynd/Mobula tests need their separate provider keys. The Base clients and Anvil forks use `RPC_URL_8453`, and fork cleanup uses the Bun test runner.
 
 Validation on the final application code:
 
@@ -43,3 +43,5 @@ Validation on the final application code:
 - Both Compose route configurations and all seven RPC overrides pass the container checks. The API starts with networking disabled. API routes, documentation, the Farcaster manifest, and frontend fallback routes return the expected content.
 
 The API container starts Node directly. This prevents pnpm 12 from trying to install workspace packages at container startup. The final API image rebuild and offline startup check pass after this change.
+
+After the Base test repair, the application gate passes again with the final Spandex pin. The additional local container smoke recheck is blocked by a Docker content-store input/output error after disk exhaustion. The route and offline-start checks passed before this test-only fork update; no application runtime code changed in the update.
