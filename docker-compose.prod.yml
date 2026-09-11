@@ -6,6 +6,7 @@ services:
       - NODE_ENV=production
       - PORT=3100
       - ALCHEMY_API_KEY=${ALCHEMY_API_KEY}
+      - RPC_URL_1=${RPC_URL_1:-}
       - ZEROX_API_KEY=${ZEROX_API_KEY:-}
       - FABRIC_API_KEY=${FABRIC_API_KEY:-}
       - WALLETCONNECT_PROJECT_ID=${WALLETCONNECT_PROJECT_ID:-}
