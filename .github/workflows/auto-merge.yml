@@ -1,19 +1,41 @@
 name: Auto Merge
 
 on:
-  pull_request:
-    types: [opened, reopened, ready_for_review]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   pull-requests: write
   contents: write
+  actions: write
+
+concurrency:
+  group: auto-merge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
 
 jobs:
   auto-merge:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Enable auto-merge
-        run: gh pr merge --auto --merge "$PR_URL"
+      # Read only GitHub metadata. Never check out PR code in this privileged job.
+      - name: Merge the tested revision and start deployment
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TESTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          requests=$(gh api --paginate --slurp "repos/$REPOSITORY/commits/$TESTED_COMMIT/pulls")
+          numbers=$(jq -r --arg sha "$TESTED_COMMIT" \
+            '.[][] | select(.state == "open" and .draft == false and .base.ref == "main" and .head.sha == $sha) | .number' \
+            <<< "$requests")
+          for number in $numbers; do
+            gh pr merge "$number" --repo "$REPOSITORY" --merge --match-head-commit "$TESTED_COMMIT"
+            # GITHUB_TOKEN suppresses merge events; workflow_dispatch still runs.
+            gh workflow run cd.yml --repo "$REPOSITORY" --ref main
+          done
