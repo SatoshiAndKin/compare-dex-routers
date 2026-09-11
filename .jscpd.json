@@ -1,7 +1,0 @@
-{
-  "threshold": 5,
-  "reporters": ["console"],
-  "ignore": ["node_modules/**", "dist/**", "coverage/**", "**/*.test.ts"],
-  "absolute": true,
-  "gitignore": true
-}

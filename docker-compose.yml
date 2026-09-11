@@ -1,67 +1,33 @@
-services:
-  api:
-    build:
-      context: .
-      dockerfile: packages/api/Dockerfile
-    restart: unless-stopped
-    environment:
-      - NODE_ENV=production
-      - PORT=3100
-      - ALCHEMY_API_KEY=${ALCHEMY_API_KEY}
-      - ZEROX_API_KEY=${ZEROX_API_KEY:-}
-      - FABRIC_API_KEY=${FABRIC_API_KEY:-}
-      - WALLETCONNECT_PROJECT_ID=${WALLETCONNECT_PROJECT_ID:-}
-      - CURVE_ENABLED=${CURVE_ENABLED:-true}
-      - COMPARE_ENABLED=${COMPARE_ENABLED:-true}
-      - METRICS_ENABLED=${METRICS_ENABLED:-true}
-      - SENTRY_DSN=${SENTRY_DSN:-}
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-    healthcheck:
-      test: ["CMD", "sh", "-c", "if [ -f /tmp/drain ]; then exit 1; fi && node -e \"fetch('http://localhost:3100/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
-      interval: 10s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
-    stop_grace_period: 35s
-    networks:
-      - traefik-proxy
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.cdr-api.rule=Host(`${VIRTUAL_HOST:-localhost}`) && (PathPrefix(`/health`) || PathPrefix(`/chains`) || PathPrefix(`/compare`) || PathPrefix(`/quote`) || PathPrefix(`/tokenlist`) || PathPrefix(`/token-metadata`) || PathPrefix(`/metrics`) || PathPrefix(`/analytics`) || PathPrefix(`/errors`) || PathPrefix(`/config`) || PathPrefix(`/docs`) || PathPrefix(`/openapi`) || PathPrefix(`/.well-known`))
-      - traefik.http.routers.cdr-api.entrypoints=web
-      - traefik.http.services.cdr-api.loadbalancer.server.port=3100
-      - traefik.http.routers.cdr-api.priority=10
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-
-  frontend:
-    build:
-      context: .
-      dockerfile: packages/frontend/Dockerfile
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "sh", "-c", "if [ -f /tmp/drain ]; then exit 1; fi && wget -q --spider http://localhost/"]
-      interval: 10s
-      timeout: 5s
-      start_period: 5s
-      retries: 3
-    stop_grace_period: 35s
-    networks:
-      - traefik-proxy
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.cdr-frontend.rule=Host(`${VIRTUAL_HOST:-localhost}`)
-      - traefik.http.routers.cdr-frontend.entrypoints=web
-      - traefik.http.routers.cdr-frontend.priority=1
-      - traefik.http.services.cdr-frontend.loadbalancer.server.port=80
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-
 networks:
   traefik-proxy:
-    external: true
     name: traefik-proxy
+
+services:
+  traefik:
+    image: traefik:v3
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik-proxy"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.forwardedheaders.trustedips=${TRUSTED_PROXY_IPS:-127.0.0.1/32,::1/128}"
+      - "--entrypoints.web2.address=:81"
+      - "--entrypoints.web2.forwardedheaders.trustedips=${TRUSTED_PROXY_IPS:-127.0.0.1/32,::1/128}"
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--ping=true"
+    ports:
+      - "127.0.0.1:${PORT:-8000}:80"
+      - "127.0.0.1:${SECONDARY_PORT:-8001}:81"
+      - "127.0.0.1:${DASHBOARD_PORT:-8080}:8080"
+    networks:
+      - traefik-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
