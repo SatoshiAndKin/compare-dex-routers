@@ -1,8 +1,8 @@
 name: CD
 
 on:
-  # Use pull_request closed instead of push:main because auto-merges via
-  # GITHUB_TOKEN don't fire push events (GitHub anti-recursion).
+  # Manual merges enter here. Auto Merge explicitly dispatches CD because
+  # GITHUB_TOKEN suppresses the pull_request closed event too.
   pull_request:
     branches: [main]
     types: [closed]
