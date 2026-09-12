@@ -45,7 +45,7 @@
   });
 
   // ---------------------------------------------------------------------------
-  // Reactive balance fetching: re-fetch when wallet, chain, or tokens change
+  // Re-fetch balances after a transaction or a wallet, chain, or token change
   // ---------------------------------------------------------------------------
 
   $effect(() => {
@@ -56,11 +56,18 @@
     const fromToken = formStore.fromToken;
     const toToken = formStore.toToken;
 
-    if (!address || chainId === null || chainId !== selectedChain || !provider) {
+    if (
+      transactionStore.busy ||
+      !address ||
+      chainId === null ||
+      chainId !== selectedChain ||
+      !provider
+    ) {
       balanceStore.clear();
       return;
     }
 
+    balanceStore.clearCache();
     void balanceStore.fetchBalances(
       provider,
       address,
@@ -106,6 +113,7 @@
     } catch {
       /* Storage can be unavailable. */
     }
+    tokenListStore.startRefresh();
     void tokenListStore.init();
     tokenListStore.loadLocalTokens();
     walletStore.startDiscovery();
@@ -120,6 +128,7 @@
     });
     return () => {
       active = false;
+      tokenListStore.stopRefresh();
       walletStore.stopDiscovery();
       transactionStore.cancelSwap();
     };
@@ -128,7 +137,33 @@
 
 <div class="app">
   <header class="app-header">
-    <h1>Compare DEX Routers</h1>
+    <div class="brand">
+      <svg class="brand-planet" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="28" fill="#4477AA" stroke="#66CCEE" stroke-width="2" />
+        <path
+          d="M28 36c18 13 28 2 42 14M26 53c20 14 32 2 45 12"
+          fill="none"
+          stroke="#66CCEE"
+          stroke-width="4"
+          opacity=".6"
+        />
+        <ellipse
+          cx="50"
+          cy="50"
+          rx="47"
+          ry="12"
+          transform="rotate(-28 50 50)"
+          fill="none"
+          stroke="#CCBB44"
+          stroke-width="4"
+        />
+        <path d="m83 14 2-7 2 7 7 2-7 2-2 7-2-7-7-2z" fill="#EE6677" />
+      </svg>
+      <div>
+        <p class="brand-eyebrow">Explore your next swap</p>
+        <h1>Compare DEX Routers</h1>
+      </div>
+    </div>
     <div class="header-actions">
       <ThemeToggle />
       <a
@@ -169,6 +204,10 @@
     <CompareForm />
     <QuoteResults />
   </main>
+  <footer class="space-footer">
+    <span aria-hidden="true">✦</span> Spandex + Curve · Compare routes. Choose your swap.
+    <span aria-hidden="true">✦</span>
+  </footer>
 </div>
 
 <WalletProviderMenu
@@ -182,7 +221,55 @@
 <SettingsModal />
 
 <style>
-  /* Basic shell styles */
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: var(--space-text);
+    min-width: 0;
+  }
+  .brand-planet {
+    width: 90px;
+    flex: 0 0 90px;
+  }
+  .brand-eyebrow {
+    color: #66ccee;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    margin-bottom: 0.3rem;
+  }
+  h1 {
+    margin: 0;
+    line-height: 1.15;
+    text-shadow: 3px 3px 0 #aa3377;
+  }
+  .space-footer {
+    text-align: center;
+    color: #bbbbbb;
+    font-size: 0.75rem;
+    margin-top: 2.5rem;
+    padding: 1rem;
+    border-top: 1px dotted #4477aa;
+  }
+  .space-footer span {
+    color: #ccbb44;
+  }
+  @media (max-width: 600px) {
+    .brand {
+      gap: 0.5rem;
+    }
+    .brand-planet {
+      width: 58px;
+      flex-basis: 58px;
+    }
+    .app {
+      padding: 0.5rem;
+    }
+    .header-actions {
+      margin-left: auto;
+    }
+  }
   .app {
     max-width: 1200px;
     margin: 0 auto;
@@ -193,8 +280,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1rem;
-    gap: 0.75rem;
+    margin-bottom: 1.75rem;
+    gap: 1.25rem;
     flex-wrap: wrap;
   }
 

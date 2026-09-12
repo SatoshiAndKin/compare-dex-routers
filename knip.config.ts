@@ -2,9 +2,11 @@ import type { KnipConfig } from "knip";
 
 const config: KnipConfig = {
   exclude: ["types"],
+  ignoreBinaries: ["anvil"], // Foundry is an external tool, not an npm package.
   workspaces: {
     ".": {
-      project: ["*.ts", "*.js", "scripts/**/*.ts"],
+      entry: ["e2e/**/*.spec.ts", "playwright*.config.ts"],
+      project: ["*.ts", "*.js", "scripts/**/*.ts", "e2e/**/*.ts"],
     },
     "packages/api": {
       entry: ["src/__tests__/**/*.test.ts"],

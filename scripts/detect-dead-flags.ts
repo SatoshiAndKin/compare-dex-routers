@@ -38,9 +38,7 @@ const flags = flagTypeMatch[1]
 
 console.log(`Found ${flags.length} feature flags: ${flags.join(", ")}\n`);
 
-const sourceFiles = collectTsFiles(SRC_DIR).filter(
-  (f) => !f.endsWith(FLAG_FILE),
-);
+const sourceFiles = collectTsFiles(SRC_DIR).filter((f) => !f.endsWith(FLAG_FILE));
 
 let deadCount = 0;
 
@@ -62,6 +60,6 @@ for (const flag of flags) {
 }
 
 console.log(
-  `\n${deadCount === 0 ? "No dead flags found." : `${deadCount} dead flag(s) detected!`}`,
+  `\n${deadCount === 0 ? "No dead flags found." : `${deadCount} dead flag(s) detected!`}`
 );
 process.exit(deadCount > 0 ? 1 : 0);

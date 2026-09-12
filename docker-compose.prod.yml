@@ -37,6 +37,7 @@ services:
     networks:
       - traefik-proxy
     labels:
+      - docker-rollout.pre-stop-hook=touch /tmp/drain && sleep 40
       - traefik.enable=true
       - traefik.http.routers.cdr-api.rule=Host(`${VIRTUAL_HOST:-localhost}`) && (Path(`/api`) || PathPrefix(`/api/`))
       - traefik.http.routers.cdr-api.entrypoints=web
@@ -51,9 +52,11 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "2.0"
           memory: 512M
 
   frontend:
+    stop_signal: SIGQUIT
     image: ghcr.io/satoshiandkin/compare-dex-routers-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     healthcheck:
@@ -72,6 +75,7 @@ services:
     networks:
       - traefik-proxy
     labels:
+      - docker-rollout.pre-stop-hook=touch /tmp/drain && sleep 40
       - traefik.enable=true
       - traefik.http.routers.cdr-frontend.rule=Host(`${VIRTUAL_HOST:-localhost}`)
       - traefik.http.routers.cdr-frontend.entrypoints=web
@@ -80,6 +84,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "0.5"
           memory: 128M
 
 networks:

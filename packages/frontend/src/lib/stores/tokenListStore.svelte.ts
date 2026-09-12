@@ -13,6 +13,8 @@ import { apiClient } from "../api.js";
 // Constants
 // ---------------------------------------------------------------------------
 
+const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 const CUSTOM_TOKENLISTS_KEY = "customTokenlists";
 const LOCAL_TOKEN_LIST_KEY = "localTokenList";
 const LOCAL_TOKENS_ENABLED_KEY = "localTokensEnabled";
@@ -61,6 +63,16 @@ class TokenListStore {
   localTokensEnabled = $state(true);
   isInitializing = $state(false);
   private initialized = false;
+  isRefreshing = $state(false);
+  lastRefreshedAt = $state<number | null>(null);
+  private attempts = new Map<string, number>();
+  private pending = new Map<string, { controller: AbortController; promise: Promise<void> }>();
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private automatic = false;
+  private lifecycle = new AbortController();
+  private visibilityChanged = () => {
+    void this.refresh(false);
+  };
 
   /** Modal state for unrecognized-token detection */
   unrecognizedModal = $state<{
@@ -105,151 +117,180 @@ class TokenListStore {
   // Initialization
   // -------------------------------------------------------------------------
 
-  /**
-   * Initialize the store: load default tokenlist from API, then restore
-   * any saved custom lists from localStorage.
-   */
+  /** Register all list identities before asynchronous requests can change them. */
   async init(): Promise<void> {
     if (this.initialized || this.isInitializing) return;
     this.isInitializing = true;
-
-    const saved = this._loadPersistedCustomLists() ?? [];
-    try {
-      // Restore every saved identity before any asynchronous load can persist state.
-      const restored = this._restoreCustomLists(saved);
-      await this._loadDefaultLists();
-      await restored;
-      await this._ensureUniswapList();
-      this._saveCustomLists();
-
-      this.initialized = true;
-    } finally {
-      this.isInitializing = false;
-    }
-  }
-
-  private async _loadDefaultLists(): Promise<void> {
+    this.activate();
     let defaultEnabled = true;
     try {
-      const stored = localStorage.getItem(DEFAULT_TOKENLIST_ENABLED_KEY);
-      if (stored !== null) defaultEnabled = stored === "true";
+      defaultEnabled = localStorage.getItem(DEFAULT_TOKENLIST_ENABLED_KEY) !== "false";
     } catch {
-      // ignore
+      /* Storage is optional. */
     }
-
-    // Load project's committed tokenlist from API (serves static file)
-    try {
-      const { data } = await apiClient.GET("/tokenlist");
-      if (data) {
-        const tokenlists = data.tokenlists ?? [];
-        if (tokenlists.length > 0) {
-          for (const entry of tokenlists) {
-            const name = entry.name ?? DEFAULT_TOKENLIST_NAME;
-            const tokens: Token[] = (entry.tokens ?? [])
-              .filter((t) => Number.isInteger(t.decimals) && t.decimals >= 0 && t.decimals <= 255)
-              .map((t) => ({
-                address: t.address ?? "",
-                chainId: t.chainId ?? 0,
-                name: t.name ?? "",
-                symbol: t.symbol ?? "",
-                decimals: t.decimals,
-                logoURI: t.logoURI,
-                _source: name,
-              }));
-            this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
-          }
-        } else if (data.tokens && data.tokens.length > 0) {
-          const name = data.name ?? DEFAULT_TOKENLIST_NAME;
-          const tokens: Token[] = data.tokens
-            .filter(
-              (t) =>
-                typeof t.decimals === "number" &&
-                Number.isInteger(t.decimals) &&
-                t.decimals >= 0 &&
-                t.decimals <= 255
-            )
-            .map((t) => ({
-              address: t.address ?? "",
-              chainId: t.chainId ?? 0,
-              name: t.name ?? "",
-              symbol: t.symbol ?? "",
-              decimals: t.decimals,
-              logoURI: t.logoURI,
-              _source: name,
-            }));
-          this.lists = [...this.lists, { url: null, name, enabled: defaultEnabled, tokens }];
-        }
-      }
-    } catch {
-      // API unavailable — project tokenlist stays empty
-    }
-
-    this._ensureDefaultList(defaultEnabled);
-  }
-
-  _ensureDefaultList(defaultEnabled: boolean): void {
-    const hasDefaultList = this.lists.some((list) => list.url === null);
-    if (hasDefaultList) return;
-
-    this.lists = [
-      ...this.lists,
-      {
-        url: null,
-        name: "Built-in Tokenlist",
-        enabled: defaultEnabled,
-        tokens: [],
-      },
-    ];
-  }
-
-  private async _ensureUniswapList(): Promise<void> {
-    const normalizedUniswap = this._normalizeUrl(DEFAULT_UNISWAP_URL);
-    const alreadyPresent = this.lists.some(
-      (l) => l.url && this._normalizeUrl(l.url) === normalizedUniswap
-    );
-    if (alreadyPresent) return;
-
-    try {
-      const { tokens, name } = await this._fetchCustomList(DEFAULT_UNISWAP_URL);
-      this.lists = [...this.lists, { url: DEFAULT_UNISWAP_URL, name, enabled: true, tokens }];
-    } catch {
-      // Network error — retry on the next page load
-    }
-  }
-
-  private async _restoreCustomLists(saved: PersistedList[]): Promise<void> {
+    const saved = this._loadPersistedCustomLists() ?? [];
     const unique = new Map(saved.map((entry) => [this._normalizeUrl(entry.url), entry]));
+    if (!unique.has(this._normalizeUrl(DEFAULT_UNISWAP_URL))) {
+      unique.set(this._normalizeUrl(DEFAULT_UNISWAP_URL), {
+        url: DEFAULT_UNISWAP_URL,
+        name: "Uniswap Labs Default",
+        enabled: true,
+      });
+    }
     this.lists = [
-      ...this.lists,
-      ...[...unique.values()].map((entry) => ({
-        url: entry.url,
-        name: entry.name,
-        enabled: entry.enabled,
-        tokens: [] as Token[],
-      })),
+      { url: null, name: "Built-in Tokenlist", enabled: defaultEnabled, tokens: [] },
+      ...[...unique.values()].map((entry) => ({ ...entry, tokens: [] as Token[] })),
     ];
+    try {
+      await Promise.all(this.lists.map((entry) => this.refreshList(entry.url)));
+      this.initialized = true;
+      this._saveCustomLists();
+    } finally {
+      this.isInitializing = false;
+      this.scheduleRefresh();
+    }
+  }
+
+  /** Start one daily timer, suspended while the page is hidden. */
+  startRefresh(): void {
+    this.activate();
+    if (this.automatic) return;
+    this.automatic = true;
+    document.addEventListener("visibilitychange", this.visibilityChanged);
+    if (this.initialized) void this.refresh(false);
+  }
+
+  stopRefresh(): void {
+    this.automatic = false;
+    clearTimeout(this.refreshTimer);
+    document.removeEventListener("visibilitychange", this.visibilityChanged);
+    this.lifecycle.abort();
+    for (const [key, pending] of this.pending) {
+      pending.controller.abort();
+      this.attempts.delete(key);
+    }
+    this.pending.clear();
+    this.isRefreshing = false;
+  }
+
+  /** Manual requests bypass the daily interval; duplicate requests share work. */
+  async refresh(manual = true): Promise<void> {
+    if (!manual && document.visibilityState === "hidden") {
+      clearTimeout(this.refreshTimer);
+      return;
+    }
+    this.activate();
     await Promise.all(
-      [...unique.entries()].map(async ([key, item]) => {
-        try {
-          const { tokens, name } = await this._fetchCustomList(item.url);
-          this.lists = this.lists.map((entry) =>
-            entry.url && this._normalizeUrl(entry.url) === key
-              ? { ...entry, tokens, name, error: undefined }
-              : entry
-          );
-        } catch (error) {
-          this.lists = this.lists.map((entry) =>
-            entry.url && this._normalizeUrl(entry.url) === key
-              ? {
-                  ...entry,
-                  tokens: [],
-                  error: error instanceof Error ? error.message : "Token list request failed",
-                }
-              : entry
-          );
-        }
-      })
+      this.lists
+        .filter((entry) => entry.enabled)
+        .map((entry) => {
+          const attempted = this.attempts.get(entry.url ?? "__default__");
+          if (!manual && attempted !== undefined && Date.now() - attempted < REFRESH_INTERVAL_MS)
+            return;
+          return this.refreshList(entry.url);
+        })
     );
+    this.scheduleRefresh();
+  }
+
+  private activate(): void {
+    if (this.lifecycle.signal.aborted) this.lifecycle = new AbortController();
+  }
+
+  private scheduleRefresh(): void {
+    clearTimeout(this.refreshTimer);
+    if (!this.automatic || !this.initialized || document.visibilityState === "hidden") return;
+    const deadlines = this.lists
+      .filter((entry) => entry.enabled)
+      .map((entry) => (this.attempts.get(entry.url ?? "__default__") ?? 0) + REFRESH_INTERVAL_MS);
+    if (!deadlines.length) return;
+    this.refreshTimer = setTimeout(
+      () => {
+        void this.refresh(false);
+      },
+      Math.max(0, Math.min(...deadlines) - Date.now())
+    );
+  }
+
+  private refreshList(url: string | null): Promise<void> {
+    const key = url ?? "__default__";
+    const pending = this.pending.get(key);
+    if (pending) return pending.promise;
+    const controller = new AbortController();
+    const lifecycle = this.lifecycle.signal;
+    const signal = AbortSignal.any([controller.signal, lifecycle, AbortSignal.timeout(30_000)]);
+    this.attempts.set(key, Date.now());
+    this.isRefreshing = true;
+    const promise = (async () => {
+      try {
+        const update = url
+          ? await this._fetchCustomList(url, signal)
+          : await this.loadDefaultList(signal);
+        signal.throwIfAborted();
+        this.lists = this.lists.map((entry) =>
+          entry.url === url ? { ...entry, error: undefined, ...update } : entry
+        );
+        this.lastRefreshedAt = Date.now();
+        this._saveCustomLists();
+      } catch (error) {
+        if (controller.signal.aborted || lifecycle.aborted) return;
+        this.lists = this.lists.map((entry) =>
+          entry.url === url
+            ? {
+                ...entry,
+                error: error instanceof Error ? error.message : "Token list request failed",
+              }
+            : entry
+        );
+      } finally {
+        if (this.pending.get(key)?.controller === controller) this.pending.delete(key);
+        this.isRefreshing = this.pending.size > 0;
+      }
+    })();
+    this.pending.set(key, { controller, promise });
+    return promise;
+  }
+
+  private async loadDefaultList(
+    signal: AbortSignal
+  ): Promise<{ name: string; tokens: Token[]; error?: string }> {
+    const { data, error } = await apiClient.GET("/tokenlist", { signal, cache: "no-cache" });
+    if (!data || error) throw new Error("Cannot refresh the built-in token list.");
+    const name = data.name ?? DEFAULT_TOKENLIST_NAME;
+    // The API exposes configured files separately, plus their aggregate tokens.
+    const entries = data.tokenlists ?? [];
+    const tokens = entries.length
+      ? entries.flatMap((entry) => this.parseTokens(entry.tokens, entry.name))
+      : this.parseTokens(data.tokens, name);
+    const errors = entries.flatMap((entry) =>
+      entry.error ? [`${entry.name}: ${entry.error}`] : []
+    );
+    return { name, tokens, ...(errors.length ? { error: errors.join(" ") } : {}) };
+  }
+
+  private parseTokens(value: unknown, name: string): Token[] {
+    if (!Array.isArray(value)) throw new Error("Invalid tokenlist: missing tokens array");
+    return value
+      .filter(
+        (token): token is Record<string, unknown> =>
+          token !== null &&
+          typeof token === "object" &&
+          typeof token.decimals === "number" &&
+          Number.isInteger(token.decimals) &&
+          token.decimals >= 0 &&
+          token.decimals <= 255 &&
+          typeof token.address === "string" &&
+          typeof token.chainId === "number"
+      )
+      .map((token) => ({
+        address: token.address as string,
+        chainId: token.chainId as number,
+        name: typeof token.name === "string" ? token.name : "",
+        symbol: typeof token.symbol === "string" ? token.symbol : "",
+        decimals: token.decimals as number,
+        ...(typeof token.logoURI === "string" ? { logoURI: token.logoURI } : {}),
+        _source: name,
+      }));
   }
 
   private _loadPersistedCustomLists(): PersistedList[] | null {
@@ -273,42 +314,22 @@ class TokenListStore {
     return null;
   }
 
-  private async _fetchCustomList(url: string): Promise<{ tokens: Token[]; name: string }> {
+  private async _fetchCustomList(
+    url: string,
+    signal?: AbortSignal
+  ): Promise<{ tokens: Token[]; name: string }> {
+    this.activate();
+    signal ??= AbortSignal.any([this.lifecycle.signal, AbortSignal.timeout(30_000)]);
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(30000),
+      signal,
+      cache: "no-cache",
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch tokenlist: HTTP ${response.status}`);
-    }
-
-    const data = (await response.json()) as { name?: string; tokens?: Record<string, unknown>[] };
-
-    if (!data || !Array.isArray(data.tokens)) {
-      throw new Error("Invalid tokenlist: missing tokens array");
-    }
-
-    const name = data.name ?? url;
-    const tokens: Token[] = data.tokens
-      .filter(
-        (t) =>
-          typeof t.decimals === "number" &&
-          Number.isInteger(t.decimals) &&
-          t.decimals >= 0 &&
-          t.decimals <= 255
-      )
-      .map((t) => ({
-        address: (t.address as string) ?? "",
-        chainId: (t.chainId as number) ?? 0,
-        name: (t.name as string) ?? "",
-        symbol: (t.symbol as string) ?? "",
-        decimals: t.decimals as number,
-        logoURI: t.logoURI as string | undefined,
-        _source: name,
-      }));
-
-    return { tokens, name };
+    if (!response.ok) throw new Error(`Failed to fetch tokenlist: HTTP ${response.status}`);
+    const data = (await response.json()) as { name?: unknown; tokens?: unknown } | null;
+    signal.throwIfAborted();
+    const name = typeof data?.name === "string" ? data.name : url;
+    return { name, tokens: this.parseTokens(data?.tokens, name) };
   }
 
   // -------------------------------------------------------------------------
@@ -350,7 +371,9 @@ class TokenListStore {
       if (isDuplicateName) return `This tokenlist is already loaded ("${name}")`;
 
       this.lists = [...this.lists, { url: trimmed, name, enabled: true, tokens }];
+      this.attempts.set(trimmed, Date.now());
       this._saveCustomLists();
+      this.scheduleRefresh();
       return null; // success
     } catch (err) {
       return err instanceof Error ? err.message : String(err);
@@ -359,17 +382,29 @@ class TokenListStore {
 
   /** Remove a custom list by URL */
   removeList(url: string): void {
+    this.pending.get(url)?.controller.abort();
+    this.pending.delete(url);
+    this.attempts.delete(url);
     this.lists = this.lists.filter((l) => l.url !== url);
     this._saveCustomLists();
+    this.scheduleRefresh();
   }
 
   /** Toggle enabled state of a list (by url, null = default) */
   toggleList(url: string | null): void {
+    const key = url ?? "__default__";
+    if (this.lists.some((entry) => entry.url === url && entry.enabled)) {
+      if (this.pending.has(key)) this.attempts.delete(key);
+      this.pending.get(key)?.controller.abort();
+      this.pending.delete(key);
+      this.isRefreshing = this.pending.size > 0;
+    }
     this.lists = this.lists.map((l) => {
       if (l.url === url) return { ...l, enabled: !l.enabled };
       return l;
     });
     this._saveCustomLists();
+    if (this.automatic) void this.refresh(false);
   }
 
   private _normalizeUrl(url: string): string {

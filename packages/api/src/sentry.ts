@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/node";
+import { logger } from "./logger.js";
 import { redact } from "./redaction.js";
 
 const dsn = process.env.SENTRY_DSN;
@@ -23,4 +24,14 @@ export function captureMessage(message: string, level: "info" | "warning" | "err
   if (dsn) {
     Sentry.captureMessage(String(redact(message)), level);
   }
+}
+
+export async function flushTelemetry(timeoutMs: number): Promise<boolean> {
+  const [sentryFlushed] = await Promise.all([
+    dsn ? Sentry.flush(timeoutMs) : Promise.resolve(true),
+    new Promise<void>((resolve, reject) =>
+      logger.flush((error) => (error ? reject(error) : resolve()))
+    ),
+  ]);
+  return sentryFlushed;
 }

@@ -54,6 +54,8 @@ const originalFetch = globalThis.fetch;
 // ---------------------------------------------------------------------------
 
 function resetStore(): void {
+  tokenListStore.stopRefresh();
+  tokenListStore.lastRefreshedAt = null;
   tokenListStore.lists = [];
   tokenListStore.localTokens = [];
   tokenListStore.localTokensEnabled = true;
@@ -144,6 +146,7 @@ describe("tokenListStore", () => {
       name: "Built-in Tokenlist",
       enabled: true,
       tokens: [],
+      error: "Cannot refresh the built-in token list.",
     });
   });
 
@@ -158,6 +161,7 @@ describe("tokenListStore", () => {
       name: "Built-in Tokenlist",
       enabled: true,
       tokens: [],
+      error: "Cannot refresh the built-in token list.",
     });
   });
 
@@ -184,6 +188,7 @@ describe("tokenListStore", () => {
       name: "Built-in Tokenlist",
       enabled: true,
       tokens: [],
+      error: "Cannot refresh the built-in token list.",
     });
     expect(tokenListStore.lists[1]).toMatchObject({
       url: DEFAULT_UNISWAP_URL,

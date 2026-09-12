@@ -1,0 +1,34 @@
+# Isolated local validation of the production service settings.
+services:
+  api:
+    extends:
+      file: ../docker-compose.prod.yml
+      service: api
+    image: cdr-rollout-test-api:local
+    build:
+      context: ..
+      dockerfile: packages/api/Dockerfile
+  frontend:
+    extends:
+      file: ../docker-compose.prod.yml
+      service: frontend
+    image: cdr-rollout-test-frontend:local
+    build:
+      context: ..
+      dockerfile: packages/frontend/Dockerfile
+  traefik:
+    image: traefik:v3.6.7
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.constraints=Label(`com.docker.compose.project`,`cdr-rollout-test`)
+      - --entrypoints.web.address=:80
+    ports:
+      - 127.0.0.1:5190:80
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - traefik-proxy
+networks:
+  traefik-proxy:
+    name: cdr-rollout-test

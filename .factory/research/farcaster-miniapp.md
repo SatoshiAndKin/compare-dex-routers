@@ -4,7 +4,7 @@
 Mini Apps are web apps that render inside Farcaster clients (Warpcast, Coinbase Wallet) via WebView/iframe.
 
 ## Key Package
-- Client: `@farcaster/miniapp-sdk` (v0.2.3, CDN: `https://esm.sh/@farcaster/miniapp-sdk`)
+- Client: `@farcaster/miniapp-sdk` (v0.3.0, pinned npm dependency, lazy-loaded Vite bundle)
 - Server: `@farcaster/frame-node` (optional, for webhook verification)
 
 ## Manifest
@@ -30,7 +30,7 @@ The `accountAssociation` is generated via https://farcaster.xyz/~/developers/new
 
 ## Wallet Integration
 ```js
-const provider = sdk.wallet.getEthereumProvider(); // EIP-1193 provider
+const provider = await sdk.wallet.getEthereumProvider(); // EIP-1193 provider
 ```
 Inside Farcaster, the host provides the wallet context automatically.
 Also has `sdk.actions.swapToken()` to delegate to host's native swap UI.

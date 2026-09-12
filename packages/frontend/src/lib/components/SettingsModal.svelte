@@ -1,12 +1,12 @@
 <script lang="ts">
+  import { dialogFocus } from "../dialog-focus.js";
   /**
    * SettingsModal — gear icon panel for app settings.
    *
    * Sections:
    *   1. Token Lists: toggle/remove existing lists, add new HTTPS list
    *   2. Local Tokens: list/remove, export/import
-   *   3. MEV Protection: toggle (Ethereum only)
-   *   4. Custom RPC URL: free-text input
+   *   3. Wallet execution information
    *
    * - Body scroll locked while open
    * - Focus trapped within modal
@@ -28,27 +28,12 @@
   let importError = $state("");
   let importSuccess = $state("");
 
-  let modalEl = $state<HTMLElement | null>(null);
-  let closeButtonEl = $state<HTMLButtonElement | null>(null);
-
   $effect(() => {
     if (settingsStore.isSettingsOpen) {
       addListUrl = "";
       addListError = "";
       importError = "";
       importSuccess = "";
-      closeButtonEl?.focus();
-    }
-  });
-
-  // Body scroll lock
-  $effect(() => {
-    if (settingsStore.isSettingsOpen && typeof document !== "undefined") {
-      const original = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = original;
-      };
     }
   });
 
@@ -62,30 +47,6 @@
 
   function handleBackdropClick(e: MouseEvent): void {
     if (e.target === e.currentTarget) handleClose();
-  }
-
-  function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === "Escape") {
-      handleClose();
-      return;
-    }
-    if (e.key === "Tab" && modalEl) {
-      const focusable = Array.from(
-        modalEl.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    }
   }
 
   // -- Token lists --
@@ -155,19 +116,12 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-modal-title"
-      onkeydown={handleKeydown}
+      use:dialogFocus={handleClose}
       tabindex="-1"
-      bind:this={modalEl}
     >
       <div class="modal-header">
         <h2 id="settings-modal-title" class="modal-title">Settings</h2>
-        <button
-          type="button"
-          class="modal-close"
-          aria-label="Close settings"
-          onclick={handleClose}
-          bind:this={closeButtonEl}
-        >
+        <button type="button" class="modal-close" aria-label="Close settings" onclick={handleClose}>
           ×
         </button>
       </div>
@@ -178,6 +132,22 @@
         <!-- ---------------------------------------------------------------- -->
         <div class="settings-section">
           <div class="settings-section-title">Token Lists</div>
+          <p class="refresh-note">Enabled lists update once per day while this page is open.</p>
+          <button
+            type="button"
+            class="refresh-lists-btn"
+            disabled={tokenListStore.isRefreshing}
+            onclick={() => {
+              void tokenListStore.refresh();
+            }}
+          >
+            {tokenListStore.isRefreshing ? "Refreshing lists…" : "Refresh token lists"}
+          </button>
+          <p class="refresh-note" role="status">
+            {#if tokenListStore.lastRefreshedAt}Last list update: {new Date(
+                tokenListStore.lastRefreshedAt
+              ).toLocaleString()}{/if}
+          </p>
 
           {#each tokenListStore.lists as list (list.url ?? "__default__")}
             <div class="tokenlist-entry" class:disabled={!list.enabled} class:error={!!list.error}>
@@ -196,7 +166,7 @@
               </span>
 
               {#if list.error}
-                <span class="tokenlist-entry-error" title={list.error}>Error</span>
+                <span class="tokenlist-entry-error" role="status">{list.error}</span>
               {:else}
                 <span class="tokenlist-entry-count">
                   {list.tokens.length} tokens
@@ -306,7 +276,7 @@
             type="file"
             accept=".json,application/json"
             aria-label="Import token list file"
-            style="display: none"
+            hidden
             bind:this={fileInputEl}
             onchange={handleFileChange}
           />

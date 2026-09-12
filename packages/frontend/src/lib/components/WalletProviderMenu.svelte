@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { dialogFocus } from "../dialog-focus.js";
   /**
    * WalletProviderMenu — modal for selecting a wallet provider.
    *
    * Discovers injected wallets via EIP-6963 announceProvider events.
-   * Offers WalletConnect (loaded via CDN ESM — never bundled).
-   * Detects Farcaster frame context and offers Farcaster SDK (CDN ESM).
+   * Loads the pinned WalletConnect bundle on demand.
+   * Detects frame context and loads the pinned Farcaster Mini App SDK on demand.
    */
   import { onMount } from "svelte";
   import { walletStore, type EIP6963ProviderDetail } from "../stores/walletStore.svelte.js";
@@ -63,12 +64,6 @@
     }
   }
 
-  function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === "Escape") {
-      onClose();
-    }
-  }
-
   // WalletConnect SVG icon (inline to avoid extra requests)
   const wcIcon =
     `data:image/svg+xml,` +
@@ -89,7 +84,7 @@
       role="dialog"
       aria-modal="true"
       aria-label="Select wallet provider"
-      onkeydown={handleKeydown}
+      use:dialogFocus={onClose}
       tabindex="-1"
     >
       <div class="modal-header">

@@ -30,3 +30,25 @@ The private [Dockerfiles controller](https://github.com/SatoshiAndKin/dockerfile
 owns Tank setup, trusted keys, and caller configuration. It sets
 `DEPLOY_WEBHOOK_URL` and `WEBHOOK_SECRET`; the runtime worker has no GitHub admin
 token. Preserve the production `.env` and shared Traefik project.
+
+## Draining and resource limits
+
+Each API container has a 2 CPU / 512 MiB limit. Each frontend container has a
+0.5 CPU / 128 MiB limit. These are per-container caps; rolling replacement can
+briefly double the container count.
+
+The `docker-rollout.pre-stop-hook` label creates `/tmp/drain` and waits 40 seconds.
+The existing 10-second, three-failure health check removes the old container from
+Traefik before Docker sends the stop signal. Rollout reads labels from the old
+container, so the new hook first applies when replacing a container from this release.
+
+The API handles SIGTERM and SIGINT once. It closes the listener, lets accepted
+requests finish for up to 25 seconds, closes remaining connections, and gives
+telemetry/log flushing up to 5 seconds. The total fits Docker's 35-second grace
+period. Health checks and requests that reach a draining process return HTTP 503
+with code `SHUTTING_DOWN`. Normal shutdown exits 0; a forced close or failed flush exits 1.
+The frontend uses nginx's SIGQUIT graceful shutdown.
+
+After rollout, inspect the final Tank receipt, image revisions, health, restart
+counts, and Docker CPU limits. A stored webhook request alone does not prove that
+production updated successfully.

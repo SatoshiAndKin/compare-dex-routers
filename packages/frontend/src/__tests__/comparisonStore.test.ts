@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { comparisonStore as store } from "../lib/stores/comparisonStore.svelte.js";
-import { apiClient } from "../lib/api.js";
 import { deferred, FROM, TO, makeComparison } from "./quote-fixture.js";
-vi.mock("../lib/api.js", () => ({ apiClient: { GET: vi.fn() } }));
+type TestResponse = { data: ReturnType<typeof makeComparison>; response: Response };
+const { get } = vi.hoisted(() => ({ get: vi.fn<(...args: unknown[]) => Promise<TestResponse>>() }));
+vi.mock("../lib/api.js", () => ({ apiClient: { GET: get } }));
 const params = {
   chainId: 1,
   from: FROM,
@@ -13,14 +14,14 @@ const params = {
 };
 beforeEach(() => {
   store.invalidate();
-  vi.mocked(apiClient.GET).mockReset();
+  get.mockReset();
 });
 describe("one comparison response", () => {
   it("uses the server recommendation even when Curve has higher raw output", async () => {
     const data = makeComparison();
-    vi.mocked(apiClient.GET).mockResolvedValue({ data, response: new Response() });
+    get.mockResolvedValue({ data, response: new Response() });
     await store.compare(params);
-    expect(apiClient.GET).toHaveBeenCalledExactlyOnceWith("/compare", {
+    expect(get).toHaveBeenCalledExactlyOnceWith("/compare", {
       params: { query: params },
       signal: expect.any(AbortSignal),
     });
@@ -32,9 +33,9 @@ describe("one comparison response", () => {
   it.each(["resolve", "reject"] as const)(
     "ignores an old request that finishes with %s while its replacement loads",
     async (finish) => {
-      const old = deferred<Awaited<ReturnType<typeof apiClient.GET>>>();
-      const latest = deferred<Awaited<ReturnType<typeof apiClient.GET>>>();
-      vi.mocked(apiClient.GET).mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+      const old = deferred<Awaited<ReturnType<typeof get>>>();
+      const latest = deferred<Awaited<ReturnType<typeof get>>>();
+      get.mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
       const first = store.compare(params);
       const second = store.compare({ ...params, slippageBps: 100 });
       if (finish === "resolve") old.resolve({ data: makeComparison(), response: new Response() });
@@ -53,8 +54,8 @@ describe("one comparison response", () => {
     }
   );
   it("keeps canceled results empty when transport ignores AbortSignal", async () => {
-    const pending = deferred<Awaited<ReturnType<typeof apiClient.GET>>>();
-    vi.mocked(apiClient.GET).mockReturnValueOnce(pending.promise);
+    const pending = deferred<Awaited<ReturnType<typeof get>>>();
+    get.mockReturnValueOnce(pending.promise);
     const comparison = store.compare(params);
     store.invalidate();
     pending.resolve({ data: makeComparison(), response: new Response() });
@@ -62,7 +63,7 @@ describe("one comparison response", () => {
     expect(store.hasResults).toBe(false);
   });
   it("publishes a single request error for both routers", async () => {
-    vi.mocked(apiClient.GET).mockRejectedValue(new Error("network unavailable"));
+    get.mockRejectedValue(new Error("network unavailable"));
     await store.compare(params);
     expect(store.spandexError).toBe("network unavailable");
     expect(store.curveError).toBe("network unavailable");

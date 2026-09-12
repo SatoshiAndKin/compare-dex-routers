@@ -225,7 +225,7 @@
   }
 
   .quote-card.winner {
-    border-color: var(--green, #007700);
+    border-color: var(--success-text, #007700);
     border-width: 3px;
   }
 
@@ -387,7 +387,7 @@
     cursor: pointer;
     border: 2px solid var(--accent, #0055ff);
     background: var(--accent, #0055ff);
-    color: #fff;
+    color: var(--text-inverse, #fff);
     transition: background 0.1s;
   }
 
@@ -407,8 +407,9 @@
   }
 
   .approve-btn.confirmed {
+    color: #fff;
     background: var(--green, #007700);
-    border-color: var(--green, #007700);
+    border-color: var(--success-text, #007700);
   }
 
   .tx-status {
@@ -417,7 +418,7 @@
   }
 
   .tx-status.success {
-    color: var(--green, #007700);
+    color: var(--success-text, #007700);
   }
 
   .tx-status.error {

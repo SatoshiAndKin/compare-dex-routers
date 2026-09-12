@@ -1,8 +1,10 @@
 import "./env.js";
 import "./sentry.js";
 import http from "node:http";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { TokenlistFiles } from "./tokenlists.js";
+import { createManagedServer } from "./shutdown.js";
+import { docsAssets, docsAssetUrl } from "./docs-assets.js";
 import { pathToFileURL } from "node:url";
 import { openapiDocument } from "./openapi.js";
 import { serializeWithBigInt } from "@spandex/core";
@@ -37,78 +39,7 @@ function logError(message: string, err?: unknown) {
   captureException(err, { message });
 }
 
-interface TokenListPayload {
-  tokens: Array<{
-    chainId: number;
-    address: string;
-    name: string;
-    symbol: string;
-    decimals: number;
-    logoURI?: string;
-  }>;
-  [key: string]: unknown;
-}
-
-interface TokenlistEntry {
-  path: string;
-  name: string;
-  tokens: TokenListPayload["tokens"];
-}
-
-let cachedDefaultTokenlists: TokenlistEntry[] | null = null;
-let cachedDefaultTokenlistsKey: string | null = null;
-
-/**
- * Get the list of default tokenlist file paths from environment.
- * DEFAULT_TOKENLISTS: comma-separated list of file paths (relative to cwd or absolute)
- * Defaults to ['static/tokenlist.json'] when not set.
- */
-function getDefaultTokenlistPaths(): string[] {
-  const envValue = process.env.DEFAULT_TOKENLISTS;
-  if (!envValue || envValue.trim() === "") {
-    return [resolve(process.cwd(), "static", "tokenlist.json")];
-  }
-  return envValue
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0)
-    .map((p) => (p.startsWith("/") ? p : resolve(process.cwd(), p)));
-}
-
-/**
- * Load all default tokenlists from configured paths.
- * Returns array of {path, name, tokens} entries.
- * Caches based on the DEFAULT_TOKENLISTS env value.
- */
-async function loadDefaultTokenlists(): Promise<TokenlistEntry[]> {
-  const paths = getDefaultTokenlistPaths();
-  const cacheKey = paths.join("|");
-
-  if (cachedDefaultTokenlists && cachedDefaultTokenlistsKey === cacheKey) {
-    return cachedDefaultTokenlists;
-  }
-
-  const entries: TokenlistEntry[] = [];
-
-  for (const path of paths) {
-    try {
-      const fileContents = await readFile(path, "utf8");
-      const parsed = JSON.parse(fileContents) as TokenListPayload;
-      const tokens = Array.isArray(parsed.tokens) ? parsed.tokens : [];
-      const name =
-        typeof parsed.name === "string" && parsed.name.trim() !== ""
-          ? parsed.name
-          : path.split("/").pop() || path;
-      entries.push({ path, name, tokens });
-    } catch (err) {
-      logError(`Failed to load default tokenlist from ${path}`, err);
-    }
-  }
-
-  cachedDefaultTokenlists = entries;
-  cachedDefaultTokenlistsKey = cacheKey;
-  return entries;
-}
+const tokenlistFiles = new TokenlistFiles();
 
 function sendJson(res: http.ServerResponse, status: number, data: object) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -118,14 +49,25 @@ function sendJson(res: http.ServerResponse, status: number, data: object) {
 function sendError(res: http.ServerResponse, status: number, message: string) {
   sendJson(res, status, {
     error: redactText(message),
-    code: status >= 500 ? "UPSTREAM_ERROR" : status === 404 ? "NOT_FOUND" : "INVALID_REQUEST",
+    code:
+      status === 503
+        ? "SHUTTING_DOWN"
+        : status >= 500
+          ? "UPSTREAM_ERROR"
+          : status === 404
+            ? "NOT_FOUND"
+            : "INVALID_REQUEST",
     requestId: res.getHeader("x-request-id") ?? "",
   });
 }
 
-export async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+export async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  draining = false
+) {
   try {
-    await routeRequest(req, res);
+    await routeRequest(req, res, draining);
   } catch (error) {
     logError("Request failed", error);
     trackError(error, "request");
@@ -137,7 +79,11 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
   }
 }
 
-async function routeRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+async function routeRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  draining: boolean
+) {
   const requestStart = Date.now();
   const requestId = getRequestId(req);
   setTraceHeaders(res, requestId);
@@ -145,6 +91,12 @@ async function routeRequest(req: http.IncomingMessage, res: http.ServerResponse)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (draining) {
+    res.setHeader("Connection", "close");
+    sendError(res, 503, "Server is shutting down. Please retry.");
+    return;
+  }
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -188,18 +140,19 @@ async function routeRequest(req: http.IncomingMessage, res: http.ServerResponse)
   <title>Compare DEX Routers — API Docs</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css">
+  <link rel="stylesheet" type="text/css" href="${docsAssetUrl(docsAssets.css.file)}" integrity="${docsAssets.css.integrity}" crossorigin="anonymous">
 </head>
 <body>
 <div id="swagger-ui"></div>
-<script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
+<script src="${docsAssetUrl(docsAssets.js.file)}" integrity="${docsAssets.js.integrity}" crossorigin="anonymous"></script>
 <script>
 window.onload = function() {
   SwaggerUIBundle({
     url: "./openapi.json",
     dom_id: '#swagger-ui',
-    presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
-    layout: "StandaloneLayout"
+    presets: [SwaggerUIBundle.presets.apis],
+    layout: "BaseLayout",
+    validatorUrl: null
   });
 };
 </script>
@@ -232,6 +185,10 @@ window.onload = function() {
   }
 
   if (url.pathname === "/health") {
+    if (existsSync("/tmp/drain")) {
+      sendError(res, 503, "Server is draining for deployment.");
+      return;
+    }
     sendJson(res, 200, { status: "ok", requestId, flags: getAllFlags() });
     recordRequest("/health", Date.now() - requestStart, false);
     return;
@@ -269,7 +226,7 @@ window.onload = function() {
 
   if (url.pathname === "/tokenlist" && req.method === "GET") {
     try {
-      const defaultTokenlists = await loadDefaultTokenlists();
+      const defaultTokenlists = await tokenlistFiles.load();
       const allTokens = defaultTokenlists.flatMap((entry) => entry.tokens);
       const names = defaultTokenlists.map((entry) => entry.name);
       sendJson(res, 200, {
@@ -277,6 +234,7 @@ window.onload = function() {
         tokenlists: defaultTokenlists.map((entry) => ({
           name: entry.name,
           tokens: entry.tokens,
+          ...(entry.error ? { error: entry.error } : {}),
         })),
         tokens: allTokens,
       });
@@ -447,10 +405,28 @@ window.onload = function() {
   sendError(res, 404, "Not found");
 }
 
+export function createApiServer() {
+  return createManagedServer((req, res, draining) => {
+    void handleRequest(req, res, draining);
+  });
+}
+
 async function main() {
-  const server = http.createServer(handleRequest);
-  server.listen(PORT, HOST, () => {
-    log(`Server listening on http://${HOST}:${PORT}`);
+  const app = createApiServer();
+  let stopping = false;
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    void app.shutdown().then((clean) => process.exit(clean ? 0 : 1));
+  };
+  process.on("SIGTERM", stop);
+  process.on("SIGINT", stop);
+  await new Promise<void>((resolve, reject) => {
+    app.server.once("error", reject);
+    app.server.listen(PORT, HOST, () => {
+      log(`Server listening on http://${HOST}:${PORT}`);
+      resolve();
+    });
   });
 }
 

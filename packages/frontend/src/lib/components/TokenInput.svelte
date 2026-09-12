@@ -353,6 +353,10 @@
     {/if}
   </div>
 
+  {#if currentToken}
+    <p class="selected-token-address">{currentToken.address}</p>
+  {/if}
+
   {#if dropdownVisible && matches.length > 0}
     <div class="token-autocomplete-list" role="listbox">
       {#each matches as token, i}

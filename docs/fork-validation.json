@@ -1,0 +1,60 @@
+{
+  "forks": [
+    {
+      "chainId": 1,
+      "blockNumber": "25963441",
+      "blockHash": "0x3ad04da140b3812ea800800f3083b259258179b6a02aafebc14dfb58ea05de59",
+      "anvil": "anvil Version: 1.7.1\nCommit SHA: 4072e48705af9d93e3c0f6e29e93b5e9a40caed8\nBuild Timestamp: 2026-05-08T07:54:31.470926000Z (1778226871)\nBuild Profile: dist"
+    },
+    {
+      "chainId": 8453,
+      "blockNumber": "51226066",
+      "blockHash": "0x543269d70a56b83ba01a330975d0505971c726ec0e52943c9b76acb033554c64",
+      "anvil": "anvil Version: 1.7.1\nCommit SHA: 4072e48705af9d93e3c0f6e29e93b5e9a40caed8\nBuild Timestamp: 2026-05-08T07:54:31.470926000Z (1778226871)\nBuild Profile: dist"
+    }
+  ],
+  "trades": [
+    {
+      "chainId": 1,
+      "provider": "curve",
+      "hashes": [
+        "0x86b5bf156afd5d5b51e0f3432b43de9df9bf73ddd5024063e6be019a8cb7af56",
+        "0xacba5259fe31d6e3c48a24944ee77f8910d820297c4a2d9dee2fe36af21424e4"
+      ],
+      "inputSpent": "10000000000000000",
+      "outputReceived": "25149854",
+      "minimumOutput": "25020332"
+    },
+    {
+      "chainId": 1,
+      "provider": "curve",
+      "hashes": [
+        "0x5dc0804294e17edf8a9181fda63c09b610b34382f4b0dff58cf756daef85afdb"
+      ],
+      "inputSpent": "10276547560525200",
+      "outputReceived": "25149854",
+      "minimumOutput": "25020332"
+    },
+    {
+      "chainId": 8453,
+      "provider": "kyberswap",
+      "hashes": [
+        "0xe03d23c5cba7828d9a7df93d00060e9349e659c920e59f96cd47d37ac253b185",
+        "0xa047afc7465b2a3d9e0fa06ce2c1bd504efdcc7a84d03aca092a8af720e8db60"
+      ],
+      "inputSpent": "10000000000000000",
+      "outputReceived": "25204591",
+      "minimumOutput": "24952545"
+    },
+    {
+      "chainId": 8453,
+      "provider": "velora",
+      "hashes": [
+        "0x7811b06ba2fde09f614ba101c3ea65079c4b0ba9fa5fa553ad9eaaccf922a317"
+      ],
+      "inputSpent": "10254746917100419",
+      "outputReceived": "25202071",
+      "minimumOutput": "24950050"
+    }
+  ]
+}

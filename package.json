@@ -8,21 +8,27 @@
   },
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
-    "typecheck": "pnpm -r run typecheck",
-    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.tools.json",
+    "lint": "pnpm -r run lint && eslint scripts e2e *.ts",
     "lint:fix": "pnpm -r run lint:fix",
-    "format": "prettier --write packages/",
-    "format:check": "prettier --check packages/",
+    "format": "prettier --write packages/ scripts/ e2e/ *.ts tsconfig.tools.json",
+    "format:check": "prettier --check packages/ scripts/ e2e/ *.ts tsconfig.tools.json",
     "test": "pnpm -r run test",
     "test:coverage": "pnpm -r run test:coverage",
     "dead-code": "knip",
     "duplicates": "jscpd packages/ --ignore 'node_modules/**' --ignore '**/__tests__/**'",
     "generate:types": "tsx scripts/generate-api-types.ts",
     "dead-flags": "tsx scripts/detect-dead-flags.ts",
-    "prepare": "if test -d .git; then husky; fi"
+    "prepare": "if test -d .git; then husky; fi",
+    "verify:cdn": "tsx scripts/verify-cdn.ts",
+    "test:e2e": "pnpm --filter @compare-dex/frontend build && playwright test",
+    "test:fork": "tsx scripts/test-fork.ts",
+    "test:rollout": "tsx scripts/test-rollout.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.13.3",
     "eslint": "^10.9.1",
     "husky": "^9.1.7",
     "jscpd": "^5.1.2",
@@ -32,8 +38,9 @@
     "prettier": "^3.9.6",
     "prettier-plugin-svelte": "^4.1.1",
     "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
     "typescript-eslint": "^8.69.0",
-    "typescript": "^5.9.3"
+    "viem": "2.56.3"
   },
   "lint-staged": {
     "packages/**/*.ts": [

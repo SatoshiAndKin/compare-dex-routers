@@ -10,3 +10,7 @@ packages/api/openapi.json
 
 # Validation screenshots in repo root (PNGs in subdirectories may be intentional)
 /*.png
+
+# Local browser and fork test artifacts
+test-results/
+playwright-report/

@@ -53,8 +53,8 @@
       : null
   );
 
-  function setTab(tab: "recommended" | "alternative") {
-    comparisonStore.activeTab = tab;
+  function setTab(provider: "spandex" | "curve") {
+    comparisonStore.selectedProvider = provider;
   }
 
   // Show recommendation reason box
@@ -70,11 +70,11 @@
       <button
         type="button"
         class="tab"
-        class:active={comparisonStore.activeTab === "recommended"}
+        class:active={comparisonStore.activeProvider === recommendedProvider}
         role="tab"
-        aria-selected={comparisonStore.activeTab === "recommended"}
+        aria-selected={comparisonStore.activeProvider === recommendedProvider}
         data-tab="recommended"
-        onclick={() => setTab("recommended")}
+        onclick={() => setTab(recommendedProvider)}
       >
         {recommendedTabLabel}
       </button>
@@ -82,11 +82,11 @@
         <button
           type="button"
           class="tab"
-          class:active={comparisonStore.activeTab === "alternative"}
+          class:active={comparisonStore.activeProvider === alternativeProvider}
           role="tab"
-          aria-selected={comparisonStore.activeTab === "alternative"}
+          aria-selected={comparisonStore.activeProvider === alternativeProvider}
           data-tab="alternative"
-          onclick={() => setTab("alternative")}
+          onclick={() => setTab(alternativeProvider)}
         >
           {alternativeTabLabel}
         </button>
@@ -105,7 +105,7 @@
     {/if}
 
     <!-- Tab panels -->
-    {#if comparisonStore.activeTab === "recommended"}
+    {#if comparisonStore.activeProvider === recommendedProvider}
       <div class="tab-panel" role="tabpanel">
         {#if bothFailed && combinedErrorMessage}
           <div class="combined-error" role="alert">{combinedErrorMessage}</div>
@@ -120,7 +120,7 @@
           />
         {/if}
       </div>
-    {:else if comparisonStore.activeTab === "alternative" && showAlternativeTab}
+    {:else if comparisonStore.activeProvider === alternativeProvider && showAlternativeTab}
       <div class="tab-panel" role="tabpanel">
         <QuoteCard
           provider={alternativeProvider}
