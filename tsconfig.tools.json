@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": [
+    "scripts/**/*.ts",
+    "e2e/**/*.ts",
+    "playwright*.config.ts",
+    "knip.config.ts",
+    "packages/frontend/node_modules/svelte/types/index.d.ts"
+  ]
+}

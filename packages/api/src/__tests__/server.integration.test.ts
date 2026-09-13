@@ -271,7 +271,7 @@ describe("server integration", () => {
     }
   });
 
-  it("GET /tokenlist caches file contents in memory after first read", async () => {
+  it("GET /tokenlist reloads changed file contents without a restart", async () => {
     const dir = await mkdtemp(join(tmpdir(), "tokenlist-cache-"));
     const tokenlistPath = join(dir, "tokenlist.json");
 
@@ -313,14 +313,14 @@ describe("server integration", () => {
 
       const secondResponse = await request(`${baseUrl}/tokenlist`);
       expect(secondResponse.status).toBe(200);
-      expect(JSON.parse(secondResponse.body).tokens[0].name).toBe("Initial Token");
+      expect(JSON.parse(secondResponse.body).tokens[0].name).toBe("Updated Token");
     } finally {
       delete process.env.DEFAULT_TOKENLISTS;
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it("GET /tokenlist returns 200 with empty arrays when file is missing (logs error)", async () => {
+  it("GET /tokenlist reports a missing source and retains its list identity", async () => {
     process.env.DEFAULT_TOKENLISTS = join(tmpdir(), `missing-tokenlist-${Date.now()}.json`);
 
     try {
@@ -328,8 +328,13 @@ describe("server integration", () => {
       expect(res.status).toBe(200);
       expect(res.headers["content-type"]).toContain("application/json");
       const body = JSON.parse(res.body);
-      // Should return empty arrays when no tokenlists can be loaded
-      expect(body.tokenlists).toEqual([]);
+      expect(body.tokenlists).toEqual([
+        {
+          name: expect.stringMatching(/^missing-tokenlist-/),
+          tokens: [],
+          error: "Cannot load token list.",
+        },
+      ]);
       expect(body.tokens).toEqual([]);
     } finally {
       delete process.env.DEFAULT_TOKENLISTS;

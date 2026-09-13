@@ -19,7 +19,7 @@ function resetComparisonStore() {
   comparisonStore.gasPriceGwei = null;
   comparisonStore.recommendation = null;
   comparisonStore.recommendationReason = null;
-  comparisonStore.activeTab = "recommended";
+  comparisonStore.selectedProvider = null;
   comparisonStore.mode = "exactIn";
   configStore.flags.curve_enabled = true;
 }
@@ -109,6 +109,18 @@ describe("QuoteResults", () => {
 
     await fireEvent.click(altTab!);
     expect(altTab!.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("keeps the chosen router when a refresh changes the recommendation", async () => {
+    comparisonStore.spandexResult = spandexQuote;
+    comparisonStore.curveResult = curveQuote;
+    comparisonStore.recommendation = "curve";
+    const { getByRole } = render(QuoteResults);
+    await fireEvent.click(getByRole("tab", { name: "Spandex" }));
+    comparisonStore.recommendation = "spandex";
+    await import("svelte").then(({ tick }) => tick());
+    expect(getByRole("tab", { name: "Spandex" }).getAttribute("aria-selected")).toBe("true");
+    expect(getByRole("tabpanel").textContent).toContain("Via Spandex");
   });
 
   it("shows loading indicators when both are loading", () => {

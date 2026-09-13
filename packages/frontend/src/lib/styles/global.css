@@ -1,55 +1,63 @@
-/* BRUTALIST DESIGN: High contrast, no border-radius, max 2 fonts */
-/* Theme: CSS variables for light/dark support */
+/* Space Jam 1996 inspired. Tol Bright accents keep state colors distinct. */
 :root,
 [data-theme="light"] {
-  --bg: #f5f5f5;
-  --bg-card: #fff;
-  --bg-hover: #f0f0f0;
-  --bg-muted: #f0f0f0;
-  --bg-input: #fff;
-  --text: #000;
-  --text-muted: #666;
-  --text-inverse: #fff;
-  --border: #000;
-  --border-light: #e0e0e0;
-  --accent: #0055ff;
-  --accent-hover: #0046cc;
-  --accent-alt: #cc2900;
-  --green: #007700;
-  --red: #cc0000;
-  --warning: #cc7a00;
-  --warning-bg: #f0f0f0;
-  --modal-overlay: rgba(0, 0, 0, 0.7);
-  --chain-current-bg: #e8f4e8;
-  --chain-current-border: #22c55e;
-  --computed-border: #999;
-  --computed-bg: #f5f5f5;
-  --icon-bg: #e0e0e0;
+  --bg: #f3f1fb;
+  --bg-card: #fffdf8;
+  --bg-hover: #e7eafa;
+  --bg-muted: #eeedf7;
+  --bg-input: #ffffff;
+  --bg-secondary: var(--bg-muted);
+  --text: #17233e;
+  --text-muted: #4d5670;
+  --text-inverse: #ffffff;
+  --border: #4477aa;
+  --border-light: #b4c2d9;
+  --accent: #315e8b;
+  --accent-hover: #24496e;
+  --accent-alt: #aa3377;
+  --green: #18692a;
+  --success-text: #18692a;
+  --green-hover: #10511f;
+  --red: #aa2649;
+  --error: var(--red);
+  --warning: #785e10;
+  --warning-bg: #fff5ca;
+  --modal-overlay: rgba(7, 10, 32, 0.8);
+  --chain-current-bg: #e5f4e8;
+  --chain-current-border: #228833;
+  --computed-border: #4477aa;
+  --computed-bg: #eef6fb;
+  --icon-bg: #e7eafa;
+  --space: #0b102b;
+  --space-text: #f8f4e8;
+  --orbit: #ccbb44;
+  --panel-shadow: 6px 6px 0 #4477aa;
 }
 [data-theme="dark"] {
-  --bg: #111;
-  --bg-card: #1a1a1a;
-  --bg-hover: #222;
-  --bg-muted: #1e1e1e;
-  --bg-input: #1a1a1a;
-  --text: #e0e0e0;
-  --text-muted: #999;
-  --text-inverse: #000;
-  --border: #555;
-  --border-light: #333;
-  --accent: #3388ff;
-  --accent-hover: #2266dd;
-  --accent-alt: #ff5533;
-  --green: #22aa44;
-  --red: #ee4444;
-  --warning: #ddaa33;
-  --warning-bg: #1e1e1e;
-  --modal-overlay: rgba(0, 0, 0, 0.85);
-  --chain-current-bg: #1a2e1a;
-  --chain-current-border: #22c55e;
-  --computed-border: #555;
-  --computed-bg: #1a1a1a;
-  --icon-bg: #333;
+  --bg: #0b102b;
+  --bg-card: #141d3a;
+  --bg-hover: #243453;
+  --bg-muted: #1a2644;
+  --bg-input: #0d1630;
+  --text: #f8f4e8;
+  --text-muted: #b8c6df;
+  --text-inverse: #091329;
+  --border: #66ccee;
+  --border-light: #425778;
+  --accent: #66ccee;
+  --accent-hover: #a6e3f5;
+  --accent-alt: #ee6677;
+  --green: #228833;
+  --success-text: #88ccaa;
+  --green-hover: #18692a;
+  --red: #ee6677;
+  --warning: #ccbb44;
+  --warning-bg: #2f2a18;
+  --chain-current-bg: #153828;
+  --computed-border: #4477aa;
+  --computed-bg: #1a2946;
+  --icon-bg: #293954;
+  --panel-shadow: 6px 6px 0 #aa3377;
 }
 *,
 *::before,
@@ -72,9 +80,12 @@ body {
     system-ui,
     -apple-system,
     sans-serif;
-  background: var(--bg);
+  background-color: var(--space);
+  background-image:
+    url("../assets/starfield.svg"), radial-gradient(ellipse at 50% 0, #26305a, var(--space) 65%);
+  background-attachment: fixed;
   color: var(--text);
-  max-width: 800px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 20px;
   line-height: 1.5;
@@ -85,7 +96,8 @@ body {
 
 /* Typography */
 h1 {
-  font-size: 1.5rem;
+  font-family: "Comic Sans MS", "Comic Sans", cursive;
+  font-size: clamp(1.8rem, 5vw, 3rem);
   font-weight: 700;
   margin-bottom: 1rem;
   letter-spacing: -0.02em;
@@ -1735,5 +1747,72 @@ button:focus {
   .amount-fields-row {
     flex-direction: column;
     gap: 0.5rem;
+  }
+}
+
+/* Shared form and dialog surfaces retain the existing component layout. */
+.app-main > form,
+.compare-form {
+  padding: clamp(1rem, 3vw, 1.75rem);
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  box-shadow: var(--panel-shadow);
+}
+button,
+input,
+select {
+  min-height: 44px;
+}
+button {
+  font-weight: 700;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--orbit);
+  outline-offset: 3px;
+}
+.mono,
+.token-address,
+.wallet-address {
+  overflow-wrap: anywhere;
+}
+.refresh-lists-btn {
+  background: var(--accent);
+  color: var(--text-inverse);
+  border: 2px solid var(--border);
+  padding: 0.5rem 0.8rem;
+  cursor: pointer;
+}
+.refresh-note {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 0.5rem 0;
+}
+@media (max-width: 600px) {
+  body {
+    padding: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.selected-token-address {
+  display: none;
+  color: var(--text-muted);
+  font: 0.75rem monospace;
+  overflow-wrap: anywhere;
+  margin-top: 0.4rem;
+}
+@media (max-width: 600px) {
+  .selected-token-address {
+    display: block;
   }
 }

@@ -21,7 +21,8 @@ class ComparisonStore {
   gasPriceGwei = $state<string | null>(null);
   recommendation = $state<"spandex" | "curve" | null>(null);
   recommendationReason = $state<string | null>(null);
-  activeTab = $state<"recommended" | "alternative">("recommended");
+  selectedProvider = $state<"spandex" | "curve" | null>(null);
+  activeProvider = $derived(this.selectedProvider ?? this.recommendation ?? "spandex");
   mode = $state<"exactIn" | "targetOut">("exactIn");
   hasResults = $derived(
     this.spandexResult !== null ||
@@ -41,6 +42,11 @@ class ComparisonStore {
   }
 
   invalidate(): void {
+    this.clearResults();
+    this.selectedProvider = null;
+  }
+
+  private clearResults(): void {
     this.cancel();
     this.spandexResult = null;
     this.curveResult = null;
@@ -56,9 +62,8 @@ class ComparisonStore {
   }
 
   async compare(params: CompareParams): Promise<void> {
-    this.invalidate();
+    this.clearResults();
     this.mode = params.mode;
-    this.activeTab = "recommended";
     this.isLoading = true;
     const sequence = this.sequence;
     const controller = new AbortController();

@@ -170,3 +170,19 @@ Both app Compose files forward all seven `RPC_URL_<id>` overrides. The API liste
 `quotes.ts` groups successful simulations into Spandex and Curve results. It uses canonical wrapped native tokens for conversion rates. Missing gas or rate data causes an explicit raw-amount comparison. All quote endpoints use `quote-response.ts`; OpenAPI and the generated frontend client share that contract.
 
 Saved token-list identities and enabled states enter memory before network requests start. Responses update lists by URL. Metadata requests are shared by chain and address, and late results cannot replace a newer selection. Balance caches store raw values and format them with the current decimals.
+
+## Runtime lifecycle and browser assets
+
+`shutdown.ts` owns HTTP connection draining and the reporting deadline. `server.ts`
+installs one handler for SIGTERM/SIGINT. The Compose drain hook withdraws old
+containers from Traefik before stopping them.
+
+`tokenlists.ts` caches parsed default files by file identity and retains last valid
+content on read/validation failure. The browser token-list store schedules daily
+refreshes only while visible, supports manual refresh, and cancels removed or
+unmounted requests. Configured default files appear as one built-in list in Settings.
+
+Wallet SDKs are pinned, lazy-loaded Vite dependencies. Farcaster uses the Mini App
+SDK's EIP-1193 provider. Swagger's CDN versions and hashes live in `docs-assets.ts`;
+its OpenAPI server URL is relative so direct and `/api`-prefixed deployments work.
+The space theme uses local SVG/CSS assets and the existing light/dark preference.

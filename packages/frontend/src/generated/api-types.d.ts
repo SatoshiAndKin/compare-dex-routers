@@ -278,7 +278,7 @@ export interface components {
     Error: {
       error: string;
       /** @enum {string} */
-      code: "INVALID_REQUEST" | "NOT_FOUND" | "UPSTREAM_ERROR";
+      code: "INVALID_REQUEST" | "NOT_FOUND" | "UPSTREAM_ERROR" | "SHUTTING_DOWN";
       requestId: string;
     };
     CompareResult: {
@@ -396,6 +396,8 @@ export interface components {
     TokenListEntry: {
       name: string;
       tokens: components["schemas"]["TokenEntry"][];
+      /** @description Refresh failure; tokens retain the last valid data when available */
+      error?: string;
     };
     TokenEntry: {
       chainId: number;
@@ -403,7 +405,7 @@ export interface components {
       name: string;
       symbol: string;
       decimals: number;
-      logoURI: string;
+      logoURI?: string;
     };
     TokenMetadata: {
       /** @description Token name from ERC-20 name() function */
@@ -498,9 +500,22 @@ export interface operations {
         };
         content: {
           "application/json": {
-            /** @example ok */
-            status: string;
+            /** @enum {string} */
+            status: "ok";
+            requestId: string;
+            flags: {
+              [key: string]: boolean;
+            };
           };
+        };
+      };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
     };
@@ -526,6 +541,15 @@ export interface operations {
               alchemySubdomain: string;
             };
           };
+        };
+      };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
     };
@@ -581,6 +605,15 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   compareQuotes: {
@@ -618,6 +651,15 @@ export interface operations {
       };
       /** @description Invalid parameters */
       400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
         headers: {
           [name: string]: unknown;
         };
@@ -678,6 +720,15 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   getTokenlist: {
@@ -700,6 +751,15 @@ export interface operations {
       };
       /** @description Failed to load token list */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
         headers: {
           [name: string]: unknown;
         };
@@ -759,6 +819,15 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   getAnalytics: {
@@ -777,6 +846,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["AnalyticsSummary"];
+        };
+      };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
     };
@@ -799,6 +877,15 @@ export interface operations {
           "application/json": components["schemas"]["ErrorInsights"];
         };
       };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   getMetrics: {
@@ -817,6 +904,15 @@ export interface operations {
         };
         content: {
           "text/plain": string;
+        };
+      };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
     };
@@ -839,6 +935,15 @@ export interface operations {
           "application/json": components["schemas"]["Config"];
         };
       };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   getFarcasterManifest: {
@@ -857,6 +962,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["FarcasterManifest"];
+        };
+      };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
     };

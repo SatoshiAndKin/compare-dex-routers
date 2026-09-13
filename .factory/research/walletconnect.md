@@ -7,11 +7,11 @@
 - WalletConnect's `EthereumProvider` is EIP-1193 compliant - drops into existing `connectToWalletProvider()` flow
 - No client-side viem needed (server-side only)
 
-### Loading Strategy (no bundler)
-Since the app has no build step (tsx runs server-side only), load via ESM CDN:
+### Loading strategy
+The Svelte frontend now has a Vite build. Use exact npm versions and lazy imports; do not restore runtime CDN imports:
 ```html
 <script type="module">
-  const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2');
+  const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
   window.__WalletConnectProvider = EthereumProvider;
 </script>
 ```

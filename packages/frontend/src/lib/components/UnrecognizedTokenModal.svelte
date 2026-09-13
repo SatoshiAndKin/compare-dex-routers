@@ -267,7 +267,7 @@
   .btn-primary {
     padding: 0.5rem 1rem;
     background: var(--accent, #0055ff);
-    color: var(--accent-fg, #fff);
+    color: var(--text-inverse, #fff);
     border: 2px solid var(--border, #000);
     cursor: pointer;
     font-size: 0.9rem;

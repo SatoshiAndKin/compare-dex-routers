@@ -1,7 +1,7 @@
 # Farcaster Miniapp Integration
 
 ## Package
-`@farcaster/miniapp-sdk` loaded via CDN: `https://esm.sh/@farcaster/miniapp-sdk`
+`@farcaster/miniapp-sdk` 0.3.0 is bundled by Vite and loaded on demand.
 
 ## Manifest
 Serve at `GET /.well-known/farcaster.json`:
@@ -26,11 +26,11 @@ Account association fields from env vars: FARCASTER_ACCOUNT_ASSOCIATION_HEADER, 
 
 ## Dual-Mode Detection
 ```js
-const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+const { sdk } = await import('@farcaster/miniapp-sdk');
 const isMiniApp = await sdk.isInMiniApp();
 if (isMiniApp) {
   sdk.actions.ready(); // dismiss splash
-  const provider = sdk.wallet.getEthereumProvider(); // built-in wallet
+  const provider = await sdk.wallet.getEthereumProvider(); // built-in wallet
 }
 ```
 

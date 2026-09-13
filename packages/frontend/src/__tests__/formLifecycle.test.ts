@@ -10,12 +10,16 @@ import {
   selectChain,
 } from "../lib/stores/formLifecycle.svelte.js";
 import { applyUrlParamsToForm } from "../lib/stores/urlSync.svelte.js";
-import { apiClient } from "../lib/api.js";
 import { deferred, FROM, TO, makeQuote } from "./quote-fixture.js";
-vi.mock("../lib/api.js", () => ({ apiClient: { GET: vi.fn() } }));
+type TestResponse = {
+  data: { name: string; symbol: string; decimals: number };
+  response: Response;
+};
+const { get } = vi.hoisted(() => ({ get: vi.fn<(...args: unknown[]) => Promise<TestResponse>>() }));
+vi.mock("../lib/api.js", () => ({ apiClient: { GET: get } }));
 beforeEach(() => {
   localStorage.clear();
-  vi.mocked(apiClient.GET).mockReset();
+  get.mockReset();
   formStore.chainId = 1;
   formStore.fromToken = null;
   formStore.toToken = null;
@@ -37,7 +41,7 @@ describe("metadata gates and chain selection", () => {
       else applyDefaults();
       expect(formStore.fromToken?.decimals).toBeNull();
       expect(formStore.canSubmit).toBe(false);
-      vi.mocked(apiClient.GET)
+      get
         .mockResolvedValueOnce({
           data: { name: "Zero", symbol: "ZERO", decimals: 0 },
           response: new Response(),
@@ -61,7 +65,7 @@ describe("metadata gates and chain selection", () => {
     await resolveSelectedTokens();
     expect(formStore.fromToken?.decimals).toBe(6);
     expect(formStore.toToken?.decimals).toBe(0);
-    expect(apiClient.GET).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
   });
   it("clears stale quotes and tokens when the chain changes", () => {
     applyDefaults();
@@ -73,8 +77,8 @@ describe("metadata gates and chain selection", () => {
     expect(formStore.canSubmit).toBe(false);
   });
   it("does not apply old metadata to a new chain or selection", async () => {
-    const response = deferred<Awaited<ReturnType<typeof apiClient.GET>>>();
-    vi.mocked(apiClient.GET).mockReturnValue(response.promise);
+    const response = deferred<Awaited<ReturnType<typeof get>>>();
+    get.mockReturnValue(response.promise);
     applyDefaults();
     const pending = resolveSelectedTokens();
     selectChain(8453);
@@ -86,18 +90,18 @@ describe("metadata gates and chain selection", () => {
     expect(formStore.fromToken).toMatchObject({ address: TO, chainId: 8453, decimals: null });
   });
   it("shares pending metadata reads, then allows a retry after failure", async () => {
-    const response = deferred<Awaited<ReturnType<typeof apiClient.GET>>>();
-    vi.mocked(apiClient.GET).mockReturnValue(response.promise);
+    const response = deferred<Awaited<ReturnType<typeof get>>>();
+    get.mockReturnValue(response.promise);
     applyDefaults();
     const first = resolveSelectedTokens();
     const second = resolveSelectedTokens();
-    expect(apiClient.GET).toHaveBeenCalledTimes(2);
+    expect(get).toHaveBeenCalledTimes(2);
     response.reject(new Error("metadata unavailable"));
     await first;
     await second;
     expect(formStore.canSubmit).toBe(false);
     expect(formStore.fromToken?.decimals).toBeNull();
-    vi.mocked(apiClient.GET).mockResolvedValue({
+    get.mockResolvedValue({
       data: { name: "Token", symbol: "TOKEN", decimals: 6 },
       response: new Response(),
     });

@@ -1,7 +1,7 @@
 # WalletConnect Integration
 
 ## Package
-`@walletconnect/ethereum-provider` loaded via ESM CDN: `https://esm.sh/@walletconnect/ethereum-provider@2`
+`@walletconnect/ethereum-provider` 2.24.0 is bundled by Vite and loaded on demand.
 
 ## Key Integration Points
 - EIP-1193 compliant — drops into existing `connectToWalletProvider(provider, info)` flow
@@ -10,7 +10,7 @@
 
 ## Code Pattern
 ```js
-const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2');
+const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
 const provider = await EthereumProvider.init({
   projectId: WALLETCONNECT_PROJECT_ID,
   optionalChains: [1, 8453, 42161, 10, 137, 56, 43114],

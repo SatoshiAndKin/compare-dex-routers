@@ -30,7 +30,7 @@ Open `http://localhost:5173` to use the UI. The API defaults to port 3100. If `.
 - Slippage presets (10, 50, 100, 300 bps) plus custom input
 - Clear (X) button on token inputs to quickly reset selections
 - Duplicate token guard — selecting the same token in both fields swaps them automatically
-- Brutalist black/white design with WCAG AA color accents
+- Space-themed retro design with light and dark modes
 - Full addresses everywhere, no truncation (responsive font sizing via CSS `clamp()`)
 
 ## Tokenlist management
@@ -133,7 +133,7 @@ Copy `env.example` to `.env` and fill in your keys.
 
 ## Dependency builds
 
-The app pins `SatoshiAndKin/spandex` at `04db5f3d814ad55fc740ef519ec347c9c6cec165`, based on upstream 0.11.0 with the Curve adapter restored. The package builds its ESM, CommonJS, and type exports with `prepack`. `pnpm-workspace.yaml` permits the build only for this exact Git package. Update the pin and build allowlist together. No local module aliases or dependency export overrides are required.
+The app pins `SatoshiAndKin/spandex` at `58fdf818a658fe804ed4454bdaba887f8a53f26e`, based on upstream 0.11.0 with the Curve adapter restored. The package builds its ESM, CommonJS, and type exports with `prepack`. `pnpm-workspace.yaml` permits the build only for this exact Git package. Update the pin and build allowlist together. No local module aliases or dependency export overrides are required.
 
 The workspace retains its seven-day release age policy and strict build allowlist. `js-yaml@4.3.1` is overridden to the patched 4.3.2 because a transitive generator dependency pins the affected version. TypeScript stays within the supported ranges of the Svelte, ESLint, and OpenAPI tools.
 
@@ -184,3 +184,18 @@ git subtree pull --prefix traefik-proxy git@github.com:SatoshiAndKin/traefik-pro
 ```bash
 git subtree push --prefix traefik-proxy git@github.com:SatoshiAndKin/traefik-proxy.git main
 ```
+
+### Reliability and browser validation
+
+WalletConnect and Farcaster use pinned dependencies and lazy Vite bundles. Swagger
+uses exact CDN URLs with SHA-384 integrity checks. Run `pnpm run verify:cdn` when
+updating those assets.
+
+Enabled token lists refresh once every 24 hours while the page is visible. Settings
+also has a manual **Refresh token lists** button. A failed refresh keeps the last
+valid tokens and shows an error. The API revalidates configured token-list files on
+request, so file changes do not require a restart.
+
+Run `pnpm run test:e2e` for desktop/mobile browser checks and `pnpm run test:fork`
+for local Ethereum and Base trades. See the [testing runbook](docs/runbooks/testing.md)
+for setup, RPC selection, replay, and test artifacts.

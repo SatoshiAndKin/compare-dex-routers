@@ -43,10 +43,10 @@ const client = createClient<paths>({ baseUrl: API_BASE_URL });
 const { data, error } = await client.GET('/compare', { params: { query: { chainId, from, to, amount } } });
 ```
 
-**WalletConnect and Farcaster** MUST be loaded via CDN ESM imports (cannot be npm bundled):
+**WalletConnect and Farcaster** use exact dependencies in the frontend package and lazy imports. Keep the pnpm lockfile current:
 ```html
 <script type="module">
-  import { EthereumProvider } from 'https://esm.sh/@walletconnect/ethereum-provider@2';
+  const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
 </script>
 ```
 
@@ -122,6 +122,6 @@ const { data, error } = await client.GET('/compare', { params: { query: { chainI
 
 - API endpoint missing or returning unexpected shape (not matching OpenAPI spec)
 - Generated types don't match actual API responses
-- WalletConnect CDN import fails or has breaking changes
+- WalletConnect lazy import fails or has breaking changes
 - Cannot replicate original behavior because original code is unclear/buggy
 - Svelte 5 runes don't support a pattern needed (check docs first)

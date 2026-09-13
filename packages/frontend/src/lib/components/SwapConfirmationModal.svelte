@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dialogFocus } from "../dialog-focus.js";
   /**
    * SwapConfirmationModal — shown before executing a swap.
    *
@@ -45,12 +46,6 @@
       handleCancel();
     }
   }
-
-  function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === "Escape") {
-      handleCancel();
-    }
-  }
 </script>
 
 {#if isOpen && data}
@@ -64,7 +59,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="swap-modal-title"
-      onkeydown={handleKeydown}
+      use:dialogFocus={handleCancel}
       tabindex="-1"
     >
       <div class="modal-header">

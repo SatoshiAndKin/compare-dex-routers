@@ -29,6 +29,12 @@ jobs:
         run: pnpm run duplicates
       - name: Dead feature flag check
         run: pnpm run dead-flags
+      - name: Verify pinned CDN assets
+        run: pnpm run verify:cdn
+      - name: Install browser test engines
+        run: pnpm exec playwright install --with-deps chromium webkit
+      - name: Browser checks
+        run: pnpm run test:e2e
 
   validate-docs:
     runs-on: ubuntu-latest

@@ -28,4 +28,4 @@ Root npm workspaces. Shared types generated from openapi.yaml via openapi-typesc
 - Svelte 5 runes ($state, $derived, $effect)
 - Class-based stores in .svelte.ts files
 - openapi-fetch for type-safe API calls
-- WalletConnect + Farcaster via CDN ESM imports (not npm bundled)
+- WalletConnect + Farcaster via pinned npm dependencies, bundled by Vite and loaded on demand

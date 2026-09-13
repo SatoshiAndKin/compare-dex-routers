@@ -87,7 +87,7 @@ const TokenMetadataQuerySchema = z.object({
 const ErrorSchema = z
   .object({
     error: z.string(),
-    code: z.enum(["INVALID_REQUEST", "NOT_FOUND", "UPSTREAM_ERROR"]),
+    code: z.enum(["INVALID_REQUEST", "NOT_FOUND", "UPSTREAM_ERROR", "SHUTTING_DOWN"]),
     requestId: z.string(),
   })
   .openapi("Error");
@@ -113,7 +113,7 @@ const TokenEntrySchema = z
     name: z.string(),
     symbol: z.string(),
     decimals: z.number().int(),
-    logoURI: z.string(),
+    logoURI: z.string().optional(),
   })
   .openapi("TokenEntry");
 
@@ -121,6 +121,9 @@ const TokenListEntrySchema = z
   .object({
     name: z.string(),
     tokens: z.array(TokenEntrySchema),
+    error: z.string().optional().openapi({
+      description: "Refresh failure; tokens retain the last valid data when available",
+    }),
   })
   .openapi("TokenListEntry");
 
@@ -232,7 +235,11 @@ registry.registerPath({
   summary: "Health check",
   responses: {
     200: jsonContent(
-      z.object({ status: z.string().openapi({ example: "ok" }) }),
+      z.object({
+        status: z.literal("ok"),
+        requestId: z.string(),
+        flags: z.record(z.string(), z.boolean()),
+      }),
       "Server is healthy"
     ),
   },
@@ -394,5 +401,18 @@ export const openapiDocument: OpenAPIObject = generator.generateDocument({
     version: "1.0.0",
     description: "Quote comparison server querying Spandex and Curve for side-by-side swap quotes.",
   },
-  servers: [{ url: "http://localhost:3100" }],
+  servers: [{ url: "./" }],
 });
+
+// Every HTTP operation can be rejected when the process is draining.
+for (const path of Object.values(openapiDocument.paths)) {
+  if (!path) continue;
+  for (const method of ["get", "post", "put", "patch", "delete", "options", "head"] as const) {
+    const operation = path[method];
+    if (operation)
+      operation.responses["503"] = {
+        description: "Server is shutting down; retry on an available instance",
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+      };
+  }
+}

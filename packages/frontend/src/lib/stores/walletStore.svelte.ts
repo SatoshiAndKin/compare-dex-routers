@@ -1,6 +1,6 @@
 /**
  * Wallet store managing wallet connection state.
- * Handles EIP-6963 provider discovery, WalletConnect (CDN), and Farcaster SDK (CDN).
+ * Handles EIP-6963 provider discovery, lazy bundled WalletConnect, and the Farcaster Mini App SDK.
  * Ported from src/client/wallet.ts for Svelte 5.
  */
 
@@ -312,10 +312,7 @@ class WalletStore {
     }
   }
 
-  /**
-   * Connect via WalletConnect using CDN ESM dynamic import.
-   * WalletConnect is never bundled — always loaded from esm.sh at runtime.
-   */
+  /** Load the pinned WalletConnect bundle only when requested. */
   async connectWalletConnect(projectId: string): Promise<void> {
     if (!projectId) {
       this.setMessage("WalletConnect not configured (missing project ID)", true);
@@ -326,19 +323,7 @@ class WalletStore {
     this.setMessage("");
 
     try {
-      // CDN ESM dynamic import — never bundled with npm.
-      // Use a string variable so TypeScript doesn't attempt static module resolution.
-      const wcUrl = "https://esm.sh/@walletconnect/ethereum-provider@2";
-      const { EthereumProvider } = (await import(/* @vite-ignore */ wcUrl)) as {
-        EthereumProvider: {
-          init(opts: Record<string, unknown>): Promise<
-            EIP1193Provider & {
-              on(e: string, h: (...a: unknown[]) => void): void;
-              connect(): Promise<void>;
-            }
-          >;
-        };
-      };
+      const { EthereumProvider } = await import("@walletconnect/ethereum-provider");
 
       const wcProvider = await EthereumProvider.init({
         projectId,
@@ -381,26 +366,17 @@ class WalletStore {
     }
   }
 
-  /**
-   * Connect via Farcaster frame SDK using CDN ESM dynamic import.
-   * Farcaster SDK is never bundled — always loaded from esm.sh at runtime.
-   */
+  /** Load the pinned Farcaster Mini App SDK only when requested. */
   async connectFarcaster(): Promise<void> {
     this.isConnecting = true;
     this.setMessage("");
 
     try {
-      // CDN ESM dynamic import — never bundled with npm.
-      // Use a string variable so TypeScript doesn't attempt static module resolution.
-      const farcasterUrl = "https://esm.sh/@farcaster/frame-sdk";
-      const { sdk } = (await import(/* @vite-ignore */ farcasterUrl)) as {
-        sdk: {
-          wallet: { ethProvider: EIP1193Provider };
-          actions: { ready(): Promise<void> };
-        };
-      };
-
-      const ethProvider = sdk.wallet.ethProvider;
+      const { sdk } = await import("@farcaster/miniapp-sdk");
+      if (!(await sdk.isInMiniApp()))
+        throw new Error("Open this app in Farcaster to use its wallet.");
+      const ethProvider = await sdk.wallet.getEthereumProvider();
+      if (!ethProvider) throw new Error("No Farcaster Ethereum wallet is available");
 
       await this.connect({
         info: { uuid: "farcaster", name: "Farcaster", rdns: "farcaster" },
