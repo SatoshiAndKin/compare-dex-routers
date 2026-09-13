@@ -51,6 +51,8 @@ beforeEach(() => {
         return actualChain;
       case "eth_call":
         return `0x${allowance.toString(16)}`;
+      case "eth_estimateGas":
+        return "0x1d4c0";
       case "eth_sendTransaction":
         allowance = 2n ** 256n - 1n;
         return HASH;
@@ -185,11 +187,50 @@ describe("quote-bound wallet actions", () => {
     await pending;
     expect(sent()).toHaveLength(1);
     expect(sent()[0]?.[0].params).toEqual([
-      { from: SENDER, chainId: "0x1", to: ROUTER, data: "0xabcdef", value: "0x0" },
+      { from: SENDER, chainId: "0x1", to: ROUTER, data: "0xabcdef", value: "0x0", gas: "0x23280" },
     ]);
     expect(transactions.getSwapStatus(quote)).toBe("confirmed");
     expect(walletStore.message).toContain(HASH);
   });
+  it.each([
+    [100000n, "120001", 144002n],
+    [200001n, "120000", 240002n],
+    [200001n, null, 240002n],
+  ])("budgets gas from current estimate %s and simulation %s", async (estimate, simulated, gas) => {
+    allowance = 100000000n;
+    const base = request.getMockImplementation()!;
+    request.mockImplementation((args) =>
+      args.method === "eth_estimateGas" ? Promise.resolve(`0x${estimate.toString(16)}`) : base(args)
+    );
+    const pending = transactions.swap("spandex", current({ gas_used: simulated }));
+    await confirmation();
+    transactions.confirmSwap();
+    await pending;
+    expect(sent()[0]?.[0].params).toEqual([
+      expect.objectContaining({ gas: `0x${gas.toString(16)}` }),
+    ]);
+  });
+  it.each(["account", "chain", "quote", "revert", "invalid"])(
+    "blocks submission when gas estimation encounters %s",
+    async (problem) => {
+      allowance = 100000000n;
+      const base = request.getMockImplementation()!;
+      request.mockImplementation(async (args) => {
+        if (args.method !== "eth_estimateGas") return base(args);
+        if (problem === "account") actualAccount = ROUTER;
+        if (problem === "chain") actualChain = "0x2105";
+        if (problem === "quote") comparisonStore.invalidate();
+        if (problem === "revert") throw new Error("execution reverted");
+        return problem === "invalid" ? "0x0" : "0x1d4c0";
+      });
+      const pending = transactions.swap("spandex", current());
+      await confirmation();
+      transactions.confirmSwap();
+      await pending;
+      expect(sent()).toEqual([]);
+      expect(transactions.busy).toBe(false);
+    }
+  );
   it.each(["account", "chain", "form", "quote", "provider"])(
     "blocks a %s change while the confirmation is open",
     async (field) => {

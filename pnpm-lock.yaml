@@ -168,8 +168,8 @@ importers:
         specifier: ^10.73.0
         version: 10.73.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(supports-color@10.2.2)
       '@spandex/core':
-        specifier: github:SatoshiAndKin/spandex#58fdf818a658fe804ed4454bdaba887f8a53f26e&path:/packages/core
-        version: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/58fdf818a658fe804ed4454bdaba887f8a53f26e#path:/packages/core(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(viem@2.56.3(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.5.4))
+        specifier: github:SatoshiAndKin/spandex#7fddfdd1ac20ec6732d7b3f9767ea440768e795b&path:/packages/core
+        version: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/7fddfdd1ac20ec6732d7b3f9767ea440768e795b#path:/packages/core(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(viem@2.56.3(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.5.4))
       openapi3-ts:
         specifier: ^4.6.1
         version: 4.6.1
@@ -1565,8 +1565,8 @@ packages:
   '@solana/web3.js@1.98.4':
     resolution: {integrity: sha512-vv9lfnvjUsRiq//+j5pBdXig0IQdtzA0BRZ3bXEP4KaIyF1CcaydWqgyzQgfZMNIsWNWmG+AUHwPy4AHOD6gpw==}
 
-  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/58fdf818a658fe804ed4454bdaba887f8a53f26e#path:/packages/core':
-    resolution: {gitHosted: true, integrity: sha512-OKo2XKKSI8POUJWgpd5/nGCpfrXBzlGrf0vrugbCAudO15ct91v6SbUbrJPQ2geoswAZ7oe87LfbkuxbBQKTjg==, path: /packages/core, tarball: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/58fdf818a658fe804ed4454bdaba887f8a53f26e}
+  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/7fddfdd1ac20ec6732d7b3f9767ea440768e795b#path:/packages/core':
+    resolution: {gitHosted: true, integrity: sha512-8kbSjNtbz+69PzHy59Sv002Zut4i7h3WbXdsWwSXbXO/OsBOG5k0FdMG2t02CZgb5fA0J6DkJMZohGLwJQ0LvA==, path: /packages/core, tarball: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/7fddfdd1ac20ec6732d7b3f9767ea440768e795b}
     version: 0.11.0
     peerDependencies:
       typescript: '>=5.0.4'
@@ -5278,7 +5278,7 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/58fdf818a658fe804ed4454bdaba887f8a53f26e#path:/packages/core(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(viem@2.56.3(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.5.4))':
+  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/7fddfdd1ac20ec6732d7b3f9767ea440768e795b#path:/packages/core(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(viem@2.56.3(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.5.4))':
     dependencies:
       '@curvefi/api': 2.69.18(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       viem: 2.56.3(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.5.4)

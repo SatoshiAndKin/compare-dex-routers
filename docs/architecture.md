@@ -183,6 +183,15 @@ storage, and live chain state remain intact. Connected-wallet quotes keep their
 original account and simulation checks; preview overrides never enter an
 execution payload.
 
+Exact-output quotes must simulate at least the requested output amount. The API
+rejects even a one-unit shortfall before it selects or exposes a quote.
+The pinned Spandex SDK simulates the swap at the RPC gas price and rejects
+fee-sensitive reverts. It reports native output before gas costs so the API
+does not deduct the same fee twice when it calculates a recommendation.
+After confirmation, the wallet store estimates gas for the exact transaction and
+sets a limit 20% above the larger of that estimate and simulated gas usage. It
+checks the wallet, chain, and quote again after the estimate before submission.
+
 Saved token-list identities and enabled states enter memory before network requests start. Responses update lists by URL. Metadata requests are shared by chain and address, and late results cannot replace a newer selection. Balance caches store raw values and format them with the current decimals.
 
 ## Runtime lifecycle and browser assets

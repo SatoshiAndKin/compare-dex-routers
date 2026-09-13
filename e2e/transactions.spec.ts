@@ -16,6 +16,7 @@ for (const scenario of [
       if (method === "eth_call")
         return scenario === "reject approval" ? "0x0" : `0x${"f".repeat(64)}`;
       if (method === "eth_getBalance") return "0x0";
+      if (method === "eth_estimateGas") return "0x1d4c0";
       if (method === "eth_sendTransaction") {
         sent.push(params);
         return `0x${"1".repeat(64)}`;

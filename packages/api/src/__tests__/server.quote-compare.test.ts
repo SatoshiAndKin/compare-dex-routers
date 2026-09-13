@@ -154,6 +154,23 @@ describe("quote execution and response contract", () => {
     expect(body.curve.provider).toBe("curve");
     expect(body.recommendation).toBe("curve");
   });
+  it.each(["", SENDER])("rejects target-output shortfalls for sender %s", async (sender) => {
+    const target = 10n ** 18n;
+    mocks.quotes.mockResolvedValue([
+      quote("fabric", 900000n, target - 1n),
+      quote("curve", 1000000n, target),
+    ]);
+    const { body } = await call("/compare", { mode: "targetOut", ...(sender ? { sender } : {}) });
+    expect(body.spandex).toBeNull();
+    expect(body.curve.output_amount_raw).toBe(String(target));
+    expect(body.recommendation).toBe("curve");
+  });
+  it("rejects a successful simulation that produces no output", async () => {
+    mocks.quotes.mockResolvedValue([quote("fabric", 1000000n, 0n)]);
+    const { body } = await call();
+    expect(body.spandex).toBeNull();
+    expect(body.recommendation).toBeNull();
+  });
   it.each(["/quote", "/quote-curve", "/compare"])(
     "%s returns the same account-bound execution schema",
     async (endpoint) => {
