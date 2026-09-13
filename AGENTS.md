@@ -48,6 +48,7 @@ Node.js HTTP server (no framework). Source files in `packages/api/src/`:
 | `server.ts`         | HTTP server, request routing, response handling                       |
 | `config.ts`         | Chain config, router setup, viem clients, token metadata              |
 | `quotes.ts`         | Spandex/Curve quote selection, shared formatting, and recommendations |
+| `preview-simulation.ts` | Verified token balance overrides for read-only quote previews |
 | `quote-response.ts` | Shared response schemas and types                                     |
 | `redaction.ts`      | Credential removal at reporting boundaries                            |
 | `quote.ts`          | Query parameter parsing and validation                                |

@@ -16,6 +16,7 @@ import { installWallet } from "./wallet.js";
 
 const ACCOUNT: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+const PREVIEW_ACCOUNT: Address = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
 const networks = [
   {
     chain: mainnet,
@@ -32,6 +33,69 @@ const networks = [
 ] as const;
 
 for (const network of networks) {
+  test(`${network.chain.name}: previews isolate account code and token balances`, async ({
+    request,
+  }) => {
+    const url = process.env[`FORK_TEST_RPC_${network.chain.id}`];
+    if (!url || new URL(url).hostname !== "127.0.0.1")
+      throw new Error("Use an isolated local fork");
+    const client = createPublicClient({ chain: network.chain, transport: http(url) });
+    const control = createTestClient({ mode: "anvil", transport: http(url) });
+    const snapshot = await control.snapshot();
+    try {
+      // This account cannot receive native output or spend native input without an override.
+      await control.setCode({ address: PREVIEW_ACCOUNT, bytecode: "0x60006000fd" });
+      await control.setBalance({ address: PREVIEW_ACCOUNT, value: 0n });
+      for (const [from, to, amount] of [
+        [NATIVE, network.usdc, "0.01"],
+        [network.weth, network.usdc, "0.01"],
+        [network.usdc, network.weth, "10"],
+      ] as const) {
+        const before =
+          from === NATIVE
+            ? 0n
+            : await client.readContract({
+                address: from,
+                abi: erc20Abi,
+                functionName: "balanceOf",
+                args: [PREVIEW_ACCOUNT],
+              });
+        const params = new URLSearchParams({ chainId: String(network.chain.id), from, to, amount });
+        await expect
+          .poll(
+            async () => {
+              const response = await request.get(`http://127.0.0.1:3120/compare?${params}`, {
+                timeout: 30_000,
+              });
+              expect(response.ok()).toBe(true);
+              const result = (await response.json()) as components["schemas"]["CompareResult"];
+              const successful = [result.spandex, result.curve].filter((quote) => quote !== null);
+              for (const quote of successful) {
+                expect(quote.sender).toBeNull();
+                expect(quote.execution).toBeNull();
+                expect(BigInt(quote.output_amount_raw)).toBeGreaterThan(0n);
+              }
+              return successful.length;
+            },
+            { timeout: 60_000, intervals: [1_000, 2_000, 5_000] }
+          )
+          .toBeGreaterThan(0);
+        if (from !== NATIVE)
+          expect(
+            await client.readContract({
+              address: from,
+              abi: erc20Abi,
+              functionName: "balanceOf",
+              args: [PREVIEW_ACCOUNT],
+            })
+          ).toBe(before);
+      }
+      expect(await client.getCode({ address: PREVIEW_ACCOUNT })).toBe("0x60006000fd");
+      expect(await client.getBalance({ address: PREVIEW_ACCOUNT })).toBe(0n);
+    } finally {
+      await control.revert({ id: snapshot });
+    }
+  });
   for (const native of [false, true]) {
     test(`${network.chain.name}: ${native ? "native" : "approve ERC-20"} and swap via ${network.provider}`, async ({
       page,
