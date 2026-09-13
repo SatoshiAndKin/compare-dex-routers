@@ -29,8 +29,10 @@ const rates = new Map<string, { nativeRaw: bigint; tokenRaw: bigint; timestamp: 
 const RATE_TTL_MS = 60_000;
 type Router = "spandex" | "curve";
 
-function successful(quote: SimulatedQuote): quote is SuccessfulSimulatedQuote {
-  return quote.success && quote.simulation.success;
+function successful(quote: SimulatedQuote, minimumOutput = 1n): quote is SuccessfulSimulatedQuote {
+  return (
+    quote.success && quote.simulation.success && quote.simulation.outputAmount >= minimumOutput
+  );
 }
 
 function providerConfig(router?: Router): Config {
@@ -96,44 +98,51 @@ async function requestQuotes(params: QuoteParams, router?: Router) {
         })
       )
     : [];
-  const results = quotes.filter(successful).map((quote): QuoteResult => ({
-    chainId: params.chainId,
-    from: params.from,
-    from_symbol: fromSymbol,
-    to: params.to,
-    to_symbol: toSymbol,
-    amount: params.amount,
-    mode: params.mode,
-    input_amount: formatUnits(quote.inputAmount, inputDecimals),
-    output_amount: formatUnits(quote.simulation.outputAmount, outputDecimals),
-    input_amount_raw: quote.inputAmount.toString(),
-    output_amount_raw: quote.simulation.outputAmount.toString(),
-    slippage_bps: params.slippageBps,
-    provider: quote.provider,
-    sender: params.sender ?? null,
-    execution: params.sender
-      ? {
-          to: quote.txData.to,
-          data: quote.txData.data,
-          value: (quote.txData.value ?? 0n).toString(),
-          approval: quote.approval ?? null,
-        }
-      : null,
-    route: quote.route ?? null,
-    gas_used:
-      quote.simulation.gasUsed && quote.simulation.gasUsed > 0n
-        ? quote.simulation.gasUsed.toString()
+  const minimumOutput = swap.mode === "targetOut" ? swap.outputAmount : 1n;
+  const results = quotes
+    .filter((quote) => successful(quote, minimumOutput))
+    .map((quote): QuoteResult => ({
+      chainId: params.chainId,
+      from: params.from,
+      from_symbol: fromSymbol,
+      to: params.to,
+      to_symbol: toSymbol,
+      amount: params.amount,
+      mode: params.mode,
+      input_amount: formatUnits(quote.inputAmount, inputDecimals),
+      output_amount: formatUnits(quote.simulation.outputAmount, outputDecimals),
+      input_amount_raw: quote.inputAmount.toString(),
+      output_amount_raw: quote.simulation.outputAmount.toString(),
+      slippage_bps: params.slippageBps,
+      provider: quote.provider,
+      sender: params.sender ?? null,
+      execution: params.sender
+        ? {
+            to: quote.txData.to,
+            data: quote.txData.data,
+            value: (quote.txData.value ?? 0n).toString(),
+            approval: quote.approval ?? null,
+          }
         : null,
-    gas_price_gwei: null,
-    native_currency: getNativeAsset(params.chainId).symbol,
-    gas_cost_native: null,
-    trade_value_native: null,
-    net_value_native: null,
-  }));
+      route: quote.route ?? null,
+      gas_used:
+        quote.simulation.gasUsed && quote.simulation.gasUsed > 0n
+          ? quote.simulation.gasUsed.toString()
+          : null,
+      gas_price_gwei: null,
+      native_currency: getNativeAsset(params.chainId).symbol,
+      gas_cost_native: null,
+      trade_value_native: null,
+      net_value_native: null,
+    }));
   for (const quote of quotes) {
-    if (!successful(quote)) {
+    if (!successful(quote, minimumOutput)) {
       logger.debug(
-        { provider: quote.provider, error: quote.success ? quote.simulation : quote.error },
+        {
+          provider: quote.provider,
+          minimumOutput,
+          error: quote.success ? quote.simulation : quote.error,
+        },
         "Provider quote failed"
       );
     }

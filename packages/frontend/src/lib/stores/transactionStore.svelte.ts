@@ -29,7 +29,7 @@ function rejected(error: unknown): boolean {
     rejected(value.originalError)
   );
 }
-function hex(value: string | number): string {
+function hex(value: string | number | bigint): string {
   return `0x${BigInt(value).toString(16)}`;
 }
 function allowanceKey(quote: Quote): string | null {
@@ -269,18 +269,33 @@ class TransactionStore {
       await this.assertContext(quote, provider);
       const execution = quote.execution;
       if (!execution) throw new Error("Quote has no execution data. Refresh quotes.");
+      const transaction = {
+        from: quote.sender,
+        chainId: hex(quote.chainId),
+        to: execution.to,
+        data: execution.data,
+        value: hex(execution.value),
+      };
+      const estimate = await provider.request({
+        method: "eth_estimateGas",
+        params: [transaction],
+      });
+      if (
+        typeof estimate !== "string" ||
+        !/^0x[0-9a-f]+$/i.test(estimate) ||
+        BigInt(estimate) <= 0n
+      )
+        throw new Error("Wallet returned an invalid gas estimate. Refresh quotes.");
+      const simulated = BigInt(quote.gas_used ?? "0");
+      const required = BigInt(estimate) > simulated ? BigInt(estimate) : simulated;
+      // A fresh estimate can be below observed simulation usage. Keep 20% headroom
+      // for cold state and gas forwarding; unused gas is not charged.
+      const gas = (required * 6n + 4n) / 5n;
+      await this.assertContext(quote, provider);
       this.swapStatus[key] = "pending";
       const hash = await provider.request({
         method: "eth_sendTransaction",
-        params: [
-          {
-            from: quote.sender,
-            chainId: hex(quote.chainId),
-            to: execution.to,
-            data: execution.data,
-            value: hex(execution.value),
-          },
-        ],
+        params: [{ ...transaction, gas: hex(gas) }],
       });
       if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
       walletStore.setMessage(`Swap submitted: ${hash}`);

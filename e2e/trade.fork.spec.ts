@@ -46,10 +46,12 @@ for (const network of networks) {
       // This account cannot receive native output or spend native input without an override.
       await control.setCode({ address: PREVIEW_ACCOUNT, bytecode: "0x60006000fd" });
       await control.setBalance({ address: PREVIEW_ACCOUNT, value: 0n });
-      for (const [from, to, amount] of [
-        [NATIVE, network.usdc, "0.01"],
-        [network.weth, network.usdc, "0.01"],
-        [network.usdc, network.weth, "10"],
+      for (const [from, to, amount, mode] of [
+        [NATIVE, network.usdc, "0.01", "exactIn"],
+        [network.weth, network.usdc, "0.01", "exactIn"],
+        [network.usdc, network.weth, "10", "exactIn"],
+        [network.weth, NATIVE, "0.01", "exactIn"],
+        [network.usdc, network.weth, "0.005", "targetOut"],
       ] as const) {
         const before =
           from === NATIVE
@@ -60,7 +62,13 @@ for (const network of networks) {
                 functionName: "balanceOf",
                 args: [PREVIEW_ACCOUNT],
               });
-        const params = new URLSearchParams({ chainId: String(network.chain.id), from, to, amount });
+        const params = new URLSearchParams({
+          chainId: String(network.chain.id),
+          from,
+          to,
+          amount,
+          mode,
+        });
         await expect
           .poll(
             async () => {
@@ -74,6 +82,10 @@ for (const network of networks) {
                 expect(quote.sender).toBeNull();
                 expect(quote.execution).toBeNull();
                 expect(BigInt(quote.output_amount_raw)).toBeGreaterThan(0n);
+                if (mode === "targetOut")
+                  expect(BigInt(quote.output_amount_raw)).toBeGreaterThanOrEqual(
+                    parseEther(amount)
+                  );
               }
               return successful.length;
             },
@@ -113,6 +125,7 @@ for (const network of networks) {
       const control = createTestClient({ mode: "anvil", transport: http(url) });
       const snapshot = await control.snapshot();
       const hashes: Hex[] = [];
+      let approvals = 0;
       try {
         await control.setBalance({ address: ACCOUNT, value: parseEther("100") });
         const wrapped = await wallet.sendTransaction({
@@ -193,27 +206,36 @@ for (const network of networks) {
         if (native) {
           await expect(page.getByRole("button", { name: "Approve token spending" })).toHaveCount(0);
         } else {
-          const approval = quote.execution.approval;
-          if (!approval) throw new Error("ERC-20 quote is missing approval identity");
-          const refreshed = page.waitForResponse(
-            (response) => response.url().includes("/api/compare?") && response.ok()
-          );
-          await page.getByRole("button", { name: "Approve token spending" }).click();
-          quote = ((await (await refreshed).json()) as components["schemas"]["CompareResult"])[
-            network.provider
-          ];
-          if (!quote?.execution) throw new Error("Post-approval quote has no execution payload");
-          await expect(
-            page.getByRole("tab", { name: network.provider === "curve" ? /Curve/ : /Spandex/ })
-          ).toHaveAttribute("aria-selected", "true");
-          await expect(page.getByRole("button", { name: "Already approved" })).toBeVisible();
-          const allowance = await client.readContract({
-            address: network.weth,
-            abi: erc20Abi,
-            functionName: "allowance",
-            args: [ACCOUNT, approval.spender as Address],
-          });
-          expect(allowance).toBeGreaterThanOrEqual(BigInt(quote.input_amount_raw));
+          // The refreshed best quote can use a different spender. Approve each
+          // current identity and verify its allowance before attempting a swap.
+          for (;;) {
+            const approval = quote.execution.approval;
+            if (!approval) throw new Error("ERC-20 quote is missing approval identity");
+            const allowanceRequest = {
+              address: network.weth,
+              abi: erc20Abi,
+              functionName: "allowance",
+              args: [ACCOUNT, approval.spender as Address],
+            } as const;
+            const required = BigInt(quote.input_amount_raw);
+            if ((await client.readContract(allowanceRequest)) >= required) {
+              await expect(page.getByRole("button", { name: "Already approved" })).toBeVisible();
+              break;
+            }
+            const refreshed = page.waitForResponse(
+              (response) => response.url().includes("/api/compare?") && response.ok()
+            );
+            await page.getByRole("button", { name: "Approve token spending" }).click();
+            approvals++;
+            quote = ((await (await refreshed).json()) as components["schemas"]["CompareResult"])[
+              network.provider
+            ];
+            expect(await client.readContract(allowanceRequest)).toBeGreaterThanOrEqual(required);
+            if (!quote?.execution) throw new Error("Post-approval quote has no execution payload");
+            await expect(
+              page.getByRole("tab", { name: network.provider === "curve" ? /Curve/ : /Spandex/ })
+            ).toHaveAttribute("aria-selected", "true");
+          }
         }
         await page.getByRole("button", { name: "Execute swap" }).click();
         await expect(page.getByRole("dialog", { name: "Confirm Swap" })).toBeVisible();
@@ -221,7 +243,7 @@ for (const network of networks) {
         await expect(
           page.getByRole("status").filter({ hasText: /^Swap confirmed: 0x/ })
         ).toBeVisible({ timeout: 30_000 });
-        expect(hashes).toHaveLength(native ? 1 : 2);
+        expect(hashes).toHaveLength(approvals + 1);
         const receipts = await Promise.all(
           hashes.map((hash) => client.getTransactionReceipt({ hash }))
         );
