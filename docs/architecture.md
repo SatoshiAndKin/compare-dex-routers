@@ -49,6 +49,7 @@ Plain `node:http` server. Runs via `tsx` so TypeScript files execute directly, n
 | `config.ts`         | Chain definitions (7 chains), Spandex router setup with providers (0x, Fabric, KyberSwap, Nordstern, LiFi, Relay, Velora), viem public clients, token metadata helpers |
 | `quote.ts`          | Query-parameter parsing and validation (`chainId`, `from`, `to`, `amount`, `slippageBps`, `sender`, `mode`)                                                            |
 | `quotes.ts`         | Shared Spandex/Curve quote formatting, simulation filtering, and recommendation arithmetic                                                                             |
+| `preview-simulation.ts` | Read-only preview funding with verified token storage and account-code isolation |
 | `quote-response.ts` | Shared Zod response schemas and API types                                                                                                                              |
 | `redaction.ts`      | Credential removal before logs, errors, and Sentry                                                                                                                     |
 | `gas-price.ts`      | Exact chain-native gas prices from RPC with per-block caching                                                                                                          |
@@ -168,6 +169,19 @@ Both app Compose files forward all seven `RPC_URL_<id>` overrides. The API liste
 `@spandex/core` owns all provider adapters, including the maintained Curve fork. Curve initializes its SDK per chain and RPC URL, shares pending initialization, and retries failed initialization. It converts basis points to the SDK's percentage unit before building calldata.
 
 `quotes.ts` groups successful simulations into Spandex and Curve results. It uses canonical wrapped native tokens for conversion rates. Missing gas or rate data causes an explicit raw-amount comparison. All quote endpoints use `quote-response.ts`; OpenAPI and the generated frontend client share that contract.
+
+Disconnected-wallet previews and conversion-rate estimates use simulation-only
+state overrides. Each provider's quoted input amount funds its own simulation,
+including target-output requests. The preview account has empty code during the
+simulation, so deployed or delegated account code cannot alter its behavior.
+For ERC20 input, `debug_traceCall` with `prestateTracer` identifies the storage
+read by `balanceOf`. Two distinct read-only probes must identify exactly one
+balance slot before the API uses it. The API limits discovery to 16 candidate
+slots and rejects unsupported layouts instead of guessing. This requires RPC
+support for the prestate tracer and state overrides. Token code, unrelated token
+storage, and live chain state remain intact. Connected-wallet quotes keep their
+original account and simulation checks; preview overrides never enter an
+execution payload.
 
 Saved token-list identities and enabled states enter memory before network requests start. Responses update lists by URL. Metadata requests are shared by chain and address, and late results cannot replace a newer selection. Balance caches store raw values and format them with the current decimals.
 

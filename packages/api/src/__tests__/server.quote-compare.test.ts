@@ -1,18 +1,29 @@
 import http from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompareSchema, QuoteSchema } from "../quote-response.js";
+import type { Quote, SimulatedQuote, SwapParams } from "@spandex/core";
 const mocks = vi.hoisted(() => ({
   quotes: vi.fn(),
   rate: vi.fn(),
+  simulate: vi.fn(),
+  preview: vi.fn(),
   decimals: vi.fn(),
   gas: vi.fn(),
   flags: { curve_enabled: true, compare_endpoint: true, metrics_endpoint: true },
 }));
 vi.mock("@spandex/core", async (original) => ({
   ...(await original<typeof import("@spandex/core")>()),
-  getQuotes: mocks.quotes,
+  prepareQuotes: async (args: {
+    swap: SwapParams;
+    mapFn: (quote: Quote) => Promise<SimulatedQuote>;
+  }) => {
+    const quotes: Quote[] = await mocks.quotes(args);
+    return quotes.map(args.mapFn);
+  },
+  simulateQuote: mocks.simulate,
   getQuote: mocks.rate,
 }));
+vi.mock("../preview-simulation.js", () => ({ createPreviewState: () => mocks.preview }));
 vi.mock("../config.js", async (original) => {
   const actual = await original<typeof import("../config.js")>();
   return {
@@ -78,6 +89,10 @@ beforeEach(async () => {
   mocks.gas.mockResolvedValue(1000000000n);
   mocks.rate.mockResolvedValue(null);
   mocks.quotes.mockResolvedValue([quote(), quote("curve")]);
+  mocks.simulate.mockImplementation(async ({ quote }: { quote: SimulatedQuote }) => quote);
+  mocks.preview.mockResolvedValue([
+    { address: "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055", code: "0x" },
+  ]);
   const { handleRequest } = await import("../server.js");
   server = http.createServer(handleRequest);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -102,6 +117,7 @@ describe("quote execution and response contract", () => {
         expect(body).toMatchObject({ spandex: null, curve: null, recommendation: null });
       expect(mocks.quotes).toHaveBeenCalledTimes(1);
       expect(mocks.quotes.mock.calls[0]?.[0].swap.swapperAccount).toBe(SENDER);
+      expect(mocks.simulate.mock.calls[0]?.[0].simulationOptions).toBeUndefined();
       expect(mocks.rate).not.toHaveBeenCalled();
     }
   );
@@ -120,6 +136,24 @@ describe("quote execution and response contract", () => {
       if (endpoint === "/compare") expect(CompareSchema.safeParse(body).success).toBe(true);
     }
   );
+  it("funds target-output previews with each provider's required input", async () => {
+    mocks.quotes.mockResolvedValue([quote("fabric", 1200000n), quote("curve", 1300000n)]);
+    const { body } = await call("/compare", { mode: "targetOut" });
+    expect(mocks.preview).toHaveBeenCalledWith(1200000n);
+    expect(mocks.preview).toHaveBeenCalledWith(1300000n);
+    expect(body.spandex.execution).toBeNull();
+    expect(body.curve.execution).toBeNull();
+    expect(mocks.simulate.mock.calls[0]?.[0].simulationOptions.stateOverrides).toEqual([
+      { address: "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055", code: "0x" },
+    ]);
+  });
+  it("keeps a valid quote when another preview cannot be prepared", async () => {
+    mocks.preview.mockRejectedValueOnce(new Error("Invalid provider input"));
+    const { body } = await call();
+    expect(body.spandex).toBeNull();
+    expect(body.curve.provider).toBe("curve");
+    expect(body.recommendation).toBe("curve");
+  });
   it.each(["/quote", "/quote-curve", "/compare"])(
     "%s returns the same account-bound execution schema",
     async (endpoint) => {

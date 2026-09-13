@@ -1,6 +1,7 @@
 import {
   getQuote,
-  getQuotes,
+  prepareQuotes,
+  simulateQuote,
   isNativeToken,
   type Config,
   type SimulatedQuote,
@@ -19,6 +20,7 @@ import { getGasPriceWithCache } from "./gas-price.js";
 import { logger } from "./logger.js";
 import type { QuoteParams } from "./quote.js";
 import type { CompareResult, QuoteResult } from "./quote-response.js";
+import { createPreviewState } from "./preview-simulation.js";
 
 // Used only for previews and exchange-rate estimates. Its calldata never leaves the API.
 const PREVIEW_ACCOUNT: Address = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
@@ -61,8 +63,38 @@ async function requestQuotes(params: QuoteParams, router?: Router) {
       ? { ...common, mode: "targetOut", outputAmount: parseUnits(params.amount, outputDecimals) }
       : { ...common, mode: "exactIn", inputAmount: parseUnits(params.amount, inputDecimals) };
   const selectedConfig = providerConfig(router);
+  const client = getClient(params.chainId);
+  const previewState = params.sender
+    ? undefined
+    : createPreviewState(client, swap.swapperAccount, swap.inputToken);
   const quotes = selectedConfig.aggregators.length
-    ? await getQuotes({ config: selectedConfig, swap })
+    ? await Promise.all(
+        await prepareQuotes({
+          config: selectedConfig,
+          swap,
+          mapFn: async (quote): Promise<SimulatedQuote> => {
+            try {
+              return await simulateQuote({
+                client,
+                swap,
+                quote,
+                simulationOptions:
+                  quote.success && previewState
+                    ? { stateOverrides: await previewState(quote.inputAmount) }
+                    : undefined,
+              });
+            } catch (error) {
+              return {
+                ...quote,
+                simulation: {
+                  success: false,
+                  error: error instanceof Error ? error : new Error(String(error)),
+                },
+              };
+            }
+          },
+        })
+      )
     : [];
   const results = quotes.filter(successful).map((quote): QuoteResult => ({
     chainId: params.chainId,
@@ -131,6 +163,13 @@ async function nativeRate(chainId: number, token: string, decimals: number) {
         swapperAccount: PREVIEW_ACCOUNT,
       },
       strategy: "bestPrice",
+      simulationOptions: {
+        stateOverrides: await createPreviewState(
+          getClient(chainId),
+          PREVIEW_ACCOUNT,
+          token as Address
+        )(tokenRaw),
+      },
     });
     if (!quote || !successful(quote) || quote.simulation.outputAmount <= 0n) return null;
     const rate = { tokenRaw, nativeRaw: quote.simulation.outputAmount, timestamp: Date.now() };
