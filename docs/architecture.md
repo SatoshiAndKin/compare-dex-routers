@@ -62,6 +62,16 @@ Plain `node:http` server. Runs via `tsx` so TypeScript files execute directly, n
 | `tracing.ts`        | `x-request-id` propagation — reads or generates a UUID per request                                                                                                     |
 | `env.ts`            | `.env` file loader (imported first, before any other module reads `process.env`)                                                                                       |
 
+Curve runs in one persistent Node worker thread. Its synchronous catalog and route
+computation cannot block the HTTP event loop or make the network providers miss
+their quote deadlines. Spandex still evaluates every configured provider in
+parallel, and the API still simulates each quote before selection. The worker
+reuses Curve instances per chain and RPC URL. A cold Curve catalog can exceed its
+own deadline; other providers can return quotes while it initializes, and later
+requests can use the cached catalog. Worker errors settle pending requests, and
+the next request can start a new worker. Idle workers do not keep the API process
+alive.
+
 ### API endpoints
 
 | Method | Path                          | Description                                        |
