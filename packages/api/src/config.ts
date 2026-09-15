@@ -8,13 +8,13 @@ import {
   lifi,
   relay,
   velora,
-  curve,
   type Config,
 } from "@spandex/core";
 import { createPublicClient, http, type PublicClient, getAddress, type Address } from "viem";
 import { mainnet, base, arbitrum, optimism, polygon, bsc, avalanche } from "viem/chains";
 import { isEnabled } from "./feature-flags.js";
 import { logger } from "./logger.js";
+import { curveInWorker } from "./curve-worker-provider.js";
 
 const CHAIN_DEFINITIONS = {
   1: mainnet,
@@ -120,7 +120,7 @@ function buildProviders() {
     velora({}),
   ];
   if (process.env.ZEROX_API_KEY) providers.push(zeroX({ apiKey: process.env.ZEROX_API_KEY }));
-  if (isEnabled("curve_enabled")) providers.push(curve({ rpcUrlLookup: getRpcUrl }));
+  if (isEnabled("curve_enabled")) providers.push(curveInWorker({ rpcUrlLookup: getRpcUrl }));
   return providers;
 }
 

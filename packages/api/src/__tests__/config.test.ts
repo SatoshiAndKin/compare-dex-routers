@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+vi.mock("../curve-worker-provider.js", () => ({ curveInWorker: vi.fn(() => ({})) }));
+
 vi.mock("viem", async (importOriginal) => {
   const actual = await importOriginal<typeof import("viem")>();
   return {
@@ -111,9 +113,10 @@ describe("config", () => {
       delete process.env.ZEROX_API_KEY;
       delete process.env.FABRIC_API_KEY;
       const { getSpandexConfig } = await loadConfig();
-      const { curve, zeroX } = await import("@spandex/core");
+      const { zeroX } = await import("@spandex/core");
+      const { curveInWorker } = await import("../curve-worker-provider.js");
       getSpandexConfig();
-      expect(curve).toHaveBeenCalledWith({ rpcUrlLookup: expect.any(Function) });
+      expect(curveInWorker).toHaveBeenCalledWith({ rpcUrlLookup: expect.any(Function) });
       expect(zeroX).not.toHaveBeenCalled();
     });
 
