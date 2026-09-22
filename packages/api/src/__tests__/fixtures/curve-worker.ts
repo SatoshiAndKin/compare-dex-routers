@@ -1,13 +1,21 @@
 import { parentPort, workerData } from "node:worker_threads";
 import type { SuccessfulQuote } from "@spandex/core";
-import type { CurveWork } from "../../curve-worker-provider.js";
+import type { CurveReply, CurveWork } from "../../curve-worker-provider.js";
 
 const { blockMs, action } = workerData as { blockMs: number; action: string };
 parentPort?.on("message", ({ id, swap }: CurveWork) => {
   if (action === "crash") throw new Error("Curve worker crashed");
   if (action === "exit") process.exit(0);
   if (action === "error") {
-    parentPort?.postMessage({ id, error: new Error("Curve route unavailable") });
+    parentPort?.postMessage({
+      id,
+      error: {
+        name: "Error",
+        message: "Curve route unavailable",
+        cause: undefined,
+        details: undefined,
+      },
+    } satisfies CurveReply);
     return;
   }
   // Deliberately block this thread, as Curve catalog construction does in production.

@@ -15,11 +15,16 @@ vi.mock("node:worker_threads", async (original) => {
   return {
     ...actual,
     Worker: class extends actual.Worker {
-      constructor(_filename: URL, options: ConstructorParameters<typeof Worker>[1]) {
-        super(new URL("./fixtures/curve-worker.ts", import.meta.url), {
-          ...options,
-          workerData: { blockMs: state.blockMs, action: state.action },
-        });
+      constructor(filename: URL, options: ConstructorParameters<typeof Worker>[1]) {
+        super(
+          state.action === "real"
+            ? filename
+            : new URL("./fixtures/curve-worker.ts", import.meta.url),
+          {
+            ...options,
+            workerData: { blockMs: state.blockMs, action: state.action },
+          }
+        );
         state.workers.push(this);
       }
     },
@@ -52,6 +57,7 @@ vi.mock("@spandex/core", async (original) => {
 import { prepareQuotes } from "@spandex/core";
 import { getSpandexConfig } from "../config.js";
 import { curveInWorker } from "../curve-worker-provider.js";
+import { redact } from "../redaction.js";
 
 const swap: SwapParams = {
   chainId: 1,
@@ -114,6 +120,27 @@ afterEach(async () => {
 });
 
 describe("Curve worker provider", () => {
+  it("retains the initialization cause through the real worker and log redaction", async () => {
+    state.action = "real";
+    const provider = curveInWorker({ rpcUrlLookup: () => "invalid-rpc-url" });
+    const quote = await provider.fetchQuote(swap, { numRetries: 0 });
+    expect(quote.success).toBe(false);
+    if (quote.success) throw new Error("Expected initialization failure");
+    expect(quote.error).toBeInstanceOf(Error);
+    expect(redact(quote.error)).toMatchObject({
+      name: "QuoteError",
+      message: "Failed to initialize Curve SDK for chain 1",
+      stack: expect.stringContaining("Failed to initialize Curve SDK for chain 1"),
+      details: {
+        cause: {
+          message: expect.stringContaining("unsupported protocol invalid-rpc-url"),
+          code: "UNSUPPORTED_OPERATION",
+          operation: "request",
+        },
+      },
+    });
+  });
+
   it("keeps network provider quotes alive while Curve blocks its thread", async () => {
     state.blockMs = 2_000;
     server = createServer((_request, response) => response.end("quote"));

@@ -67,6 +67,37 @@ describe("credential removal before reporting", () => {
     expect(output).toHaveBeenCalledTimes(1);
     expect(safe(output.mock.calls)).toContain(HASH);
   });
+  it("keeps provider details and nested RPC errors in logs without credentials", async () => {
+    await import("../logger.js");
+    const cause = Object.assign(new Error(message), {
+      code: "RPC_ERROR",
+      authorization: "hidden",
+    });
+    const error = Object.assign(new Error("Failed to initialize Curve SDK for chain 1"), {
+      name: "QuoteError",
+      details: { cause, rpcUrl: "https://rpc.example/path-secret" },
+    });
+    cause.cause = error;
+    const output = vi.fn();
+    pinoMock.options?.hooks.logMethod([{ error }], output);
+    const text = safe(output.mock.calls);
+    expect(text).not.toContain("hidden");
+    expect(output).toHaveBeenCalledWith({
+      error: expect.objectContaining({
+        name: "QuoteError",
+        message: "Failed to initialize Curve SDK for chain 1",
+        details: {
+          rpcUrl: "[REDACTED]",
+          cause: expect.objectContaining({
+            message: redactText(message),
+            code: "RPC_ERROR",
+            authorization: "[REDACTED]",
+            cause: "[Circular]",
+          }),
+        },
+      }),
+    });
+  });
   it("stores scrubbed error messages and contexts before /errors reads them", async () => {
     const { trackError, getErrorInsights } = await import("../error-insights.js");
     trackError(new Error(message), `context ${message}`);
