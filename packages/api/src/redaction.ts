@@ -29,17 +29,20 @@ export function redact(value: unknown, seen = new WeakSet<object>()): unknown {
   if (typeof value !== "object" || value === null) return value;
   if (seen.has(value)) return "[Circular]";
   seen.add(value);
-  if (value instanceof Error) {
-    return {
-      name: redactText(value.name),
-      message: redactText(value.message),
-      stack: value.stack ? redactText(value.stack) : undefined,
-      cause: redact(value.cause, seen),
-    };
-  }
   if (Array.isArray(value)) return value.map((entry) => redact(entry, seen));
+  // Include provider details and RPC error codes as well as non-enumerable fields.
+  const fields =
+    value instanceof Error
+      ? {
+          ...value,
+          name: value.name,
+          message: value.message,
+          stack: value.stack,
+          cause: value.cause,
+        }
+      : value;
   return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [
+    Object.entries(fields).map(([key, entry]) => [
       key,
       sensitiveKey.test(key) ? "[REDACTED]" : redact(entry, seen),
     ])

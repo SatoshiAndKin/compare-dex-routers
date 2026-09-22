@@ -16,7 +16,18 @@ export interface CurveWork {
   supportedChains?: number[];
 }
 
-export type CurveReply = { id: number; quote: SuccessfulQuote } | { id: number; error: Error };
+export type CurveReply =
+  | { id: number; quote: SuccessfulQuote }
+  | {
+      id: number;
+      error: {
+        name: string;
+        message: string;
+        stack?: string;
+        cause: unknown;
+        details: unknown;
+      };
+    };
 
 type Pending = {
   resolve: (quote: SuccessfulQuote) => void;
@@ -45,8 +56,9 @@ class CurveWorkerProvider extends CurveAggregator {
       const pending = this.pending.get(reply.id);
       if (!pending) return;
       this.pending.delete(reply.id);
-      if ("error" in reply) pending.reject(reply.error);
-      else pending.resolve(reply.quote);
+      if ("error" in reply) {
+        pending.reject(Object.assign(new Error(reply.error.message), reply.error));
+      } else pending.resolve(reply.quote);
       if (this.pending.size === 0) worker.unref();
     });
     worker.once("error", fail);
