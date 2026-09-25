@@ -56,7 +56,8 @@
       generation++;
       clearTimer();
       transactionStore.invalidate();
-      comparisonStore.invalidate();
+      comparisonStore.invalidate(true);
+      comparisonStore.isLoading = params !== null;
       autoRefreshStore.stop();
       if (params)
         timer = setTimeout(() => {
@@ -271,7 +272,7 @@
         Compare Quotes
       {/if}
     </button>
-    <AutoRefreshIndicator />
+    <div class="refresh-slot"><AutoRefreshIndicator /></div>
   </div>
 </form>
 
@@ -323,6 +324,10 @@
   .submit-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .refresh-slot {
+    min-height: 3rem;
   }
 
   .balance-display {

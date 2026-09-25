@@ -9,7 +9,7 @@ import { configStore } from "../lib/stores/configStore.svelte.js";
 import { autoRefreshStore } from "../lib/stores/autoRefreshStore.svelte.js";
 import { transactionStore } from "../lib/stores/transactionStore.svelte.js";
 import type { CompareParams } from "../lib/stores/comparisonStore.svelte.js";
-import { FROM, TO, SENDER, makeComparison } from "./quote-fixture.js";
+import { FROM, TO, SENDER, makeComparison, deferred } from "./quote-fixture.js";
 const get = vi.hoisted(() =>
   vi.fn<
     (
@@ -64,7 +64,9 @@ describe("mounted comparison lifecycle", () => {
       if (change === "account") walletStore.address = SENDER;
       if (change === "wallet chain") walletStore.chainId = 8453;
       flushSync();
-      expect(comparisonStore.quotes).toEqual([]);
+      expect(comparisonStore.quotes).toEqual(makeComparison().quotes);
+      expect(comparisonStore.isCurrent(comparisonStore.quotes[0]!)).toBe(false);
+      expect(comparisonStore.isLoading).toBe(true);
       expect(autoRefreshStore.active).toBe(false);
       await tick();
       expect(comparisons()).toHaveLength(2);
@@ -79,6 +81,38 @@ describe("mounted comparison lifecycle", () => {
       expect(comparisons()[2]?.[1]?.params?.query).toEqual(query);
     }
   );
+  it("retains the selected quote through amount edits, a slow response, and failure", async () => {
+    render(CompareForm);
+    await tick();
+    comparisonStore.selectedProvider = "curve";
+    const previous = comparisonStore.activeQuote!;
+    const pending = deferred<Awaited<ReturnType<typeof get>>>();
+    get.mockReturnValueOnce(pending.promise);
+    formStore.sellAmount = "200";
+    flushSync();
+    expect(comparisonStore.activeQuote).toBe(previous);
+    expect(comparisonStore.isCurrent(previous)).toBe(false);
+    await tick();
+    expect(comparisonStore.activeQuote).toBe(previous);
+    expect(comparisonStore.isLoading).toBe(true);
+    pending.reject(new Error("network unavailable"));
+    await tick(0);
+    expect(comparisonStore.activeQuote).toBe(previous);
+    expect(comparisonStore.error).toBe("network unavailable");
+    expect(comparisonStore.isCurrent(previous)).toBe(false);
+    expect(comparisonStore.isLoading).toBe(false);
+    formStore.sellAmount = "";
+    flushSync();
+    expect(comparisonStore.activeQuote).toBe(previous);
+    expect(comparisonStore.isCurrent(previous)).toBe(false);
+    expect(comparisonStore.isLoading).toBe(false);
+    await tick();
+    expect(comparisons()).toHaveLength(2);
+    formStore.sellAmount = "100";
+    await tick();
+    expect(comparisonStore.activeQuote?.provider).toBe("curve");
+    expect(comparisonStore.isCurrent(comparisonStore.activeQuote!)).toBe(true);
+  });
   it("waits for selected metadata before sending the amount", async () => {
     formStore.fromToken!.decimals = null;
     render(CompareForm);
