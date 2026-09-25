@@ -1,177 +1,129 @@
-/**
- * Balance store for token balances.
- * Handles ERC-20 and native token balance fetching via wallet provider RPC.
- * Ported from src/client/balance.ts for Svelte 5.
- */
-
 import type { EIP1193Provider } from "./walletStore.svelte.js";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const NATIVE_TOKEN_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
-const BALANCE_CACHE_TTL_MS = 30 * 1000; // 30 seconds
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { exactAmount, canonicalToken } from "../native.js";
+import { quantity, readBalance } from "../wallet-rpc.js";
 
 export interface TokenRef {
   address: string;
   decimals: number;
   symbol?: string;
 }
-
-interface CachedBalance {
-  balance: bigint;
-  timestamp: number;
+export interface BalanceState {
+  status: "idle" | "loading" | "ready" | "unavailable" | "wrong_network";
+  raw: bigint | null;
+  decimals: number | null;
 }
-
-// ---------------------------------------------------------------------------
-// Module-level cache (shared across all balance store instances)
-// ---------------------------------------------------------------------------
-
-const balanceCache = new Map<string, CachedBalance>();
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function isNativeToken(address: string): boolean {
-  const addr = String(address ?? "").toLowerCase();
-  return (
-    addr === "0x0000000000000000000000000000000000000000" ||
-    addr === NATIVE_TOKEN_ADDRESS.toLowerCase()
-  );
-}
-
-/**
- * Format a BigInt balance into a human-readable string with decimals.
- * Exported for testing.
- */
+let cacheEpoch = 0;
+const cache = new Map<string, { raw: bigint; timestamp: number }>();
 export function formatBalance(balance: bigint, decimals: number): string {
-  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255)
-    throw new Error("Invalid token decimals");
-  const dec = decimals;
-  const divisor = 10n ** BigInt(dec);
-  const wholePart = balance / divisor;
-  const fractionalPart = balance % divisor;
-
-  // Format fractional part with leading zeros up to `dec` digits
-  let fractionalStr = fractionalPart.toString().padStart(dec, "0");
-  // Remove trailing zeros
-  fractionalStr = fractionalStr.replace(/0+$/, "");
-  // Limit to 6 decimal places for display
-  if (fractionalStr.length > 6) fractionalStr = fractionalStr.slice(0, 6);
-
-  // Format whole part with thousand separators
-  const wholeStr = String(wholePart).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-
-  return fractionalStr ? wholeStr + "." + fractionalStr : wholeStr;
+  const [whole = "0", fraction] = exactAmount(balance, decimals).split(".");
+  const display = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fraction ? `${display}.${fraction.slice(0, 6)}` : display;
 }
 
-/**
- * Fetch balance for a single token via wallet provider RPC.
- * Uses a 30-second TTL cache to avoid excessive RPC calls.
- * Returns null on error (silently fails to avoid breaking UI).
- */
 export async function fetchTokenBalance(
   provider: EIP1193Provider,
   tokenAddress: string,
   walletAddress: string,
   decimals: number,
   chainId: number
-): Promise<string | null> {
+): Promise<bigint | null> {
   if (!provider || !walletAddress || !tokenAddress) return null;
-
-  const cacheKey = `${chainId}:${tokenAddress.toLowerCase()}:${walletAddress.toLowerCase()}`;
-  const cached = balanceCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < BALANCE_CACHE_TTL_MS) {
-    return formatBalance(cached.balance, decimals);
-  }
-
   try {
-    let balance: bigint;
-
-    if (isNativeToken(tokenAddress)) {
-      // Native token (ETH/BNB/etc): use eth_getBalance
-      const result = (await provider.request({
-        method: "eth_getBalance",
-        params: [walletAddress, "latest"],
-      })) as string;
-      balance = BigInt(result);
-    } else {
-      // ERC-20: use eth_call with balanceOf(address) selector
-      const balanceOfSelector = "0x70a08231"; // keccak256("balanceOf(address)")[0..4]
-      const paddedAddress = walletAddress.slice(2).padStart(64, "0");
-      const data = balanceOfSelector + paddedAddress;
-      const result = (await provider.request({
-        method: "eth_call",
-        params: [{ to: tokenAddress, data }, "latest"],
-      })) as string;
-      balance = BigInt(result);
-    }
-
-    const formatted = formatBalance(balance, decimals);
-    balanceCache.set(cacheKey, { balance, timestamp: Date.now() });
-    return formatted;
+    exactAmount(0n, decimals);
+    const key = `${chainId}:${canonicalToken(tokenAddress).toLowerCase()}:${walletAddress.toLowerCase()}`;
+    const cached = cache.get(key);
+    if (cached && Date.now() - cached.timestamp < 30_000) return cached.raw;
+    const epoch = cacheEpoch;
+    const raw = await readBalance(provider, walletAddress, tokenAddress);
+    if (epoch === cacheEpoch) cache.set(key, { raw, timestamp: Date.now() });
+    return raw;
   } catch {
-    // Silently fail — don't show RPC errors for balance fetching
     return null;
   }
 }
 
-// ---------------------------------------------------------------------------
-// BalanceStore class
-// ---------------------------------------------------------------------------
-
 class BalanceStore {
   private sequence = 0;
-  /** Formatted balance for the "from" token (null when unknown / not connected) */
-  fromBalance = $state<string | null>(null);
-  /** Formatted balance for the "to" token (null when unknown / not connected) */
-  toBalance = $state<string | null>(null);
+  from = $state<BalanceState>({ status: "idle", raw: null, decimals: null });
+  to = $state<BalanceState>({ status: "idle", raw: null, decimals: null });
+  get fromBalance(): string | null {
+    return this.display(this.from);
+  }
+  get toBalance(): string | null {
+    return this.display(this.to);
+  }
+  private display(balance: BalanceState): string | null {
+    return balance.status === "ready" && balance.raw !== null && balance.decimals !== null
+      ? formatBalance(balance.raw, balance.decimals)
+      : null;
+  }
 
-  /**
-   * Fetch balances for both tokens in parallel.
-   * Sets fromBalance / toBalance when complete.
-   */
   async fetchBalances(
     provider: EIP1193Provider,
-    walletAddress: string,
+    account: string,
     chainId: number,
     fromToken: TokenRef | null,
     toToken: TokenRef | null
   ): Promise<void> {
     const sequence = ++this.sequence;
-    this.fromBalance = null;
-    this.toBalance = null;
-    const [fromBalance, toBalance] = await Promise.all([
-      fromToken
-        ? fetchTokenBalance(provider, fromToken.address, walletAddress, fromToken.decimals, chainId)
-        : null,
-      toToken
-        ? fetchTokenBalance(provider, toToken.address, walletAddress, toToken.decimals, chainId)
-        : null,
-    ]);
-    if (sequence === this.sequence) {
-      this.fromBalance = fromBalance;
-      this.toBalance = toBalance;
+    const initial = (token: TokenRef | null): BalanceState => ({
+      status: token ? "loading" : "idle",
+      raw: null,
+      decimals: token?.decimals ?? null,
+    });
+    this.from = initial(fromToken);
+    this.to = initial(toToken);
+    try {
+      const actualChain = quantity(
+        await provider.request({ method: "eth_chainId" }),
+        "Wallet network"
+      );
+      if (sequence !== this.sequence) return;
+      if (actualChain !== BigInt(chainId)) {
+        this.from = { ...this.from, status: "wrong_network" };
+        this.to = { ...this.to, status: "wrong_network" };
+        return;
+      }
+      const [from, to] = await Promise.all([
+        fromToken
+          ? fetchTokenBalance(provider, fromToken.address, account, fromToken.decimals, chainId)
+          : null,
+        toToken
+          ? fetchTokenBalance(provider, toToken.address, account, toToken.decimals, chainId)
+          : null,
+      ]);
+      const checkedChain = quantity(
+        await provider.request({ method: "eth_chainId" }),
+        "Wallet network"
+      );
+      if (sequence !== this.sequence) return;
+      if (checkedChain !== BigInt(chainId)) {
+        this.clearCache();
+        this.from = { ...this.from, status: "wrong_network", raw: null };
+        this.to = { ...this.to, status: "wrong_network", raw: null };
+        return;
+      }
+      const finish = (token: TokenRef | null, raw: bigint | null): BalanceState => ({
+        status: !token ? "idle" : raw === null ? "unavailable" : "ready",
+        raw,
+        decimals: token?.decimals ?? null,
+      });
+      this.from = finish(fromToken, from);
+      this.to = finish(toToken, to);
+    } catch {
+      if (sequence !== this.sequence) return;
+      this.from = { ...this.from, status: "unavailable", raw: null };
+      this.to = { ...this.to, status: "unavailable", raw: null };
     }
   }
-
-  /** Clear displayed balances (e.g. on wallet disconnect or token change). */
   clear(): void {
     this.sequence++;
-    this.fromBalance = null;
-    this.toBalance = null;
+    this.from = { status: "idle", raw: null, decimals: null };
+    this.to = { status: "idle", raw: null, decimals: null };
   }
-
-  /** Clear the TTL cache (e.g. on chain change). */
   clearCache(): void {
-    balanceCache.clear();
+    cacheEpoch++;
+    cache.clear();
   }
 }
-
 export const balanceStore = new BalanceStore();

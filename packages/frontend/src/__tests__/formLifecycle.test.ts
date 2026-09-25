@@ -69,11 +69,11 @@ describe("metadata gates and chain selection", () => {
   });
   it("clears stale quotes and tokens when the chain changes", () => {
     applyDefaults();
-    comparisonStore.spandexResult = makeQuote();
+    comparisonStore.quotes = [makeQuote()];
     selectChain(8453);
     expect(formStore.chainId).toBe(8453);
     expect(formStore.fromToken).toMatchObject({ address: TO, chainId: 8453, decimals: null });
-    expect(comparisonStore.spandexResult).toBeNull();
+    expect(comparisonStore.quotes).toEqual([]);
     expect(formStore.canSubmit).toBe(false);
   });
   it("does not apply old metadata to a new chain or selection", async () => {

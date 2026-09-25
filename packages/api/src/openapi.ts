@@ -5,7 +5,7 @@ import {
 } from "@asteasolutions/zod-to-openapi";
 import type { OpenAPIObject } from "openapi3-ts/oas30";
 import { z } from "zod";
-import { QuoteSchema, CompareSchema } from "./quote-response.js";
+import { QuoteResponseSchema } from "./quote-response.js";
 
 extendZodWithOpenApi(z);
 
@@ -92,8 +92,7 @@ const ErrorSchema = z
   })
   .openapi("Error");
 
-const QuoteResponseSchema = QuoteSchema.openapi("Quote");
-const CompareResultSchema = CompareSchema.openapi("CompareResult");
+const UnifiedQuoteSchema = QuoteResponseSchema.openapi("QuoteResponse");
 
 const TokenMetadataSchema = z
   .object({
@@ -183,6 +182,17 @@ const DefaultTokenPairSchema = z
 const ConfigSchema = z
   .object({
     flags: z.record(z.string(), z.boolean()),
+    nativeAssets: z.record(
+      z.string(),
+      z.object({
+        chainId: z.number().int(),
+        address: z.string(),
+        name: z.string(),
+        symbol: z.string(),
+        decimals: z.number().int(),
+        wrapped: z.string(),
+      })
+    ),
     defaultTokens: z
       .record(z.string(), DefaultTokenPairSchema)
       .openapi({ description: "Map of chainId to default token pair" }),
@@ -262,36 +272,14 @@ registry.registerPath({
   method: "get",
   path: "/quote",
   operationId: "getQuote",
-  summary: "Get best Spandex quote",
+  summary: "Get provider prices and a recommendation",
   request: { query: QuoteQuerySchema },
   responses: {
-    200: jsonContent(QuoteResponseSchema, "Best quote found"),
+    200: jsonContent(
+      UnifiedQuoteSchema,
+      "Provider price simulations, failures, and recommendation"
+    ),
     400: errorResponse("Invalid parameters"),
-    500: errorResponse("Quote failed"),
-  },
-});
-
-registry.registerPath({
-  method: "get",
-  path: "/compare",
-  operationId: "compareQuotes",
-  summary: "Compare Spandex vs Curve quotes",
-  request: { query: QuoteQuerySchema },
-  responses: {
-    200: jsonContent(CompareResultSchema, "Comparison result with recommendation"),
-    400: errorResponse("Invalid parameters"),
-  },
-});
-
-registry.registerPath({
-  method: "get",
-  path: "/quote-curve",
-  operationId: "getQuoteCurve",
-  summary: "Get a single Curve Finance quote",
-  request: { query: QuoteQuerySchema },
-  responses: {
-    200: jsonContent(QuoteResponseSchema, "Curve quote"),
-    400: errorResponse("Invalid parameters or Curve not supported on this chain"),
     500: errorResponse("Quote failed"),
   },
 });
@@ -399,7 +387,8 @@ export const openapiDocument: OpenAPIObject = generator.generateDocument({
   info: {
     title: "Compare DEX Routers API",
     version: "1.0.0",
-    description: "Quote comparison server querying Spandex and Curve for side-by-side swap quotes.",
+    description:
+      "Unified provider quotes, price simulations, and recommendations powered by Spandex.",
   },
   servers: [{ url: "./" }],
 });

@@ -36,7 +36,7 @@ A user with no localStorage and no URL parameters visits the app for the first t
 ### VAL-CROSS-002 — Full Quote Comparison Flow
 
 **Behavioral description:**
-User selects a chain (Ethereum 1), picks From token (USDC) via autocomplete, picks To token (WETH) via autocomplete, enters amount "100", clicks "Compare Quotes". The frontend sends `GET /compare?chainId=1&from=...&to=...&amount=100&slippageBps=50&mode=exactIn` to the API. Results display with Recommended/Alternative tabs showing Spandex and Curve quotes, including output amounts, gas costs, provider names, and a recommendation reason.
+User selects a chain (Ethereum 1), picks From token (USDC) via autocomplete, picks To token (WETH) via autocomplete, enters amount "100", clicks "Compare Quotes". The frontend sends `GET /quote?chainId=1&from=...&to=...&amount=100&slippageBps=50&mode=exactIn` to the API. Results display with one recommended quote and an expandable provider list, including output amounts, gas costs, provider names, and a recommendation reason.
 
 **Pass condition:**
 - Autocomplete lists appear when typing in From/To fields (tokens loaded from API)
@@ -49,19 +49,19 @@ User selects a chain (Ethereum 1), picks From token (USDC) via autocomplete, pic
 - Auto-refresh indicator appears with countdown
 
 **Fail condition:**
-- CORS blocks the `/compare` request
+- CORS blocks the `/quote` request
 - Frontend fails to parse API response (schema mismatch between packages)
 - Results don't render (missing fields, wrong field names)
 - URL doesn't update (url-sync broken after split)
 
-**Evidence:** Screenshot of results with both tabs. Network request/response for `/compare`. URL bar showing updated params.
+**Evidence:** Screenshot of results and the expanded provider list. Network request/response for `/quote`. URL bar showing updated params.
 
 ---
 
 ### VAL-CROSS-003 — Wallet Connect → Compare → Approve → Swap
 
 **Behavioral description:**
-User connects wallet via provider menu, compares quotes (which now include `sender` param from connected address), views results with Approve/Swap buttons enabled, clicks Approve on the recommended quote (sends ERC-20 approve tx), then clicks Swap (sends router tx). The wallet connection state persists across API calls — the `sender` parameter is included in `/compare` requests.
+User connects wallet via provider menu, compares quotes (which now include `sender` param from connected address), views results with Approve/Swap buttons enabled, clicks Approve on the recommended quote (sends ERC-20 approve tx), then clicks Swap (sends router tx). The wallet connection state persists across API calls — the `sender` parameter is included in `/quote` requests.
 
 **Pass condition:**
 - "Connect Wallet" button opens provider menu modal
@@ -269,7 +269,7 @@ The `packages/api` Dockerfile builds successfully from the monorepo. The resulti
 - `docker run -p 3100:3100 --env-file .env api` starts the server
 - `curl http://localhost:3100/health` returns `{"status":"ok","requestId":"...","flags":{...}}`
 - Container healthcheck passes (exit code 0)
-- All API endpoints respond: `/chains`, `/tokenlist`, `/compare`, `/quote`, `/token-metadata`, `/tokenlist/proxy`, `/metrics`
+- All API endpoints respond: `/chains`, `/tokenlist`, `/quote`, `/quote`, `/token-metadata`, `/tokenlist/proxy`, `/metrics`
 - No "module not found" or "Cannot find module" errors in container logs
 
 **Fail condition:**
@@ -309,12 +309,12 @@ The `packages/frontend` Dockerfile builds the Svelte SPA (produces static files 
 ### VAL-DEPLOY-003 — Traefik Routes to Correct Service
 
 **Behavioral description:**
-With Traefik as reverse proxy and both API and frontend services running, HTTP requests are routed correctly: API paths (`/health`, `/chains`, `/config`, `/compare`, `/quote`, `/quote-curve`, `/tokenlist`, `/tokenlist/proxy`, `/token-metadata`, `/metrics`, `/analytics`, `/errors`, `/docs`, `/openapi.yaml`, `/.well-known`) route to the API container on port 3100. All other paths (including `/`) route to the frontend container on port 80.
+With Traefik as reverse proxy and both API and frontend services running, HTTP requests are routed correctly: API paths (`/health`, `/chains`, `/config`, `/quote`, `/quote`, `/tokenlist`, `/tokenlist/proxy`, `/token-metadata`, `/metrics`, `/analytics`, `/errors`, `/docs`, `/openapi.yaml`, `/.well-known`) route to the API container on port 3100. All other paths (including `/`) route to the frontend container on port 80.
 
 **Pass condition:**
 - `curl https://DOMAIN/health` → routed to API, returns `{"status":"ok"}`
 - `curl https://DOMAIN/chains` → routed to API, returns chain list JSON
-- `curl https://DOMAIN/compare?...` → routed to API, returns comparison JSON
+- `curl https://DOMAIN/quote?...` → routed to API, returns comparison JSON
 - `curl https://DOMAIN/` → routed to frontend, returns HTML
 - `curl https://DOMAIN/static/client.js` → routed to frontend, returns JS
 - API router has higher priority for its specific paths
@@ -364,7 +364,7 @@ While the API is serving comparison requests, `docker rollout frontend` is execu
 
 **Pass condition:**
 - During rollout, `curl https://DOMAIN/health` returns 200 (API unaffected)
-- During rollout, `curl https://DOMAIN/compare?...` returns valid JSON (API serving quotes)
+- During rollout, `curl https://DOMAIN/quote?...` returns valid JSON (API serving quotes)
 - After rollout, `curl https://DOMAIN/` returns updated frontend HTML
 - No 502/503 errors on frontend paths during transition
 - API container never restarts during frontend rollout
@@ -387,9 +387,9 @@ In production, the frontend (served from frontend container) makes fetch request
 **Pass condition:**
 - **Same-domain path routing:** No CORS needed (same origin), all requests work
 - **Subdomain routing:** API responds with `Access-Control-Allow-Origin: https://app.example.com` (or `*` if configured)
-- `OPTIONS /compare` returns: 204, `Access-Control-Allow-Methods: GET, OPTIONS`, `Access-Control-Allow-Headers: Content-Type`
+- `OPTIONS /quote` returns: 204, `Access-Control-Allow-Methods: GET, OPTIONS`, `Access-Control-Allow-Headers: Content-Type`
 - Browser console shows no CORS errors when frontend fetches from API
-- All API endpoints accessed by frontend work: `/tokenlist`, `/chains`, `/compare`, `/quote`, `/tokenlist/proxy`, `/token-metadata`
+- All API endpoints accessed by frontend work: `/tokenlist`, `/chains`, `/quote`, `/quote`, `/tokenlist/proxy`, `/token-metadata`
 
 **Fail condition:**
 - Browser blocks requests with "CORS policy" error
@@ -404,11 +404,11 @@ In production, the frontend (served from frontend container) makes fetch request
 ### VAL-DEPLOY-007 — Environment Variable Propagation
 
 **Behavioral description:**
-After the split, environment variables must reach the correct service. The API needs: `ALCHEMY_API_KEY`, `ZEROX_API_KEY`, `FABRIC_API_KEY`, `RPC_URL_*`, `CURVE_ENABLED`, `COMPARE_ENABLED`, `SENTRY_DSN`, `LOG_LEVEL`, `PORT`. The frontend needs build-time variables (API base URL) baked into the static build, and runtime nginx config. The `.env` file or Docker secrets are correctly mapped.
+After the split, environment variables must reach the correct service. The API needs: `ALCHEMY_API_KEY`, `ZEROX_API_KEY`, `RPC_URL_*`, `CURVE_ENABLED`, `SENTRY_DSN`, `LOG_LEVEL`, `PORT`. The frontend needs build-time variables (API base URL) baked into the static build, and runtime nginx config. The `.env` file or Docker secrets are correctly mapped.
 
 **Pass condition:**
 - API container has all required env vars (verified via `/health` flags or startup logs)
-- API connects to Alchemy RPC (verified by successful `/compare` request)
+- API connects to Alchemy RPC (verified by successful `/quote` request)
 - Frontend knows the API base URL (requests go to correct API endpoint, not `localhost`)
 - `SENTRY_DSN` reaches the API for error tracking
 - `LOG_LEVEL` is respected (API logs at configured level)
@@ -418,7 +418,7 @@ After the split, environment variables must reach the correct service. The API n
 - API fails to start due to missing `ALCHEMY_API_KEY`
 - Frontend hardcodes `localhost:3100` as API URL (works in dev, fails in prod)
 - API keys appear in frontend JavaScript bundle
-- Feature flags not loaded (`CURVE_ENABLED`, `COMPARE_ENABLED` ignored)
+- Feature flags not loaded (`CURVE_ENABLED` ignored)
 
 **Evidence:** API startup log showing loaded config. Frontend JS bundle grep for "ALCHEMY" (should find nothing). `/health` response showing feature flags. Successful comparison request.
 
@@ -456,7 +456,7 @@ Both services have health checks that Traefik and docker-rollout rely on. If the
 - Frontend health check: `curl -f http://localhost:80/` returns 200 → healthy
 - Traefik removes unhealthy API container from load balancer within `interval × retries` seconds
 - Frontend still serves while API is down (shows error state, not blank page)
-- API still serves while frontend is down (programmatic `/compare` requests work)
+- API still serves while frontend is down (programmatic `/quote` requests work)
 - Docker restart policy brings crashed container back
 - `start_period: 15s` grace period prevents premature unhealthy marking during startup
 

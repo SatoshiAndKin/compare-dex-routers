@@ -11,7 +11,7 @@
 4. Check Sentry for recent errors
 5. Restart: `docker compose restart api`
 
-## High Error Rate on /quote or /compare
+## High Error Rate on /quote
 
 **Symptoms**: Sentry alerts on quote failures, metrics show elevated error counts
 
@@ -47,7 +47,7 @@
 
 **Steps**:
 1. Identify the last known good version tag
-2. Pull previous image: `docker pull ghcr.io/satoshiandkin/compare-dex-routers-api:<tag>`
+2. Pull previous image: `docker pull ghcr.io/satoshiandkin/quote-dex-routers-api:<tag>`
 3. Update docker-compose or deployment to use previous tag
 4. Restart: `docker compose up -d`
 5. Verify health: `curl http://localhost:3100/health`

@@ -3,7 +3,6 @@ import {
   prepareQuotes,
   simulateQuote,
   isNativeToken,
-  type Config,
   type SimulatedQuote,
   type SuccessfulSimulatedQuote,
   type SwapParams,
@@ -19,7 +18,8 @@ import {
 import { getGasPriceWithCache } from "./gas-price.js";
 import { logger } from "./logger.js";
 import type { QuoteParams } from "./quote.js";
-import type { CompareResult, QuoteResult } from "./quote-response.js";
+import type { QuoteResponse, QuoteResult, ProviderFailure } from "./quote-response.js";
+import { redact, redactText } from "./redaction.js";
 import { createPreviewState } from "./preview-simulation.js";
 
 // Used only for previews and exchange-rate estimates. Its calldata never leaves the API.
@@ -27,7 +27,6 @@ const PREVIEW_ACCOUNT: Address = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
 const config = getSpandexConfig();
 const rates = new Map<string, { nativeRaw: bigint; tokenRaw: bigint; timestamp: number }>();
 const RATE_TTL_MS = 60_000;
-type Router = "spandex" | "curve";
 
 function successful(quote: SimulatedQuote, minimumOutput = 1n): quote is SuccessfulSimulatedQuote {
   return (
@@ -35,18 +34,7 @@ function successful(quote: SimulatedQuote, minimumOutput = 1n): quote is Success
   );
 }
 
-function providerConfig(router?: Router): Config {
-  return router
-    ? {
-        ...config,
-        aggregators: config.aggregators.filter(
-          (provider) => (provider.name() === "curve") === (router === "curve")
-        ),
-      }
-    : config;
-}
-
-async function requestQuotes(params: QuoteParams, router?: Router) {
+async function requestQuotes(params: QuoteParams) {
   const [inputDecimals, outputDecimals, fromSymbol, toSymbol] = await Promise.all([
     getTokenDecimals(params.chainId, params.from),
     getTokenDecimals(params.chainId, params.to),
@@ -64,15 +52,17 @@ async function requestQuotes(params: QuoteParams, router?: Router) {
     params.mode === "targetOut"
       ? { ...common, mode: "targetOut", outputAmount: parseUnits(params.amount, outputDecimals) }
       : { ...common, mode: "exactIn", inputAmount: parseUnits(params.amount, inputDecimals) };
-  const selectedConfig = providerConfig(router);
   const client = getClient(params.chainId);
-  const previewState = params.sender
-    ? undefined
-    : createPreviewState(client, swap.swapperAccount, swap.inputToken);
-  const quotes = selectedConfig.aggregators.length
+  const previewState = createPreviewState(
+    client,
+    swap.swapperAccount,
+    swap.inputToken,
+    Boolean(params.sender)
+  );
+  const quotes = config.aggregators.length
     ? await Promise.all(
         await prepareQuotes({
-          config: selectedConfig,
+          config,
           swap,
           mapFn: async (quote): Promise<SimulatedQuote> => {
             try {
@@ -80,10 +70,9 @@ async function requestQuotes(params: QuoteParams, router?: Router) {
                 client,
                 swap,
                 quote,
-                simulationOptions:
-                  quote.success && previewState
-                    ? { stateOverrides: await previewState(quote.inputAmount) }
-                    : undefined,
+                simulationOptions: quote.success
+                  ? { stateOverrides: await previewState(quote.inputAmount) }
+                  : undefined,
               });
             } catch (error) {
               return {
@@ -121,7 +110,7 @@ async function requestQuotes(params: QuoteParams, router?: Router) {
             to: quote.txData.to,
             data: quote.txData.data,
             value: (quote.txData.value ?? 0n).toString(),
-            approval: quote.approval ?? null,
+            approval: isNativeToken(swap.inputToken) ? null : (quote.approval ?? null),
           }
         : null,
       route: quote.route ?? null,
@@ -135,19 +124,37 @@ async function requestQuotes(params: QuoteParams, router?: Router) {
       trade_value_native: null,
       net_value_native: null,
     }));
+  const failures: ProviderFailure[] = [];
   for (const quote of quotes) {
-    if (!successful(quote, minimumOutput)) {
-      logger.debug(
-        {
-          provider: quote.provider,
-          minimumOutput,
-          error: quote.success ? quote.simulation : quote.error,
-        },
-        "Provider quote failed"
-      );
-    }
+    if (successful(quote, minimumOutput)) continue;
+    const error = !quote.success
+      ? quote.error
+      : !quote.simulation.success
+        ? quote.simulation.error
+        : new Error("Simulated output is below the requested amount");
+    const diagnostic =
+      error && typeof error === "object" ? (error as unknown as Record<string, unknown>) : {};
+    failures.push({
+      provider: quote.provider,
+      stage: quote.success ? "simulation" : "quote",
+      error: {
+        name: redactText(typeof diagnostic.name === "string" ? diagnostic.name : "Error"),
+        message: redactText(
+          typeof diagnostic.message === "string" ? diagnostic.message : String(error)
+        ),
+        code:
+          typeof diagnostic.code === "string"
+            ? redactText(diagnostic.code)
+            : typeof diagnostic.code === "number"
+              ? diagnostic.code
+              : null,
+        cause: redact(diagnostic.cause) ?? null,
+        details: redact(diagnostic.details) ?? null,
+      },
+    });
+    logger.debug({ provider: quote.provider, minimumOutput, error }, "Provider quote failed");
   }
-  return { results, inputDecimals, outputDecimals };
+  return { results, failures, inputDecimals, outputDecimals, account: swap.swapperAccount };
 }
 
 async function nativeRate(chainId: number, token: string, decimals: number) {
@@ -161,7 +168,7 @@ async function nativeRate(chainId: number, token: string, decimals: number) {
   if (cached && Date.now() - cached.timestamp < RATE_TTL_MS) return cached;
   try {
     const quote = await getQuote({
-      config: providerConfig("spandex"),
+      config,
       swap: {
         chainId,
         inputToken: token as Address,
@@ -190,30 +197,8 @@ async function nativeRate(chainId: number, token: string, decimals: number) {
   }
 }
 
-function best(quotes: QuoteResult[], mode: QuoteParams["mode"]): QuoteResult | null {
-  return quotes.reduce<QuoteResult | null>((previous, current) => {
-    if (!previous) return current;
-    const field = mode === "targetOut" ? "input_amount_raw" : "output_amount_raw";
-    return (
-      mode === "targetOut"
-        ? BigInt(current[field]) < BigInt(previous[field])
-        : BigInt(current[field]) > BigInt(previous[field])
-    )
-      ? current
-      : previous;
-  }, null);
-}
-
-export async function compareQuotes(params: QuoteParams, router?: Router): Promise<CompareResult> {
-  const { results, inputDecimals, outputDecimals } = await requestQuotes(params, router);
-  const spandex = best(
-    results.filter((quote) => quote.provider !== "curve"),
-    params.mode
-  );
-  const curve = best(
-    results.filter((quote) => quote.provider === "curve"),
-    params.mode
-  );
+export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
+  const { results, failures, inputDecimals, outputDecimals, account } = await requestQuotes(params);
   const native = getNativeAsset(params.chainId);
   const targetOut = params.mode === "targetOut";
   const [gas, rate] = await Promise.all([
@@ -226,13 +211,13 @@ export async function compareQuotes(params: QuoteParams, router?: Router): Promi
         )
       : null,
   ]);
-  const gasPrice = gas.gasPriceWei;
   const values = new Map<QuoteResult, bigint>();
-  for (const quote of [spandex, curve]) {
-    if (!quote) continue;
+  for (const quote of results) {
     quote.gas_price_gwei = gas.gasPriceGwei;
     const cost =
-      quote.gas_used !== null && gasPrice !== null ? BigInt(quote.gas_used) * gasPrice : null;
+      quote.gas_used !== null && gas.gasPriceWei !== null
+        ? BigInt(quote.gas_used) * gas.gasPriceWei
+        : null;
     const amount = BigInt(targetOut ? quote.input_amount_raw : quote.output_amount_raw);
     const value = rate ? (amount * rate.nativeRaw) / rate.tokenRaw : null;
     quote.gas_cost_native = cost === null ? null : formatUnits(cost, native.decimals);
@@ -245,49 +230,38 @@ export async function compareQuotes(params: QuoteParams, router?: Router): Promi
       quote.net_value_native = formatUnits(net / rate.tokenRaw, native.decimals);
     }
   }
-  let recommendation: Router | null = null;
-  let basis: CompareResult["recommendation_basis"] = "none";
-  let reason = "No provider returned a successful quote.";
-  if (spandex && curve) {
-    const spandexNet = values.get(spandex);
-    const curveNet = values.get(curve);
-    const adjusted = spandexNet !== undefined && curveNet !== undefined;
-    const field = targetOut ? "input_amount_raw" : "output_amount_raw";
-    const spandexValue = adjusted ? spandexNet : BigInt(spandex[field]);
-    const curveValue = adjusted ? curveNet : BigInt(curve[field]);
-    recommendation = (targetOut ? curveValue < spandexValue : curveValue > spandexValue)
-      ? "curve"
-      : "spandex";
-    basis = adjusted ? "gas_adjusted" : "raw_amount";
-    reason = adjusted
-      ? `${targetOut ? "Lowest total cost" : "Highest output after gas"} in ${native.symbol}.`
-      : `Comparing raw ${targetOut ? "input" : "output"} amounts because gas or conversion data is unavailable.`;
-    if (spandexValue === curveValue) reason += " Equal values; Spandex selected.";
-  } else if (spandex || curve) {
-    recommendation = spandex ? "spandex" : "curve";
-    basis = "single_quote";
-    reason = `Only ${spandex ? "Spandex" : "Curve"} returned a quote.`;
-  }
-  const rateText = rate ? formatUnits(rate.nativeRaw, native.decimals) : null;
+  // Use a single comparable basis for every route, preserving configuration order on ties.
+  // Simulation gas alone does not supply comparable rollup posting/operator fees.
+  const completeGas = ![10, 8453, 42161].includes(params.chainId);
+  const adjusted = completeGas && results.length > 0 && values.size === results.length;
+  const order = new Map<string, number>(
+    config.aggregators.map((provider, index) => [provider.name(), index])
+  );
+  results.sort((a, b) => (order.get(a.provider) ?? Infinity) - (order.get(b.provider) ?? Infinity));
+  const field = targetOut ? "input_amount_raw" : "output_amount_raw";
+  const value = (quote: QuoteResult) =>
+    adjusted ? (values.get(quote) ?? BigInt(quote[field])) : BigInt(quote[field]);
+  results.sort((a, b) => {
+    const left = value(a),
+      right = value(b);
+    return left === right ? 0 : (left < right ? -1 : 1) * (targetOut ? 1 : -1);
+  });
   return {
-    spandex,
-    curve,
-    spandex_error: spandex ? null : "Spandex returned no successful quote.",
-    curve_error: curve ? null : "Curve returned no successful quote.",
-    recommendation,
-    recommendation_reason: reason,
-    recommendation_basis: basis,
+    quotes: results,
+    failures,
+    recommendation: results[0]?.provider ?? null,
+    recommendation_basis: results.length === 0 ? "none" : adjusted ? "gas_adjusted" : "raw_amount",
+    recommendation_reason:
+      results.length === 0
+        ? "No provider returned a successful price simulation."
+        : adjusted
+          ? `${targetOut ? "Lowest input plus estimated gas" : "Highest output after estimated gas"} in ${native.symbol}. Equal values use provider configuration order.`
+          : `Comparing all routes by raw ${targetOut ? "input" : "output"} amounts because comparable gas or conversion data is unavailable. Equal values use provider configuration order.`,
+    simulation_basis: "temporary_funding",
+    simulation_account: account,
+    wallet_readiness: "unchecked",
     gas_price_gwei: gas.gasPriceGwei,
     native_currency: native.symbol,
-    input_to_native_rate: targetOut ? rateText : null,
-    output_to_native_rate: targetOut ? null : rateText,
     mode: params.mode,
   };
-}
-
-export async function singleQuote(params: QuoteParams, router: Router): Promise<QuoteResult> {
-  const comparison = await compareQuotes(params, router);
-  const quote = comparison[router];
-  if (!quote) throw new Error("No provider returned a successful quote");
-  return quote;
 }

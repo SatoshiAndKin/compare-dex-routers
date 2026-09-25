@@ -8,6 +8,7 @@
  * Priority: URL params > localStorage > DEFAULT_TOKENS defaults
  */
 
+import { canonicalToken } from "../native.js";
 import { formStore } from "./formStore.svelte.js";
 import type { TokenInfo } from "./formStore.svelte.js";
 
@@ -76,7 +77,7 @@ class PreferencesStore {
 
     if (formStore.fromToken && formStore.fromToken.decimals !== null) {
       chainPrefs.fromToken = {
-        address: formStore.fromToken.address,
+        address: canonicalToken(formStore.fromToken.address),
         symbol: formStore.fromToken.symbol,
         decimals: formStore.fromToken.decimals,
         logoURI: formStore.fromToken.logoURI,
@@ -85,7 +86,7 @@ class PreferencesStore {
 
     if (formStore.toToken && formStore.toToken.decimals !== null) {
       chainPrefs.toToken = {
-        address: formStore.toToken.address,
+        address: canonicalToken(formStore.toToken.address),
         symbol: formStore.toToken.symbol,
         decimals: formStore.toToken.decimals,
         logoURI: formStore.toToken.logoURI,
@@ -107,7 +108,7 @@ class PreferencesStore {
 
     if (chainPrefs.fromToken) {
       const token: TokenInfo = {
-        address: chainPrefs.fromToken.address,
+        address: canonicalToken(chainPrefs.fromToken.address),
         symbol: chainPrefs.fromToken.symbol,
         decimals: null,
         chainId,
@@ -118,7 +119,7 @@ class PreferencesStore {
 
     if (chainPrefs.toToken) {
       const token: TokenInfo = {
-        address: chainPrefs.toToken.address,
+        address: canonicalToken(chainPrefs.toToken.address),
         symbol: chainPrefs.toToken.symbol,
         decimals: null,
         chainId,

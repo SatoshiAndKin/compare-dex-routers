@@ -11,7 +11,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.getByRole("heading", { name: "Compare DEX Routers" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Compare Quotes", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
-    await expect(page.getByRole("tab", { name: /Spandex/ })).toBeVisible();
+    await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
     );
@@ -51,4 +51,26 @@ test("Farcaster loads its local bundle and explains missing host context", async
   await app.getByRole("button", { name: /Connect with Farcaster/ }).click();
   await expect(app.getByText(/Open this app in Farcaster to use its wallet/)).toBeVisible();
   expect(remoteScripts).toEqual([]);
+});
+
+test("native ETH precedes WETH and survives missing token lists", async ({ page }) => {
+  await fixture(page);
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100`);
+  await page.getByRole("textbox", { name: "From token", exact: true }).fill("eth");
+  const options = page.getByRole("option");
+  await expect(options.first()).toContainText("ETH");
+  await expect(options.first()).toContainText("Native");
+  await expect(options.filter({ hasText: "WETH" })).toBeVisible();
+  await options.first().click();
+  await expect(page.getByRole("textbox", { name: "From token", exact: true })).toHaveValue(
+    /ETH.*Native/
+  );
+  await expect(page).toHaveURL(/from=0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE/);
+  await page.route("**/api/tokenlist", (route) =>
+    route.fulfill({ json: { tokens: [], tokenlists: [] } })
+  );
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "From token", exact: true })).toHaveValue(
+    /ETH.*Native/
+  );
 });

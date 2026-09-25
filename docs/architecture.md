@@ -46,9 +46,9 @@ Plain `node:http` server. Runs via `tsx` so TypeScript files execute directly, n
 | Module              | Responsibility                                                                                                                                                         |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `server.ts`         | HTTP request routing, response handling, token-list loading, quote orchestration                                                                                       |
-| `config.ts`         | Chain definitions (7 chains), Spandex router setup with providers (0x, Fabric, KyberSwap, Nordstern, LiFi, Relay, Velora), viem public clients, token metadata helpers |
+| `config.ts`         | Chain definitions (7 chains), Spandex router setup with providers (0x, KyberSwap, Nordstern, LiFi, Relay, Velora), viem public clients, token metadata helpers |
 | `quote.ts`          | Query-parameter parsing and validation (`chainId`, `from`, `to`, `amount`, `slippageBps`, `sender`, `mode`)                                                            |
-| `quotes.ts`         | Shared Spandex/Curve quote formatting, simulation filtering, and recommendation arithmetic                                                                             |
+| `quotes.ts`         | Unified provider quote formatting, simulation filtering, and recommendation arithmetic                                                                             |
 | `preview-simulation.ts` | Read-only preview funding with verified token storage and account-code isolation |
 | `quote-response.ts` | Shared Zod response schemas and API types                                                                                                                              |
 | `redaction.ts`      | Credential removal before logs, errors, and Sentry                                                                                                                     |
@@ -56,19 +56,17 @@ Plain `node:http` server. Runs via `tsx` so TypeScript files execute directly, n
 | `analytics.ts`      | In-memory quote event tracking — success rates, latency, top pairs and chains                                                                                          |
 | `error-insights.ts` | Error pattern aggregation — counts, deduplication, and threshold alerting                                                                                              |
 | `metrics.ts`        | Prometheus-compatible metrics (request counts, durations, errors, uptime)                                                                                              |
-| `feature-flags.ts`  | Environment-based feature flags (`CURVE_ENABLED`, `COMPARE_ENABLED`, `METRICS_ENABLED`)                                                                                |
+| `feature-flags.ts`  | Environment-based feature flags (`CURVE_ENABLED`, `METRICS_ENABLED`)                                                                                |
 | `logger.ts`         | Structured logging via pino with sensitive-value scrubbing (API keys, private keys, tokens)                                                                            |
 | `sentry.ts`         | Sentry error-tracking initialization and helpers (`captureException`, `captureMessage`)                                                                                |
 | `tracing.ts`        | `x-request-id` propagation — reads or generates a UUID per request                                                                                                     |
 | `env.ts`            | `.env` file loader (imported first, before any other module reads `process.env`)                                                                                       |
 
-Curve runs in one persistent Node worker thread. Its synchronous catalog and route
+Spandex owns Curve execution in a persistent Node worker thread, packaged with the SDK. The site registers normal `curve()` and has no worker protocol, loader, or provider-specific error handling. Shared SDK infrastructure owns request IDs, deadlines, serialized errors, crashes, cleanup, restart, and idle termination. Its synchronous catalog and route
 computation cannot block the HTTP event loop or make the network providers miss
 their quote deadlines. Spandex still evaluates every configured provider in
 parallel, and the API still simulates each quote before selection. The worker
-reuses Curve instances per chain and RPC URL. A cold Curve catalog can exceed its
-own deadline; other providers can return quotes while it initializes, and later
-requests can use the cached catalog. Worker errors settle pending requests, and
+reuses Curve instances per chain and RPC URL. A cold Curve catalog can exceed the shared ten-second quote deadline; network providers still run independently and their successes remain in the response. The SDK retires an aborted worker once no callers remain, and a later request starts a fresh worker. Worker errors settle pending requests, and
 the next request can start a new worker. Idle workers do not keep the API process
 alive.
 
@@ -79,9 +77,7 @@ alive.
 | `GET`  | `/health`                     | Health check                                       |
 | `GET`  | `/chains`                     | Supported chains list                              |
 | `GET`  | `/config`                     | Feature flags and runtime config                   |
-| `GET`  | `/compare`                    | Compare quotes from Spandex and Curve side-by-side |
-| `GET`  | `/quote`                      | Single quote from Spandex                          |
-| `GET`  | `/quote-curve`                | Single quote from Curve                            |
+| `GET`  | `/quote`                      | All provider results, failures, and recommendation                          |
 | `GET`  | `/tokenlist`                  | Token lists                                        |
 | `GET`  | `/token-metadata`             | On-chain token metadata lookup                     |
 | `GET`  | `/metrics`                    | Prometheus-compatible metrics                      |
@@ -145,10 +141,10 @@ All stores use Svelte 5 runes (`$state`, `$derived`).
 
 1. The browser loads the SPA from nginx.
 2. Config, preferences, or URL parameters select token addresses. Comparison waits for actual token decimals.
-3. The SPA makes one `/api/compare` request. Vite or Traefik strips `/api` before forwarding it.
-4. The API builds one Spandex provider set, including Curve when enabled. Both quote groups use the same request parameters and simulation rules.
+3. The SPA makes one `/api/quote` request. Vite or Traefik strips `/api` before forwarding it.
+4. The API builds one Spandex provider set, including Curve when enabled. All providers use the same request parameters and simulation rules.
 5. The API filters failed quotes and simulations, formats the common `Quote` schema, and computes the recommendation using exact integer arithmetic and the chain's native asset.
-6. The SPA displays both results and the server recommendation together. A request sequence prevents older responses from changing current state.
+6. The SPA displays one recommended quote and an expandable list of provider results and failures. A request sequence prevents older responses from changing current state.
 7. A preview has no execution data. Connecting a wallet obtains a fresh quote for that account.
 8. Approval and swap operations check the current quote, form, provider, account, chain, and allowance before sending through the wallet RPC. Context changes cancel confirmation. Auto-refresh pauses during the operation and requests a fresh quote afterward.
 
@@ -178,9 +174,9 @@ Both app Compose files forward all seven `RPC_URL_<id>` overrides. The API liste
 
 `@spandex/core` owns all provider adapters, including the maintained Curve fork. Curve initializes its SDK per chain and RPC URL, shares pending initialization, and retries failed initialization. It converts basis points to the SDK's percentage unit before building calldata.
 
-`quotes.ts` groups successful simulations into Spandex and Curve results. It uses canonical wrapped native tokens for conversion rates. Missing gas or rate data causes an explicit raw-amount comparison. All quote endpoints use `quote-response.ts`; OpenAPI and the generated frontend client share that contract.
+`quotes.ts` ranks every successful provider together with exact integer arithmetic and configuration-order ties. It uses canonical wrapped native tokens for conversion rates. Missing gas or rate data causes an explicit raw-amount comparison. The quote endpoint uses `quote-response.ts`; OpenAPI and the generated frontend client share that contract.
 
-Disconnected-wallet previews and conversion-rate estimates use simulation-only
+All price simulations and conversion-rate estimates use simulation-only
 state overrides. Each provider's quoted input amount funds its own simulation,
 including target-output requests. The preview account has empty code during the
 simulation, so deployed or delegated account code cannot alter its behavior.
@@ -189,16 +185,14 @@ read by `balanceOf`. Two distinct read-only probes must identify exactly one
 balance slot before the API uses it. The API limits discovery to 16 candidate
 slots and rejects unsupported layouts instead of guessing. This requires RPC
 support for the prestate tracer and state overrides. Token code, unrelated token
-storage, and live chain state remain intact. Connected-wallet quotes keep their
-original account and simulation checks; preview overrides never enter an
-execution payload.
+storage, and live chain state remain intact. Connected-wallet simulations preserve original account code and sender while temporarily funding it. Overrides never enter an execution payload. Prices are not wallet-readiness checks.
 
 Exact-output quotes must simulate at least the requested output amount. The API
 rejects even a one-unit shortfall before it selects or exposes a quote.
 The pinned Spandex SDK simulates the swap at the RPC gas price and rejects
 fee-sensitive reverts. It reports native output before gas costs so the API
 does not deduct the same fee twice when it calculates a recommendation.
-After confirmation, the wallet store estimates gas for the exact transaction and
+Before approval or confirmation, the browser refreshes `/quote` and retains the selected provider. It refreshes again after an approval receipt. After confirmation, the wallet store rechecks actual balances, allowances, account, network, and fresh fees and estimates gas for the exact transaction and
 sets a limit 20% above the larger of that estimate and simulated gas usage. It
 checks the wallet, chain, and quote again after the estimate before submission.
 
@@ -219,3 +213,5 @@ Wallet SDKs are pinned, lazy-loaded Vite dependencies. Farcaster uses the Mini A
 SDK's EIP-1193 provider. Swagger's CDN versions and hashes live in `docs-assets.ts`;
 its OpenAPI server URL is relative so direct and `/api`-prefixed deployments work.
 The space theme uses local SVG/CSS assets and the existing light/dark preference.
+
+Native assets come from `/config` independently of token lists. Native balances use `eth_getBalance` and need no approvals. Raw integer balances and decimals drive exact sell-balance entry. Native entry first obtains a route estimate, reserves gas with the 20% margin and fresh network fees, and fails closed when fees are unavailable. Balance response sequences discard outdated reads.

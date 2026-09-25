@@ -103,7 +103,11 @@ try {
   if (!base) throw new Error("Set ALCHEMY_API_KEY or FORK_RPC_URL_8453 for Base fork tests");
   await startFork(
     1,
-    process.env.FORK_RPC_URL_1 || "https://ski-lambo-1.shorthair-fir.ts.net:18544"
+    process.env.FORK_RPC_URL_1 ||
+      process.env.RPC_URL_1 ||
+      (process.env.ALCHEMY_API_KEY
+        ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+        : "")
   );
   await startFork(8453, base);
   execFileSync("pnpm", ["--filter", "@compare-dex/frontend", "build"], { stdio: "inherit", env });

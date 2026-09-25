@@ -12,7 +12,7 @@ vi.mock("../config.js", async (original) => ({
   getTokenSymbol: mocks.symbol,
   getTokenName: mocks.name,
 }));
-vi.mock("../quotes.js", () => ({ compareQuotes: vi.fn(), singleQuote: vi.fn() }));
+vi.mock("../quotes.js", () => ({ quoteRoutes: vi.fn() }));
 vi.mock("../feature-flags.js", () => ({
   isEnabled: () => mocks.metrics,
   getAllFlags: () => ({ metrics_endpoint: mocks.metrics }),
@@ -81,7 +81,7 @@ describe("HTTP boundaries", () => {
     });
   });
   it("returns 204 for OPTIONS", async () => {
-    expect((await request("/compare", { method: "OPTIONS" })).status).toBe(204);
+    expect((await request("/quote", { method: "OPTIONS" })).status).toBe(204);
   });
   it.each(["/openapi.json", "/openapi.yaml"])(
     "%s publishes the current quote contract",
@@ -91,7 +91,7 @@ describe("HTTP boundaries", () => {
       const spec = JSON.parse(response.body);
       expect(spec.components.schemas.Quote.properties.execution).toBeDefined();
       expect(spec.components.schemas.Quote.properties.router_address).toBeUndefined();
-      expect(spec.components.schemas.CompareResult.properties.recommendation_basis).toBeDefined();
+      expect(spec.components.schemas.QuoteResponse.properties.recommendation_basis).toBeDefined();
     }
   );
   it("docs resolve their schema through the same API prefix", async () => {

@@ -1,137 +1,65 @@
 <script lang="ts">
-  /**
-   * QuoteResults — tab-based container showing comparison results.
-   * Displays the quotes and recommendation from one comparison response.
-   * The "Recommended" tab shows the winning quote; "Alternative" shows the other.
-   */
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
-  import { configStore } from "../stores/configStore.svelte.js";
+  import { transactionStore } from "../stores/transactionStore.svelte.js";
   import QuoteCard from "./QuoteCard.svelte";
-
-  const recommendedProvider = $derived(comparisonStore.recommendation ?? "spandex");
-  const alternativeProvider = $derived(recommendedProvider === "spandex" ? "curve" : "spandex");
-
-  function getProviderData(provider: "spandex" | "curve") {
-    const isSpandex = provider === "spandex";
-    return {
-      quote: isSpandex ? comparisonStore.spandexResult : comparisonStore.curveResult,
-      error: isSpandex ? comparisonStore.spandexError : comparisonStore.curveError,
-      loading: comparisonStore.isLoading,
-    };
-  }
-
-  const recommended = $derived(getProviderData(recommendedProvider));
-  const alternative = $derived(getProviderData(alternativeProvider));
-
-  const bothLoading = $derived(comparisonStore.isLoading);
-
-  function tabLabel(provider: "spandex" | "curve"): string {
-    if (bothLoading) return "Loading...";
-    return provider === "spandex" ? "Spandex" : "Curve";
-  }
-
-  const recommendedTabLabel = $derived(tabLabel(recommendedProvider));
-  const alternativeTabLabel = $derived(tabLabel(alternativeProvider));
-
-  // Hide alternative tab in single router mode (once we know)
-  const showAlternativeTab = $derived(configStore.flags.curve_enabled !== false);
-
-  // Combined error when both fail
-  const bothFailed = $derived(
-    !comparisonStore.isLoading &&
-      comparisonStore.spandexError !== null &&
-      comparisonStore.curveError !== null &&
-      comparisonStore.spandexResult === null &&
-      comparisonStore.curveResult === null
-  );
-
-  const combinedErrorMessage = $derived(
-    bothFailed
-      ? "No quotes available. " +
-          (comparisonStore.spandexError ? `Spandex: ${comparisonStore.spandexError}. ` : "") +
-          (comparisonStore.curveError ? `Curve: ${comparisonStore.curveError}` : "")
-      : null
-  );
-
-  function setTab(provider: "spandex" | "curve") {
-    comparisonStore.selectedProvider = provider;
-  }
-
-  // Show recommendation reason box
-  const showReason = $derived(
-    comparisonStore.recommendation !== null && comparisonStore.recommendationReason !== null
-  );
 </script>
 
 {#if comparisonStore.hasResults}
   <div class="quote-results">
-    <!-- Tab bar -->
-    <div class="tabs" role="tablist">
-      <button
-        type="button"
-        class="tab"
-        class:active={comparisonStore.activeProvider === recommendedProvider}
-        role="tab"
-        aria-selected={comparisonStore.activeProvider === recommendedProvider}
-        data-tab="recommended"
-        onclick={() => setTab(recommendedProvider)}
+    <p class="price-simulation">
+      Price simulations use temporary funding. They do not prove that your wallet is ready to swap.
+    </p>
+    {#if comparisonStore.recommendationReason}<div class="reason-box" role="status">
+        {comparisonStore.recommendationReason}
+      </div>{/if}
+    {#if comparisonStore.error}<div class="quote-error" role="alert">
+        {comparisonStore.error}. Refresh quotes to retry.
+      </div>{/if}
+    {#if comparisonStore.activeQuote}
+      <QuoteCard
+        provider={comparisonStore.activeQuote.provider}
+        quote={comparisonStore.activeQuote}
+        error={null}
+        loading={false}
+        isRecommended={comparisonStore.activeQuote.provider === comparisonStore.recommendation}
+        gasPriceGwei={comparisonStore.gasPriceGwei}
+      />
+      {#if comparisonStore.isLoading}<p role="status">Refreshing prices…</p>{/if}
+    {:else if comparisonStore.isLoading}<p role="status">Loading provider prices…</p>
+    {:else}<p class="quote-error" role="alert">
+        {comparisonStore.selectedProvider
+          ? `${comparisonStore.selectedProvider} is unavailable. Select and review another route.`
+          : "No successful price simulations. Review provider failures below."}
+      </p>{/if}
+    <details class="provider-list">
+      <summary
+        >Provider results and failures ({comparisonStore.quotes.length +
+          comparisonStore.failures.length})</summary
       >
-        {recommendedTabLabel}
-      </button>
-      {#if showAlternativeTab}
+      {#each comparisonStore.quotes as quote (quote.provider)}
         <button
           type="button"
-          class="tab"
-          class:active={comparisonStore.activeProvider === alternativeProvider}
-          role="tab"
-          aria-selected={comparisonStore.activeProvider === alternativeProvider}
-          data-tab="alternative"
-          onclick={() => setTab(alternativeProvider)}
+          aria-label={`Select ${quote.provider}`}
+          disabled={transactionStore.busy || comparisonStore.isLoading}
+          aria-pressed={comparisonStore.activeProvider === quote.provider}
+          onclick={() => {
+            transactionStore.cancelSwap();
+            comparisonStore.selectedProvider = quote.provider;
+          }}
         >
-          {alternativeTabLabel}
+          {quote.provider}{quote.provider === comparisonStore.recommendation
+            ? " — Recommended"
+            : ""}: {quote.input_amount}
+          {quote.from_symbol} → {quote.output_amount}
+          {quote.to_symbol}
         </button>
-      {/if}
-    </div>
-
-    <!-- Recommendation reason box -->
-    {#if showReason}
-      <div class="reason-box" role="status">
-        <div class="reason-title">Recommendation</div>
-        <div class="reason-content">{comparisonStore.recommendationReason}</div>
-        {#if comparisonStore.gasPriceGwei}
-          <div class="reason-gas">Gas Price: {comparisonStore.gasPriceGwei} gwei</div>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- Tab panels -->
-    {#if comparisonStore.activeProvider === recommendedProvider}
-      <div class="tab-panel" role="tabpanel">
-        {#if bothFailed && combinedErrorMessage}
-          <div class="combined-error" role="alert">{combinedErrorMessage}</div>
-        {:else}
-          <QuoteCard
-            provider={recommendedProvider}
-            quote={recommended.quote}
-            error={recommended.error}
-            loading={recommended.loading}
-            isRecommended={true}
-            gasPriceGwei={comparisonStore.gasPriceGwei}
-          />
-        {/if}
-      </div>
-    {:else if comparisonStore.activeProvider === alternativeProvider && showAlternativeTab}
-      <div class="tab-panel" role="tabpanel">
-        <QuoteCard
-          provider={alternativeProvider}
-          quote={alternative.quote}
-          error={alternative.error}
-          loading={alternative.loading}
-          isRecommended={false}
-          gasPriceGwei={comparisonStore.gasPriceGwei}
-        />
-      </div>
-    {/if}
+      {/each}
+      {#each comparisonStore.failures as failure (failure.provider)}
+        <div class="provider-failure">
+          <strong>{failure.provider}</strong> ({failure.stage}): {failure.error.message}
+        </div>
+      {/each}
+    </details>
   </div>
 {/if}
 
@@ -142,87 +70,28 @@
     background: var(--bg-card, #fff);
   }
 
-  /* Tab bar */
-  .tabs {
-    display: flex;
-    border-bottom: 2px solid var(--border, #000);
-  }
-
-  .tab {
-    flex: 1;
-    padding: 0.625rem 1rem;
-    background: var(--bg-muted, #f0f0f0);
-    color: var(--text, #000);
-    border: none;
-    border-right: 2px solid var(--border, #000);
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 700;
-    font-family: inherit;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    transition: background 0.1s;
-  }
-
-  .tab:last-child {
-    border-right: none;
-  }
-
-  .tab:hover:not(.active) {
-    background: var(--bg-hover, #e0e0e0);
-  }
-
-  .tab.active {
-    background: var(--border, #000);
-    color: var(--bg-card, #fff);
-  }
-
-  .tab:focus {
-    outline: 3px solid var(--accent, #0055ff);
-    outline-offset: -3px;
-  }
-
-  /* Recommendation reason box */
-  .reason-box {
-    padding: 0.75rem 1rem;
-    background: var(--bg-muted, #f0f0f0);
-    border-bottom: 2px solid var(--border-light, #e0e0e0);
-  }
-
-  .reason-title {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-muted, #666);
-    margin-bottom: 0.25rem;
-  }
-
-  .reason-content {
-    font-size: 0.875rem;
-    line-height: 1.4;
-  }
-
-  .reason-gas {
-    font-size: 0.75rem;
-    font-family: monospace;
-    color: var(--text-muted, #666);
-    margin-top: 0.25rem;
-  }
-
-  /* Tab panels */
-  .tab-panel {
+  .provider-list {
     padding: 1rem;
+    border-top: 2px solid var(--border);
   }
-
-  /* Combined error state */
-  .combined-error {
-    padding: 0.75rem;
-    background: var(--bg-muted, #f0f0f0);
-    border: 1px solid var(--red, #cc0000);
-    border-left: 4px solid var(--red, #cc0000);
-    color: var(--red, #cc0000);
-    font-size: 0.875rem;
-    word-break: break-word;
+  .provider-list button {
+    cursor: pointer;
+    padding: 0.5rem;
+    margin-top: 0.5rem;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    background: var(--bg-card);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .reason-box,
+  .price-simulation,
+  .quote-error {
+    padding: 0.75rem 1rem;
+  }
+  .provider-failure {
+    overflow-wrap: anywhere;
+    margin-top: 0.5rem;
   }
 </style>

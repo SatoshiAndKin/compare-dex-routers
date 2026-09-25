@@ -3,16 +3,21 @@
    * CompareForm — container assembling all form components.
    * Calls the comparison API and updates the comparison store on submit.
    */
-  import { configStore } from "../stores/configStore.svelte.js";
   import { formStore } from "../stores/formStore.svelte.js";
-  import { comparisonStore, type CompareParams } from "../stores/comparisonStore.svelte.js";
+  import {
+    comparisonStore,
+    requestQuotes,
+    type CompareParams,
+  } from "../stores/comparisonStore.svelte.js";
   import { updateUrl } from "../stores/urlSync.svelte.js";
   import { preferencesStore } from "../stores/preferencesStore.svelte.js";
   import { autoRefreshStore, AUTO_REFRESH_SECONDS } from "../stores/autoRefreshStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
   import { balanceStore } from "../stores/balanceStore.svelte.js";
-  import { onDestroy, untrack } from "svelte";
+  import { onDestroy, untrack, tick } from "svelte";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
+  import { exactAmount, isNativeToken } from "../native.js";
+  import { gasMargin, transactionFees, hex, readBalance } from "../wallet-rpc.js";
   import ChainSelector from "./ChainSelector.svelte";
   import TokenInput from "./TokenInput.svelte";
   import AmountFields from "./AmountFields.svelte";
@@ -36,14 +41,7 @@
     const sender = walletStore.address ?? undefined;
     const slippageBps = formStore.slippageBps;
     const mode = formStore.mode;
-    if (
-      configStore.flags.compare_endpoint === false ||
-      !formStore.canSubmit ||
-      !from ||
-      !to ||
-      !amount
-    )
-      return null;
+    if (!formStore.canSubmit || !from || !to || !amount) return null;
     return { chainId, from, to, amount, sender, slippageBps, mode };
   }
 
@@ -57,7 +55,7 @@
     untrack(() => {
       generation++;
       clearTimer();
-      transactionStore.cancelSwap();
+      transactionStore.invalidate();
       comparisonStore.invalidate();
       autoRefreshStore.stop();
       if (params)
@@ -84,7 +82,7 @@
     clearTimer();
     comparisonStore.invalidate();
     autoRefreshStore.stop();
-    transactionStore.cancelSwap();
+    transactionStore.invalidate();
   });
 
   async function runCompare(params: CompareParams, epoch: number): Promise<void> {
@@ -98,9 +96,112 @@
       const current = currentParams();
       if (current) void runCompare(current, epoch);
     });
-    if (!comparisonStore.spandexResult && !comparisonStore.curveResult) {
+    if (comparisonStore.quotes.length === 0) {
       autoRefreshStore.setErrorMessage("Quote request failed. The next refresh will retry.");
     }
+  }
+
+  let fillingBalance = $state(false);
+  let balanceMessage = $state("");
+  async function useSellBalance(): Promise<void> {
+    const token = formStore.fromToken;
+    const account = walletStore.address;
+    const provider = walletStore.provider;
+    const chainId = formStore.chainId;
+    if (walletStore.chainId !== chainId || balanceStore.from.status === "wrong_network") {
+      await walletStore.switchChain(chainId);
+      return;
+    }
+    if (
+      !token ||
+      token.decimals === null ||
+      !account ||
+      !provider ||
+      balanceStore.from.raw === null
+    )
+      return;
+    const epoch = generation;
+    fillingBalance = true;
+    balanceMessage = "";
+    try {
+      const checkWallet = async () => {
+        const [chain, accounts] = await Promise.all([
+          provider.request({ method: "eth_chainId" }),
+          provider.request({ method: "eth_accounts" }),
+        ]);
+        if (
+          typeof chain !== "string" ||
+          Number(BigInt(chain)) !== chainId ||
+          !Array.isArray(accounts) ||
+          accounts[0]?.toLowerCase() !== account.toLowerCase()
+        )
+          throw new Error("Wallet account or network changed. Refresh balances.");
+      };
+      await checkWallet();
+      let raw = await readBalance(provider, account, token.address);
+      if (isNativeToken(token.address)) {
+        if (!formStore.toToken)
+          throw new Error("Select a receive token before estimating the gas reserve.");
+        if (raw <= 0n) throw new Error("No native balance is available after reserving gas.");
+        const params: CompareParams = {
+          chainId,
+          from: token.address,
+          to: formStore.toToken.address,
+          amount: exactAmount(raw, token.decimals),
+          mode: "exactIn",
+          slippageBps: formStore.slippageBps,
+          sender: account,
+        };
+        const preview = await requestQuotes(params);
+        const providerName = comparisonStore.activeProvider ?? preview.recommendation;
+        const route = preview.quotes.find((quote) => quote.provider === providerName);
+        if (!route?.execution || !route.gas_used || BigInt(route.gas_used) <= 0n)
+          throw new Error(
+            "A route gas estimate is unavailable. Enter a native amount manually and leave gas in your wallet."
+          );
+        const fees = await transactionFees(
+          provider,
+          {
+            from: account,
+            chainId: hex(chainId),
+            to: route.execution.to,
+            data: route.execution.data,
+            value: hex(route.execution.value),
+          },
+          gasMargin(BigInt(route.gas_used))
+        );
+        raw = raw > fees.reserve ? raw - fees.reserve : 0n;
+        if (raw === 0n) throw new Error("No native balance is available after reserving gas.");
+        balanceMessage =
+          "An estimated gas reserve was deducted. Fees will be checked again before submission.";
+      }
+      await checkWallet();
+      if (
+        epoch !== generation ||
+        provider !== walletStore.provider ||
+        account !== walletStore.address ||
+        chainId !== walletStore.chainId
+      )
+        return;
+      formStore.mode = "exactIn";
+      formStore.sellAmount = exactAmount(raw, token.decimals);
+      await tick();
+      clearTimer();
+      const params = currentParams();
+      if (params) await runCompare(params, generation);
+    } catch (error) {
+      if (epoch === generation)
+        balanceMessage = `Cannot fill balance: ${error instanceof Error ? error.message : "Fee data unavailable. Enter an amount manually."}`;
+    } finally {
+      fillingBalance = false;
+    }
+  }
+  function balanceLabel(side: "from" | "to"): string {
+    if (walletStore.chainId !== formStore.chainId || balanceStore[side].status === "wrong_network")
+      return "Switch network to view balance";
+    const value = side === "from" ? balanceStore.fromBalance : balanceStore.toBalance;
+    if (value !== null) return `Balance: ${value}`;
+    return balanceStore[side].status === "loading" ? "Balance: Loading…" : "Balance: Unavailable";
   }
 
   async function handleSubmit(event: Event): Promise<void> {
@@ -120,22 +221,32 @@
   <div class="form-section">
     <span class="section-label">From Token</span>
     <TokenInput type="from" />
-    {#if walletStore.isConnected && balanceStore.fromBalance !== null}
-      <span class="balance-display" aria-label="From token balance">
-        Balance: {balanceStore.fromBalance}
+    {#if walletStore.isConnected}
+      <button
+        type="button"
+        class="balance-display"
+        aria-label="From token balance"
+        disabled={fillingBalance ||
+          transactionStore.busy ||
+          (walletStore.chainId === formStore.chainId &&
+            balanceStore.from.status !== "ready" &&
+            balanceStore.from.status !== "wrong_network")}
+        onclick={() => void useSellBalance()}
+      >
+        {balanceLabel("from")}
         {formStore.fromToken?.symbol ?? ""}
-      </span>
+      </button>
+      {#if balanceMessage}<span role="status">{balanceMessage}</span>{/if}
     {/if}
   </div>
 
   <div class="form-section">
     <span class="section-label">To Token</span>
     <TokenInput type="to" />
-    {#if walletStore.isConnected && balanceStore.toBalance !== null}
-      <span class="balance-display" aria-label="To token balance">
-        Balance: {balanceStore.toBalance}
-        {formStore.toToken?.symbol ?? ""}
-      </span>
+    {#if walletStore.isConnected}
+      <span class="balance-display" aria-label="To token balance"
+        >{balanceLabel("to")} {formStore.toToken?.symbol ?? ""}</span
+      >
     {/if}
   </div>
 
@@ -151,10 +262,7 @@
     <button
       class="submit-btn"
       type="submit"
-      disabled={configStore.flags.compare_endpoint === false ||
-        !formStore.canSubmit ||
-        comparisonStore.isLoading ||
-        transactionStore.busy}
+      disabled={!formStore.canSubmit || comparisonStore.isLoading || transactionStore.busy}
       aria-busy={comparisonStore.isLoading}
     >
       {#if comparisonStore.isLoading}

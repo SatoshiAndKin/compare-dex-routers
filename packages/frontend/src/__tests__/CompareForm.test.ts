@@ -50,7 +50,7 @@ async function tick(ms = 600) {
   flushSync();
 }
 function comparisons() {
-  return get.mock.calls.filter(([path]) => path === "/compare");
+  return get.mock.calls.filter(([path]) => path === "/quote");
 }
 describe("mounted comparison lifecycle", () => {
   it.each(["slippage", "chain", "account", "wallet chain"])(
@@ -58,13 +58,13 @@ describe("mounted comparison lifecycle", () => {
     async (change) => {
       render(CompareForm);
       await tick();
-      expect(comparisonStore.spandexResult).not.toBeNull();
+      expect(comparisonStore.quotes).toHaveLength(2);
       if (change === "slippage") formStore.slippageBps = 100;
       if (change === "chain") formStore.chainId = 8453;
       if (change === "account") walletStore.address = SENDER;
       if (change === "wallet chain") walletStore.chainId = 8453;
       flushSync();
-      expect(comparisonStore.spandexResult).toBeNull();
+      expect(comparisonStore.quotes).toEqual([]);
       expect(autoRefreshStore.active).toBe(false);
       await tick();
       expect(comparisons()).toHaveLength(2);
@@ -100,12 +100,5 @@ describe("mounted comparison lifecycle", () => {
     await tick(0);
     expect(comparisons()).toHaveLength(2);
     expect(comparisons()[1]?.[1]?.params?.query).toMatchObject({ slippageBps: 100 });
-  });
-  it("honors the comparison feature flag", async () => {
-    configStore.flags.compare_endpoint = false;
-    const { getByRole } = render(CompareForm);
-    await tick();
-    expect(comparisons()).toHaveLength(0);
-    expect(getByRole("button", { name: "Compare Quotes" })).toBeDisabled();
   });
 });

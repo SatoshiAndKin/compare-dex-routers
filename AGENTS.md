@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-Compare DEX Routers is a monorepo (pnpm workspaces) containing a quote comparison API and a Svelte 5 SPA frontend. The API queries multiple DEX routers (Spandex and Curve Finance) and returns quotes for side-by-side comparison. Spandex aggregates across multiple providers (0x, Fabric, KyberSwap, Nordstern, LiFi, Relay, Velora).
+Compare DEX Routers is a monorepo (pnpm workspaces) containing a quote comparison API and a Svelte 5 SPA frontend. The API queries Spandex providers, including Curve Finance, in parallel and returns one ranked quote response. Spandex aggregates across multiple providers (0x, KyberSwap, Nordstern, LiFi, Relay, Velora, Curve).
 
 | Package             | Stack                                        | Dev port |
 | ------------------- | -------------------------------------------- | -------- |
@@ -47,7 +47,7 @@ Node.js HTTP server (no framework). Source files in `packages/api/src/`:
 | ------------------- | --------------------------------------------------------------------- |
 | `server.ts`         | HTTP server, request routing, response handling                       |
 | `config.ts`         | Chain config, router setup, viem clients, token metadata              |
-| `quotes.ts`         | Spandex/Curve quote selection, shared formatting, and recommendations |
+| `quotes.ts`         | Unified provider quote selection, shared formatting, and recommendations |
 | `preview-simulation.ts` | Verified token balance overrides for read-only quote previews |
 | `quote-response.ts` | Shared response schemas and types                                     |
 | `redaction.ts`      | Credential removal at reporting boundaries                            |
@@ -78,9 +78,7 @@ Svelte 5 SPA built with Vite. Source files in `packages/frontend/src/`:
 | `GET`  | `/health`                     | Health check                                         |
 | `GET`  | `/chains`                     | Supported chains list                                |
 | `GET`  | `/config`                     | Client configuration (chains, tokens, feature flags) |
-| `GET`  | `/compare`                    | Compare quotes from Spandex and Curve                |
-| `GET`  | `/quote`                      | Single quote from Spandex router                     |
-| `GET`  | `/quote-curve`                | Single quote from Curve router                       |
+| `GET`  | `/quote`                      | All provider results, failures, and recommendation                     |
 | `GET`  | `/tokenlist`                  | Aggregated token list                                |
 | `GET`  | `/token-metadata`             | On-chain token metadata lookup                       |
 | `GET`  | `/metrics`                    | Prometheus-compatible metrics                        |
@@ -92,7 +90,7 @@ Svelte 5 SPA built with Vite. Source files in `packages/frontend/src/`:
 
 ## Environment variables
 
-See `env.example`. Configure `RPC_URL_<chainId>` for each used chain, or `ALCHEMY_API_KEY` as the fallback. Optional: `ZEROX_API_KEY`, `FABRIC_API_KEY`, `RPC_URL_<chainId>`, `CURVE_ENABLED`, `COMPARE_ENABLED`, `METRICS_ENABLED`, `SENTRY_DSN`, `LOG_LEVEL`.
+See `env.example`. Configure `RPC_URL_<chainId>` for each used chain, or `ALCHEMY_API_KEY` as the fallback. Optional: `ZEROX_API_KEY`, `RPC_URL_<chainId>`, `CURVE_ENABLED`, `METRICS_ENABLED`, `SENTRY_DSN`, `LOG_LEVEL`.
 
 ## Testing
 
@@ -109,7 +107,7 @@ See `env.example`. Configure `RPC_URL_<chainId>` for each used chain, or `ALCHEM
 
 ## Conventions
 
-Use Node.js 24.21.0, pnpm 12.3.1, and Bun 1.4.0. Bun builds the exact pinned Spandex Git dependency with `prepack`; keep its pin and the build allowlist in sync. The browser uses `/api/compare` and the server recommendation. All quote endpoints share `quote-response.ts`.
+Use Node.js 24.21.0, pnpm 12.3.1, and Bun 1.4.0. Bun builds the exact pinned Spandex Git dependency with `prepack`; keep its pin and the build allowlist in sync. The browser uses `/api/quote` and the server recommendation. The quote endpoint uses `quote-response.ts`.
 
 ### Git workflow
 

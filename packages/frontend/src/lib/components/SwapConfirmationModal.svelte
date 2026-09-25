@@ -70,6 +70,11 @@
       </div>
 
       <div class="modal-body">
+        <div class="detail-row">
+          <span class="detail-label">Account</span><span class="trade-address"
+            >{data.quote.sender}</span
+          >
+        </div>
         <div class="trade-row">
           <span class="trade-label">
             {details.isTargetOut ? "You pay (required)" : "You sell"}

@@ -21,13 +21,13 @@ describe("one comparison response", () => {
     const data = makeComparison();
     get.mockResolvedValue({ data, response: new Response() });
     await store.compare(params);
-    expect(get).toHaveBeenCalledExactlyOnceWith("/compare", {
+    expect(get).toHaveBeenCalledExactlyOnceWith("/quote", {
       params: { query: params },
       signal: expect.any(AbortSignal),
     });
-    expect(store.spandexResult?.output_amount).toBe("99.95");
-    expect(store.curveResult?.output_amount).toBe("99.98");
-    expect(store.recommendation).toBe("spandex");
+    expect(store.quotes[0]?.output_amount).toBe("99.95");
+    expect(store.quotes[1]?.output_amount).toBe("99.98");
+    expect(store.recommendation).toBe("0x");
     expect(store.recommendationReason).toBe(data.recommendation_reason);
   });
   it.each(["resolve", "reject"] as const)(
@@ -42,8 +42,8 @@ describe("one comparison response", () => {
       else old.reject(new Error("old request failed"));
       await first;
       expect(store.isLoading).toBe(true);
-      expect(store.spandexResult).toBeNull();
-      expect(store.spandexError).toBeNull();
+      expect(store.quotes).toEqual([]);
+      expect(store.error).toBeNull();
       latest.resolve({
         data: makeComparison({ recommendation: "curve" }),
         response: new Response(),
@@ -62,11 +62,10 @@ describe("one comparison response", () => {
     await comparison;
     expect(store.hasResults).toBe(false);
   });
-  it("publishes a single request error for both routers", async () => {
+  it("publishes one request error", async () => {
     get.mockRejectedValue(new Error("network unavailable"));
     await store.compare(params);
-    expect(store.spandexError).toBe("network unavailable");
-    expect(store.curveError).toBe("network unavailable");
+    expect(store.error).toBe("network unavailable");
     expect(store.isLoading).toBe(false);
   });
 });

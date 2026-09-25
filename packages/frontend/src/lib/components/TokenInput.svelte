@@ -4,6 +4,7 @@
    * Ports behavior from src/client/autocomplete.ts (form parts).
    * Also handles unrecognized 0x address detection via tokenListStore.
    */
+  import { isNativeToken } from "../native.js";
   import { formStore, type TokenInfo } from "../stores/formStore.svelte.js";
   import { tokensStore } from "../stores/tokensStore.svelte.js";
   import { tokenListStore } from "../stores/tokenListStore.svelte.js";
@@ -49,7 +50,7 @@
 
   /** Format token display: "SYMBOL (0xFullAddress)" — NEVER truncate */
   function formatTokenDisplay(symbol: string, address: string): string {
-    return `${symbol} (${address})`;
+    return `${symbol}${isNativeToken(address) ? " — Native" : ""} (${address})`;
   }
 
   /** Normalize address for comparison */
@@ -92,6 +93,7 @@
           normalizedAddr.includes(normalizedQ)
         );
       })
+      .sort((a, b) => Number(b.symbol.toLowerCase() === q) - Number(a.symbol.toLowerCase() === q))
       .slice(0, 20);
   }
 
@@ -382,7 +384,9 @@
           {/if}
           <div class="autocomplete-meta">
             <div class="autocomplete-title">
-              <span class="autocomplete-symbol">{token.symbol}</span>
+              <span class="autocomplete-symbol"
+                >{token.symbol}{isNativeToken(token.address) ? " — Native" : ""}</span
+              >
               {#if token.name}
                 <span class="autocomplete-name">{token.name}</span>
               {/if}

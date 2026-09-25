@@ -1,3 +1,5 @@
+import { isNativeToken } from "@spandex/core";
+import { type Address } from "viem";
 import { SUPPORTED_CHAINS } from "./config.js";
 
 export type QuoteMode = "exactIn" | "targetOut";
@@ -77,5 +79,16 @@ export function parseQuoteParams(searchParams: URLSearchParams): ParseResult {
   // Validate mode parameter
   const mode: QuoteMode = modeStr === "targetOut" ? "targetOut" : "exactIn";
 
-  return { success: true, data: { chainId, from, to, amount, slippageBps, sender, mode } };
+  return {
+    success: true,
+    data: {
+      chainId,
+      from: isNativeToken(from as Address) ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" : from,
+      to: isNativeToken(to as Address) ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" : to,
+      amount,
+      slippageBps,
+      sender,
+      mode,
+    },
+  };
 }

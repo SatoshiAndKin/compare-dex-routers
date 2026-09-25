@@ -2,7 +2,7 @@
 
 # compare-dex-routers
 
-Compare swap quotes from [Spandex](https://www.spandex.exchange/) and Curve Finance side by side, then execute the winning trade from the browser. Spandex aggregates across 0x, Fabric, KyberSwap, Nordstern, LiFi, Relay, and Velora. Curve covers all 7 supported chains.
+Compare all [Spandex](https://www.spandex.exchange/) providers, including Curve, in one ranked list and execute a selected route through your wallet.
 
 ![Web UI screenshot](docs/screenshot.png)
 
@@ -59,9 +59,9 @@ Token autocomplete reads from `packages/api/static/tokenlist.json` plus any cust
 
 ## API
 
-### `GET /compare`
+### `GET /quote`
 
-Compare quotes from Spandex and Curve in one response. The browser calls `/api/compare`; direct API requests use `/compare`. Both Compose files and Vite strip the `/api` prefix.
+Query eligible providers in parallel and return all results in one response. The browser calls `/api/quote`; direct API requests use `/quote`. Both Compose files and Vite strip the `/api` prefix.
 
 | Param         | Required | Description                                                                          |
 | ------------- | -------- | ------------------------------------------------------------------------------------ |
@@ -74,17 +74,19 @@ Compare quotes from Spandex and Curve in one response. The browser calls `/api/c
 
 | `mode` | no | `exactIn` (default) or `targetOut` |
 
-`/compare` returns `spandex`, `curve`, provider errors, and `recommendation`, `recommendation_reason`, and `recommendation_basis`. Both router results use the same `Quote` schema. It includes raw decimal amount strings, a nullable route graph, chain-native gas fields, and nullable `execution: { to, data, value, approval }`. `execution` is null without a sender. Only quotes with successful simulations can provide execution data.
+`/quote` returns `quotes`, structured `failures`, `recommendation`, `recommendation_reason`, and `recommendation_basis`. Each successful provider result uses the `Quote` schema. It includes raw decimal amount strings, a nullable route graph, chain-native gas fields, and nullable `execution: { to, data, value, approval }`. `execution` is null without a sender. Only quotes with successful simulations can provide execution data.
 
-The recommendation compares values after gas when both routes have gas and conversion data. Otherwise, it compares raw amounts and states this in the result. Polygon uses POL, BSC uses BNB, and Avalanche uses AVAX. `targetOut` is an output target; the returned output remains an estimate.
+The recommendation compares values after gas when every route has comparable gas and conversion data. Otherwise, it compares raw amounts and states this in the result. Polygon uses POL, BSC uses BNB, and Avalanche uses AVAX. `targetOut` is an output target; the returned output remains an estimate.
 
 Changing a token, amount, mode, slippage, chain, account, or wallet invalidates displayed quotes. Approval state belongs to the chain, account, token, spender, and required input amount. The app checks the wallet context again before each transaction. It submits transactions through the connected wallet RPC. Configure private RPC protection in the wallet; the app does not sign or submit Flashbots raw transactions.
 
+Price simulations temporarily fund the requested account and preserve connected-account code. Verified ERC-20 balance overrides require RPC `debug_traceCall` with `prestateTracer`. `simulation_basis: "temporary_funding"` and `wallet_readiness: "unchecked"` explicitly distinguish price from spendability. An unfunded account retains prices and sees its actual zero balance.
+
+The browser refreshes the selected provider before approval or swap and after approval confirms. Confirmation shows the refreshed route. Account, network, allowance, token balance, gas balance, and fresh fees are checked through the wallet before submission; failed or unknown checks block submission. Gas limits retain the 20% margin.
+
+`/config` includes each chain's native asset independently of token lists. The canonical native address is `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE`. ETH appears as **ETH — Native**, separately from WETH. Clicking the sell balance selects Exact Input and fills the exact ERC-20 balance, or the native balance less an estimated gas reserve. The receive balance is informational. Missing fee data prevents automatic native entry.
+
 See `/api/docs` for the complete contract. Run `pnpm run generate:types` after a schema change.
-
-### `GET /quote`
-
-Single quote from the Spandex router. Same parameters and `Quote` schema as `/compare`. `/quote-curve` selects Curve.
 
 ### `GET /tokenlist`
 
@@ -123,17 +125,15 @@ Copy `env.example` to `.env` and fill in your keys.
 | ----------------- | ----------- | ----------------------------------------------- |
 | `ALCHEMY_API_KEY` | conditional | Required only for chains without `RPC_URL_<id>` |
 | `ZEROX_API_KEY`   | no          | 0x API key                                      |
-| `FABRIC_API_KEY`  | no          | Fabric API key                                  |
 | `RPC_URL_<id>`    | no          | Per-chain RPC override (e.g. `RPC_URL_8453`)    |
 | `CURVE_ENABLED`   | no          | Enable Curve Finance quotes (all 7 chains)      |
-| `COMPARE_ENABLED` | no          | Enable the `/compare` endpoint                  |
 | `METRICS_ENABLED` | no          | Enable the `/metrics` endpoint                  |
 | `SENTRY_DSN`      | no          | Sentry DSN for error tracking                   |
 | `LOG_LEVEL`       | no          | Log level (default `info`)                      |
 
 ## Dependency builds
 
-The app pins `SatoshiAndKin/spandex` at `58fdf818a658fe804ed4454bdaba887f8a53f26e`, based on upstream 0.11.0 with the Curve adapter restored. The package builds its ESM, CommonJS, and type exports with `prepack`. `pnpm-workspace.yaml` permits the build only for this exact Git package. Update the pin and build allowlist together. No local module aliases or dependency export overrides are required.
+The app pins `SatoshiAndKin/spandex` at `3a88dab87c42f124d23cb541a8747143d5d1cd06`, rebased on upstream `9bdca4c76bd58b9e25607607f46c59be0829e700`, with SDK-owned Node workers and browser/ESM/CommonJS entry points. The package builds its ESM, CommonJS, and type exports with `prepack`. `pnpm-workspace.yaml` permits the build only for this exact Git package. Update the pin and build allowlist together. No local module aliases or dependency export overrides are required.
 
 The workspace retains its seven-day release age policy and strict build allowlist. `js-yaml@4.3.1` is overridden to the patched 4.3.2 because a transitive generator dependency pins the affected version. TypeScript stays within the supported ranges of the Svelte, ESLint, and OpenAPI tools.
 

@@ -1,3 +1,13 @@
+import {
+  readBalance,
+  quantity,
+  gasMargin,
+  transactionFees,
+  hex,
+  type WalletTransaction,
+} from "../wallet-rpc.js";
+import { NATIVE_TOKEN, isNativeToken } from "../native.js";
+import { balanceStore } from "./balanceStore.svelte.js";
 import { comparisonStore, type Quote } from "./comparisonStore.svelte.js";
 import { walletStore, type EIP1193Provider } from "./walletStore.svelte.js";
 import { autoRefreshStore } from "./autoRefreshStore.svelte.js";
@@ -29,17 +39,22 @@ function rejected(error: unknown): boolean {
     rejected(value.originalError)
   );
 }
-function hex(value: string | number | bigint): string {
-  return `0x${BigInt(value).toString(16)}`;
-}
 function allowanceKey(quote: Quote): string | null {
   const approval = quote.execution?.approval;
   return approval && quote.sender
     ? [quote.chainId, quote.sender, approval.token, approval.spender].join(":").toLowerCase()
     : null;
 }
+function sender(quote: Quote): string {
+  if (!quote.sender) throw new Error("Quote has no connected account. Refresh quotes.");
+  return quote.sender;
+}
 function quoteKey(quote: Quote): string {
   return JSON.stringify([
+    quote.provider,
+    quote.slippage_bps,
+    quote.mode,
+    quote.output_amount_raw,
     quote.chainId,
     quote.sender,
     quote.from,
@@ -54,6 +69,11 @@ class TransactionStore {
   swapStatus = $state<Record<string, TxStatus>>({});
   swapConfirmation = $state<SwapConfirmationData | null>(null);
   busy = $state(false);
+  checks = $state<
+    Record<string, { status: "checking" | "ready" | "approval" | "blocked"; message: string }>
+  >({});
+  private epoch = 0;
+  private checksSequence = new Map<string, number>();
   private confirmationResolve: ((confirmed: boolean) => void) | null = null;
   private allowanceRequests = new Map<string, number>();
 
@@ -75,7 +95,13 @@ class TransactionStore {
     );
   }
 
-  private async assertContext(quote: Quote, provider: EIP1193Provider): Promise<void> {
+  private async assertContext(
+    quote: Quote,
+    provider: EIP1193Provider,
+    requireFresh = false
+  ): Promise<void> {
+    if (requireFresh && !comparisonStore.isFresh(quote))
+      throw new Error("Quote expired. Refresh and review it again.");
     if (!this.matches(quote) || walletStore.provider !== provider)
       throw new Error("Wallet or quote changed. Refresh quotes.");
     const [chain, accounts] = await Promise.all([
@@ -83,6 +109,7 @@ class TransactionStore {
       provider.request({ method: "eth_accounts" }),
     ]);
     if (
+      (requireFresh && !comparisonStore.isFresh(quote)) ||
       !this.matches(quote) ||
       walletStore.provider !== provider ||
       typeof chain !== "string" ||
@@ -143,6 +170,13 @@ class TransactionStore {
     }
   }
 
+  invalidate(): void {
+    this.epoch++;
+    this.cancelSwap();
+    this.checks = {};
+    this.checksSequence.clear();
+  }
+
   confirmSwap(): void {
     this.finishConfirmation(true);
   }
@@ -190,6 +224,105 @@ class TransactionStore {
     walletStore.setMessage("Connect your wallet, then review a fresh quote.");
   }
 
+  private transaction(quote: Quote): WalletTransaction {
+    if (!quote.execution || !quote.sender)
+      throw new Error("Refresh the quote for your connected wallet.");
+    return {
+      from: quote.sender,
+      chainId: hex(quote.chainId),
+      to: quote.execution.to,
+      data: quote.execution.data,
+      value: hex(quote.execution.value),
+    };
+  }
+
+  private async requireTokenBalance(quote: Quote, provider: EIP1193Provider): Promise<void> {
+    if ((await readBalance(provider, sender(quote), quote.from)) < BigInt(quote.input_amount_raw))
+      throw new Error(`Insufficient ${quote.from_symbol || "sell-token"} balance.`);
+  }
+
+  private async refreshQuote(quote: Quote, provider: EIP1193Provider): Promise<Quote> {
+    await this.assertContext(quote, provider);
+    const epoch = this.epoch;
+    comparisonStore.selectedProvider = quote.provider;
+    await comparisonStore.compare({
+      chainId: quote.chainId,
+      from: quote.from,
+      to: quote.to,
+      amount: quote.amount,
+      slippageBps: quote.slippage_bps,
+      mode: quote.mode,
+      sender: sender(quote),
+    });
+    if (epoch !== this.epoch) throw new Error("Wallet or trade changed. Review a fresh quote.");
+    const fresh = comparisonStore.quotes.find((candidate) => candidate.provider === quote.provider);
+    if (!fresh || comparisonStore.error)
+      throw new Error(
+        `${quote.provider} is unavailable after refreshing. Select and review another route.`
+      );
+    await this.assertContext(fresh, provider);
+    return fresh;
+  }
+
+  getCheck(quote: Quote) {
+    return (
+      this.checks[quoteKey(quote)] ?? {
+        status: "checking" as const,
+        message: "Checking wallet balances, allowance, and gas…",
+      }
+    );
+  }
+
+  async refreshChecks(quote: Quote): Promise<void> {
+    const provider = walletStore.provider;
+    if (!provider || !quote.execution || !quote.sender || this.busy) return;
+    const key = quoteKey(quote);
+    const sequence = (this.checksSequence.get(key) ?? 0) + 1;
+    const epoch = this.epoch;
+    this.checksSequence.set(key, sequence);
+    const apply = (value: {
+      status: "checking" | "ready" | "approval" | "blocked";
+      message: string;
+    }) => {
+      if (epoch === this.epoch && this.checksSequence.get(key) === sequence)
+        this.checks[key] = value;
+    };
+    apply({ status: "checking", message: "Checking wallet balances, allowance, and gas…" });
+    try {
+      if (walletStore.chainId !== quote.chainId)
+        throw new Error("Wrong network. Switch your wallet network.");
+      await this.assertContext(quote, provider);
+      await this.requireTokenBalance(quote, provider);
+      const allowance =
+        !quote.execution.approval || isNativeToken(quote.from)
+          ? null
+          : await this.readAllowance(quote, provider);
+      const approval = allowance !== null && allowance < BigInt(quote.input_amount_raw);
+      const allowanceId = allowanceKey(quote);
+      if (allowanceId) this.allowances[allowanceId] = { amount: allowance, status: "idle" };
+      const simulated = BigInt(quote.gas_used ?? "0");
+      if (simulated <= 0n)
+        throw new Error("Gas check unavailable. Refresh quotes before continuing.");
+      const fees = await transactionFees(provider, this.transaction(quote), gasMargin(simulated));
+      const native = await readBalance(provider, quote.sender, NATIVE_TOKEN);
+      if (native < BigInt(quote.execution.value) + fees.reserve)
+        throw new Error("Insufficient gas balance for this swap.");
+      await this.assertContext(quote, provider);
+      apply({
+        status: approval ? "approval" : "ready",
+        message: approval
+          ? "Approval required before swapping."
+          : "Wallet checks passed. The route will be refreshed before you continue.",
+      });
+    } catch (error) {
+      apply({
+        status: "blocked",
+        message:
+          error instanceof Error ? error.message : "Wallet checks unavailable. Refresh to retry.",
+      });
+    }
+  }
+
   async approve(_routerName: string, quote: Quote): Promise<void> {
     const provider = walletStore.provider;
     if (!walletStore.isConnected || !provider) {
@@ -197,8 +330,10 @@ class TransactionStore {
       return;
     }
     if (!this.start()) return;
-    const key = allowanceKey(quote);
+    let key = allowanceKey(quote);
     try {
+      quote = await this.refreshQuote(quote, provider);
+      key = allowanceKey(quote);
       await this.assertContext(quote, provider);
       const approval = quote.execution?.approval;
       if (!key || !approval) return;
@@ -210,18 +345,28 @@ class TransactionStore {
         this.allowances[key] = { amount, status: "idle" };
         return;
       }
+      const tx: WalletTransaction = {
+        from: sender(quote),
+        chainId: hex(quote.chainId),
+        to: approval.token,
+        value: "0x0",
+        data: `0x095ea7b3${approval.spender.slice(2).toLowerCase().padStart(64, "0")}${MAX_UINT256}`,
+      };
+      await this.requireTokenBalance(quote, provider);
+      const gas = gasMargin(
+        quantity(
+          await provider.request({ method: "eth_estimateGas", params: [tx] }),
+          "Approval gas estimate"
+        )
+      );
+      const fees = await transactionFees(provider, tx, gas, true);
+      if ((await readBalance(provider, sender(quote), NATIVE_TOKEN)) < fees.reserve)
+        throw new Error("Insufficient gas balance for approval.");
+      await this.assertContext(quote, provider, true);
       this.allowances[key] = { amount: null, status: "pending" };
       const hash = await provider.request({
         method: "eth_sendTransaction",
-        params: [
-          {
-            from: quote.sender,
-            chainId: hex(quote.chainId),
-            to: approval.token,
-            value: "0x0",
-            data: `0x095ea7b3${approval.spender.slice(2).toLowerCase().padStart(64, "0")}${MAX_UINT256}`,
-          },
-        ],
+        params: [{ ...tx, gas: hex(gas), gasPrice: hex(fees.gasPrice) }],
       });
       if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
       walletStore.setMessage(`Approval submitted: ${hash}`);
@@ -230,6 +375,8 @@ class TransactionStore {
       await this.assertContext(quote, provider);
       this.allowances[key] = { amount: confirmedAmount, status: "idle" };
       walletStore.setMessage(`Approval confirmed: ${hash}`);
+      await this.refreshQuote(quote, provider);
+      balanceStore.clearCache();
     } catch (error) {
       if (key) this.allowances[key] = { amount: null, status: rejected(error) ? "idle" : "failed" };
       walletStore.setMessage(
@@ -252,8 +399,10 @@ class TransactionStore {
       return;
     }
     if (!this.start()) return;
-    const key = quoteKey(quote);
+    let key = quoteKey(quote);
     try {
+      quote = await this.refreshQuote(quote, provider);
+      key = quoteKey(quote);
       await this.assertContext(quote, provider);
       const confirmed = await new Promise<boolean>((resolve) => {
         this.confirmationResolve = resolve;
@@ -269,39 +418,41 @@ class TransactionStore {
       await this.assertContext(quote, provider);
       const execution = quote.execution;
       if (!execution) throw new Error("Quote has no execution data. Refresh quotes.");
-      const transaction = {
-        from: quote.sender,
-        chainId: hex(quote.chainId),
-        to: execution.to,
-        data: execution.data,
-        value: hex(execution.value),
-      };
-      const estimate = await provider.request({
-        method: "eth_estimateGas",
-        params: [transaction],
-      });
-      if (
-        typeof estimate !== "string" ||
-        !/^0x[0-9a-f]+$/i.test(estimate) ||
-        BigInt(estimate) <= 0n
-      )
+      await this.requireTokenBalance(quote, provider);
+      const transaction = this.transaction(quote);
+      const estimate = quantity(
+        await provider.request({ method: "eth_estimateGas", params: [transaction] }),
+        "Swap gas estimate"
+      );
+      if (estimate <= 0n)
         throw new Error("Wallet returned an invalid gas estimate. Refresh quotes.");
       const simulated = BigInt(quote.gas_used ?? "0");
-      const required = BigInt(estimate) > simulated ? BigInt(estimate) : simulated;
-      // A fresh estimate can be below observed simulation usage. Keep 20% headroom
-      // for cold state and gas forwarding; unused gas is not charged.
-      const gas = (required * 6n + 4n) / 5n;
-      await this.assertContext(quote, provider);
+      const gas = gasMargin(estimate > simulated ? estimate : simulated);
+      const fees = await transactionFees(provider, transaction, gas, true);
+      if (
+        (await readBalance(provider, sender(quote), NATIVE_TOKEN)) <
+        BigInt(execution.value) + fees.reserve
+      )
+        throw new Error("Insufficient gas balance for this swap.");
+      // Fee and gas reads can take time. Recheck spendability and identity immediately before sending.
+      await this.requireTokenBalance(quote, provider);
+      if (
+        quote.execution?.approval &&
+        (await this.readAllowance(quote, provider)) < BigInt(quote.input_amount_raw)
+      )
+        throw new Error("Approval required. Token allowance changed.");
+      await this.assertContext(quote, provider, true);
       this.swapStatus[key] = "pending";
       const hash = await provider.request({
         method: "eth_sendTransaction",
-        params: [{ ...transaction, gas: hex(gas) }],
+        params: [{ ...transaction, gas: hex(gas), gasPrice: hex(fees.gasPrice) }],
       });
       if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
       walletStore.setMessage(`Swap submitted: ${hash}`);
       await this.receipt(provider, hash, quote);
       this.swapStatus[key] = "confirmed";
       walletStore.setMessage(`Swap confirmed: ${hash}`);
+      balanceStore.clearCache();
     } catch (error) {
       this.swapStatus[key] = rejected(error) ? "idle" : "failed";
       walletStore.setMessage(
