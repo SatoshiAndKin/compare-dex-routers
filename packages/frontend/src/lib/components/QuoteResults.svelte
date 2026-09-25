@@ -1,14 +1,26 @@
 <script lang="ts">
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
+  import { balanceStore } from "../stores/balanceStore.svelte.js";
   import QuoteCard from "./QuoteCard.svelte";
+
+  const hasFullBalance = $derived(
+    comparisonStore.activeQuote !== null &&
+      transactionStore.matches(comparisonStore.activeQuote) &&
+      balanceStore.from.status === "ready" &&
+      balanceStore.from.raw !== null &&
+      balanceStore.from.raw >= BigInt(comparisonStore.activeQuote.input_amount_raw)
+  );
 </script>
 
 {#if comparisonStore.hasResults}
   <div class="quote-results">
-    <p class="price-simulation">
-      Price simulations use temporary funding. They do not prove that your wallet is ready to swap.
-    </p>
+    {#if !hasFullBalance}
+      <p class="price-simulation">
+        Price simulations use temporary funding. They do not prove that your wallet is ready to
+        swap.
+      </p>
+    {/if}
     {#if comparisonStore.recommendationReason}<div class="reason-box" role="status">
         {comparisonStore.recommendationReason}
       </div>{/if}
