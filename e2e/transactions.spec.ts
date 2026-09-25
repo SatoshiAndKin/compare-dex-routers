@@ -33,6 +33,7 @@ for (const scenario of [
     await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
     await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
     await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Price simulations use temporary funding/)).toHaveCount(0);
     if (scenario === "reject approval") {
       await page.evaluate(() =>
         (
