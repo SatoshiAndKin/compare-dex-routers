@@ -42,6 +42,14 @@ describe("provider results", () => {
       balanceStore.from.raw = 100000000n;
       await tick();
       expect(view.queryByText(notice)).toBeNull();
+      store.isLoading = true;
+      await tick();
+      expect(view.queryByText(notice)).toBeNull();
+      expect(view.getByRole("status", { name: "Quote loading status" })).toHaveTextContent(
+        "Refreshing quotes"
+      );
+      expect(view.getByRole("button", { name: "Execute swap" })).toBeDisabled();
+      store.isLoading = false;
       // A refreshed Exact Output route may require more input for the same requested output.
       if (mode === "targetOut") {
         store.quotes = [

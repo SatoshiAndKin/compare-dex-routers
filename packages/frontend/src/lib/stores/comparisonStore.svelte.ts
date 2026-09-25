@@ -27,6 +27,7 @@ class ComparisonStore {
   failures = $state<QuoteResponse["failures"]>([]);
   error = $state<string | null>(null);
   isLoading = $state(false);
+  isStale = $state(false);
   gasPriceGwei = $state<string | null>(null);
   recommendation = $state<string | null>(null);
   recommendationReason = $state<string | null>(null);
@@ -54,8 +55,11 @@ class ComparisonStore {
     this.isLoading = false;
   }
 
-  invalidate(): void {
+  invalidate(retainResults = false): void {
     this.cancel();
+    // Retained results are display-only until a replacement request succeeds.
+    this.isStale = retainResults;
+    if (retainResults) return;
     this.quotes = [];
     this.failures = [];
     this.error = null;
@@ -67,7 +71,7 @@ class ComparisonStore {
   }
 
   isCurrent(quote: Quote): boolean {
-    return !this.isLoading && !this.error && this.quotes.includes(quote);
+    return !this.isStale && !this.isLoading && !this.error && this.quotes.includes(quote);
   }
 
   isFresh(quote: Quote): boolean {
@@ -79,6 +83,7 @@ class ComparisonStore {
     this.mode = params.mode;
     this.error = null;
     this.isLoading = true;
+    this.isStale = true;
     const sequence = this.sequence;
     const controller = new AbortController();
     this.abortController = controller;
@@ -91,6 +96,7 @@ class ComparisonStore {
       this.recommendation = data.recommendation;
       this.recommendationReason = data.recommendation_reason;
       this.updatedAt = Date.now();
+      this.isStale = false;
     } catch (error) {
       if (sequence !== this.sequence || controller.signal.aborted) return;
       this.error = error instanceof Error ? error.message : "Quote request failed";

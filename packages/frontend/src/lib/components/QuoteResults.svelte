@@ -2,11 +2,18 @@
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { balanceStore } from "../stores/balanceStore.svelte.js";
+  import { walletStore } from "../stores/walletStore.svelte.js";
+  import { formStore } from "../stores/formStore.svelte.js";
   import QuoteCard from "./QuoteCard.svelte";
 
   const hasFullBalance = $derived(
     comparisonStore.activeQuote !== null &&
-      transactionStore.matches(comparisonStore.activeQuote) &&
+      walletStore.provider !== null &&
+      walletStore.address?.toLowerCase() === comparisonStore.activeQuote.sender?.toLowerCase() &&
+      walletStore.chainId === comparisonStore.activeQuote.chainId &&
+      formStore.chainId === comparisonStore.activeQuote.chainId &&
+      formStore.fromToken?.address.toLowerCase() ===
+        comparisonStore.activeQuote.from.toLowerCase() &&
       balanceStore.from.status === "ready" &&
       balanceStore.from.raw !== null &&
       balanceStore.from.raw >= BigInt(comparisonStore.activeQuote.input_amount_raw)
@@ -14,7 +21,15 @@
 </script>
 
 {#if comparisonStore.hasResults}
-  <div class="quote-results">
+  <div class="quote-results" aria-busy={comparisonStore.isLoading}>
+    <div class="quote-status" role="status" aria-label="Quote loading status">
+      {#if comparisonStore.isLoading}
+        <span class="spinner" aria-hidden="true"></span>
+        {comparisonStore.quotes.length ? "Refreshing quotes…" : "Loading provider prices…"}
+      {:else if comparisonStore.isStale && !comparisonStore.error}
+        Previous quote. Enter a valid trade to refresh.
+      {/if}
+    </div>
     {#if !hasFullBalance}
       <p class="price-simulation">
         Price simulations use temporary funding. They do not prove that your wallet is ready to
@@ -36,9 +51,7 @@
         isRecommended={comparisonStore.activeQuote.provider === comparisonStore.recommendation}
         gasPriceGwei={comparisonStore.gasPriceGwei}
       />
-      {#if comparisonStore.isLoading}<p role="status">Refreshing prices…</p>{/if}
-    {:else if comparisonStore.isLoading}<p role="status">Loading provider prices…</p>
-    {:else}<p class="quote-error" role="alert">
+    {:else if !comparisonStore.isLoading}<p class="quote-error" role="alert">
         {comparisonStore.selectedProvider
           ? `${comparisonStore.selectedProvider} is unavailable. Select and review another route.`
           : "No successful price simulations. Review provider failures below."}
@@ -80,6 +93,34 @@
     margin-top: 1.5rem;
     border: 2px solid var(--border, #000);
     background: var(--bg-card, #fff);
+  }
+
+  .quote-status {
+    min-height: 2.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+  }
+  .spinner {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    border: 2px solid var(--border-light, #e0e0e0);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: none;
+    }
   }
 
   .provider-list {
