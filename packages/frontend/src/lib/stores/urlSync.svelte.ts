@@ -4,6 +4,7 @@
  * Ported from src/client/url-sync.ts for Svelte 5.
  */
 
+import { canonicalToken } from "../native.js";
 import { formStore } from "./formStore.svelte.js";
 import type { TokenInfo } from "./formStore.svelte.js";
 
@@ -30,10 +31,10 @@ export function parseUrlParams(): UrlParams {
   }
 
   const from = params.get("from");
-  if (from) result.from = from;
+  if (from) result.from = canonicalToken(from);
 
   const to = params.get("to");
-  if (to) result.to = to;
+  if (to) result.to = canonicalToken(to);
 
   const amount = params.get("amount");
   if (amount) result.amount = amount;
@@ -75,10 +76,10 @@ export function updateUrl(params: UrlParams): void {
     url.searchParams.set("chainId", String(params.chainId));
   }
   if (params.from) {
-    url.searchParams.set("from", params.from);
+    url.searchParams.set("from", canonicalToken(params.from));
   }
   if (params.to) {
-    url.searchParams.set("to", params.to);
+    url.searchParams.set("to", canonicalToken(params.to));
   }
   if (params.amount) {
     url.searchParams.set("amount", params.amount);
@@ -112,7 +113,7 @@ export function applyUrlParamsToForm(urlParams: UrlParams): void {
 
   if (urlParams.from) {
     const token: TokenInfo = {
-      address: urlParams.from,
+      address: canonicalToken(urlParams.from),
       symbol: "",
       decimals: null,
       chainId: formStore.chainId,
@@ -122,7 +123,7 @@ export function applyUrlParamsToForm(urlParams: UrlParams): void {
 
   if (urlParams.to) {
     const token: TokenInfo = {
-      address: urlParams.to,
+      address: canonicalToken(urlParams.to),
       symbol: "",
       decimals: null,
       chainId: formStore.chainId,

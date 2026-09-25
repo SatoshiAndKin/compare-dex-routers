@@ -28,7 +28,7 @@ const networks = [
     chain: base,
     weth: "0x4200000000000000000000000000000000000006",
     usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    provider: "spandex",
+    provider: "kyberswap",
   },
 ] as const;
 
@@ -72,12 +72,12 @@ for (const network of networks) {
         await expect
           .poll(
             async () => {
-              const response = await request.get(`http://127.0.0.1:3120/compare?${params}`, {
+              const response = await request.get(`http://127.0.0.1:3120/quote?${params}`, {
                 timeout: 30_000,
               });
               expect(response.ok()).toBe(true);
-              const result = (await response.json()) as components["schemas"]["CompareResult"];
-              const successful = [result.spandex, result.curve].filter((quote) => quote !== null);
+              const result = (await response.json()) as components["schemas"]["QuoteResponse"];
+              const successful = result.quotes;
               for (const quote of successful) {
                 expect(quote.sender).toBeNull();
                 expect(quote.execution).toBeNull();
@@ -147,11 +147,12 @@ for (const network of networks) {
         await expect
           .poll(
             async () => {
-              const result = await request.get(
-                `http://127.0.0.1:3120/${network.provider === "curve" ? "quote-curve" : "quote"}?${params}`,
-                { timeout: 30_000 }
-              );
-              return result.ok();
+              const result = await request.get(`http://127.0.0.1:3120/quote?${params}`, {
+                timeout: 30_000,
+              });
+              if (!result.ok()) return false;
+              const body = (await result.json()) as components["schemas"]["QuoteResponse"];
+              return body.quotes.some((candidate) => candidate.provider === network.provider);
             },
             { timeout: 60_000, intervals: [1_000, 2_000, 5_000] }
           )
@@ -177,18 +178,21 @@ for (const network of networks) {
         await expect(page.getByText(ACCOUNT, { exact: true }).first()).toBeVisible();
         const comparing = page.waitForResponse(
           (response) =>
-            response.url().includes("/api/compare?") &&
+            response.url().includes("/api/quote?") &&
             new URL(response.url()).searchParams.get("sender")?.toLowerCase() ===
               ACCOUNT.toLowerCase()
         );
         await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
-        const data = (await (await comparing).json()) as components["schemas"]["CompareResult"];
-        let quote = data[network.provider];
-        expect(quote, `No ${network.provider} quote returned`).not.toBeNull();
+        const data = (await (await comparing).json()) as components["schemas"]["QuoteResponse"];
+        let quote = data.quotes.find((candidate) => candidate.provider === network.provider);
+        const selectedProvider = quote?.provider;
+        expect(
+          quote,
+          `No ${network.provider} quote returned: ${JSON.stringify(data.failures)}`
+        ).toBeDefined();
         if (!quote?.execution) throw new Error("Quote has no execution payload");
-        await page
-          .getByRole("tab", { name: network.provider === "curve" ? /Curve/ : /Spandex/ })
-          .click();
+        await page.getByText("Provider results", { exact: false }).click();
+        await page.getByRole("button", { name: `Select ${selectedProvider}`, exact: true }).click();
         const outputBefore = await client.readContract({
           address: network.usdc,
           abi: erc20Abi,
@@ -223,18 +227,21 @@ for (const network of networks) {
               break;
             }
             const refreshed = page.waitForResponse(
-              (response) => response.url().includes("/api/compare?") && response.ok()
+              (response) => response.url().includes("/api/quote?") && response.ok()
             );
             await page.getByRole("button", { name: "Approve token spending" }).click();
             approvals++;
-            quote = ((await (await refreshed).json()) as components["schemas"]["CompareResult"])[
-              network.provider
-            ];
+            await expect(
+              page.getByRole("status").filter({ hasText: /^Approval confirmed:/ })
+            ).toBeVisible({ timeout: 30000 });
+            quote = (
+              (await (await refreshed).json()) as components["schemas"]["QuoteResponse"]
+            ).quotes.find((candidate) => candidate.provider === selectedProvider);
             expect(await client.readContract(allowanceRequest)).toBeGreaterThanOrEqual(required);
             if (!quote?.execution) throw new Error("Post-approval quote has no execution payload");
             await expect(
-              page.getByRole("tab", { name: network.provider === "curve" ? /Curve/ : /Spandex/ })
-            ).toHaveAttribute("aria-selected", "true");
+              page.getByRole("button", { name: `Select ${selectedProvider}`, exact: true })
+            ).toHaveAttribute("aria-pressed", "true");
           }
         }
         await page.getByRole("button", { name: "Execute swap" }).click();
@@ -322,3 +329,72 @@ for (const network of networks) {
     });
   }
 }
+
+test("Ethereum: unfunded 1,000 USDC to crvUSD retains prices and blocks submission", async ({
+  page,
+  request,
+}, info) => {
+  const url = process.env.FORK_TEST_RPC_1;
+  if (!url) throw new Error("Missing Ethereum fork");
+  if (new URL(url).hostname !== "127.0.0.1") throw new Error("Use an isolated local fork");
+  const account: Address = "0x56f63e8e92a743b9e6a1f459d2c3870e15b4a062";
+  const usdc: Address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+  const crvusd = "0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E";
+  const client = createPublicClient({ chain: mainnet, transport: http(url) });
+  const control = createTestClient({ mode: "anvil", transport: http(url) });
+  const snapshot = await control.snapshot();
+  let sends = 0;
+  try {
+    await control.setBalance({ address: account, value: 0n });
+    expect(
+      await client.readContract({
+        address: usdc,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [account],
+      })
+    ).toBe(0n);
+    const params = new URLSearchParams({
+      chainId: "1",
+      from: usdc,
+      to: crvusd,
+      amount: "1000",
+      sender: account,
+    });
+    const response = await request.get(`http://127.0.0.1:3120/quote?${params}`, { timeout: 60000 });
+    expect(response.ok()).toBe(true);
+    const prices = (await response.json()) as components["schemas"]["QuoteResponse"];
+    expect(prices.quotes.some((quote) => quote.provider === "curve")).toBe(true);
+    expect(prices.simulation_basis).toBe("temporary_funding");
+    for (const quote of prices.quotes) expect(quote.sender).toBe(account);
+    await info.attach("unfunded-price-simulations", {
+      body: JSON.stringify(prices, null, 2),
+      contentType: "application/json",
+    });
+    await installWallet(page, 1, account, async (method, params) => {
+      if (method === "eth_sendTransaction") sends++;
+      const data = (await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      }).then((r) => r.json())) as { result?: unknown; error?: { message: string } };
+      if (data.error) throw new Error(data.error.message);
+      return data.result;
+    });
+    params.delete("sender");
+    await page.goto(`/?${params}`);
+    await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
+    await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+    await expect(page.getByLabel("From token balance")).toContainText("Balance: 0 USDC");
+    await expect(page.getByText("Insufficient USDC balance.", { exact: true })).toBeVisible({
+      timeout: 60000,
+    });
+    await expect(page.getByRole("button", { name: "Execute swap" })).toBeDisabled();
+    await expect(page.getByText(/Price simulations use temporary funding/)).toBeVisible();
+    expect(sends).toBe(0);
+    expect(await client.getBalance({ address: account })).toBe(0n);
+    await page.screenshot({ path: info.outputPath("unfunded-usdc-crvusd.png"), fullPage: true });
+  } finally {
+    await control.revert({ id: snapshot });
+  }
+});

@@ -2,6 +2,7 @@ import type { components } from "../../generated/api-types.js";
 import { apiClient } from "../api.js";
 
 export type Quote = components["schemas"]["Quote"];
+export type QuoteResponse = components["schemas"]["QuoteResponse"];
 export interface CompareParams {
   chainId: number;
   from: string;
@@ -12,25 +13,37 @@ export interface CompareParams {
   sender?: string;
 }
 
+export async function requestQuotes(
+  params: CompareParams,
+  signal?: AbortSignal
+): Promise<QuoteResponse> {
+  const { data, error } = await apiClient.GET("/quote", { params: { query: params }, signal });
+  if (error || !data) throw new Error(error?.error ?? "Quote request failed");
+  return data;
+}
+
 class ComparisonStore {
-  spandexResult = $state<Quote | null>(null);
-  curveResult = $state<Quote | null>(null);
-  spandexError = $state<string | null>(null);
-  curveError = $state<string | null>(null);
+  quotes = $state<Quote[]>([]);
+  failures = $state<QuoteResponse["failures"]>([]);
+  error = $state<string | null>(null);
   isLoading = $state(false);
   gasPriceGwei = $state<string | null>(null);
-  recommendation = $state<"spandex" | "curve" | null>(null);
+  recommendation = $state<string | null>(null);
   recommendationReason = $state<string | null>(null);
-  selectedProvider = $state<"spandex" | "curve" | null>(null);
-  activeProvider = $derived(this.selectedProvider ?? this.recommendation ?? "spandex");
+  selectedProvider = $state<string | null>(null);
+  activeProvider = $derived(this.selectedProvider ?? this.recommendation);
+  activeQuote = $derived(
+    this.quotes.find((quote) => quote.provider === this.activeProvider) ?? null
+  );
   mode = $state<"exactIn" | "targetOut">("exactIn");
   hasResults = $derived(
-    this.spandexResult !== null ||
-      this.curveResult !== null ||
-      this.spandexError !== null ||
-      this.curveError !== null ||
-      this.isLoading
+    this.quotes.length > 0 ||
+      this.failures.length > 0 ||
+      this.error !== null ||
+      this.isLoading ||
+      this.recommendationReason !== null
   );
+  private updatedAt = 0;
   private abortController: AbortController | null = null;
   private sequence = 0;
 
@@ -42,51 +55,45 @@ class ComparisonStore {
   }
 
   invalidate(): void {
-    this.clearResults();
-    this.selectedProvider = null;
-  }
-
-  private clearResults(): void {
     this.cancel();
-    this.spandexResult = null;
-    this.curveResult = null;
-    this.spandexError = null;
-    this.curveError = null;
+    this.quotes = [];
+    this.failures = [];
+    this.error = null;
     this.gasPriceGwei = null;
     this.recommendation = null;
     this.recommendationReason = null;
+    this.selectedProvider = null;
+    this.updatedAt = 0;
   }
 
   isCurrent(quote: Quote): boolean {
-    return !this.isLoading && (quote === this.spandexResult || quote === this.curveResult);
+    return !this.isLoading && !this.error && this.quotes.includes(quote);
+  }
+
+  isFresh(quote: Quote): boolean {
+    return this.isCurrent(quote) && Date.now() - this.updatedAt < 30_000;
   }
 
   async compare(params: CompareParams): Promise<void> {
-    this.clearResults();
+    this.cancel();
     this.mode = params.mode;
+    this.error = null;
     this.isLoading = true;
     const sequence = this.sequence;
     const controller = new AbortController();
     this.abortController = controller;
     try {
-      const { data, error } = await apiClient.GET("/compare", {
-        params: { query: params },
-        signal: controller.signal,
-      });
+      const data = await requestQuotes(params, controller.signal);
       if (sequence !== this.sequence || controller.signal.aborted) return;
-      if (error || !data) throw new Error(error?.error ?? "Comparison failed");
-      this.spandexResult = data.spandex;
-      this.curveResult = data.curve;
-      this.spandexError = data.spandex_error;
-      this.curveError = data.curve_error;
+      this.quotes = data.quotes;
+      this.failures = data.failures;
       this.gasPriceGwei = data.gas_price_gwei;
       this.recommendation = data.recommendation;
       this.recommendationReason = data.recommendation_reason;
+      this.updatedAt = Date.now();
     } catch (error) {
       if (sequence !== this.sequence || controller.signal.aborted) return;
-      const message = error instanceof Error ? error.message : "Comparison failed";
-      this.spandexError = message;
-      this.curveError = message;
+      this.error = error instanceof Error ? error.message : "Quote request failed";
     } finally {
       if (sequence === this.sequence) {
         this.isLoading = false;
@@ -95,5 +102,4 @@ class ComparisonStore {
     }
   }
 }
-
 export const comparisonStore = new ComparisonStore();

@@ -88,6 +88,8 @@
     const to = formStore.toToken;
     const chainId = formStore.chainId;
     const tokens = tokenListStore.allTokens;
+    const nativeAssets = configStore.nativeAssets;
+    void nativeAssets;
     void from;
     void to;
     void chainId;
@@ -205,7 +207,7 @@
     <QuoteResults />
   </main>
   <footer class="space-footer">
-    <span aria-hidden="true">✦</span> Spandex + Curve · Compare routes. Choose your swap.
+    <span aria-hidden="true">✦</span> Powered by Spandex · Compare routes. Choose your swap.
     <span aria-hidden="true">✦</span>
   </footer>
 </div>

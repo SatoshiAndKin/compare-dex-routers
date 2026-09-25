@@ -35,6 +35,19 @@ describe("preview simulation state", () => {
     expect(readContract).not.toHaveBeenCalled();
   });
 
+  it("preserves connected-wallet code while temporarily funding native and token input", async () => {
+    const native = await createPreviewState(
+      client,
+      ACCOUNT,
+      "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+      true
+    )(1n);
+    expect(native).toEqual([{ address: ACCOUNT, balance: parseEther("10000") + 1n }]);
+    const token = await createPreviewState(client, ACCOUNT, TOKEN, true)(123n);
+    expect(token[0]).toEqual({ address: ACCOUNT, balance: parseEther("10000") });
+    expect(token[1]?.stateDiff).toEqual([{ slot: BALANCE_SLOT, value: toHex(123n, { size: 32 }) }]);
+  });
+
   it("discovers the actual balance slot and funds each quote with its exact input", async () => {
     const state = createPreviewState(client, ACCOUNT, TOKEN);
     const results = await Promise.all([state(1000000n), state(1250000n)]);

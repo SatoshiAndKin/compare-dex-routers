@@ -36,7 +36,7 @@ The `/metrics` endpoint exposes Prometheus-compatible metrics. Configure alerts 
 
 # Slow responses
 - alert: SlowQuoteResponse
-  expr: http_request_duration_ms{path=~"/quote|/compare"} > 30000
+  expr: http_request_duration_ms{path=~"/quote"} > 30000
   for: 5m
   labels:
     severity: warning

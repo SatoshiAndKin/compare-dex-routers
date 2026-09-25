@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../curve-worker-provider.js", () => ({ curveInWorker: vi.fn(() => ({})) }));
-
 vi.mock("viem", async (importOriginal) => {
   const actual = await importOriginal<typeof import("viem")>();
   return {
@@ -113,20 +111,19 @@ describe("config", () => {
       delete process.env.ZEROX_API_KEY;
       delete process.env.FABRIC_API_KEY;
       const { getSpandexConfig } = await loadConfig();
-      const { zeroX } = await import("@spandex/core");
-      const { curveInWorker } = await import("../curve-worker-provider.js");
+      const { zeroX, curve } = await import("@spandex/core");
       getSpandexConfig();
-      expect(curveInWorker).toHaveBeenCalledWith({ rpcUrlLookup: expect.any(Function) });
+      expect(curve).toHaveBeenCalledWith({ rpcUrlLookup: expect.any(Function) });
       expect(zeroX).not.toHaveBeenCalled();
     });
 
-    it("uses custom providers when FABRIC_API_KEY is set", async () => {
+    it("omits the upstream-deprecated Fabric provider", async () => {
       process.env.FABRIC_API_KEY = "fab-key";
       delete process.env.ZEROX_API_KEY;
       const { getSpandexConfig } = await loadConfig();
       const { fabric } = await import("@spandex/core");
       getSpandexConfig();
-      expect(fabric).toHaveBeenCalled();
+      expect(fabric).not.toHaveBeenCalled();
     });
 
     it("includes zeroX provider when ZEROX_API_KEY is set", async () => {

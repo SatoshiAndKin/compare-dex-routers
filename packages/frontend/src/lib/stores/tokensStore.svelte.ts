@@ -5,6 +5,8 @@
  * returns from tokenListStore.allTokens (which includes custom lists and local tokens).
  */
 
+import { configStore } from "./configStore.svelte.js";
+import { canonicalToken, isNativeToken } from "../native.js";
 import { apiClient } from "../api.js";
 import type { TokenInfo } from "./formStore.svelte.js";
 import { tokenListStore } from "./tokenListStore.svelte.js";
@@ -23,13 +25,15 @@ class TokensStore {
    */
   getForChain(chainId: number): TokenInfo[] {
     const listStoreTokens = tokenListStore.allTokens;
-    if (listStoreTokens.length > 0) {
-      return listStoreTokens.filter((t) => t.chainId === chainId) as TokenInfo[];
-    }
-    return this.allTokens.filter((t) => t.chainId === chainId);
+    const tokens = (listStoreTokens.length > 0 ? listStoreTokens : this.allTokens).filter(
+      (token) => token.chainId === chainId && !isNativeToken(token.address)
+    );
+    const native = configStore.nativeAssets[String(chainId)];
+    return native ? [{ ...native, name: `${native.name} — Native` }, ...tokens] : tokens;
   }
 
   async resolve(chainId: number, address: string): Promise<TokenInfo> {
+    address = canonicalToken(address);
     const known = this.getForChain(chainId).find(
       (token) => token.address.toLowerCase() === address.toLowerCase()
     );

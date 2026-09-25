@@ -1,200 +1,59 @@
-import { configStore } from "../lib/stores/configStore.svelte.js";
-import { makeQuote, FROM, TO } from "./quote-fixture.js";
-import { render, fireEvent } from "@testing-library/svelte";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { cleanup, render, fireEvent } from "@testing-library/svelte";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import QuoteResults from "../lib/components/QuoteResults.svelte";
-import { comparisonStore } from "../lib/stores/comparisonStore.svelte.js";
-
-// Mock fetch globally for tests that trigger compare()
-const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
-
-function resetComparisonStore() {
-  comparisonStore.spandexResult = null;
-  comparisonStore.curveResult = null;
-  comparisonStore.spandexError = null;
-  comparisonStore.curveError = null;
-  comparisonStore.isLoading = false;
-  comparisonStore.isLoading = false;
-  comparisonStore.gasPriceGwei = null;
-  comparisonStore.recommendation = null;
-  comparisonStore.recommendationReason = null;
-  comparisonStore.selectedProvider = null;
-  comparisonStore.mode = "exactIn";
-  configStore.flags.curve_enabled = true;
-}
-
-const spandexQuote = makeQuote();
-
-const curveQuote = makeQuote({
-  provider: "curve",
-  output_amount: "99.98",
-  output_amount_raw: "99980000",
-  gas_cost_native: "0.003",
-  route: {
-    nodes: [
-      { address: FROM, symbol: "USDC" },
-      { address: TO, symbol: "USDT" },
-    ],
-    edges: [
-      {
-        source: FROM,
-        target: TO,
-        key: "pool1",
-        value: 1,
-        address: "0x0000000000000000000000000000000000000001",
-      },
-    ],
-  },
+import { comparisonStore as store } from "../lib/stores/comparisonStore.svelte.js";
+import { walletStore } from "../lib/stores/walletStore.svelte.js";
+import { makeQuote } from "./quote-fixture.js";
+beforeEach(() => {
+  store.invalidate();
+  walletStore.address = null;
+  walletStore.provider = null;
 });
-
-describe("QuoteResults", () => {
-  beforeEach(() => {
-    resetComparisonStore();
-    mockFetch.mockReset();
+afterEach(cleanup);
+describe("provider results", () => {
+  it("renders no results before a request", () => {
+    expect(render(QuoteResults).container.querySelector(".quote-results")).toBeNull();
   });
-
-  it("renders nothing when hasResults is false (no data, no loading)", () => {
-    const { container } = render(QuoteResults);
-    const results = container.querySelector(".quote-results");
-    expect(results).toBeNull();
+  it("shows one recommended route and an expandable provider list without tabs", () => {
+    store.quotes = [makeQuote(), makeQuote({ provider: "curve" })];
+    store.recommendation = "0x";
+    const view = render(QuoteResults);
+    expect(view.queryAllByRole("tab")).toEqual([]);
+    expect(view.getByText("RECOMMENDED")).toBeVisible();
+    expect(view.container.querySelectorAll(".quote-card")).toHaveLength(1);
+    expect(view.getByText(/Price simulations use temporary funding/)).toBeVisible();
+    expect(view.container.querySelector("details.provider-list")?.hasAttribute("open")).toBe(false);
   });
-
-  it("renders both tabs when both quotes are loaded", () => {
-    comparisonStore.spandexResult = spandexQuote;
-    comparisonStore.curveResult = curveQuote;
-    comparisonStore.recommendation = "curve";
-    comparisonStore.recommendationReason = "Curve outputs more.";
-
-    const { getAllByRole } = render(QuoteResults);
-    const tabs = getAllByRole("tab");
-    expect(tabs).toHaveLength(2);
+  it("selects a provider without changing the server recommendation", async () => {
+    store.quotes = [makeQuote(), makeQuote({ provider: "curve", output_amount: "98" })];
+    store.recommendation = "0x";
+    const view = render(QuoteResults);
+    await fireEvent.click(view.getByText(/Provider results and failures/));
+    await fireEvent.click(view.getByRole("button", { name: "Select curve" }));
+    expect(store.selectedProvider).toBe("curve");
+    expect(store.recommendation).toBe("0x");
+    expect(view.getByText("Via curve")).toBeVisible();
   });
-
-  it("tab labels show Curve and Spandex when recommendation is curve", () => {
-    comparisonStore.spandexResult = spandexQuote;
-    comparisonStore.curveResult = curveQuote;
-    comparisonStore.recommendation = "curve";
-    comparisonStore.recommendationReason = "Curve outputs more.";
-
-    const { getAllByRole } = render(QuoteResults);
-    const tabs = getAllByRole("tab");
-    const tabTexts = tabs.map((t) => t.textContent?.trim());
-    expect(tabTexts).toContain("Curve");
-    expect(tabTexts).toContain("Spandex");
-  });
-
-  it("recommended tab is active by default", () => {
-    comparisonStore.spandexResult = spandexQuote;
-    comparisonStore.recommendation = "spandex";
-    comparisonStore.recommendationReason = "Spandex outputs more.";
-    configStore.flags.curve_enabled = false;
-
-    const { getAllByRole } = render(QuoteResults);
-    const tabs = getAllByRole("tab");
-    const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
-    expect(activeTab).toBeTruthy();
-  });
-
-  it("clicking alternative tab switches the active tab", async () => {
-    comparisonStore.spandexResult = spandexQuote;
-    comparisonStore.curveResult = curveQuote;
-    comparisonStore.recommendation = "spandex";
-    comparisonStore.recommendationReason = "Spandex outputs more.";
-
-    const { getAllByRole } = render(QuoteResults);
-    const tabs = getAllByRole("tab");
-    const altTab = tabs.find((t) => t.getAttribute("data-tab") === "alternative");
-    expect(altTab).toBeTruthy();
-
-    await fireEvent.click(altTab!);
-    expect(altTab!.getAttribute("aria-selected")).toBe("true");
-  });
-
-  it("keeps the chosen router when a refresh changes the recommendation", async () => {
-    comparisonStore.spandexResult = spandexQuote;
-    comparisonStore.curveResult = curveQuote;
-    comparisonStore.recommendation = "curve";
-    const { getByRole } = render(QuoteResults);
-    await fireEvent.click(getByRole("tab", { name: "Spandex" }));
-    comparisonStore.recommendation = "spandex";
-    await import("svelte").then(({ tick }) => tick());
-    expect(getByRole("tab", { name: "Spandex" }).getAttribute("aria-selected")).toBe("true");
-    expect(getByRole("tabpanel").textContent).toContain("Via Spandex");
-  });
-
-  it("shows loading indicators when both are loading", () => {
-    comparisonStore.isLoading = true;
-    comparisonStore.isLoading = true;
-
-    const { getAllByRole } = render(QuoteResults);
-    const tabs = getAllByRole("tab");
-    const tabTexts = tabs.map((t) => t.textContent?.trim());
-    expect(tabTexts.every((t) => t === "Loading...")).toBe(true);
-  });
-
-  it("shows recommendation reason when recommendation is set", () => {
-    comparisonStore.spandexResult = spandexQuote;
-    comparisonStore.curveResult = curveQuote;
-    comparisonStore.recommendation = "curve";
-    comparisonStore.recommendationReason = "Curve outputs 0.03 USDT more (+0.030%).";
-
-    const { getByText } = render(QuoteResults);
-    expect(getByText(/Curve outputs 0.03 USDT more/)).toBeTruthy();
-  });
-
-  it("shows combined error message when both routers fail", () => {
-    comparisonStore.spandexError = "Insufficient liquidity";
-    comparisonStore.curveError = "Pool not found";
-    comparisonStore.isLoading = false;
-    comparisonStore.isLoading = false;
-
-    const { getByRole } = render(QuoteResults);
-    const alert = getByRole("alert");
-    expect(alert).toBeTruthy();
-    expect(alert.textContent).toContain("No quotes available");
-    expect(alert.textContent).toContain("Insufficient liquidity");
-    expect(alert.textContent).toContain("Pool not found");
-  });
-
-  it("shows only one tab in Curve is disabled", () => {
-    comparisonStore.spandexResult = spandexQuote;
-    comparisonStore.recommendation = "spandex";
-    comparisonStore.recommendationReason = "Only Spandex is available on this chain.";
-    configStore.flags.curve_enabled = false;
-
-    const { getAllByRole } = render(QuoteResults);
-    const tabs = getAllByRole("tab");
-    expect(tabs).toHaveLength(1);
-  });
-
-  it("shows RECOMMENDED badge on the recommended quote card", () => {
-    comparisonStore.spandexResult = spandexQuote;
-    comparisonStore.curveResult = curveQuote;
-    comparisonStore.recommendation = "spandex";
-    comparisonStore.recommendationReason = "Spandex outputs more.";
-
-    const { getByText } = render(QuoteResults);
-    expect(getByText("RECOMMENDED")).toBeTruthy();
-  });
-
-  it("renders QuoteResults container when loading starts", () => {
-    comparisonStore.isLoading = true;
-    comparisonStore.isLoading = true;
-
-    const { container } = render(QuoteResults);
-    const results = container.querySelector(".quote-results");
-    expect(results).not.toBeNull();
-  });
-
-  it("shows spandex error in recommended tab when spandex fails but curve succeeds", () => {
-    comparisonStore.spandexError = "Spandex failed";
-    comparisonStore.curveResult = curveQuote;
-    comparisonStore.recommendation = "curve";
-    comparisonStore.recommendationReason = "Only Curve returned a quote.";
-
-    const { getByText } = render(QuoteResults);
-    // Recommended tab shows Curve (the winner), which has the result
-    expect(getByText(/99\.98/)).toBeTruthy();
+  it("shows a selected provider's disappearance and its failure without switching", () => {
+    store.quotes = [makeQuote()];
+    store.recommendation = "0x";
+    store.selectedProvider = "curve";
+    store.failures = [
+      {
+        provider: "curve",
+        stage: "simulation",
+        error: {
+          name: "Error",
+          message: "No route for this trade",
+          code: null,
+          cause: null,
+          details: null,
+        },
+      },
+    ];
+    const view = render(QuoteResults);
+    expect(view.getByRole("alert")).toHaveTextContent("curve is unavailable");
+    expect(view.queryByText("Via 0x")).toBeNull();
+    expect(view.container.textContent).toContain("No route for this trade");
   });
 });

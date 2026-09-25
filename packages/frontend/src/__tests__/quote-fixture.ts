@@ -37,20 +37,22 @@ export function makeQuote(overrides: Partial<Quote> = {}): Quote {
   };
 }
 export function makeComparison(
-  overrides: Partial<components["schemas"]["CompareResult"]> = {}
-): components["schemas"]["CompareResult"] {
+  overrides: Partial<components["schemas"]["QuoteResponse"]> = {}
+): components["schemas"]["QuoteResponse"] {
   return {
-    spandex: makeQuote(),
-    curve: makeQuote({ provider: "curve", output_amount: "99.98", output_amount_raw: "99980000" }),
-    spandex_error: null,
-    curve_error: null,
-    recommendation: "spandex",
+    quotes: [
+      makeQuote(),
+      makeQuote({ provider: "curve", output_amount: "99.98", output_amount_raw: "99980000" }),
+    ],
+    failures: [],
+    simulation_basis: "temporary_funding",
+    simulation_account: SENDER,
+    wallet_readiness: "unchecked",
+    recommendation: "0x",
     recommendation_reason: "Highest output after gas in ETH.",
     recommendation_basis: "gas_adjusted",
     gas_price_gwei: "20",
     native_currency: "ETH",
-    input_to_native_rate: null,
-    output_to_native_rate: "0.005",
     mode: "exactIn",
     ...overrides,
   };

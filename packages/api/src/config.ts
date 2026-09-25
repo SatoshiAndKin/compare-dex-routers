@@ -1,7 +1,7 @@
 import {
   createConfig,
   isNativeToken,
-  fabric,
+  curve,
   zeroX,
   kyberswap,
   nordstern,
@@ -14,7 +14,6 @@ import { createPublicClient, http, type PublicClient, getAddress, type Address }
 import { mainnet, base, arbitrum, optimism, polygon, bsc, avalanche } from "viem/chains";
 import { isEnabled } from "./feature-flags.js";
 import { logger } from "./logger.js";
-import { curveInWorker } from "./curve-worker-provider.js";
 
 const CHAIN_DEFINITIONS = {
   1: mainnet,
@@ -25,7 +24,7 @@ const CHAIN_DEFINITIONS = {
   56: bsc,
   43114: avalanche,
 };
-const NATIVE_ASSETS: Record<
+export const NATIVE_ASSETS: Record<
   number,
   { name: string; symbol: string; decimals: number; wrapped: Address }
 > = {
@@ -112,7 +111,6 @@ const erc20Abi = [
 
 function buildProviders() {
   const providers: Config["aggregators"] = [
-    fabric({ appId: APP_ID, apiKey: process.env.FABRIC_API_KEY }),
     kyberswap({ clientId: APP_ID }),
     nordstern({}),
     lifi({}),
@@ -120,7 +118,7 @@ function buildProviders() {
     velora({}),
   ];
   if (process.env.ZEROX_API_KEY) providers.push(zeroX({ apiKey: process.env.ZEROX_API_KEY }));
-  if (isEnabled("curve_enabled")) providers.push(curveInWorker({ rpcUrlLookup: getRpcUrl }));
+  if (isEnabled("curve_enabled")) providers.push(curve({ rpcUrlLookup: getRpcUrl }));
   return providers;
 }
 
@@ -166,7 +164,7 @@ export function getSpandexConfig(): Config {
     clients: (chainId: number) => getClient(chainId),
     logging: { level: "info", fn: (_level, ...details) => logger.debug({ details }, "Spandex") },
     options: {
-      deadlineMs: 5_000,
+      deadlineMs: 10_000,
     },
   });
 }

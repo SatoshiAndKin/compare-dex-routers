@@ -32,7 +32,7 @@ describe("QuoteCard", () => {
     vi.clearAllMocks();
   });
 
-  it('renders provider name "Spandex" for spandex provider', () => {
+  it("renders the individual provider name", () => {
     const { getByText } = render(QuoteCard, {
       props: {
         provider: "spandex",
@@ -41,7 +41,7 @@ describe("QuoteCard", () => {
         isRecommended: false,
       },
     });
-    expect(getByText(/Spandex/)).toBeTruthy();
+    expect(getByText(/Via 0x/)).toBeTruthy();
   });
 
   it('renders provider name "Curve" for curve provider', () => {
@@ -53,7 +53,7 @@ describe("QuoteCard", () => {
         isRecommended: false,
       },
     });
-    expect(getByText(/Curve/)).toBeTruthy();
+    expect(getByText(/Via curve/)).toBeTruthy();
   });
 
   it("shows loading state with aria-busy when loading=true", () => {
@@ -180,6 +180,6 @@ describe("QuoteCard", () => {
         isRecommended: false,
       },
     });
-    expect(getByText(/Via Spandex \/ 0x/)).toBeTruthy();
+    expect(getByText(/Via 0x/)).toBeTruthy();
   });
 });

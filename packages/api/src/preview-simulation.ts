@@ -61,7 +61,12 @@ async function balanceSlot(client: PublicClient, token: Address, account: Addres
 }
 
 /** Fund simulations only. No state change reaches the chain or an execution payload. */
-export function createPreviewState(client: PublicClient, account: Address, token: Address) {
+export function createPreviewState(
+  client: PublicClient,
+  account: Address,
+  token: Address,
+  preserveCode = false
+) {
   let slot: Promise<Hex> | undefined;
   return async (amount: bigint): Promise<StateOverride> => {
     if (amount <= 0n) throw new Error("Preview input amount must be positive");
@@ -69,7 +74,7 @@ export function createPreviewState(client: PublicClient, account: Address, token
     const state: StateOverride = [
       {
         address: account,
-        code: "0x",
+        ...(preserveCode ? {} : { code: "0x" as const }),
         balance: parseEther("10000") + (native ? amount : 0n),
       },
     ];

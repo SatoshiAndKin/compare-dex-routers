@@ -4,7 +4,10 @@ import { comparisonStore } from "../lib/stores/comparisonStore.svelte.js";
 import { walletStore } from "../lib/stores/walletStore.svelte.js";
 import { formStore } from "../lib/stores/formStore.svelte.js";
 import { autoRefreshStore } from "../lib/stores/autoRefreshStore.svelte.js";
-import { makeQuote, SENDER, FROM, TO, ROUTER, deferred } from "./quote-fixture.js";
+import { makeQuote, makeComparison, SENDER, FROM, TO, ROUTER, deferred } from "./quote-fixture.js";
+
+const get = vi.hoisted(() => vi.fn());
+vi.mock("../lib/api.js", () => ({ apiClient: { GET: get } }));
 
 const HASH = `0x${"a".repeat(64)}`;
 const request =
@@ -13,8 +16,9 @@ let allowance: bigint;
 let actualChain: string;
 let actualAccount: string;
 function current(overrides: Parameters<typeof makeQuote>[0] = {}) {
-  comparisonStore.spandexResult = makeQuote(overrides);
-  return comparisonStore.spandexResult;
+  comparisonStore.quotes = [makeQuote(overrides)];
+  comparisonStore.recommendation = comparisonStore.quotes[0]!.provider;
+  return comparisonStore.quotes[0]!;
 }
 function sent() {
   return request.mock.calls.filter(([args]) => args.method === "eth_sendTransaction");
@@ -25,7 +29,7 @@ async function confirmation() {
 
 beforeEach(() => {
   comparisonStore.invalidate();
-  transactions.cancelSwap();
+  transactions.invalidate();
   transactions.allowances = {};
   transactions.swapStatus = {};
   transactions.busy = false;
@@ -43,14 +47,28 @@ beforeEach(() => {
   allowance = 0n;
   actualChain = "0x1";
   actualAccount = SENDER;
-  request.mockReset().mockImplementation(async ({ method }) => {
+  get.mockReset().mockImplementation(async () => ({
+    data: makeComparison({
+      quotes: comparisonStore.quotes.map((quote) => ({ ...quote })),
+      recommendation: comparisonStore.quotes[0]?.provider ?? null,
+    }),
+    response: new Response(),
+  }));
+  request.mockReset().mockImplementation(async ({ method, params }) => {
     switch (method) {
       case "eth_accounts":
         return [actualAccount];
       case "eth_chainId":
         return actualChain;
       case "eth_call":
-        return `0x${allowance.toString(16)}`;
+        return Array.isArray(params) &&
+          (params[0] as { data: string }).data.startsWith("0x70a08231")
+          ? "0x5f5e100"
+          : `0x${allowance.toString(16)}`;
+      case "eth_getBalance":
+        return "0x8ac7230489e80000";
+      case "eth_gasPrice":
+        return "0x4a817c800";
       case "eth_estimateGas":
         return "0x1d4c0";
       case "eth_sendTransaction":
@@ -115,9 +133,11 @@ describe("quote-bound wallet actions", () => {
         to: FROM,
         value: "0x0",
         data: `0x095ea7b3${ROUTER.slice(2).padStart(64, "0")}${"f".repeat(64)}`,
+        gas: "0x23280",
+        gasPrice: "0x4a817c800",
       },
     ]);
-    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
+    expect(transactions.getApproveStatus(comparisonStore.quotes[0]!)).toBe("confirmed");
     expect(walletStore.message).toContain(HASH);
     expect(autoRefreshStore.paused).toBe(false);
   });
@@ -126,13 +146,13 @@ describe("quote-bound wallet actions", () => {
     const quote = current();
     await transactions.approve("spandex", quote);
     expect(sent()).toEqual([]);
-    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
+    expect(transactions.getApproveStatus(comparisonStore.quotes[0]!)).toBe("confirmed");
   });
   it("checks the allowance amount for every new quote", async () => {
     allowance = 100000000n;
     const quote = current();
     await transactions.refreshAllowance(quote);
-    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
+    expect(transactions.getApproveStatus(comparisonStore.quotes[0]!)).toBe("confirmed");
     formStore.sellAmount = "200";
     const larger = current({ amount: "200", input_amount: "200", input_amount_raw: "200000000" });
     expect(transactions.getApproveStatus(larger)).toBe("idle");
@@ -175,7 +195,7 @@ describe("quote-bound wallet actions", () => {
     await transactions.refreshAllowance(quote);
     first.resolve("0x0");
     await pending;
-    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
+    expect(transactions.getApproveStatus(comparisonStore.quotes[0]!)).toBe("confirmed");
   });
   it("requires confirmation and sends only through the wallet RPC", async () => {
     allowance = 100000000n;
@@ -187,7 +207,15 @@ describe("quote-bound wallet actions", () => {
     await pending;
     expect(sent()).toHaveLength(1);
     expect(sent()[0]?.[0].params).toEqual([
-      { from: SENDER, chainId: "0x1", to: ROUTER, data: "0xabcdef", value: "0x0", gas: "0x23280" },
+      {
+        from: SENDER,
+        chainId: "0x1",
+        to: ROUTER,
+        data: "0xabcdef",
+        value: "0x0",
+        gas: "0x23280",
+        gasPrice: "0x4a817c800",
+      },
     ]);
     expect(transactions.getSwapStatus(quote)).toBe("confirmed");
     expect(walletStore.message).toContain(HASH);
@@ -315,7 +343,7 @@ describe("quote-bound wallet actions", () => {
     );
     const quote = current();
     await transactions.approve("spandex", quote);
-    expect(transactions.getApproveStatus(quote)).toBe("failed");
+    expect(transactions.getApproveStatus(comparisonStore.quotes[0]!)).toBe("failed");
   });
   it("does not run concurrent wallet actions", async () => {
     const quote = current();
@@ -327,15 +355,95 @@ describe("quote-bound wallet actions", () => {
     await pending;
   });
   it("native token swaps do not request ERC-20 approval", async () => {
+    const native = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+    formStore.fromToken = { address: native, decimals: 18, symbol: "ETH" };
+    formStore.sellAmount = "0.0000000000000001";
     const quote = current({
+      from: native,
+      from_symbol: "ETH",
+      amount: "0.0000000000000001",
+      input_amount: "0.0000000000000001",
+      input_amount_raw: "100",
       execution: { to: ROUTER, data: "0xab", value: "100", approval: null },
     });
-    expect(transactions.getApproveStatus(quote)).toBe("confirmed");
+    expect(transactions.getApproveStatus(comparisonStore.quotes[0]!)).toBe("confirmed");
     const pending = transactions.swap("spandex", quote);
     await confirmation();
     transactions.confirmSwap();
     await pending;
     expect(request.mock.calls.some(([args]) => args.method === "eth_call")).toBe(false);
     expect(sent()[0]?.[0].params).toEqual([expect.objectContaining({ value: "0x64" })]);
+  });
+  it("refreshes before approval and after its receipt without changing provider", async () => {
+    await transactions.approve("0x", current());
+    expect(get).toHaveBeenCalledTimes(2);
+    for (const [path, options] of get.mock.calls) {
+      expect(path).toBe("/quote");
+      expect(options.params.query.sender).toBe(SENDER);
+    }
+    expect(comparisonStore.selectedProvider).toBe("0x");
+  });
+  it("confirms refreshed calldata and never substitutes another provider", async () => {
+    allowance = 100000000n;
+    get.mockResolvedValue({
+      data: makeComparison({
+        quotes: [makeQuote({ execution: { to: TO, data: "0x1234", value: "0", approval: null } })],
+      }),
+      response: new Response(),
+    });
+    const pending = transactions.swap("0x", current());
+    await confirmation();
+    expect(transactions.swapConfirmation?.quote.execution?.data).toBe("0x1234");
+    transactions.confirmSwap();
+    await pending;
+    expect(sent()[0]?.[0].params).toEqual([
+      expect.objectContaining({ to: TO, data: "0x1234", from: SENDER }),
+    ]);
+    get.mockResolvedValue({
+      data: makeComparison({ quotes: [makeQuote({ provider: "curve" })], recommendation: "curve" }),
+      response: new Response(),
+    });
+    request.mockClear();
+    await transactions.swap("0x", current());
+    expect(sent()).toEqual([]);
+    expect(walletStore.message).toContain("0x is unavailable");
+    expect(comparisonStore.selectedProvider).toBe("0x");
+  });
+  it.each(["tokens", "gas", "unknown"])(
+    "keeps prices visible and blocks %s insufficiency",
+    async (problem) => {
+      const base = request.getMockImplementation()!;
+      request.mockImplementation((args) => {
+        if (args.method === "eth_getBalance" && problem === "gas") return Promise.resolve("0x0");
+        if (args.method === "eth_call" && problem === "tokens") return Promise.resolve("0x0");
+        if (args.method === "eth_gasPrice" && problem === "unknown")
+          return Promise.reject(new Error("Gas price unavailable"));
+        return base(args);
+      });
+      const quote = current();
+      await transactions.refreshChecks(quote);
+      expect(comparisonStore.quotes).toHaveLength(1);
+      expect(transactions.getCheck(quote).status).toBe("blocked");
+      expect(transactions.getCheck(quote).message).toContain(
+        problem === "tokens"
+          ? "Insufficient USDC"
+          : problem === "gas"
+            ? "Insufficient gas"
+            : "unavailable"
+      );
+      await transactions.approve("0x", quote);
+      expect(sent()).toEqual([]);
+    }
+  );
+  it("blocks an expired confirmation even after wallet checks pass", async () => {
+    allowance = 100000000n;
+    const pending = transactions.swap("0x", current());
+    await confirmation();
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + 31000);
+    transactions.confirmSwap();
+    await pending;
+    expect(sent()).toEqual([]);
+    expect(walletStore.message).toContain("expired");
   });
 });

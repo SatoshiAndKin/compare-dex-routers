@@ -7,7 +7,7 @@ const address = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 const quantity = z.string().regex(/^\d+$/);
 const nativeValue = z.string().nullable();
 
-export const QuoteSchema = z.object({
+const QuoteSchema = z.object({
   chainId: z.number().int(),
   from: address,
   from_symbol: z.string(),
@@ -52,20 +52,32 @@ export const QuoteSchema = z.object({
   net_value_native: nativeValue,
 });
 
-export const CompareSchema = z.object({
-  spandex: QuoteSchema.nullable(),
-  spandex_error: z.string().nullable(),
-  curve: QuoteSchema.nullable(),
-  curve_error: z.string().nullable(),
-  recommendation: z.enum(["spandex", "curve"]).nullable(),
+const ProviderFailureSchema = z.object({
+  provider: z.string(),
+  stage: z.enum(["quote", "simulation"]),
+  error: z.object({
+    name: z.string(),
+    message: z.string(),
+    code: z.union([z.string(), z.number()]).nullable(),
+    cause: z.unknown().nullable(),
+    details: z.unknown().nullable(),
+  }),
+});
+
+export const QuoteResponseSchema = z.object({
+  quotes: z.array(QuoteSchema.openapi("Quote")),
+  failures: z.array(ProviderFailureSchema),
+  recommendation: z.string().nullable(),
   recommendation_reason: z.string(),
-  recommendation_basis: z.enum(["gas_adjusted", "raw_amount", "single_quote", "none"]),
+  recommendation_basis: z.enum(["gas_adjusted", "raw_amount", "none"]),
+  simulation_basis: z.literal("temporary_funding"),
+  simulation_account: address,
+  wallet_readiness: z.literal("unchecked"),
   gas_price_gwei: nativeValue,
   native_currency: z.string(),
-  output_to_native_rate: nativeValue,
-  input_to_native_rate: nativeValue,
   mode: z.enum(["exactIn", "targetOut"]),
 });
 
 export type QuoteResult = z.infer<typeof QuoteSchema>;
-export type CompareResult = z.infer<typeof CompareSchema>;
+export type QuoteResponse = z.infer<typeof QuoteResponseSchema>;
+export type ProviderFailure = z.infer<typeof ProviderFailureSchema>;

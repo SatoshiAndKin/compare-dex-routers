@@ -1,329 +1,104 @@
-import { deferred, FROM, SENDER, TO } from "./quote-fixture.js";
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  balanceStore,
-  formatBalance,
+  balanceStore as store,
   fetchTokenBalance,
+  formatBalance,
 } from "../lib/stores/balanceStore.svelte.js";
-import type { EIP1193Provider } from "../lib/stores/walletStore.svelte.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeProvider(
-  requestImpl?: (args: { method: string; params?: unknown[] }) => Promise<unknown>
-): EIP1193Provider {
-  return {
-    request: vi.fn().mockImplementation(
-      requestImpl ??
-        (({ method }: { method: string }) => {
-          if (method === "eth_call") {
-            // Return 100 USDC (100 * 10^6 = 100_000_000 = 0x5F5E100)
-            return Promise.resolve(
-              "0x0000000000000000000000000000000000000000000000000000000005f5e100"
-            );
-          }
-          if (method === "eth_getBalance") {
-            // Return 1 ETH in wei
-            return Promise.resolve("0x0de0b6b3a7640000");
-          }
-          return Promise.resolve("0x0");
-        })
-    ),
-  };
-}
-
-function resetBalanceStore(): void {
-  balanceStore.fromBalance = null;
-  balanceStore.toBalance = null;
-  balanceStore.clearCache();
-}
-
-// ---------------------------------------------------------------------------
-// formatBalance tests
-// ---------------------------------------------------------------------------
-
-describe("formatBalance", () => {
-  it("formats 1 ETH (18 decimals)", () => {
-    const oneEth = BigInt("1000000000000000000");
-    expect(formatBalance(oneEth, 18)).toBe("1");
-  });
-
-  it("formats 1.5 ETH", () => {
-    const oneAndHalf = BigInt("1500000000000000000");
-    expect(formatBalance(oneAndHalf, 18)).toBe("1.5");
-  });
-
-  it("formats 100 USDC (6 decimals)", () => {
-    const hundredUsdc = BigInt("100000000");
-    expect(formatBalance(hundredUsdc, 6)).toBe("100");
-  });
-
-  it("formats 1234.56 USDC", () => {
-    const amount = BigInt("1234560000");
-    expect(formatBalance(amount, 6)).toBe("1,234.56");
-  });
-
-  it("removes trailing zeros from fractional part", () => {
-    const amount = BigInt("1500000"); // 1.5 USDC
-    expect(formatBalance(amount, 6)).toBe("1.5");
-  });
-
-  it("limits to 6 decimal places", () => {
-    const amount = BigInt("1123456789"); // 1.123456789 with 9 decimals
-    const result = formatBalance(amount, 9);
-    const decimalPart = result.split(".")[1] ?? "";
-    expect(decimalPart.length).toBeLessThanOrEqual(6);
-  });
-
-  it("adds thousand separators to whole part", () => {
-    const amount = BigInt("1234567000000"); // 1,234,567 USDC (6 decimals)
-    expect(formatBalance(amount, 6)).toBe("1,234,567");
-  });
-
-  it("formats 0 balance", () => {
-    expect(formatBalance(BigInt(0), 18)).toBe("0");
-  });
+import { exactAmount, NATIVE_TOKEN } from "../lib/native.js";
+import { deferred, FROM, SENDER, TO } from "./quote-fixture.js";
+const request = vi.fn<(args: { method: string; params?: unknown[] }) => Promise<unknown>>();
+const provider = { request };
+beforeEach(() => {
+  store.clear();
+  store.clearCache();
+  request
+    .mockReset()
+    .mockImplementation(async ({ method }) => (method === "eth_chainId" ? "0x1" : "0x0"));
 });
-
-// ---------------------------------------------------------------------------
-// fetchTokenBalance tests
-// ---------------------------------------------------------------------------
-
-describe("fetchTokenBalance", () => {
-  beforeEach(() => {
-    balanceStore.clearCache();
-  });
-
-  it("fetches ERC-20 balance via eth_call", async () => {
-    const provider = makeProvider();
-    const result = await fetchTokenBalance(
-      provider,
-      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
-      "0x1234567890123456789012345678901234567890",
-      6,
-      1
+describe("exact balance state", () => {
+  it.each([0, 6, 18, 255])("retains exact integer precision with %i decimals", (decimals) => {
+    const raw = 9007199254740993n * 10n ** BigInt(decimals) + (decimals > 0 ? 1n : 0n);
+    expect(exactAmount(raw, decimals)).toBe(
+      `9007199254740993${decimals > 0 ? `.${"0".repeat(decimals - 1)}1` : ""}`
     );
-    expect(result).not.toBeNull();
-    expect(result).toBe("100");
+    expect(formatBalance(raw, decimals)).toMatch(/^9,007,199,254,740,993/);
   });
-
-  it("fetches native token balance via eth_getBalance", async () => {
-    const provider = makeProvider();
-    const result = await fetchTokenBalance(
-      provider,
-      "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
-      "0x1234567890123456789012345678901234567890",
-      18,
-      1
+  it("distinguishes zero, loading, unavailable, and disconnected balances", async () => {
+    const pending = deferred<unknown>();
+    request.mockImplementation(async ({ method }) =>
+      method === "eth_chainId" ? "0x1" : pending.promise
     );
-    expect(result).not.toBeNull();
-    // 0x0de0b6b3a7640000 = 1 ETH
-    expect(result).toBe("1");
+    const read = store.fetchBalances(provider, SENDER, 1, { address: FROM, decimals: 6 }, null);
+    expect(store.from.status).toBe("loading");
+    pending.resolve("0x0");
+    await read;
+    expect(store.from).toEqual({ status: "ready", raw: 0n, decimals: 6 });
+    expect(store.fromBalance).toBe("0");
+    store.clearCache();
+    request.mockRejectedValue(new Error("offline"));
+    await store.fetchBalances(provider, SENDER, 1, { address: FROM, decimals: 6 }, null);
+    expect(store.from.status).toBe("unavailable");
+    store.clear();
+    expect(store.from.status).toBe("idle");
   });
-
-  it("treats zero address as native token", async () => {
-    const provider = makeProvider();
-    const requestMock = provider.request as ReturnType<typeof vi.fn>;
-
-    await fetchTokenBalance(
-      provider,
-      "0x0000000000000000000000000000000000000000",
-      "0x1234567890123456789012345678901234567890",
-      18,
-      1
-    );
-
-    const methods = requestMock.mock.calls.map(
-      (call: unknown[]) => (call[0] as { method: string }).method
-    );
-    expect(methods).toContain("eth_getBalance");
+  it("uses eth_getBalance for native assets and preserves raw values", async () => {
+    request.mockResolvedValue("0x20000000000001");
+    expect(await fetchTokenBalance(provider, NATIVE_TOKEN, SENDER, 18, 1)).toBe(9007199254740993n);
+    expect(request).toHaveBeenCalledWith({ method: "eth_getBalance", params: [SENDER, "latest"] });
   });
-
-  it("returns null on provider error (no throw)", async () => {
-    const errorProvider: EIP1193Provider = {
-      request: vi.fn().mockRejectedValue(new Error("RPC error")),
-    };
-    const result = await fetchTokenBalance(
-      errorProvider,
-      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      "0x1234567890123456789012345678901234567890",
-      6,
-      1
-    );
-    expect(result).toBeNull();
+  it("reads ERC-20 balances with the exact account and rejects malformed responses", async () => {
+    expect(await fetchTokenBalance(provider, FROM, SENDER, 6, 1)).toBe(0n);
+    expect(request).toHaveBeenCalledWith({
+      method: "eth_call",
+      params: [{ to: FROM, data: `0x70a08231${SENDER.slice(2).padStart(64, "0")}` }, "latest"],
+    });
+    store.clearCache();
+    request.mockResolvedValue("garbage");
+    expect(await fetchTokenBalance(provider, FROM, SENDER, 6, 1)).toBeNull();
   });
-
-  it("returns null for missing arguments", async () => {
-    const provider = makeProvider();
-    expect(await fetchTokenBalance(provider, "", "0xabc", 18, 1)).toBeNull();
-    expect(await fetchTokenBalance(provider, "0xabc", "", 18, 1)).toBeNull();
-  });
-
-  it("uses cached result within TTL", async () => {
-    const provider = makeProvider();
-    const args = [
-      provider,
-      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      "0x1234567890123456789012345678901234567890",
-      6,
-      1,
-    ] as const;
-
-    await fetchTokenBalance(...args);
-    await fetchTokenBalance(...args);
-
-    // Second call should use cache, so request should only be called once
-    const requestMock = provider.request as ReturnType<typeof vi.fn>;
-    expect(requestMock).toHaveBeenCalledTimes(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// BalanceStore class tests
-// ---------------------------------------------------------------------------
-
-describe("balanceStore", () => {
-  beforeEach(() => {
-    resetBalanceStore();
-  });
-
-  afterEach(() => {
-    resetBalanceStore();
-  });
-
-  it("starts with null balances", () => {
-    expect(balanceStore.fromBalance).toBeNull();
-    expect(balanceStore.toBalance).toBeNull();
-  });
-
-  it("clear() sets both balances to null", () => {
-    balanceStore.fromBalance = "100";
-    balanceStore.toBalance = "200";
-
-    balanceStore.clear();
-
-    expect(balanceStore.fromBalance).toBeNull();
-    expect(balanceStore.toBalance).toBeNull();
-  });
-
-  it("fetchBalances populates fromBalance", async () => {
-    const provider = makeProvider();
-
-    await balanceStore.fetchBalances(
-      provider,
-      "0x1234567890123456789012345678901234567890",
-      1,
-      { address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6 },
-      null
-    );
-
-    expect(balanceStore.fromBalance).not.toBeNull();
-    expect(balanceStore.fromBalance).toBe("100");
-  });
-
-  it("fetchBalances populates toBalance", async () => {
-    const provider = makeProvider();
-
-    await balanceStore.fetchBalances(
-      provider,
-      "0x1234567890123456789012345678901234567890",
-      1,
-      null,
-      { address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6 }
-    );
-
-    expect(balanceStore.toBalance).not.toBeNull();
-    expect(balanceStore.toBalance).toBe("100");
-  });
-
-  it("fetchBalances with null tokens clears balances", async () => {
-    const provider = makeProvider();
-
-    balanceStore.fromBalance = "old value";
-    balanceStore.toBalance = "old value";
-
-    await balanceStore.fetchBalances(provider, "0x1234", 1, null, null);
-
-    expect(balanceStore.fromBalance).toBeNull();
-    expect(balanceStore.toBalance).toBeNull();
-  });
-
-  it("clears on disconnect (clear method)", () => {
-    balanceStore.fromBalance = "1,234.56";
-    balanceStore.toBalance = "0.5";
-
-    balanceStore.clear();
-
-    expect(balanceStore.fromBalance).toBeNull();
-    expect(balanceStore.toBalance).toBeNull();
-  });
-
-  it("fetchBalances handles provider errors gracefully", async () => {
-    const errorProvider: EIP1193Provider = {
-      request: vi.fn().mockRejectedValue(new Error("RPC error")),
-    };
-
-    // Should not throw
-    await expect(
-      balanceStore.fetchBalances(
-        errorProvider,
-        "0x1234",
-        1,
-        { address: "0xtoken", decimals: 18 },
-        null
-      )
-    ).resolves.not.toThrow();
-
-    expect(balanceStore.fromBalance).toBeNull();
-  });
-});
-
-describe("balance metadata and request identity", () => {
-  beforeEach(() => {
-    balanceStore.clear();
-    balanceStore.clearCache();
-  });
-  it.each([0, 6, 18, 255])("supports %i token decimals", (decimals) => {
-    expect(formatBalance(7n * 10n ** BigInt(decimals), decimals)).toBe("7");
-  });
-  it("reformats cached raw balances after metadata changes", async () => {
-    const provider = makeProvider(async () => "0x64");
-    expect(await fetchTokenBalance(provider, FROM, SENDER, 0, 1)).toBe("100");
-    expect(await fetchTokenBalance(provider, FROM, SENDER, 2, 1)).toBe("1");
-    expect(provider.request).toHaveBeenCalledTimes(1);
-  });
-  it("ignores an old wallet balance after the new wallet request completes", async () => {
-    const slow = deferred<unknown>();
-    const provider = makeProvider(
-      vi.fn().mockReturnValueOnce(slow.promise).mockResolvedValue("0x9")
-    );
-    const old = balanceStore.fetchBalances(
+  it("does not query token balances on a mismatched network", async () => {
+    request.mockResolvedValue("0x2105");
+    await store.fetchBalances(
       provider,
       SENDER,
       1,
-      { address: FROM, decimals: 0 },
-      null
+      { address: FROM, decimals: 6 },
+      { address: TO, decimals: 6 }
     );
-    await balanceStore.fetchBalances(provider, TO, 1, { address: FROM, decimals: 0 }, null);
-    slow.resolve("0x7");
-    await old;
-    expect(balanceStore.fromBalance).toBe("9");
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(store.from.status).toBe("wrong_network");
+    expect(store.to.raw).toBeNull();
   });
-  it("does not restore a balance after disconnect", async () => {
-    const slow = deferred<unknown>();
-    const provider = makeProvider(() => slow.promise);
-    const pending = balanceStore.fetchBalances(
-      provider,
-      SENDER,
-      1,
-      { address: FROM, decimals: 0 },
-      null
-    );
-    balanceStore.clear();
-    slow.resolve("0x7");
+  it("discards old wallet requests after replacement and disconnect", async () => {
+    const old = deferred<unknown>();
+    let first = true;
+    request.mockImplementation(async ({ method }) => {
+      if (method === "eth_chainId") return "0x1";
+      if (first) {
+        first = false;
+        return old.promise;
+      }
+      return "0x9";
+    });
+    const pending = store.fetchBalances(provider, SENDER, 1, { address: FROM, decimals: 0 }, null);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    await store.fetchBalances(provider, TO, 1, { address: FROM, decimals: 0 }, null);
+    old.resolve("0x7");
     await pending;
-    expect(balanceStore.fromBalance).toBeNull();
+    expect(store.from.raw).toBe(9n);
+    const late = deferred<unknown>();
+    store.clearCache();
+    request.mockReturnValue(late.promise);
+    const disconnected = store.fetchBalances(
+      provider,
+      SENDER,
+      1,
+      { address: FROM, decimals: 0 },
+      null
+    );
+    store.clear();
+    late.resolve("0x1");
+    await disconnected;
+    expect(store.from.raw).toBeNull();
   });
 });

@@ -8,7 +8,7 @@ import { docsAssets, docsAssetUrl } from "./docs-assets.js";
 import { pathToFileURL } from "node:url";
 import { openapiDocument } from "./openapi.js";
 import { serializeWithBigInt } from "@spandex/core";
-import { compareQuotes, singleQuote } from "./quotes.js";
+import { quoteRoutes } from "./quotes.js";
 import { redactText } from "./redaction.js";
 import { parseQuoteParams } from "./quote.js";
 import {
@@ -17,6 +17,7 @@ import {
   getTokenName,
   SUPPORTED_CHAINS,
   DEFAULT_TOKENS,
+  NATIVE_ASSETS,
 } from "./config.js";
 import { logger } from "./logger.js";
 import { captureException } from "./sentry.js";
@@ -219,6 +220,16 @@ window.onload = function() {
     sendJson(res, 200, {
       flags: getAllFlags(),
       defaultTokens: DEFAULT_TOKENS,
+      nativeAssets: Object.fromEntries(
+        Object.entries(NATIVE_ASSETS).map(([chainId, native]) => [
+          chainId,
+          {
+            ...native,
+            chainId: Number(chainId),
+            address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+          },
+        ])
+      ),
       walletConnectProjectId: process.env.WALLETCONNECT_PROJECT_ID || "",
     });
     return;
@@ -306,23 +317,22 @@ window.onload = function() {
 
     const startTime = Date.now();
     try {
-      const result = await singleQuote(parsed.data, "spandex");
+      const result = await quoteRoutes(parsed.data);
       const duration = Date.now() - startTime;
       log(
-        `Quote: chain=${chainId} ${result.from_symbol || from} -> ` +
-          `${result.to_symbol || to}, amount=${amount}, mode=${mode}, ` +
-          `output=${result.output_amount}, provider=${result.provider}, ${duration}ms`
+        `Quote: chain=${chainId} ${from} -> ${to}, amount=${amount}, mode=${mode}, recommendation=${result.recommendation}, ${duration}ms`
       );
-      recordRequest("/quote", duration, false);
-      trackQuote({
-        chainId,
-        fromToken: from,
-        toToken: to,
-        provider: result.provider,
-        durationMs: duration,
-        success: true,
-        outputAmount: result.output_amount,
-      });
+      recordRequest("/quote", duration, result.quotes.length === 0);
+      for (const quote of result.quotes)
+        trackQuote({
+          chainId,
+          fromToken: from,
+          toToken: to,
+          provider: quote.provider,
+          durationMs: duration,
+          success: true,
+          outputAmount: quote.output_amount,
+        });
       sendJson(res, 200, result);
     } catch (err) {
       const duration = Date.now() - startTime;
@@ -337,65 +347,6 @@ window.onload = function() {
         success: false,
       });
       trackError(err, `quote:${chainId}:${from}-${to}`);
-      sendError(res, 500, "Request failed. Please try again.");
-    }
-    return;
-  }
-
-  if (url.pathname === "/compare" && req.method === "GET" && isEnabled("compare_endpoint")) {
-    const parsed = parseQuoteParams(url.searchParams);
-    if (!parsed.success) {
-      sendError(res, 400, parsed.error);
-      return;
-    }
-
-    const { chainId, from, to, amount, mode } = parsed.data;
-
-    const startTime = Date.now();
-    try {
-      const result = await compareQuotes(parsed.data);
-      const duration = Date.now() - startTime;
-      log(
-        `Compare: chain=${chainId} ${from} -> ${to}, ` +
-          `amount=${amount}, mode=${mode}, recommendation=${result.recommendation}, ${duration}ms`
-      );
-      recordRequest("/compare", duration, false);
-      sendJson(res, 200, result);
-    } catch (err) {
-      const duration = Date.now() - startTime;
-      logError(`Compare failed: chain=${chainId} ${from} -> ${to}, ${duration}ms`, err);
-      recordRequest("/compare", duration, true);
-      trackError(err, `compare:${chainId}:${from}-${to}`);
-      sendError(res, 500, "Request failed. Please try again.");
-    }
-    return;
-  }
-
-  if (url.pathname === "/quote-curve" && req.method === "GET") {
-    const parsed = parseQuoteParams(url.searchParams);
-    if (!parsed.success) {
-      sendError(res, 400, parsed.error);
-      return;
-    }
-
-    const { chainId, from, to, amount, mode } = parsed.data;
-
-    const startTime = Date.now();
-    try {
-      const result = await singleQuote(parsed.data, "curve");
-      const duration = Date.now() - startTime;
-      log(
-        `Quote-curve: chain=${chainId} ${result.from_symbol || from} -> ` +
-          `${result.to_symbol || to}, amount=${amount}, mode=${mode}, ` +
-          `output=${result.output_amount}, ${duration}ms`
-      );
-      recordRequest("/quote-curve", duration, false);
-      sendJson(res, 200, result);
-    } catch (err) {
-      const duration = Date.now() - startTime;
-      logError(`Quote-curve failed: chain=${chainId} ${from} -> ${to}, ${duration}ms`, err);
-      recordRequest("/quote-curve", duration, true);
-      trackError(err, `quote-curve:${chainId}:${from}-${to}`);
       sendError(res, 500, "Request failed. Please try again.");
     }
     return;

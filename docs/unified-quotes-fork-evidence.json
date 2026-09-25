@@ -1,0 +1,101 @@
+{
+  "forks": [
+    {
+      "chainId": 1,
+      "blockNumber": "26056266",
+      "blockHash": "0x3853c16f2cfc47b7cf9f54e8ec49899fa2d7258b310fb7539266566498901d55",
+      "anvil": "anvil Version: 1.7.1\nCommit SHA: 4072e48705af9d93e3c0f6e29e93b5e9a40caed8\nBuild Timestamp: 2026-05-08T07:54:31.470926000Z (1778226871)\nBuild Profile: dist"
+    },
+    {
+      "chainId": 8453,
+      "blockNumber": "51786781",
+      "blockHash": "0xb05ef3ad44eb8e0de8b520aa344a63ab45ecd0dea19cbdca48fdc44930f73d66",
+      "anvil": "anvil Version: 1.7.1\nCommit SHA: 4072e48705af9d93e3c0f6e29e93b5e9a40caed8\nBuild Timestamp: 2026-05-08T07:54:31.470926000Z (1778226871)\nBuild Profile: dist"
+    }
+  ],
+  "transactions": [
+    {
+      "test": "Ethereum: approve ERC-20 and swap via curve",
+      "chainId": 1,
+      "provider": "curve",
+      "hashes": [
+        "0x908a06e585d9180072caecf1347a1c52ada288a465417cb7c3e45e04e7d5a71b",
+        "0x5e6039fa2d2a7530961677d228a2665be14f17497d0c7cae6cfcf0917a50e923"
+      ],
+      "inputSpent": "10000000000000000",
+      "outputReceived": "26809030",
+      "minimumOutput": "26540939"
+    },
+    {
+      "test": "Ethereum: native and swap via curve",
+      "chainId": 1,
+      "provider": "curve",
+      "hashes": [
+        "0x94fc35a691bbb16404aea31eec032432b72e1a18548507ae50dcbef5213acb01"
+      ],
+      "inputSpent": "10262477303730467",
+      "outputReceived": "26809030",
+      "minimumOutput": "26540939"
+    },
+    {
+      "test": "Base: approve ERC-20 and swap via kyberswap",
+      "chainId": 8453,
+      "provider": "kyberswap",
+      "hashes": [
+        "0x2be1ee766cdd4e0cbddbf97ec0f3fd0d58b32860b3955c17f45834612237d1f5",
+        "0x354fad890e35f1413d1a5e4bb54aaaf29c556cb380bb4db7c7a6a4494fea63a7"
+      ],
+      "inputSpent": "10000000000000000",
+      "outputReceived": "26920881",
+      "minimumOutput": "26648306"
+    },
+    {
+      "test": "Base: native and swap via kyberswap",
+      "chainId": 8453,
+      "provider": "kyberswap",
+      "hashes": [
+        "0x46b5d5343f815fb8b9c9dc450ab15b0282677508cdd09c147e7a8cc4d131f5a8"
+      ],
+      "inputSpent": "10654836370760124",
+      "outputReceived": "26922559",
+      "minimumOutput": "26653333"
+    }
+  ],
+  "unfunded": {
+    "account": "0x56f63e8e92a743b9e6a1f459d2c3870e15b4a062",
+    "simulation_basis": "temporary_funding",
+    "wallet_readiness": "unchecked",
+    "prices": [
+      {
+        "provider": "curve",
+        "input_amount_raw": "1000000000",
+        "output_amount_raw": "1000054475502129137778"
+      },
+      {
+        "provider": "velora",
+        "input_amount_raw": "1000000000",
+        "output_amount_raw": "999935493277593627468"
+      },
+      {
+        "provider": "nordstern",
+        "input_amount_raw": "1000000000",
+        "output_amount_raw": "999942891030889960330"
+      },
+      {
+        "provider": "relay",
+        "input_amount_raw": "1000000000",
+        "output_amount_raw": "998549898685188993319"
+      },
+      {
+        "provider": "lifi",
+        "input_amount_raw": "1000000000",
+        "output_amount_raw": "997565057743376327493"
+      },
+      {
+        "provider": "kyberswap",
+        "input_amount_raw": "1000000000",
+        "output_amount_raw": "999889499563570431167"
+      }
+    ]
+  }
+}

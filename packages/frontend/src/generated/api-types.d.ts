@@ -45,42 +45,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get best Spandex quote */
+    /** Get provider prices and a recommendation */
     get: operations["getQuote"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/compare": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Compare Spandex vs Curve quotes */
-    get: operations["compareQuotes"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/quote-curve": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get a single Curve Finance quote */
-    get: operations["getQuoteCurve"];
     put?: never;
     post?: never;
     delete?: never;
@@ -230,6 +196,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    QuoteResponse: {
+      quotes: components["schemas"]["Quote"][];
+      failures: {
+        provider: string;
+        /** @enum {string} */
+        stage: "quote" | "simulation";
+        error: {
+          name: string;
+          message: string;
+          code: string | number | unknown;
+          cause?: unknown;
+          details?: unknown;
+        };
+      }[];
+      recommendation: string | null;
+      recommendation_reason: string;
+      /** @enum {string} */
+      recommendation_basis: "gas_adjusted" | "raw_amount" | "none";
+      /** @enum {string} */
+      simulation_basis: "temporary_funding";
+      simulation_account: string;
+      /** @enum {string} */
+      wallet_readiness: "unchecked";
+      gas_price_gwei: string | null;
+      native_currency: string;
+      /** @enum {string} */
+      mode: "exactIn" | "targetOut";
+    };
     Quote: {
       chainId: number;
       from: string;
@@ -280,111 +274,6 @@ export interface components {
       /** @enum {string} */
       code: "INVALID_REQUEST" | "NOT_FOUND" | "UPSTREAM_ERROR" | "SHUTTING_DOWN";
       requestId: string;
-    };
-    CompareResult: {
-      spandex: {
-        chainId: number;
-        from: string;
-        from_symbol: string;
-        to: string;
-        to_symbol: string;
-        amount: string;
-        input_amount: string;
-        output_amount: string;
-        input_amount_raw: string;
-        output_amount_raw: string;
-        /** @enum {string} */
-        mode: "exactIn" | "targetOut";
-        provider: string;
-        slippage_bps: number;
-        sender: string | null;
-        execution: {
-          to: string;
-          data: string;
-          value: string;
-          approval: {
-            token: string;
-            spender: string;
-          } | null;
-        } | null;
-        route: {
-          nodes: {
-            address: string;
-            symbol?: string;
-          }[];
-          edges: {
-            source: string;
-            target: string;
-            address?: string;
-            key: string;
-            value: number;
-          }[];
-        } | null;
-        gas_used: string | null;
-        gas_price_gwei: string | null;
-        native_currency: string;
-        gas_cost_native: string | null;
-        trade_value_native: string | null;
-        net_value_native: string | null;
-      } | null;
-      spandex_error: string | null;
-      curve: {
-        chainId: number;
-        from: string;
-        from_symbol: string;
-        to: string;
-        to_symbol: string;
-        amount: string;
-        input_amount: string;
-        output_amount: string;
-        input_amount_raw: string;
-        output_amount_raw: string;
-        /** @enum {string} */
-        mode: "exactIn" | "targetOut";
-        provider: string;
-        slippage_bps: number;
-        sender: string | null;
-        execution: {
-          to: string;
-          data: string;
-          value: string;
-          approval: {
-            token: string;
-            spender: string;
-          } | null;
-        } | null;
-        route: {
-          nodes: {
-            address: string;
-            symbol?: string;
-          }[];
-          edges: {
-            source: string;
-            target: string;
-            address?: string;
-            key: string;
-            value: number;
-          }[];
-        } | null;
-        gas_used: string | null;
-        gas_price_gwei: string | null;
-        native_currency: string;
-        gas_cost_native: string | null;
-        trade_value_native: string | null;
-        net_value_native: string | null;
-      } | null;
-      curve_error: string | null;
-      /** @enum {string|null} */
-      recommendation: "spandex" | "curve" | null;
-      recommendation_reason: string;
-      /** @enum {string} */
-      recommendation_basis: "gas_adjusted" | "raw_amount" | "single_quote" | "none";
-      gas_price_gwei: string | null;
-      native_currency: string;
-      output_to_native_rate: string | null;
-      input_to_native_rate: string | null;
-      /** @enum {string} */
-      mode: "exactIn" | "targetOut";
     };
     TokenListResponse: {
       /** @description Name of the token list (or "Default Tokenlists" if multiple) */
@@ -447,6 +336,16 @@ export interface components {
     Config: {
       flags: {
         [key: string]: boolean;
+      };
+      nativeAssets: {
+        [key: string]: {
+          chainId: number;
+          address: string;
+          name: string;
+          symbol: string;
+          decimals: number;
+          wrapped: string;
+        };
       };
       /** @description Map of chainId to default token pair */
       defaultTokens: {
@@ -578,131 +477,16 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Best quote found */
+      /** @description Provider price simulations, failures, and recommendation */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["Quote"];
+          "application/json": components["schemas"]["QuoteResponse"];
         };
       };
       /** @description Invalid parameters */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-      /** @description Quote failed */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-      /** @description Server is shutting down; retry on an available instance */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  compareQuotes: {
-    parameters: {
-      query: {
-        /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
-        chainId?: number | null;
-        /** @description Input token address */
-        from: string;
-        /** @description Output token address */
-        to: string;
-        /** @description Human-readable amount. For exactIn: input amount. For targetOut: desired output amount. */
-        amount: string;
-        /** @description Slippage tolerance in basis points */
-        slippageBps?: number | null;
-        /** @description Account bound to execution data. Omit for a preview with no execution data. */
-        sender?: string;
-        /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
-        mode?: "exactIn" | "targetOut";
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Comparison result with recommendation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["CompareResult"];
-        };
-      };
-      /** @description Invalid parameters */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-      /** @description Server is shutting down; retry on an available instance */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  getQuoteCurve: {
-    parameters: {
-      query: {
-        /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
-        chainId?: number | null;
-        /** @description Input token address */
-        from: string;
-        /** @description Output token address */
-        to: string;
-        /** @description Human-readable amount. For exactIn: input amount. For targetOut: desired output amount. */
-        amount: string;
-        /** @description Slippage tolerance in basis points */
-        slippageBps?: number | null;
-        /** @description Account bound to execution data. Omit for a preview with no execution data. */
-        sender?: string;
-        /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
-        mode?: "exactIn" | "targetOut";
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Curve quote */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Quote"];
-        };
-      };
-      /** @description Invalid parameters or Curve not supported on this chain */
       400: {
         headers: {
           [name: string]: unknown;

@@ -11,7 +11,7 @@
   import { walletStore } from "../stores/walletStore.svelte.js";
 
   interface Props {
-    provider: "spandex" | "curve";
+    provider: string;
     quote?: Quote | null;
     error?: string | null;
     loading?: boolean;
@@ -28,11 +28,7 @@
     gasPriceGwei = null,
   }: Props = $props();
 
-  const providerName = $derived(
-    provider === "spandex"
-      ? `Spandex${(quote as Quote)?.provider ? " / " + (quote as Quote).provider : ""}`
-      : "Curve"
-  );
+  const providerName = $derived(quote?.provider ?? provider);
 
   const isTargetOut = $derived(quote?.mode === "targetOut");
   const primaryAmount = $derived(isTargetOut ? quote?.input_amount : quote?.output_amount);
@@ -47,11 +43,12 @@
   // ---------------------------------------------------------------------------
 
   /** Router name key used in transactionStore status records */
-  const routerName = $derived(provider === "spandex" ? "spandex" : "curve");
+  const routerName = $derived(provider);
 
   const needsApproval = $derived(Boolean(quote?.execution?.approval));
   const canSwap = $derived(Boolean(quote?.execution));
   const validContext = $derived(quote !== null && transactionStore.matches(quote));
+  const walletCheck = $derived(quote ? transactionStore.getCheck(quote) : null);
   const approveStatus = $derived(quote ? transactionStore.getApproveStatus(quote) : "idle");
   const swapStatus = $derived(quote ? transactionStore.getSwapStatus(quote) : "idle");
   const approvePending = $derived(approveStatus === "pending");
@@ -62,11 +59,12 @@
     const currentQuote = quote;
     const account = walletStore.address;
     const chainId = walletStore.chainId;
+    const busy = transactionStore.busy;
     void account;
     void chainId;
-    if (currentQuote)
+    if (currentQuote && !busy)
       untrack(() => {
-        void transactionStore.refreshAllowance(currentQuote);
+        void transactionStore.refreshChecks(currentQuote);
       });
   });
 
@@ -91,12 +89,12 @@
     <div class="quote-loading" aria-busy="true" aria-label="Loading {provider} quote...">
       <div class="loading-badge">Loading...</div>
       <div class="loading-amount"></div>
-      <div class="loading-provider">Querying {provider === "spandex" ? "Spandex" : "Curve"}...</div>
+      <div class="loading-provider">Querying {provider}...</div>
     </div>
   {:else if error}
     <!-- Error state -->
     <div class="quote-error" role="alert">
-      <div class="provider-label">{provider === "spandex" ? "Spandex" : "Curve"}</div>
+      <div class="provider-label">{provider}</div>
       <div class="error-message">{error}</div>
     </div>
   {:else if quote}
@@ -149,6 +147,7 @@
         </div>
       {/if}
 
+      {#if quote.execution && walletCheck}<p role="status">{walletCheck.message}</p>{/if}
       <!-- Transaction actions -->
       {#if needsApproval || canSwap}
         <div class="tx-actions">
@@ -159,6 +158,7 @@
               class:confirmed={approveConfirmed}
               disabled={transactionStore.busy ||
                 !validContext ||
+                walletCheck?.status !== "approval" ||
                 approvePending ||
                 approveConfirmed}
               aria-label={approveConfirmed
@@ -186,6 +186,7 @@
               class="tx-btn swap-btn"
               disabled={transactionStore.busy ||
                 !validContext ||
+                walletCheck?.status !== "ready" ||
                 (needsApproval && !approveConfirmed) ||
                 swapPending}
               aria-label={swapPending
