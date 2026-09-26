@@ -178,7 +178,8 @@
     min-width: 0;
   }
   .amount-hint {
-    min-height: 2.5em;
+    min-height: 3em;
+    line-height: 1.5;
     font-size: 0.7rem;
     color: var(--text-muted);
   }
