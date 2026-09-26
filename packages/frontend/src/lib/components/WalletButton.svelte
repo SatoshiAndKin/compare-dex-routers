@@ -5,6 +5,7 @@
    * Full 0x addresses are always shown — never truncated.
    */
   import { walletStore } from "../stores/walletStore.svelte.js";
+  import TransactionLink from "./TransactionLink.svelte";
 
   interface Props {
     /** Called when the connect button is clicked (to open provider menu) */
@@ -59,11 +60,16 @@
     {/if}
   </div>
 {/if}
-{#if walletStore.message}
-  <p class="wallet-message" class:error={walletStore.messageIsError} role="status">
-    {walletStore.message}
-  </p>
-{/if}
+<div class="wallet-message-space">
+  {#if walletStore.message}
+    <div class="wallet-message" class:error={walletStore.messageIsError} role="status">
+      {walletStore.message}
+      {#if walletStore.messageTransaction}
+        · <TransactionLink transaction={walletStore.messageTransaction} />
+      {/if}
+    </div>
+  {/if}
+</div>
 
 <style>
   .wallet-area {
@@ -173,6 +179,9 @@
     font-size: 0.78rem;
     margin: 0;
     color: var(--text-muted, #666);
+  }
+  .wallet-message-space {
+    min-height: 3.5rem;
   }
 
   .wallet-message.error {

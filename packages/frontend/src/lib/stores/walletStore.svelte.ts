@@ -4,6 +4,8 @@
  * Ported from src/client/wallet.ts for Svelte 5.
  */
 
+import type { TransactionReference } from "../explorers.js";
+
 // ---------------------------------------------------------------------------
 // EIP-6963 / EIP-1193 types (defined locally — no cross-package import)
 // ---------------------------------------------------------------------------
@@ -96,6 +98,7 @@ class WalletStore {
   message = $state("");
   /** Whether message is an error */
   messageIsError = $state(false);
+  messageTransaction = $state<TransactionReference | null>(null);
   /** EIP-6963 discovered providers */
   discoveredProviders = $state<EIP6963ProviderDetail[]>([]);
   /** Set to true when a transaction action needs the wallet menu to open */
@@ -115,9 +118,10 @@ class WalletStore {
   // Status message
   // ---------------------------------------------------------------------------
 
-  setMessage(msg: string, isError = false): void {
+  setMessage(msg: string, isError = false, transaction: TransactionReference | null = null): void {
     this.message = msg;
     this.messageIsError = isError;
+    this.messageTransaction = transaction;
   }
 
   // ---------------------------------------------------------------------------

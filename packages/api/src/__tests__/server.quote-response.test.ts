@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   simulate: vi.fn(),
   preview: vi.fn(),
   gas: vi.fn(),
+  usd: vi.fn(),
   allowance: vi.fn(),
   approvalGas: vi.fn(),
 }));
@@ -20,6 +21,10 @@ vi.mock("@spandex/core", async (original) => ({
   }) => ((await mocks.quotes(args)) as Quote[]).map(args.mapFn),
   simulateQuote: mocks.simulate,
   getQuote: mocks.rate,
+}));
+vi.mock("../usd-price.js", async (original) => ({
+  ...(await original<typeof import("../usd-price.js")>()),
+  getNativeUsdConversion: mocks.usd,
 }));
 vi.mock("../preview-simulation.js", () => ({ createPreviewState: () => mocks.preview }));
 vi.mock("../config.js", async (original) => ({
@@ -74,6 +79,11 @@ beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   mocks.gas.mockResolvedValue(1000000000n);
+  mocks.usd.mockResolvedValue({
+    native_price_usd: "2000",
+    source: "defillama",
+    updated_at: Math.floor(Date.now() / 1000),
+  });
   mocks.rate.mockResolvedValue(null);
   mocks.allowance.mockResolvedValue(0n);
   mocks.approvalGas.mockResolvedValue(50000n);
@@ -416,5 +426,85 @@ describe("remaining approval costs", () => {
       approval_gas_used: "50000",
       gas_cost_native: "0.00006",
     });
+  });
+});
+
+describe("display-only USD conversion", () => {
+  it.each(["exactIn", "targetOut"])(
+    "preserves %s ranking across USD rates and outages",
+    async (mode) => {
+      mocks.quotes.mockResolvedValue([
+        quote("kyberswap", 1000000000000000000n, 1000000000000000000n, 1000000n),
+        quote(
+          "curve",
+          1000100000000000000n,
+          mode === "targetOut" ? 1000000000000000000n : 999900000000000000n,
+          10000n
+        ),
+      ]);
+      const query: Record<string, string> =
+        mode === "targetOut" ? { mode, from: WETH, to: TO } : { mode };
+      const original = (await call(query)).body;
+      expect(original.recommendation).toBe("curve");
+      expect(original.usd_conversion.native_price_usd).toBe("2000");
+      expect(original.quotes[0].net_value_usd).toBe(mode === "targetOut" ? "2000.32" : "1999.68");
+      expect(original.quotes[0].gas_cost_usd).toBe("0.12");
+      expect(original.quotes[0].approval_gas_cost_usd).toBe("0.1");
+      for (const conversion of [
+        null,
+        {
+          native_price_usd: "0.000001",
+          source: "defillama",
+          updated_at: Math.floor(Date.now() / 1000),
+        },
+      ]) {
+        mocks.usd.mockResolvedValue(conversion);
+        const next = (await call(query)).body;
+        expect(next.recommendation).toBe(original.recommendation);
+        expect(next.recommendation_basis).toBe(original.recommendation_basis);
+        expect(
+          next.quotes.map((q: { provider: string; net_value_native: string }) => [
+            q.provider,
+            q.net_value_native,
+          ])
+        ).toEqual(
+          original.quotes.map((q: { provider: string; net_value_native: string }) => [
+            q.provider,
+            q.net_value_native,
+          ])
+        );
+        if (conversion === null) expect(next.quotes[0].net_value_usd).toBeNull();
+      }
+    }
+  );
+  it("keeps available USD gas costs but omits adjusted USD totals for raw rankings", async () => {
+    const { body } = await call({ to: TO });
+    expect(body.recommendation_basis).toBe("raw_amount");
+    expect(body.quotes[0]).toMatchObject({
+      gas_cost_usd: "0.12",
+      approval_gas_cost_usd: "0.1",
+      trade_value_usd: null,
+      net_value_usd: null,
+    });
+  });
+  it("charges zero USD for approvals that are already sufficient", async () => {
+    mocks.allowance.mockResolvedValue(2n ** 256n - 1n);
+    const { body } = await call({ sender: SENDER });
+    expect(body.quotes[0]).toMatchObject({
+      approval_gas_cost_usd: "0",
+      gas_cost_usd: "0.02",
+      net_value_usd: "1999.98",
+    });
+  });
+  it("rejects a conversion that became stale while quotes were loading", async () => {
+    mocks.usd.mockResolvedValue({
+      native_price_usd: "2000",
+      source: "defillama",
+      updated_at: Math.floor(Date.now() / 1000) - 601,
+    });
+    const { body } = await call();
+    expect(body.usd_conversion).toBeNull();
+    expect(body.quotes[0].net_value_usd).toBeNull();
+    expect(body.recommendation_basis).toBe("gas_adjusted");
   });
 });

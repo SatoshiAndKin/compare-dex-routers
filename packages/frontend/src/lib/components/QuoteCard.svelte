@@ -8,6 +8,7 @@
   import type { Quote, QuoteResponse } from "../stores/comparisonStore.svelte.js";
   import QuoteDetails from "./QuoteDetails.svelte";
   import QuoteCosts from "./QuoteCosts.svelte";
+  import TransactionLink from "./TransactionLink.svelte";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
 
@@ -19,6 +20,7 @@
     isRecommended?: boolean;
     gasPriceGwei?: string | null;
     recommendationBasis?: QuoteResponse["recommendation_basis"];
+    usdConversion?: QuoteResponse["usd_conversion"];
   }
 
   let {
@@ -29,6 +31,7 @@
     isRecommended = false,
     gasPriceGwei = null,
     recommendationBasis = "none",
+    usdConversion = null,
   }: Props = $props();
 
   const providerName = $derived(quote?.provider ?? provider);
@@ -46,6 +49,7 @@
   const walletCheck = $derived(quote ? transactionStore.getCheck(quote) : null);
   const approveStatus = $derived(quote ? transactionStore.getApproveStatus(quote) : "idle");
   const swapStatus = $derived(quote ? transactionStore.getSwapStatus(quote) : "idle");
+  const swapTransaction = $derived(quote ? transactionStore.getSwapTransaction(quote) : null);
   const approvePending = $derived(approveStatus === "pending");
   const swapPending = $derived(swapStatus === "pending");
   const approveConfirmed = $derived(approveStatus === "confirmed");
@@ -119,7 +123,7 @@
       <!-- Gas cost -->
       <QuoteCosts {quote} basis={recommendationBasis} />
       <!-- Expandable details -->
-      <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} />
+      <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} {usdConversion} />
 
       <div class="execution-status">
         {#if !quote.execution}
@@ -191,7 +195,10 @@
             {#if approveStatus === "failed"}
               <span class="tx-status error" role="alert">Approve failed</span>
             {:else if swapStatus === "confirmed"}
-              <span class="tx-status success" role="status">Swap confirmed ✓</span>
+              <div class="tx-status success" role="status">
+                Swap confirmed ✓
+                {#if swapTransaction}<TransactionLink transaction={swapTransaction} />{/if}
+              </div>
             {:else if swapStatus === "failed"}
               <span class="tx-status error" role="alert">Swap failed</span>
             {/if}

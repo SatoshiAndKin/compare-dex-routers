@@ -35,6 +35,10 @@ export function makeQuote(overrides: Partial<Quote> = {}): Quote {
     gas_cost_native: "0.0024",
     trade_value_native: "0.5",
     net_value_native: "0.4976",
+    gas_cost_usd: "4.8",
+    approval_gas_cost_usd: "0",
+    trade_value_usd: "1000",
+    net_value_usd: "995.2",
     ...overrides,
   };
 }
@@ -56,6 +60,7 @@ export function makeComparison(
     gas_price_gwei: "20",
     native_currency: "ETH",
     mode: "exactIn",
+    usd_conversion: { native_price_usd: "2000", source: "defillama", updated_at: 1790461060 },
     ...overrides,
   };
 }

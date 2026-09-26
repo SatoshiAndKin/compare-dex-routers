@@ -122,11 +122,18 @@ describe("provider results", () => {
     "uses consistent %s costs on the card, rows and Details",
     async (mode) => {
       store.quotes = [
-        makeQuote({ mode, net_value_native: mode === "exactIn" ? "0.4976" : "0.5024" }),
+        makeQuote({
+          mode,
+          net_value_native: mode === "exactIn" ? "0.4976" : "0.5024",
+          net_value_usd: mode === "exactIn" ? "995.2" : "1004.8",
+        }),
         makeQuote({
           mode,
           provider: "curve",
           gas_cost_native: "0.003",
+          gas_cost_usd: "6",
+          approval_gas_cost_usd: "1.2",
+          net_value_usd: mode === "exactIn" ? "994" : "1006",
           approval_gas_used: "30000",
           approval_gas_cost_native: "0.0006",
           net_value_native: mode === "exactIn" ? "0.497" : "0.503",
@@ -149,10 +156,14 @@ describe("provider results", () => {
         expect(row).toHaveTextContent(
           `${quote.input_amount} ${quote.from_symbol} → ${quote.output_amount} ${quote.to_symbol}`
         );
-        expect(row).toHaveTextContent(`Estimated gas cost: ${quote.gas_cost_native} ETH`);
-        expect(row).toHaveTextContent(`${label}: ${quote.net_value_native} ETH`);
         expect(row).toHaveTextContent(
-          `Required approval gas cost: ${quote.provider === "curve" ? "0.0006 ETH (included above)" : "None needed"}`
+          `Estimated gas cost: ${quote.provider === "curve" ? "$6.00" : "$4.80"}`
+        );
+        expect(row).toHaveTextContent(
+          `${label}: ${mode === "exactIn" ? (quote.provider === "curve" ? "$994.00" : "$995.20") : quote.provider === "curve" ? "$1,006.00" : "$1,004.80"}`
+        );
+        expect(row).toHaveTextContent(
+          `Required approval gas cost: ${quote.provider === "curve" ? "$1.20 (included above)" : "None needed"}`
         );
       }
     }
@@ -163,6 +174,7 @@ describe("provider results", () => {
       store.quotes = [
         makeQuote({
           gas_cost_native: ["gas", "approval"].includes(data) ? null : "0",
+          gas_cost_usd: ["gas", "approval"].includes(data) ? null : "0",
           approval_gas_used: data === "approval" ? null : "0",
           approval_gas_cost_native: data === "approval" ? null : "0",
           trade_value_native: data === "conversion" ? null : "0.5",
@@ -184,7 +196,7 @@ describe("provider results", () => {
       if (data === "approval")
         expect(row).toHaveTextContent("Required approval gas cost: Unavailable");
       expect(row).toHaveTextContent(
-        `Estimated gas cost (excluded from ranking): ${["gas", "approval"].includes(data) ? "Unavailable" : "0 ETH"}`
+        `Estimated gas cost (excluded from ranking): ${["gas", "approval"].includes(data) ? "Unavailable" : "$0.00"}`
       );
       expect(
         within(view.container.querySelector(".quote-card") as HTMLElement).getAllByText(

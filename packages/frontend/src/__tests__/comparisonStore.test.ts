@@ -138,3 +138,30 @@ describe("one comparison response", () => {
     expect(store.isLoading).toBe(false);
   });
 });
+
+it("retains the previous USD snapshot until the latest complete response succeeds", async () => {
+  const initial = makeComparison();
+  get.mockResolvedValue({ data: initial, response: new Response() });
+  await store.compare(params);
+  const older = deferred<TestResponse>();
+  get.mockReturnValueOnce(older.promise);
+  const oldRequest = store.compare(params);
+  expect(store.usdConversion).toEqual(initial.usd_conversion);
+  expect(store.quotes[0]?.net_value_usd).toBe("995.2");
+  expect(store.isCurrent(store.quotes[0]!)).toBe(false);
+  const next = makeComparison({
+    usd_conversion: null,
+    quotes: initial.quotes.map((q) => ({ ...q, net_value_usd: null, gas_cost_usd: null })),
+  });
+  get.mockResolvedValueOnce({ data: next, response: new Response() });
+  await store.compare(params);
+  older.resolve({ data: initial, response: new Response() });
+  await oldRequest;
+  expect(store.usdConversion).toBeNull();
+  expect(store.quotes[0]?.net_value_usd).toBeNull();
+  get.mockRejectedValueOnce(new Error("offline"));
+  await store.compare(params);
+  expect(store.usdConversion).toBeNull();
+  expect(store.quotes).toEqual(next.quotes);
+  expect(store.isCurrent(store.quotes[0]!)).toBe(false);
+});

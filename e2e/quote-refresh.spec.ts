@@ -86,6 +86,16 @@ for (const mode of ["exactIn", "targetOut"] as const) {
             : mode === "exactIn"
               ? "0.4976"
               : "0.5024";
+        quote.net_value_usd =
+          quote.provider === "curve"
+            ? mode === "exactIn"
+              ? "994"
+              : "1006"
+            : mode === "exactIn"
+              ? "995.2"
+              : "1004.8";
+        quote.gas_cost_usd = quote.provider === "curve" ? "6" : "4.8";
+        quote.approval_gas_cost_usd = quote.provider === "curve" ? "1.2" : "0";
         quote.approval_gas_used = quote.provider === "curve" ? "30000" : "0";
         quote.approval_gas_cost_native = quote.provider === "curve" ? "0.0006" : "0";
         quote.gas_cost_native = quote.provider === "curve" ? "0.003" : "0.0024";
@@ -98,18 +108,18 @@ for (const mode of ["exactIn", "targetOut"] as const) {
       mode === "exactIn"
         ? "Estimated output value after gas"
         : "Estimated input cost including gas";
-    const value = mode === "exactIn" ? "0.497" : "0.503";
-    await expect(page.locator(".quote-card .quote-costs")).toContainText(`${label}: ${value} ETH`);
+    const value = mode === "exactIn" ? "$994.00" : "$1,006.00";
+    await expect(page.locator(".quote-card .quote-costs")).toContainText(`${label}: ${value}`);
     for (const provider of ["0x", "curve"]) {
       const row = page.getByRole("button", { name: `Select ${provider}` });
       await expect(row).toContainText(
-        `Estimated gas cost: ${provider === "curve" ? "0.003" : "0.0024"} ETH`
+        `Estimated gas cost: ${provider === "curve" ? "$6.00" : "$4.80"}`
       );
       await expect(row).toContainText(
-        `Required approval gas cost: ${provider === "curve" ? "0.0006 ETH (included above)" : "None needed"}`
+        `Required approval gas cost: ${provider === "curve" ? "$1.20 (included above)" : "None needed"}`
       );
       await expect(row).toContainText(
-        `${label}: ${provider === "curve" ? value : mode === "exactIn" ? "0.4976" : "0.5024"} ETH`
+        `${label}: ${provider === "curve" ? value : mode === "exactIn" ? "$995.20" : "$1,004.80"}`
       );
     }
     recommendation = "0x";
@@ -126,7 +136,7 @@ for (const mode of ["exactIn", "targetOut"] as const) {
     await page.getByRole("button", { name: /Details/ }).click();
     await expect(page.getByText(new RegExp(label))).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Select curve" })).toContainText(
-      "Estimated gas cost (excluded from ranking): 0.003 ETH"
+      "Estimated gas cost (excluded from ranking): $6.00"
     );
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)

@@ -138,7 +138,7 @@ describe("quote-bound wallet actions", () => {
       },
     ]);
     expect(transactions.getApproveStatus(comparisonStore.quotes[0]!)).toBe("confirmed");
-    expect(walletStore.message).toContain(HASH);
+    expect(walletStore.messageTransaction).toEqual({ chainId: 1, hash: HASH });
     expect(autoRefreshStore.paused).toBe(false);
   });
   it("reads allowance and skips an unnecessary approval", async () => {
@@ -219,7 +219,7 @@ describe("quote-bound wallet actions", () => {
     ]);
     expect(transactions.getSwapStatus(quote)).toBe("confirmed");
     expect(comparisonStore.workflowProvider).toBeNull();
-    expect(walletStore.message).toContain(HASH);
+    expect(walletStore.messageTransaction).toEqual({ chainId: 1, hash: HASH });
   });
   it.each([
     [100000n, "120001", 144002n],

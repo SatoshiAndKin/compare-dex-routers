@@ -10,6 +10,7 @@
 
 import { canonicalToken } from "../native.js";
 import { formStore } from "./formStore.svelte.js";
+import { explorerBase } from "../explorers.js";
 import type { TokenInfo } from "./formStore.svelte.js";
 
 const PREFERENCES_KEY = "compare-dex-preferences";
@@ -18,6 +19,7 @@ export interface ChainPreferences {
   fromToken?: { address: string; symbol: string; decimals: number; logoURI?: string };
   toToken?: { address: string; symbol: string; decimals: number; logoURI?: string };
   slippageBps?: number;
+  explorerUrl?: string;
 }
 
 export interface Preferences {
@@ -33,7 +35,14 @@ export function loadPreferences(): Preferences | null {
     const raw = localStorage.getItem(PREFERENCES_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && "chains" in parsed) {
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "chains" in parsed &&
+      parsed.chains &&
+      typeof parsed.chains === "object" &&
+      !Array.isArray(parsed.chains)
+    ) {
       return parsed as Preferences;
     }
     return null;
@@ -64,6 +73,26 @@ export function getChainPreferences(chainId: number): ChainPreferences | null {
 }
 
 class PreferencesStore {
+  private explorerRevision = $state(0);
+
+  getExplorerUrl(chainId: number): string | null {
+    void this.explorerRevision;
+    return explorerBase(getChainPreferences(chainId)?.explorerUrl);
+  }
+
+  setExplorerUrl(chainId: number, value: string): string | null {
+    const url = explorerBase(value);
+    if (value.trim() && !url)
+      return "Enter an HTTPS explorer URL without credentials, a query, or a fragment.";
+    const prefs = loadPreferences() ?? { chains: {} };
+    const chain = { ...prefs.chains[chainId] };
+    if (url) chain.explorerUrl = url;
+    else delete chain.explorerUrl;
+    prefs.chains[chainId] = chain;
+    savePreferences(prefs);
+    this.explorerRevision++;
+    return null;
+  }
   /**
    * Save current formStore state (fromToken, toToken, slippageBps) for the given chain.
    * Called after a successful compare.
@@ -72,6 +101,7 @@ class PreferencesStore {
     const existing = loadPreferences() ?? { chains: {} };
 
     const chainPrefs: ChainPreferences = {
+      ...existing.chains[chainId],
       slippageBps: formStore.slippageBps,
     };
 

@@ -232,7 +232,7 @@ for (const network of networks) {
             await page.getByRole("button", { name: "Approve token spending" }).click();
             approvals++;
             await expect(
-              page.getByRole("status").filter({ hasText: /^Approval confirmed:/ })
+              page.locator(".wallet-message").filter({ hasText: /^Approval confirmed/ })
             ).toBeVisible({ timeout: 30000 });
             quote = (
               (await (await refreshed).json()) as components["schemas"]["QuoteResponse"]
@@ -248,8 +248,12 @@ for (const network of networks) {
         await expect(page.getByRole("dialog", { name: "Confirm Swap" })).toBeVisible();
         await page.getByRole("button", { name: "Confirm Swap", exact: true }).click();
         await expect(
-          page.getByRole("status").filter({ hasText: /^Swap confirmed: 0x/ })
+          page.locator(".wallet-message").filter({ hasText: /^Swap confirmed/ })
         ).toBeVisible({ timeout: 30_000 });
+        await expect(page.locator(".wallet-message").getByRole("link")).toHaveAttribute(
+          "href",
+          new RegExp(`/tx/${hashes.at(-1)}$`)
+        );
         expect(hashes).toHaveLength(approvals + 1);
         const receipts = await Promise.all(
           hashes.map((hash) => client.getTransactionReceipt({ hash }))

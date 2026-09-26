@@ -221,6 +221,13 @@ export interface components {
       wallet_readiness: "unchecked";
       gas_price_gwei: string | null;
       native_currency: string;
+      /** @description Display-only native currency to USD conversion; timestamp in Unix seconds */
+      usd_conversion: {
+        native_price_usd: string;
+        /** @enum {string} */
+        source: "defillama";
+        updated_at: number;
+      } | null;
       /** @enum {string} */
       mode: "exactIn" | "targetOut";
     };
@@ -273,6 +280,10 @@ export interface components {
       gas_cost_native: string | null;
       trade_value_native: string | null;
       net_value_native: string | null;
+      gas_cost_usd: string | null;
+      approval_gas_cost_usd: string | null;
+      trade_value_usd: string | null;
+      net_value_usd: string | null;
     };
     Error: {
       error: string;
