@@ -29,6 +29,8 @@ const QuoteSchema = z.object({
   provider: z.string(),
   slippage_bps: z.number().int().min(0).max(10000),
   sender: address.nullable(),
+  simulation_status: z.enum(["succeeded", "not_run"]),
+  simulation_reason: z.string().nullable(),
   execution: z
     .object({
       to: address,
@@ -87,7 +89,7 @@ export const QuoteResponseSchema = z.object({
   recommendation: z.string().nullable(),
   recommendation_reason: z.string(),
   recommendation_basis: z.enum(["gas_adjusted", "raw_amount", "none"]),
-  simulation_basis: z.literal("temporary_funding"),
+  simulation_basis: z.literal("wallet_balance"),
   simulation_account: address,
   wallet_readiness: z.literal("unchecked"),
   gas_price_gwei: nativeValue,

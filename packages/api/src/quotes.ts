@@ -1,13 +1,13 @@
 import {
-  getQuote,
   prepareQuotes,
   simulateQuote,
   isNativeToken,
   type SimulatedQuote,
   type SuccessfulSimulatedQuote,
+  type SuccessfulQuote,
   type SwapParams,
 } from "@spandex/core";
-import { formatUnits, parseUnits, type Address } from "viem";
+import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
 import {
   getClient,
   getSpandexConfig,
@@ -20,7 +20,6 @@ import { logger } from "./logger.js";
 import type { QuoteParams } from "./quote.js";
 import type { QuoteResponse, QuoteResult, ProviderFailure } from "./quote-response.js";
 import { redact, redactText } from "./redaction.js";
-import { createPreviewState } from "./preview-simulation.js";
 import { createApprovalGasEstimator } from "./approval-gas.js";
 import { getNativeUsdConversion, nativeToUsd } from "./usd-price.js";
 
@@ -30,9 +29,18 @@ const config = getSpandexConfig();
 const rates = new Map<string, { nativeRaw: bigint; tokenRaw: bigint; timestamp: number }>();
 const RATE_TTL_MS = 60_000;
 
-function successful(quote: SimulatedQuote, minimumOutput = 1n): quote is SuccessfulSimulatedQuote {
+type UnsimulatedQuote = SuccessfulQuote & { simulation: null; simulationReason: string };
+type PricedQuote = SimulatedQuote | UnsimulatedQuote;
+
+function successful(
+  quote: PricedQuote,
+  minimumOutput = 1n
+): quote is SuccessfulSimulatedQuote | UnsimulatedQuote {
   return (
-    quote.success && quote.simulation.success && quote.simulation.outputAmount >= minimumOutput
+    quote.success &&
+    (quote.simulation === null
+      ? quote.outputAmount >= minimumOutput
+      : quote.simulation.success && quote.simulation.outputAmount >= minimumOutput)
   );
 }
 
@@ -55,26 +63,44 @@ async function requestQuotes(params: QuoteParams) {
       ? { ...common, mode: "targetOut", outputAmount: parseUnits(params.amount, outputDecimals) }
       : { ...common, mode: "exactIn", inputAmount: parseUnits(params.amount, inputDecimals) };
   const client = getClient(params.chainId);
-  const previewState = createPreviewState(
-    client,
-    swap.swapperAccount,
-    swap.inputToken,
-    Boolean(params.sender)
-  );
+  // balanceOf is the ERC20 contract. Its internal accounting is irrelevant here.
+  const balance = params.sender
+    ? await (
+        isNativeToken(swap.inputToken)
+          ? client.getBalance({ address: swap.swapperAccount })
+          : client.readContract({
+              address: swap.inputToken,
+              abi: erc20Abi,
+              functionName: "balanceOf",
+              args: [swap.swapperAccount],
+            })
+      ).catch((error: unknown) => {
+        logger.debug({ error }, "Input balance unavailable");
+        return null;
+      })
+    : null;
   const quotes = config.aggregators.length
     ? await Promise.all(
         await prepareQuotes({
           config,
           swap,
-          mapFn: async (quote): Promise<SimulatedQuote> => {
+          mapFn: async (quote): Promise<PricedQuote> => {
+            if (quote.success && (balance === null || balance < quote.inputAmount)) {
+              return {
+                ...quote,
+                simulation: null,
+                simulationReason: !params.sender
+                  ? "Connect a funded wallet to simulate this route."
+                  : balance === null
+                    ? "Could not read your input balance. Refresh to retry simulation."
+                    : `Insufficient ${fromSymbol} balance. Fund your wallet and refresh to simulate this route.`,
+              };
+            }
             try {
               return await simulateQuote({
                 client,
                 swap,
                 quote,
-                simulationOptions: quote.success
-                  ? { stateOverrides: await previewState(quote.inputAmount) }
-                  : undefined,
               });
             } catch (error) {
               return {
@@ -108,23 +134,29 @@ async function requestQuotes(params: QuoteParams) {
         amount: params.amount,
         mode: params.mode,
         input_amount: formatUnits(quote.inputAmount, inputDecimals),
-        output_amount: formatUnits(quote.simulation.outputAmount, outputDecimals),
+        output_amount: formatUnits(
+          quote.simulation?.outputAmount ?? quote.outputAmount,
+          outputDecimals
+        ),
         input_amount_raw: quote.inputAmount.toString(),
-        output_amount_raw: quote.simulation.outputAmount.toString(),
+        output_amount_raw: (quote.simulation?.outputAmount ?? quote.outputAmount).toString(),
         slippage_bps: params.slippageBps,
         provider: quote.provider,
         sender: params.sender ?? null,
-        execution: params.sender
-          ? {
-              to: quote.txData.to,
-              data: quote.txData.data,
-              value: (quote.txData.value ?? 0n).toString(),
-              approval: isNativeToken(swap.inputToken) ? null : (quote.approval ?? null),
-            }
-          : null,
+        simulation_status: quote.simulation ? "succeeded" : "not_run",
+        simulation_reason: quote.simulation === null ? quote.simulationReason : null,
+        execution:
+          params.sender && quote.simulation
+            ? {
+                to: quote.txData.to,
+                data: quote.txData.data,
+                value: (quote.txData.value ?? 0n).toString(),
+                approval: isNativeToken(swap.inputToken) ? null : (quote.approval ?? null),
+              }
+            : null,
         route: quote.route ?? null,
         gas_used:
-          quote.simulation.gasUsed && quote.simulation.gasUsed > 0n
+          quote.simulation?.gasUsed && quote.simulation.gasUsed > 0n
             ? quote.simulation.gasUsed.toString()
             : null,
         gas_price_gwei: null,
@@ -145,14 +177,14 @@ async function requestQuotes(params: QuoteParams) {
     if (successful(quote, minimumOutput)) continue;
     const error = !quote.success
       ? quote.error
-      : !quote.simulation.success
+      : quote.simulation && !quote.simulation.success
         ? quote.simulation.error
-        : new Error("Simulated output is below the requested amount");
+        : new Error("Output is below the requested amount");
     const diagnostic =
       error && typeof error === "object" ? (error as unknown as Record<string, unknown>) : {};
     failures.push({
       provider: quote.provider,
-      stage: quote.success ? "simulation" : "quote",
+      stage: quote.success && quote.simulation !== null ? "simulation" : "quote",
       error: {
         name: redactText(typeof diagnostic.name === "string" ? diagnostic.name : "Error"),
         message: redactText(
@@ -183,28 +215,28 @@ async function nativeRate(chainId: number, token: string, decimals: number) {
   const cached = rates.get(key);
   if (cached && Date.now() - cached.timestamp < RATE_TTL_MS) return cached;
   try {
-    const quote = await getQuote({
-      config,
-      swap: {
-        chainId,
-        inputToken: token as Address,
-        outputToken: native.wrapped,
-        mode: "exactIn",
-        inputAmount: tokenRaw,
-        slippageBps: 100,
-        swapperAccount: PREVIEW_ACCOUNT,
-      },
-      strategy: "bestPrice",
-      simulationOptions: {
-        stateOverrides: await createPreviewState(
-          getClient(chainId),
-          PREVIEW_ACCOUNT,
-          token as Address
-        )(tokenRaw),
-      },
-    });
-    if (!quote || !successful(quote) || quote.simulation.outputAmount <= 0n) return null;
-    const rate = { tokenRaw, nativeRaw: quote.simulation.outputAmount, timestamp: Date.now() };
+    // Reference prices are provider quotes, so they need no fabricated token balance.
+    const quotes = await Promise.all(
+      await prepareQuotes({
+        config,
+        swap: {
+          chainId,
+          inputToken: token as Address,
+          outputToken: native.wrapped,
+          mode: "exactIn",
+          inputAmount: tokenRaw,
+          slippageBps: 100,
+          swapperAccount: PREVIEW_ACCOUNT,
+        },
+        mapFn: async (quote) => quote,
+      })
+    );
+    let nativeRaw = 0n;
+    for (const quote of quotes) {
+      if (quote.success && quote.outputAmount > nativeRaw) nativeRaw = quote.outputAmount;
+    }
+    if (nativeRaw === 0n) return null;
+    const rate = { tokenRaw, nativeRaw, timestamp: Date.now() };
     rates.set(key, rate);
     return rate;
   } catch (error) {
@@ -285,11 +317,11 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
     recommendation_basis: results.length === 0 ? "none" : adjusted ? "gas_adjusted" : "raw_amount",
     recommendation_reason:
       results.length === 0
-        ? "No provider returned a successful price simulation."
+        ? "No provider returned a successful quote."
         : adjusted
           ? `${targetOut ? "Lowest input plus estimated gas" : "Highest output after estimated gas"} in ${native.symbol}, including required approvals. Equal values use provider configuration order.`
           : `Comparing all routes by raw ${targetOut ? "input" : "output"} amounts because comparable gas or conversion data is unavailable. Equal values use provider configuration order.`,
-    simulation_basis: "temporary_funding",
+    simulation_basis: "wallet_balance",
     simulation_account: account,
     wallet_readiness: "unchecked",
     gas_price_gwei: gas.gasPriceGwei,

@@ -215,7 +215,7 @@ export interface components {
       /** @enum {string} */
       recommendation_basis: "gas_adjusted" | "raw_amount" | "none";
       /** @enum {string} */
-      simulation_basis: "temporary_funding";
+      simulation_basis: "wallet_balance";
       simulation_account: string;
       /** @enum {string} */
       wallet_readiness: "unchecked";
@@ -247,6 +247,9 @@ export interface components {
       provider: string;
       slippage_bps: number;
       sender: string | null;
+      /** @enum {string} */
+      simulation_status: "succeeded" | "not_run";
+      simulation_reason: string | null;
       execution: {
         to: string;
         data: string;

@@ -1,10 +1,8 @@
 <script lang="ts">
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
-  import { balanceStore } from "../stores/balanceStore.svelte.js";
-  import { walletStore } from "../stores/walletStore.svelte.js";
-  import { formStore } from "../stores/formStore.svelte.js";
   import QuoteCard from "./QuoteCard.svelte";
+  import QuoteSimulation from "./QuoteSimulation.svelte";
   import QuoteCosts from "./QuoteCosts.svelte";
   import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
 
@@ -13,19 +11,6 @@
     transactionStore.cancelSwap();
     comparisonStore.selectProvider(provider);
   }
-
-  const hasFullBalance = $derived(
-    comparisonStore.activeQuote !== null &&
-      walletStore.provider !== null &&
-      walletStore.address?.toLowerCase() === comparisonStore.activeQuote.sender?.toLowerCase() &&
-      walletStore.chainId === comparisonStore.activeQuote.chainId &&
-      formStore.chainId === comparisonStore.activeQuote.chainId &&
-      formStore.fromToken?.address.toLowerCase() ===
-        comparisonStore.activeQuote.from.toLowerCase() &&
-      balanceStore.from.status === "ready" &&
-      balanceStore.from.raw !== null &&
-      balanceStore.from.raw >= BigInt(comparisonStore.activeQuote.input_amount_raw)
-  );
 </script>
 
 {#if comparisonStore.hasResults}
@@ -58,7 +43,7 @@
           {:else}<p class="quote-error" role="alert">
               {comparisonStore.workflowProvider || comparisonStore.selectedProvider
                 ? `${comparisonStore.activeProvider} is unavailable for this workflow. Select and review a route to continue.`
-                : "No successful price simulations. Review provider failures below."}
+                : "No successful quotes. Review provider failures below."}
             </p>{/if}
         </div>
       {/if}
@@ -66,11 +51,6 @@
     {#if comparisonStore.error}<div class="quote-error" role="alert">
         {comparisonStore.error}. Refresh quotes to retry.
       </div>{/if}
-    {#if !hasFullBalance}
-      <p class="price-simulation">
-        Price simulations use temporary funding; wallet checks are separate.
-      </p>
-    {/if}
     {#if comparisonStore.recommendationBasis === "gas_adjusted"}<p class="reason-box" role="status">
         {comparisonStore.mode === "targetOut"
           ? "Ranked by estimated input cost including gas."
@@ -123,6 +103,7 @@
             : ""}{quote.provider === comparisonStore.activeProvider ? " — Selected" : ""}: {quote.input_amount}
           {quote.from_symbol} → {quote.output_amount}
           {quote.to_symbol}
+          <QuoteSimulation {quote} />
           <QuoteCosts {quote} basis={comparisonStore.recommendationBasis} />
         </button>
       {/each}
@@ -147,7 +128,6 @@
     justify-content: center;
     color: var(--text-muted);
   }
-  .price-simulation,
   .reason-box {
     border: 0;
     background: transparent;
@@ -225,7 +205,6 @@
     border-bottom: 1px solid var(--border-light);
   }
   .reason-box,
-  .price-simulation,
   .quote-error {
     padding: 0.5rem 0;
   }
