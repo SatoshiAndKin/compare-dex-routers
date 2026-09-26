@@ -44,10 +44,16 @@ const QuoteSchema = z.object({
       ),
     })
     .nullable(),
-  gas_used: quantity.nullable(),
+  gas_used: quantity.nullable().describe("Swap execution gas units, excluding approvals"),
+  approval_gas_used: quantity
+    .nullable()
+    .describe("Remaining approval gas units; zero when unnecessary, null when unknown"),
+  approval_gas_cost_native: nativeValue,
   gas_price_gwei: nativeValue,
   native_currency: z.string(),
-  gas_cost_native: nativeValue,
+  gas_cost_native: nativeValue.describe(
+    "Estimated swap plus required approval cost in native currency"
+  ),
   trade_value_native: nativeValue,
   net_value_native: nativeValue,
 });

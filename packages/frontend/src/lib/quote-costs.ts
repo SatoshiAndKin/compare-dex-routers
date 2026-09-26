@@ -11,6 +11,14 @@ export function quoteCostFields(
         ? "Unavailable"
         : `${quote.gas_cost_native} ${quote.native_currency}`,
     ],
+    [
+      "Required approval gas cost",
+      quote.approval_gas_used === "0"
+        ? "None needed"
+        : quote.approval_gas_cost_native == null
+          ? "Unavailable"
+          : `${quote.approval_gas_cost_native} ${quote.native_currency}${quote.gas_cost_native === null ? "" : " (included above)"}`,
+    ],
   ];
   if (
     basis === "gas_adjusted" &&
