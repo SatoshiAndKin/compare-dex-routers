@@ -1,4 +1,4 @@
-import { isNativeToken, type SuccessfulSimulatedQuote } from "@spandex/core";
+import { isNativeToken, type SuccessfulQuote } from "@spandex/core";
 import {
   encodeFunctionData,
   erc20Abi,
@@ -19,7 +19,7 @@ export function createApprovalGasEstimator(
   let block: Promise<bigint> | undefined;
   const allowances = new Map<string, Promise<bigint>>();
   const estimates = new Map<string, Promise<bigint>>();
-  return async (quote: SuccessfulSimulatedQuote): Promise<bigint | null> => {
+  return async (quote: SuccessfulQuote): Promise<bigint | null> => {
     if (isNativeToken(inputToken)) return 0n;
     // Use the same metadata and unlimited approval as the wallet workflow.
     // A synthetic simulation approval is not evidence that the wallet needs one.

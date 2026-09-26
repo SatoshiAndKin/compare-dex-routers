@@ -7,6 +7,7 @@
   import { untrack } from "svelte";
   import type { Quote, QuoteResponse } from "../stores/comparisonStore.svelte.js";
   import QuoteDetails from "./QuoteDetails.svelte";
+  import QuoteSimulation from "./QuoteSimulation.svelte";
   import QuoteCosts from "./QuoteCosts.svelte";
   import TransactionLink from "./TransactionLink.svelte";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
@@ -120,13 +121,14 @@
         </div>
       </div>
 
+      <QuoteSimulation {quote} />
       <!-- Gas cost -->
       <QuoteCosts {quote} basis={recommendationBasis} />
       <!-- Expandable details -->
       <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} {usdConversion} />
 
       <div class="execution-status">
-        {#if !quote.execution}
+        {#if !quote.execution && !walletStore.isConnected}
           <div class="tx-actions">
             <span>Connect your wallet to swap.</span>
           </div>

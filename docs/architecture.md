@@ -49,7 +49,6 @@ Plain `node:http` server. Runs via `tsx` so TypeScript files execute directly, n
 | `config.ts`         | Chain definitions (7 chains), Spandex router setup with providers (0x, KyberSwap, Nordstern, LiFi, Relay, Velora), viem public clients, token metadata helpers |
 | `quote.ts`          | Query-parameter parsing and validation (`chainId`, `from`, `to`, `amount`, `slippageBps`, `sender`, `mode`)                                                            |
 | `quotes.ts`         | Unified provider quote formatting, simulation filtering, and recommendation arithmetic                                                                             |
-| `preview-simulation.ts` | Read-only preview funding with verified token storage and account-code isolation |
 | `quote-response.ts` | Shared Zod response schemas and API types                                                                                                                              |
 | `redaction.ts`      | Credential removal before logs, errors, and Sentry                                                                                                                     |
 | `gas-price.ts`      | Exact chain-native gas prices from RPC with per-block caching                                                                                                          |
@@ -191,19 +190,23 @@ Both app Compose files forward all seven `RPC_URL_<id>` overrides. The API liste
 
 `quotes.ts` ranks every successful provider together with exact integer arithmetic and configuration-order ties. It uses canonical wrapped native tokens for conversion rates. Missing gas or rate data causes an explicit raw-amount comparison. The quote endpoint uses `quote-response.ts`; OpenAPI and the generated frontend client share that contract.
 
-All price simulations and conversion-rate estimates use simulation-only
-state overrides. Each provider's quoted input amount funds its own simulation,
-including target-output requests. The preview account has empty code during the
-simulation, so deployed or delegated account code cannot alter its behavior.
-For ERC20 input, `debug_traceCall` with `prestateTracer` identifies the storage
-read by `balanceOf`. Two distinct read-only probes must identify exactly one
-balance slot before the API uses it. The API limits discovery to 16 candidate
-slots and rejects unsupported layouts instead of guessing. This requires RPC
-support for the prestate tracer and state overrides. Token code, unrelated token
-storage, and live chain state remain intact. Connected-wallet simulations preserve original account code and sender while temporarily funding it. Overrides never enter an execution payload. Prices are not wallet-readiness checks.
+For a connected wallet, the API reads the input token's `balanceOf` (or the
+native balance) once per request and compares it with each route's required
+input. Sufficient balances are simulated with the original sender and token
+state. There is no token storage discovery or balance override. The SDK supplies
+native gas funds for price simulation; actual gas affordability remains a wallet
+readiness check. Required approval estimates use the wallet's real allowance.
 
-Exact-output quotes must simulate at least the requested output amount. The API
-rejects even a one-unit shortfall before it selects or exposes a quote.
+Without sufficient input funds or a successful balance read, provider quotes
+remain visible with `simulation_status: "not_run"` and an explanation. They have
+no execution payload or swap gas estimate. A funded refresh must simulate before
+the route can be used for approval or swap. Mixed simulated and unsimulated
+results use the same raw-amount ranking basis. Conversion-rate estimates use
+ordinary provider quotes without simulation or token funding.
+
+Exact-output quotes must meet the requested output amount. Simulated routes use
+the actual simulated output; unsimulated routes use the provider's quoted output.
+The API rejects even a one-unit shortfall before exposing a quote.
 The pinned Spandex SDK simulates the swap at the RPC gas price and rejects
 fee-sensitive reverts. It reports native output before gas costs so the API
 does not deduct the same fee twice when it calculates a recommendation.

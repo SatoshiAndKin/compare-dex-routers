@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   quotes: vi.fn(),
   rate: vi.fn(),
   simulate: vi.fn(),
-  preview: vi.fn(),
+  balance: vi.fn(),
   gas: vi.fn(),
   usd: vi.fn(),
   allowance: vi.fn(),
@@ -15,18 +15,18 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@spandex/core", async (original) => ({
   ...(await original<typeof import("@spandex/core")>()),
-  prepareQuotes: async (args: {
-    swap: SwapParams;
-    mapFn: (quote: Quote) => Promise<SimulatedQuote>;
-  }) => ((await mocks.quotes(args)) as Quote[]).map(args.mapFn),
+  prepareQuotes: async (args: { swap: SwapParams; mapFn: (quote: Quote) => Promise<unknown> }) =>
+    (
+      (await (args.swap.swapperAccount === PREVIEW && args.swap.outputToken === WETH
+        ? mocks.rate(args)
+        : mocks.quotes(args))) as Quote[]
+    ).map(args.mapFn),
   simulateQuote: mocks.simulate,
-  getQuote: mocks.rate,
 }));
 vi.mock("../usd-price.js", async (original) => ({
   ...(await original<typeof import("../usd-price.js")>()),
   getNativeUsdConversion: mocks.usd,
 }));
-vi.mock("../preview-simulation.js", () => ({ createPreviewState: () => mocks.preview }));
 vi.mock("../config.js", async (original) => ({
   ...(await original<typeof import("../config.js")>()),
   getTokenDecimals: async (_chain: number, token: string) => (token === FROM ? 6 : 18),
@@ -34,10 +34,13 @@ vi.mock("../config.js", async (original) => ({
   getClient: () => ({
     getGasPrice: mocks.gas,
     getBlockNumber: async () => 100n,
-    readContract: mocks.allowance,
+    getBalance: mocks.balance,
+    readContract: (args: { functionName: string }) =>
+      args.functionName === "balanceOf" ? mocks.balance(args) : mocks.allowance(args),
     estimateGas: mocks.approvalGas,
   }),
 }));
+const PREVIEW = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
 const FROM = "0x1111111111111111111111111111111111111111";
 const TO = "0x2222222222222222222222222222222222222222";
 const SENDER = "0x3333333333333333333333333333333333333333";
@@ -64,6 +67,7 @@ let url: string;
 async function call(query: Record<string, string | number> = {}, path = "/quote") {
   const params = new URLSearchParams(
     Object.entries({
+      sender: SENDER,
       chainId: 1,
       from: FROM,
       to: WETH,
@@ -84,12 +88,12 @@ beforeEach(async () => {
     source: "defillama",
     updated_at: Math.floor(Date.now() / 1000),
   });
-  mocks.rate.mockResolvedValue(null);
+  mocks.rate.mockResolvedValue([]);
   mocks.allowance.mockResolvedValue(0n);
   mocks.approvalGas.mockResolvedValue(50000n);
   mocks.quotes.mockResolvedValue([quote(), quote("curve")]);
   mocks.simulate.mockImplementation(async ({ quote }: { quote: SimulatedQuote }) => quote);
-  mocks.preview.mockResolvedValue([{ address: SENDER, balance: 10000000000000000000000n }]);
+  mocks.balance.mockResolvedValue(10n ** 30n);
   const { handleRequest } = await import("../server.js");
   server = http.createServer(handleRequest);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -103,16 +107,17 @@ afterEach(async () => {
 });
 
 describe("unified quote contract", () => {
-  it("returns all provider prices and strips execution from previews", async () => {
-    const { response, body } = await call();
+  it("returns unsimulated provider prices without calldata when disconnected", async () => {
+    const { response, body } = await call({ sender: "", to: TO });
     expect(response.status).toBe(200);
     expect(QuoteResponseSchema.parse(body)).toMatchObject({
-      simulation_basis: "temporary_funding",
+      simulation_basis: "wallet_balance",
       wallet_readiness: "unchecked",
       recommendation: "kyberswap",
+      recommendation_basis: "raw_amount",
       failures: [],
     });
-    expect(body.quotes.map((quote: { provider: string }) => quote.provider)).toEqual([
+    expect(body.quotes.map((q: { provider: string }) => q.provider)).toEqual([
       "kyberswap",
       "curve",
     ]);
@@ -120,20 +125,37 @@ describe("unified quote contract", () => {
       expect(result).toMatchObject({
         sender: null,
         execution: null,
+        simulation_status: "not_run",
+        simulation_reason: "Connect a funded wallet to simulate this route.",
         input_amount_raw: "1000000",
         output_amount_raw: "1000000000000000000",
+        gas_used: null,
+        gas_cost_native: null,
+        net_value_usd: null,
       });
-    expect(mocks.preview).toHaveBeenCalledWith(1000000n);
+    expect(mocks.simulate).not.toHaveBeenCalled();
+    expect(mocks.balance).not.toHaveBeenCalled();
   });
-  it("funds connected-wallet price simulations without replacing the sender or calldata", async () => {
-    const { body } = await call({ sender: SENDER });
-    expect(mocks.quotes.mock.calls[0]?.[0].swap.swapperAccount).toBe(SENDER);
-    expect(mocks.preview).toHaveBeenCalledWith(1000000n);
-    expect(mocks.simulate.mock.calls[0]?.[0].simulationOptions.stateOverrides).toEqual([
-      { address: SENDER, balance: 10000000000000000000000n },
-    ]);
+  it("trusts balanceOf at the exact required input and preserves sender and calldata", async () => {
+    mocks.balance.mockResolvedValue(1000000n);
+    const { body } = await call();
+    expect(mocks.balance).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        address: FROM,
+        functionName: "balanceOf",
+        args: [SENDER],
+      })
+    );
+    expect(mocks.simulate).toHaveBeenCalledTimes(2);
+    expect(mocks.simulate.mock.calls[0]?.[0]).toEqual({
+      client: expect.any(Object),
+      swap: expect.objectContaining({ swapperAccount: SENDER }),
+      quote: expect.objectContaining({ provider: "kyberswap" }),
+    });
     expect(body.quotes[0]).toMatchObject({
       sender: SENDER,
+      simulation_status: "succeeded",
+      simulation_reason: null,
       execution: {
         to: ROUTER,
         data: "0xabcdef",
@@ -142,18 +164,65 @@ describe("unified quote contract", () => {
       },
     });
   });
-  it("funds each exact-output route with its own required input", async () => {
-    mocks.quotes.mockResolvedValue([quote("kyberswap", 1200000n), quote("curve", 1300000n)]);
-    const { body } = await call({ mode: "targetOut" });
-    expect(mocks.preview).toHaveBeenCalledWith(1200000n);
-    expect(mocks.preview).toHaveBeenCalledWith(1300000n);
-    expect(body.quotes.map((q: { input_amount_raw: string }) => q.input_amount_raw)).toEqual([
-      "1200000",
-      "1300000",
-    ]);
+  it.each(["token", "native"])(
+    "keeps prices and withholds execution when the %s balance is short by one unit",
+    async (kind) => {
+      mocks.balance.mockResolvedValue(999999n);
+      const { body } = await call(
+        kind === "native" ? { from: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" } : {}
+      );
+      expect(body.quotes).toHaveLength(2);
+      expect(body.quotes[0]).toMatchObject({
+        execution: null,
+        simulation_status: "not_run",
+        gas_used: null,
+        gas_cost_native: null,
+        simulation_reason:
+          "Insufficient TOKEN balance. Fund your wallet and refresh to simulate this route.",
+      });
+      expect(body.recommendation_basis).toBe("raw_amount");
+      expect(mocks.simulate).not.toHaveBeenCalled();
+    }
+  );
+  it("keeps quotes without execution when balanceOf is unavailable", async () => {
+    mocks.balance.mockRejectedValue(new Error("RPC unavailable"));
+    const { body } = await call();
+    expect(body.quotes[0]).toMatchObject({
+      execution: null,
+      simulation_status: "not_run",
+      simulation_reason: "Could not read your input balance. Refresh to retry simulation.",
+    });
+    expect(mocks.simulate).not.toHaveBeenCalled();
   });
-  it("keeps valid routes when funding verification or another provider fails", async () => {
-    mocks.preview.mockRejectedValueOnce(new Error("Cannot verify token balance storage"));
+  it("checks each exact-output route against the real balance", async () => {
+    mocks.balance.mockResolvedValue(1200000n);
+    mocks.quotes.mockResolvedValue([quote("kyberswap", 1200000n), quote("curve", 1200001n)]);
+    const { body } = await call({ mode: "targetOut" });
+    expect(
+      body.quotes.map((q: { provider: string; simulation_status: string }) => [
+        q.provider,
+        q.simulation_status,
+      ])
+    ).toEqual([
+      ["kyberswap", "succeeded"],
+      ["curve", "not_run"],
+    ]);
+    expect(body.quotes[1].execution).toBeNull();
+    expect(body.recommendation_basis).toBe("raw_amount");
+    expect(mocks.simulate).toHaveBeenCalledTimes(1);
+  });
+  it("reads balances again on refresh and wallet changes", async () => {
+    mocks.balance
+      .mockResolvedValueOnce(0n)
+      .mockResolvedValueOnce(1000000n)
+      .mockResolvedValueOnce(0n);
+    expect((await call()).body.quotes[0].simulation_status).toBe("not_run");
+    expect((await call()).body.quotes[0].simulation_status).toBe("succeeded");
+    expect((await call({ sender: ROUTER })).body.quotes[0].execution).toBeNull();
+    expect(mocks.balance).toHaveBeenLastCalledWith(expect.objectContaining({ args: [ROUTER] }));
+  });
+  it("keeps valid routes when another simulation or provider fails", async () => {
+    mocks.simulate.mockRejectedValueOnce(new Error("Swap reverted"));
     mocks.quotes.mockResolvedValue([
       quote(),
       quote("curve"),
@@ -163,16 +232,36 @@ describe("unified quote contract", () => {
         error: Object.assign(new Error("No route"), { code: "NO_ROUTE" }),
       },
     ]);
-    const { body } = await call({ sender: SENDER });
+    const { body } = await call();
     expect(body.quotes.map((q: { provider: string }) => q.provider)).toEqual(["curve"]);
     expect(body.failures).toMatchObject([
-      {
-        provider: "kyberswap",
-        stage: "simulation",
-        error: { message: "Cannot verify token balance storage" },
-      },
+      { provider: "kyberswap", stage: "simulation", error: { message: "Swap reverted" } },
       { provider: "relay", stage: "quote", error: { message: "No route", code: "NO_ROUTE" } },
     ]);
+  });
+  it("rejects unverified exact-output quotes below the requested amount", async () => {
+    mocks.balance.mockResolvedValue(0n);
+    mocks.quotes.mockResolvedValue([quote("curve", 1000000n, 1n)]);
+    const { body } = await call({ mode: "targetOut" });
+    expect(body.quotes).toEqual([]);
+    expect(body.failures[0]).toMatchObject({
+      stage: "quote",
+      error: { message: "Output is below the requested amount" },
+    });
+  });
+  it("obtains conversion rates from provider quotes without token funding or simulation", async () => {
+    mocks.rate.mockResolvedValue([
+      quote("curve", 10n ** 18n, 500000000000000n),
+      quote("kyberswap", 10n ** 18n, 400000000000000n),
+    ]);
+    const { body } = await call({ to: TO });
+    expect(body.quotes[0]).toMatchObject({
+      trade_value_native: "0.0005",
+      net_value_native: "0.00044",
+    });
+    expect(body.recommendation_basis).toBe("gas_adjusted");
+    expect(mocks.simulate).toHaveBeenCalledTimes(2);
+    expect(mocks.balance).toHaveBeenCalledTimes(1);
   });
   it("reports nested diagnostic fields through shared credential redaction", async () => {
     vi.stubEnv("RPC_URL_1", "https://rpc.example/private-secret");
@@ -419,12 +508,12 @@ describe("remaining approval costs", () => {
     expect(mocks.allowance).not.toHaveBeenCalled();
     expect(mocks.approvalGas).not.toHaveBeenCalled();
   });
-  it("includes an approval estimate for disconnected previews", async () => {
-    const { body } = await call();
+  it("keeps approval estimates separate from unknown swap gas for disconnected previews", async () => {
+    const { body } = await call({ sender: "", to: TO });
     expect(body.quotes[0]).toMatchObject({
       sender: null,
       approval_gas_used: "50000",
-      gas_cost_native: "0.00006",
+      gas_cost_native: null,
     });
   });
 });

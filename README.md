@@ -80,7 +80,7 @@ The recommendation compares values after gas when every route has comparable gas
 
 Changing a token, amount, mode, slippage, chain, account, or wallet invalidates displayed quotes. Approval state belongs to the chain, account, token, spender, and required input amount. The app checks the wallet context again before each transaction. It submits transactions through the connected wallet RPC. Configure private RPC protection in the wallet; the app does not sign or submit Flashbots raw transactions.
 
-Price simulations temporarily fund the requested account and preserve connected-account code. Verified ERC-20 balance overrides require RPC `debug_traceCall` with `prestateTracer`. `simulation_basis: "temporary_funding"` and `wallet_readiness: "unchecked"` explicitly distinguish price from spendability. An unfunded account retains prices and sees its actual zero balance.
+The API reads the wallet's ERC-20 `balanceOf` (or native balance) and simulates funded routes without modifying token storage. Unfunded or disconnected accounts still receive provider quotes, labeled `simulation_status: "not_run"`, without execution calldata or swap gas estimates. Refresh after funding to simulate. `simulation_basis: "wallet_balance"` and `wallet_readiness: "unchecked"` distinguish simulation from transaction readiness: the SDK supplies native gas funds for simulation, and the wallet separately checks actual gas affordability.
 
 The browser refreshes the selected provider before approval or swap and after approval confirms. Confirmation shows the refreshed route. Account, network, allowance, token balance, gas balance, and fresh fees are checked through the wallet before submission; failed or unknown checks block submission. Gas limits retain the 20% margin.
 

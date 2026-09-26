@@ -369,9 +369,15 @@ test("Ethereum: unfunded 1,000 USDC to crvUSD retains prices and blocks submissi
     expect(response.ok()).toBe(true);
     const prices = (await response.json()) as components["schemas"]["QuoteResponse"];
     expect(prices.quotes.some((quote) => quote.provider === "curve")).toBe(true);
-    expect(prices.simulation_basis).toBe("temporary_funding");
-    for (const quote of prices.quotes) expect(quote.sender).toBe(account);
-    await info.attach("unfunded-price-simulations", {
+    expect(prices.simulation_basis).toBe("wallet_balance");
+    for (const quote of prices.quotes)
+      expect(quote).toMatchObject({
+        sender: account,
+        simulation_status: "not_run",
+        execution: null,
+        gas_used: null,
+      });
+    await info.attach("unfunded-provider-quotes", {
       body: JSON.stringify(prices, null, 2),
       contentType: "application/json",
     });
@@ -390,11 +396,12 @@ test("Ethereum: unfunded 1,000 USDC to crvUSD retains prices and blocks submissi
     await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
     await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
     await expect(page.getByLabel("From token balance")).toContainText("Balance: 0 USDC");
-    await expect(page.getByText("Insufficient USDC balance.", { exact: true })).toBeVisible({
+    await expect(
+      page.locator(".quote-card").getByText(/Not simulated. Insufficient USDC balance/)
+    ).toBeVisible({
       timeout: 60000,
     });
-    await expect(page.getByRole("button", { name: "Execute swap" })).toBeDisabled();
-    await expect(page.getByText(/Price simulations use temporary funding/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
     expect(sends).toBe(0);
     expect(await client.getBalance({ address: account })).toBe(0n);
     await page.screenshot({ path: info.outputPath("unfunded-usdc-crvusd.png"), fullPage: true });

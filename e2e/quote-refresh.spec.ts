@@ -55,7 +55,9 @@ for (const connected of [false, true]) {
     await expect(page.getByRole("button", { name: "Select curve" })).toBeDisabled();
     if (connected) {
       await expect(page.getByRole("button", { name: "Execute swap" })).toBeDisabled();
-      await expect(page.getByText(/Price simulations use temporary funding/)).toHaveCount(0);
+      await expect(page.locator(".quote-card")).toContainText(
+        "Simulated with your wallet’s token balance."
+      );
     }
     expect(await position()).toEqual(before);
     release.resolve(true);
@@ -143,3 +145,76 @@ for (const mode of ["exactIn", "targetOut"] as const) {
     ).toBe(true);
   });
 }
+
+test("keeps unfunded provider prices visible until a funded refresh can simulate", async ({
+  page,
+}) => {
+  let funded = false;
+  let sends = 0;
+  await fixture(page, (comparison) => {
+    if (funded && comparison.quotes[0]?.sender) return;
+    comparison.recommendation_basis = "raw_amount";
+    for (const quote of comparison.quotes) {
+      quote.simulation_status = "not_run";
+      quote.simulation_reason = quote.sender
+        ? "Insufficient USDC balance. Fund your wallet and refresh to simulate this route."
+        : "Connect a funded wallet to simulate this route.";
+      quote.execution = null;
+      quote.gas_used = null;
+      quote.gas_cost_native = null;
+      quote.gas_cost_usd = null;
+      quote.net_value_native = null;
+      quote.net_value_usd = null;
+    }
+  });
+  await installWallet(page, 1, SENDER, async (method, params) => {
+    if (method === "eth_sendTransaction") sends++;
+    if (method === "eth_call")
+      return (params[0] as { data: string }).data.startsWith("0x70a08231")
+        ? funded
+          ? "0x5f5e100"
+          : "0x0"
+        : `0x${"f".repeat(64)}`;
+    if (method === "eth_getBalance") return "0x8ac7230489e80000";
+    if (method === "eth_gasPrice") return "0x4a817c800";
+    throw new Error(`Unexpected wallet method: ${method}`);
+  });
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
+  const card = page.locator(".quote-card");
+  await expect(card).toContainText("Not simulated. Connect a funded wallet");
+  await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
+  await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+  await expect(card).toContainText("Not simulated. Insufficient USDC balance.");
+  await expect(card.locator(".input-amount")).toHaveText("100 USDC");
+  await expect(card.locator(".output-amount")).toHaveText("99.95 USDT");
+  await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
+  await expect(card.getByText(/Estimated output value after gas/)).toHaveCount(0);
+  await page.locator("details.provider-list summary").click();
+  await expect(page.getByRole("button", { name: "Select curve" })).toContainText("Not simulated.");
+  const position = () =>
+    card.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top + window.scrollY, height: rect.height, width: rect.width };
+    });
+  const before = await position();
+  const release = deferred<boolean>();
+  await page.route("**/api/quote?**", async (route) => {
+    await release.promise;
+    await route.fallback();
+  });
+  funded = true;
+  await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
+  await expect(page.getByRole("status", { name: "Quote loading status" })).toHaveText(
+    "Refreshing quotes…"
+  );
+  expect(await position()).toEqual(before);
+  await expect(card).toContainText("Not simulated.");
+  await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
+  release.resolve(true);
+  await expect(card).toContainText("Simulated with your wallet’s token balance.");
+  await expect(page.getByRole("button", { name: "Execute swap" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Select curve" })).toContainText(
+    "Simulated with your wallet’s token balance."
+  );
+  expect(sends).toBe(0);
+});

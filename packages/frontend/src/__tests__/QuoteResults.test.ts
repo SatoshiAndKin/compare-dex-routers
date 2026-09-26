@@ -3,10 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import QuoteResults from "../lib/components/QuoteResults.svelte";
 import { comparisonStore as store } from "../lib/stores/comparisonStore.svelte.js";
 import { walletStore } from "../lib/stores/walletStore.svelte.js";
-import { makeQuote, FROM, TO, SENDER } from "./quote-fixture.js";
+import { makeQuote, SENDER } from "./quote-fixture.js";
 import { tick } from "svelte";
 import { balanceStore } from "../lib/stores/balanceStore.svelte.js";
-import { formStore } from "../lib/stores/formStore.svelte.js";
 import { transactionStore } from "../lib/stores/transactionStore.svelte.js";
 beforeEach(() => {
   store.invalidate();
@@ -21,57 +20,45 @@ afterEach(() => {
 });
 describe("provider results", () => {
   it.each(["exactIn", "targetOut"] as const)(
-    "shows the funding notice only below the selected %s quote's full input balance",
+    "keeps unsimulated %s prices visible and blocks actions until a verified refresh",
     async (mode) => {
       vi.spyOn(transactionStore, "refreshChecks").mockResolvedValue();
       walletStore.address = SENDER;
       walletStore.chainId = 1;
       walletStore.provider = { request: vi.fn() };
-      formStore.chainId = 1;
-      formStore.fromToken = { address: FROM, symbol: "USDC", decimals: 6 };
-      formStore.toToken = { address: TO, symbol: "USDT", decimals: 6 };
-      formStore.mode = mode;
-      formStore.slippageBps = 50;
-      formStore.sellAmount = "100";
-      formStore.receiveAmount = "99.95";
-      store.quotes = [makeQuote({ mode, amount: mode === "exactIn" ? "100" : "99.95" })];
+      const pending = makeQuote({
+        mode,
+        execution: null,
+        simulation_status: "not_run",
+        simulation_reason:
+          "Insufficient USDC balance. Fund your wallet and refresh to simulate this route.",
+      });
+      store.quotes = [pending];
       store.recommendation = "0x";
-      balanceStore.from = { status: "ready", raw: 99999999n, decimals: 6 };
       const view = render(QuoteResults);
-      const notice = /Price simulations use temporary funding/;
-      expect(view.getByText(notice)).toBeVisible();
-      balanceStore.from.raw = 100000000n;
-      await tick();
-      expect(view.queryByText(notice)).toBeNull();
+      expect(view.container.querySelector(".quote-card")).toHaveTextContent("You receive");
+      expect(view.container.querySelector(".quote-card")).toHaveTextContent(
+        "Not simulated. Insufficient USDC balance."
+      );
+      expect(view.queryByRole("button", { name: "Execute swap" })).toBeNull();
+      expect(view.queryByText("Connect your wallet to swap.")).toBeNull();
+      // A frontend balance update does not verify the retained quote.
+      balanceStore.from = { status: "ready", raw: 100000000n, decimals: 6 };
       store.isLoading = true;
       await tick();
-      expect(view.queryByText(notice)).toBeNull();
+      expect(view.container.querySelector(".quote-card")).toHaveTextContent("Not simulated.");
       expect(view.getByRole("status", { name: "Quote loading status" })).toHaveTextContent(
         "Refreshing quotes"
       );
-      expect(view.getByRole("button", { name: "Execute swap" })).toBeDisabled();
+      expect(view.queryByRole("button", { name: "Execute swap" })).toBeNull();
+      store.quotes = [makeQuote({ mode })];
       store.isLoading = false;
-      // A refreshed Exact Output route may require more input for the same requested output.
-      if (mode === "targetOut") {
-        store.quotes = [
-          makeQuote({
-            mode,
-            amount: "99.95",
-            input_amount: "100.000001",
-            input_amount_raw: "100000001",
-          }),
-        ];
-      } else {
-        balanceStore.from.raw = 99999999n;
-      }
       await tick();
-      expect(view.getByText(notice)).toBeVisible();
-      balanceStore.from.raw = 100000002n;
-      await tick();
-      expect(view.queryByText(notice)).toBeNull();
-      balanceStore.from = { status: "unavailable", raw: null, decimals: 6 };
-      await tick();
-      expect(view.getByText(notice)).toBeVisible();
+      expect(view.container.querySelector(".quote-card")).toHaveTextContent(
+        "Simulated with your wallet’s token balance."
+      );
+      expect(view.queryByText(/Not simulated/)).toBeNull();
+      expect(view.getByRole("button", { name: "Execute swap" })).toBeDisabled();
     }
   );
   it("renders no results before a request", () => {
@@ -84,7 +71,9 @@ describe("provider results", () => {
     expect(view.queryAllByRole("tab")).toEqual([]);
     expect(view.getByText("RECOMMENDED")).toBeVisible();
     expect(view.container.querySelectorAll(".quote-card")).toHaveLength(1);
-    expect(view.getByText(/Price simulations use temporary funding/)).toBeVisible();
+    expect(view.container.querySelector(".quote-card")).toHaveTextContent(
+      "Simulated with your wallet’s token balance."
+    );
     expect(view.container.querySelector("details.provider-list")?.hasAttribute("open")).toBe(false);
   });
   it("selects a provider without changing the server recommendation", async () => {

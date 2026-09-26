@@ -20,6 +20,8 @@ export function makeQuote(overrides: Partial<Quote> = {}): Quote {
     provider: "0x",
     slippage_bps: 50,
     sender: SENDER,
+    simulation_status: "succeeded",
+    simulation_reason: null,
     execution: {
       to: ROUTER,
       data: "0xabcdef",
@@ -51,7 +53,7 @@ export function makeComparison(
       makeQuote({ provider: "curve", output_amount: "99.98", output_amount_raw: "99980000" }),
     ],
     failures: [],
-    simulation_basis: "temporary_funding",
+    simulation_basis: "wallet_balance",
     simulation_account: SENDER,
     wallet_readiness: "unchecked",
     recommendation: "0x",
