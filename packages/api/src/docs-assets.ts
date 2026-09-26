@@ -1,13 +1,13 @@
 /** Update URLs and hashes together with scripts/verify-cdn.ts. */
 export const docsAssets = {
-  version: "5.32.15",
+  version: "5.33.0",
   css: {
     file: "swagger-ui.css",
-    integrity: "sha384-fgyWYkUAamzuI8mJFu/xpRP0JWCJRwkwUwsYDoOYVHUJ8NQE5cENn8ib3ppwFFSX",
+    integrity: "sha384-Ov4/wv3j2bmct8cDc5X4ngJZohVPzEmc6uDPH8WeljUxO5vtoykvMEfbu9Vh6RaW",
   },
   js: {
     file: "swagger-ui-bundle.js",
-    integrity: "sha384-m7zaGj7MPzU+G4lz2eyy73GxK9bbRDr9bB2CSdj8wodg2wu/Wnt6wsoLP3JD+RS9",
+    integrity: "sha384-YDALVcy8kj8yltLBVi1vBiBAUqdxvus673gM8XKwiy6aDUJFXivF/KCufekjYbVf",
   },
 };
 

@@ -107,7 +107,7 @@ See `env.example`. Configure `RPC_URL_<chainId>` for each used chain, or `ALCHEM
 
 ## Conventions
 
-Use Node.js 24.21.0, pnpm 12.3.1, and Bun 1.4.0. Bun builds the exact pinned Spandex Git dependency with `prepack`; keep its pin and the build allowlist in sync. The browser uses `/api/quote` and the server recommendation. The quote endpoint uses `quote-response.ts`.
+Use Node.js 24.21.0, pnpm 12.5.1, and Bun 1.4.2. Bun builds the exact pinned Spandex Git dependency with `prepack`; keep its pin and the build allowlist in sync. The browser uses `/api/quote` and the server recommendation. The quote endpoint uses `quote-response.ts`.
 
 ### Git workflow
 
