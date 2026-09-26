@@ -28,6 +28,8 @@ export function makeQuote(overrides: Partial<Quote> = {}): Quote {
     },
     route: null,
     gas_used: "120000",
+    approval_gas_used: "0",
+    approval_gas_cost_native: "0",
     gas_price_gwei: "20",
     native_currency: "ETH",
     gas_cost_native: "0.0024",

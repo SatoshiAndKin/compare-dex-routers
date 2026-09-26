@@ -127,6 +127,8 @@ describe("provider results", () => {
           mode,
           provider: "curve",
           gas_cost_native: "0.003",
+          approval_gas_used: "30000",
+          approval_gas_cost_native: "0.0006",
           net_value_native: mode === "exactIn" ? "0.497" : "0.503",
         }),
       ];
@@ -141,6 +143,7 @@ describe("provider results", () => {
       await fireEvent.click(view.getByRole("button", { name: /Details/ }));
       expect(view.getAllByText(`${label}:`, { exact: false })).toHaveLength(3);
       expect(view.getByText(label, { exact: true })).toBeVisible();
+      expect(view.getAllByText("None needed", { exact: false })).toHaveLength(3);
       for (const quote of store.quotes) {
         const row = view.getByRole("button", { name: `Select ${quote.provider}` });
         expect(row).toHaveTextContent(
@@ -148,15 +151,20 @@ describe("provider results", () => {
         );
         expect(row).toHaveTextContent(`Estimated gas cost: ${quote.gas_cost_native} ETH`);
         expect(row).toHaveTextContent(`${label}: ${quote.net_value_native} ETH`);
+        expect(row).toHaveTextContent(
+          `Required approval gas cost: ${quote.provider === "curve" ? "0.0006 ETH (included above)" : "None needed"}`
+        );
       }
     }
   );
-  it.each(["gas", "conversion", "complete"])(
+  it.each(["gas", "approval", "conversion", "complete"])(
     "omits adjusted totals everywhere when raw ranking has %s data",
     async (data) => {
       store.quotes = [
         makeQuote({
-          gas_cost_native: data === "gas" ? null : "0",
+          gas_cost_native: ["gas", "approval"].includes(data) ? null : "0",
+          approval_gas_used: data === "approval" ? null : "0",
+          approval_gas_cost_native: data === "approval" ? null : "0",
           trade_value_native: data === "conversion" ? null : "0.5",
         }),
         makeQuote({ provider: "curve" }),
@@ -173,8 +181,10 @@ describe("provider results", () => {
       ).toBeNull();
       expect(view.queryByText(/Total Cost|Output After Gas/)).toBeNull();
       const row = view.getByRole("button", { name: "Select 0x" });
+      if (data === "approval")
+        expect(row).toHaveTextContent("Required approval gas cost: Unavailable");
       expect(row).toHaveTextContent(
-        `Estimated gas cost (excluded from ranking): ${data === "gas" ? "Unavailable" : "0 ETH"}`
+        `Estimated gas cost (excluded from ranking): ${["gas", "approval"].includes(data) ? "Unavailable" : "0 ETH"}`
       );
       expect(
         within(view.container.querySelector(".quote-card") as HTMLElement).getAllByText(

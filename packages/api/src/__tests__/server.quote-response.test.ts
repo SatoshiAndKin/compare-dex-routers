@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   simulate: vi.fn(),
   preview: vi.fn(),
   gas: vi.fn(),
+  allowance: vi.fn(),
+  approvalGas: vi.fn(),
 }));
 vi.mock("@spandex/core", async (original) => ({
   ...(await original<typeof import("@spandex/core")>()),
@@ -24,7 +26,12 @@ vi.mock("../config.js", async (original) => ({
   ...(await original<typeof import("../config.js")>()),
   getTokenDecimals: async (_chain: number, token: string) => (token === FROM ? 6 : 18),
   getTokenSymbol: async () => "TOKEN",
-  getClient: () => ({ getGasPrice: mocks.gas, getBlockNumber: async () => 100n }),
+  getClient: () => ({
+    getGasPrice: mocks.gas,
+    getBlockNumber: async () => 100n,
+    readContract: mocks.allowance,
+    estimateGas: mocks.approvalGas,
+  }),
 }));
 const FROM = "0x1111111111111111111111111111111111111111";
 const TO = "0x2222222222222222222222222222222222222222";
@@ -68,6 +75,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mocks.gas.mockResolvedValue(1000000000n);
   mocks.rate.mockResolvedValue(null);
+  mocks.allowance.mockResolvedValue(0n);
+  mocks.approvalGas.mockResolvedValue(50000n);
   mocks.quotes.mockResolvedValue([quote(), quote("curve")]);
   mocks.simulate.mockImplementation(async ({ quote }: { quote: SimulatedQuote }) => quote);
   mocks.preview.mockResolvedValue([{ address: SENDER, balance: 10000000000000000000000n }]);
@@ -274,5 +283,138 @@ describe("ranking all providers together", () => {
       quote("curve", 1n, 9007199254740992000000000000000001n),
     ]);
     expect((await call()).body.recommendation).toBe("curve");
+  });
+});
+
+describe("remaining approval costs", () => {
+  const OTHER_ROUTER = "0x5555555555555555555555555555555555555555";
+  it.each(["exactIn", "targetOut"])(
+    "ranks %s with only the approvals this wallet still needs",
+    async (mode) => {
+      const approved = quote(
+        "curve",
+        mode === "exactIn" ? 1000000n : 1000020000000000000n,
+        mode === "exactIn" ? 999980000000000000n : 1000000000000000000n
+      );
+      const unapproved = {
+        ...quote("kyberswap", mode === "exactIn" ? 1000000n : 1000000000000000000n),
+        approval: { token: FROM, spender: OTHER_ROUTER },
+      };
+      mocks.quotes.mockResolvedValue([unapproved, approved]);
+      mocks.allowance.mockImplementation(async ({ args }: { args: string[] }) =>
+        args[1] === ROUTER ? approved.inputAmount : 0n
+      );
+      const query = {
+        sender: SENDER,
+        mode,
+        ...(mode === "targetOut" ? { from: WETH, to: TO } : {}),
+      };
+      const { body } = await call(query);
+      expect(body.recommendation).toBe("curve");
+      expect(body.recommendation_basis).toBe("gas_adjusted");
+      expect(body.quotes).toMatchObject([
+        {
+          provider: "curve",
+          gas_used: "10000",
+          approval_gas_used: "0",
+          approval_gas_cost_native: "0",
+          gas_cost_native: "0.00001",
+        },
+        {
+          provider: "kyberswap",
+          gas_used: "10000",
+          approval_gas_used: "50000",
+          approval_gas_cost_native: "0.00005",
+          gas_cost_native: "0.00006",
+        },
+      ]);
+      expect(body.quotes[0].net_value_native).toBe(mode === "exactIn" ? "0.99997" : "1.00003");
+      expect(mocks.allowance).toHaveBeenCalledWith(
+        expect.objectContaining({ address: FROM, args: [SENDER, OTHER_ROUTER], blockNumber: 100n })
+      );
+      expect(mocks.approvalGas).toHaveBeenCalledTimes(1);
+      expect(mocks.approvalGas).toHaveBeenCalledWith(
+        expect.objectContaining({
+          account: SENDER,
+          to: FROM,
+          blockNumber: 100n,
+          data: `0x095ea7b3${OTHER_ROUTER.slice(2).padStart(64, "0")}${"f".repeat(64)}`,
+        })
+      );
+      mocks.allowance.mockResolvedValue(2n ** 256n - 1n);
+      const refreshed = (await call(query)).body;
+      expect(refreshed.recommendation).toBe("kyberswap");
+      expect(
+        refreshed.quotes.every((q: { approval_gas_used: string }) => q.approval_gas_used === "0")
+      ).toBe(true);
+    }
+  );
+  it("checks each exact-output input against the shared allowance", async () => {
+    mocks.quotes.mockResolvedValue([quote("curve", 1000000n), quote("kyberswap", 1000001n)]);
+    mocks.allowance.mockResolvedValue(1000000n);
+    const { body } = await call({ sender: SENDER, mode: "targetOut" });
+    expect(
+      body.quotes.map((q: { provider: string; approval_gas_used: string }) => [
+        q.provider,
+        q.approval_gas_used,
+      ])
+    ).toEqual([
+      ["curve", "0"],
+      ["kyberswap", "50000"],
+    ]);
+    expect(mocks.allowance).toHaveBeenCalledTimes(1);
+  });
+  it("reads the new wallet's allowance instead of reusing the previous wallet's", async () => {
+    mocks.allowance.mockImplementation(async ({ args }: { args: string[] }) =>
+      args[0] === SENDER ? 1000000n : 0n
+    );
+    expect((await call({ sender: SENDER })).body.quotes[0].approval_gas_used).toBe("0");
+    expect((await call({ sender: OTHER_ROUTER })).body.quotes[0].approval_gas_used).toBe("50000");
+    expect(mocks.allowance).toHaveBeenCalledWith(
+      expect.objectContaining({ args: [OTHER_ROUTER, ROUTER] })
+    );
+  });
+  it("estimates approval when a nonzero allowance is below this route's input", async () => {
+    mocks.allowance.mockResolvedValue(999999n);
+    const { body } = await call({ sender: SENDER });
+    expect(body.quotes[0].approval_gas_used).toBe("50000");
+    // Shared token/spender estimates are reused within this response only.
+    expect(mocks.approvalGas).toHaveBeenCalledTimes(1);
+  });
+  it.each(["allowance", "approval estimate", "invalid estimate", "metadata"])(
+    "falls back fairly when %s is unavailable",
+    async (missing) => {
+      if (missing === "allowance") mocks.allowance.mockRejectedValue(new Error("RPC unavailable"));
+      if (missing === "approval estimate")
+        mocks.approvalGas.mockRejectedValue(new Error("Approval reverted"));
+      if (missing === "invalid estimate") mocks.approvalGas.mockResolvedValue(0n);
+      if (missing === "metadata")
+        mocks.quotes.mockResolvedValue([{ ...quote(), approval: undefined }]);
+      const { body } = await call({ sender: SENDER });
+      expect(body.quotes[0]).toMatchObject({
+        gas_used: "10000",
+        approval_gas_used: null,
+        gas_cost_native: null,
+        net_value_native: null,
+      });
+      expect(body.recommendation_basis).toBe("raw_amount");
+    }
+  );
+  it("never estimates or charges approvals for native input", async () => {
+    const { body } = await call({
+      from: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+      sender: SENDER,
+    });
+    expect(body.quotes[0]).toMatchObject({ approval_gas_used: "0", gas_cost_native: "0.00001" });
+    expect(mocks.allowance).not.toHaveBeenCalled();
+    expect(mocks.approvalGas).not.toHaveBeenCalled();
+  });
+  it("includes an approval estimate for disconnected previews", async () => {
+    const { body } = await call();
+    expect(body.quotes[0]).toMatchObject({
+      sender: null,
+      approval_gas_used: "50000",
+      gas_cost_native: "0.00006",
+    });
   });
 });

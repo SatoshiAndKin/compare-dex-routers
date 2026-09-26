@@ -262,9 +262,14 @@ export interface components {
           value: number;
         }[];
       } | null;
+      /** @description Swap execution gas units, excluding approvals */
       gas_used: string | null;
+      /** @description Remaining approval gas units; zero when unnecessary, null when unknown */
+      approval_gas_used: string | null;
+      approval_gas_cost_native: string | null;
       gas_price_gwei: string | null;
       native_currency: string;
+      /** @description Estimated swap plus required approval cost in native currency */
       gas_cost_native: string | null;
       trade_value_native: string | null;
       net_value_native: string | null;

@@ -78,7 +78,17 @@ for (const mode of ["exactIn", "targetOut"] as const) {
         ? "Gas comparison unavailable."
         : "Comparable gas estimates available.";
       for (const quote of comparison.quotes) {
-        quote.net_value_native = mode === "exactIn" ? "0.4976" : "0.5024";
+        quote.net_value_native =
+          quote.provider === "curve"
+            ? mode === "exactIn"
+              ? "0.497"
+              : "0.503"
+            : mode === "exactIn"
+              ? "0.4976"
+              : "0.5024";
+        quote.approval_gas_used = quote.provider === "curve" ? "30000" : "0";
+        quote.approval_gas_cost_native = quote.provider === "curve" ? "0.0006" : "0";
+        quote.gas_cost_native = quote.provider === "curve" ? "0.003" : "0.0024";
       }
     });
     await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&mode=${mode}`);
@@ -88,12 +98,19 @@ for (const mode of ["exactIn", "targetOut"] as const) {
       mode === "exactIn"
         ? "Estimated output value after gas"
         : "Estimated input cost including gas";
-    const value = mode === "exactIn" ? "0.4976" : "0.5024";
+    const value = mode === "exactIn" ? "0.497" : "0.503";
     await expect(page.locator(".quote-card .quote-costs")).toContainText(`${label}: ${value} ETH`);
     for (const provider of ["0x", "curve"]) {
       const row = page.getByRole("button", { name: `Select ${provider}` });
-      await expect(row).toContainText("Estimated gas cost: 0.0024 ETH");
-      await expect(row).toContainText(`${label}: ${value} ETH`);
+      await expect(row).toContainText(
+        `Estimated gas cost: ${provider === "curve" ? "0.003" : "0.0024"} ETH`
+      );
+      await expect(row).toContainText(
+        `Required approval gas cost: ${provider === "curve" ? "0.0006 ETH (included above)" : "None needed"}`
+      );
+      await expect(row).toContainText(
+        `${label}: ${provider === "curve" ? value : mode === "exactIn" ? "0.4976" : "0.5024"} ETH`
+      );
     }
     recommendation = "0x";
     await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
@@ -109,7 +126,7 @@ for (const mode of ["exactIn", "targetOut"] as const) {
     await page.getByRole("button", { name: /Details/ }).click();
     await expect(page.getByText(new RegExp(label))).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Select curve" })).toContainText(
-      "Estimated gas cost (excluded from ranking): 0.0024 ETH"
+      "Estimated gas cost (excluded from ranking): 0.003 ETH"
     );
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)

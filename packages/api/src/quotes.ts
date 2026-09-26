@@ -21,6 +21,7 @@ import type { QuoteParams } from "./quote.js";
 import type { QuoteResponse, QuoteResult, ProviderFailure } from "./quote-response.js";
 import { redact, redactText } from "./redaction.js";
 import { createPreviewState } from "./preview-simulation.js";
+import { createApprovalGasEstimator } from "./approval-gas.js";
 
 // Used only for previews and exchange-rate estimates. Its calldata never leaves the API.
 const PREVIEW_ACCOUNT: Address = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
@@ -88,42 +89,52 @@ async function requestQuotes(params: QuoteParams) {
       )
     : [];
   const minimumOutput = swap.mode === "targetOut" ? swap.outputAmount : 1n;
-  const results = quotes
-    .filter((quote) => successful(quote, minimumOutput))
-    .map((quote): QuoteResult => ({
-      chainId: params.chainId,
-      from: params.from,
-      from_symbol: fromSymbol,
-      to: params.to,
-      to_symbol: toSymbol,
-      amount: params.amount,
-      mode: params.mode,
-      input_amount: formatUnits(quote.inputAmount, inputDecimals),
-      output_amount: formatUnits(quote.simulation.outputAmount, outputDecimals),
-      input_amount_raw: quote.inputAmount.toString(),
-      output_amount_raw: quote.simulation.outputAmount.toString(),
-      slippage_bps: params.slippageBps,
-      provider: quote.provider,
-      sender: params.sender ?? null,
-      execution: params.sender
-        ? {
-            to: quote.txData.to,
-            data: quote.txData.data,
-            value: (quote.txData.value ?? 0n).toString(),
-            approval: isNativeToken(swap.inputToken) ? null : (quote.approval ?? null),
-          }
-        : null,
-      route: quote.route ?? null,
-      gas_used:
-        quote.simulation.gasUsed && quote.simulation.gasUsed > 0n
-          ? quote.simulation.gasUsed.toString()
+  const approvalGas = createApprovalGasEstimator(
+    client,
+    swap.inputToken,
+    swap.swapperAccount,
+    Boolean(params.sender)
+  );
+  const results = await Promise.all(
+    quotes
+      .filter((quote) => successful(quote, minimumOutput))
+      .map(async (quote): Promise<QuoteResult> => ({
+        chainId: params.chainId,
+        from: params.from,
+        from_symbol: fromSymbol,
+        to: params.to,
+        to_symbol: toSymbol,
+        amount: params.amount,
+        mode: params.mode,
+        input_amount: formatUnits(quote.inputAmount, inputDecimals),
+        output_amount: formatUnits(quote.simulation.outputAmount, outputDecimals),
+        input_amount_raw: quote.inputAmount.toString(),
+        output_amount_raw: quote.simulation.outputAmount.toString(),
+        slippage_bps: params.slippageBps,
+        provider: quote.provider,
+        sender: params.sender ?? null,
+        execution: params.sender
+          ? {
+              to: quote.txData.to,
+              data: quote.txData.data,
+              value: (quote.txData.value ?? 0n).toString(),
+              approval: isNativeToken(swap.inputToken) ? null : (quote.approval ?? null),
+            }
           : null,
-      gas_price_gwei: null,
-      native_currency: getNativeAsset(params.chainId).symbol,
-      gas_cost_native: null,
-      trade_value_native: null,
-      net_value_native: null,
-    }));
+        route: quote.route ?? null,
+        gas_used:
+          quote.simulation.gasUsed && quote.simulation.gasUsed > 0n
+            ? quote.simulation.gasUsed.toString()
+            : null,
+        gas_price_gwei: null,
+        approval_gas_used: (await approvalGas(quote))?.toString() ?? null,
+        approval_gas_cost_native: null,
+        native_currency: getNativeAsset(params.chainId).symbol,
+        gas_cost_native: null,
+        trade_value_native: null,
+        net_value_native: null,
+      }))
+  );
   const failures: ProviderFailure[] = [];
   for (const quote of quotes) {
     if (successful(quote, minimumOutput)) continue;
@@ -214,13 +225,19 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
   const values = new Map<QuoteResult, bigint>();
   for (const quote of results) {
     quote.gas_price_gwei = gas.gasPriceGwei;
+    const approvalCost =
+      quote.approval_gas_used !== null && gas.gasPriceWei !== null
+        ? BigInt(quote.approval_gas_used) * gas.gasPriceWei
+        : null;
     const cost =
-      quote.gas_used !== null && gas.gasPriceWei !== null
-        ? BigInt(quote.gas_used) * gas.gasPriceWei
+      quote.gas_used !== null && gas.gasPriceWei !== null && approvalCost !== null
+        ? BigInt(quote.gas_used) * gas.gasPriceWei + approvalCost
         : null;
     const amount = BigInt(targetOut ? quote.input_amount_raw : quote.output_amount_raw);
     const value = rate ? (amount * rate.nativeRaw) / rate.tokenRaw : null;
     quote.gas_cost_native = cost === null ? null : formatUnits(cost, native.decimals);
+    quote.approval_gas_cost_native =
+      approvalCost === null ? null : formatUnits(approvalCost, native.decimals);
     quote.trade_value_native = value === null ? null : formatUnits(value, native.decimals);
     if (cost !== null && rate !== null) {
       const numerator = amount * rate.nativeRaw;
@@ -255,7 +272,7 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
       results.length === 0
         ? "No provider returned a successful price simulation."
         : adjusted
-          ? `${targetOut ? "Lowest input plus estimated gas" : "Highest output after estimated gas"} in ${native.symbol}. Equal values use provider configuration order.`
+          ? `${targetOut ? "Lowest input plus estimated gas" : "Highest output after estimated gas"} in ${native.symbol}, including required approvals. Equal values use provider configuration order.`
           : `Comparing all routes by raw ${targetOut ? "input" : "output"} amounts because comparable gas or conversion data is unavailable. Equal values use provider configuration order.`,
     simulation_basis: "temporary_funding",
     simulation_account: account,

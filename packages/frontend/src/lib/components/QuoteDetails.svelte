@@ -21,7 +21,8 @@
       ["Output Amount (base units)", quote.output_amount_raw],
       ["Approval Token", quote.execution?.approval?.token],
       ["Approval Spender", quote.execution?.approval?.spender],
-      ["Gas Units", quote.gas_used],
+      ["Swap Gas Units", quote.gas_used],
+      ["Required Approval Gas Units", quote.approval_gas_used],
       [
         "Gas Price",
         (gasPriceGwei ?? quote.gas_price_gwei) === null
