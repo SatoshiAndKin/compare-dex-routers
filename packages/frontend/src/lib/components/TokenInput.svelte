@@ -355,9 +355,9 @@
     {/if}
   </div>
 
-  {#if currentToken}
-    <p class="selected-token-address">{currentToken.address}</p>
-  {/if}
+  <p class="selected-token-address" aria-hidden={!currentToken}>
+    {currentToken?.address ?? "\u00a0"}
+  </p>
 
   {#if dropdownVisible && matches.length > 0}
     <div class="token-autocomplete-list" role="listbox">
@@ -414,7 +414,7 @@
   .token-input-field {
     display: flex;
     align-items: center;
-    border: 2px solid var(--border, #000);
+    border: 1px solid var(--border-light);
     background: var(--bg-input, #fff);
   }
 

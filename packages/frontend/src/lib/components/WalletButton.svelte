@@ -71,7 +71,7 @@
     align-items: center;
     gap: 0.5rem;
     min-height: 44px;
-    width: 100%;
+    width: auto;
   }
 
   .wallet-connected {
@@ -97,7 +97,7 @@
   .wallet-address-row {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 0.1rem;
   }
 
@@ -126,7 +126,7 @@
     font-weight: 600;
     font-family: inherit;
     cursor: pointer;
-    border: 2px solid var(--accent, #0055ff);
+    border: 0;
     background: var(--accent, #0055ff);
     color: var(--text-inverse, #fff);
     transition: background 0.1s;
@@ -155,7 +155,7 @@
     font-family: inherit;
     cursor: pointer;
     background: transparent;
-    border: 1px solid var(--text-muted, #666);
+    border: 0;
     color: var(--text-muted, #666);
     transition: background 0.1s;
   }

@@ -33,11 +33,6 @@
 
   const providerName = $derived(quote?.provider ?? provider);
 
-  const isTargetOut = $derived(quote?.mode === "targetOut");
-  const primaryAmount = $derived(isTargetOut ? quote?.input_amount : quote?.output_amount);
-  const primarySymbol = $derived(isTargetOut ? quote?.from_symbol : quote?.to_symbol);
-  const primaryLabel = $derived(isTargetOut ? "You pay (required)" : "You receive (estimated)");
-
   // ---------------------------------------------------------------------------
   // Transaction state
   // ---------------------------------------------------------------------------
@@ -109,129 +104,130 @@
         {isRecommended ? "RECOMMENDED" : "SELECTED"}
       </span>
 
-      <!-- Primary output -->
-      <div class="output-label">{primaryLabel}</div>
-      <div class="output-amount">
-        {primaryAmount ?? ""}
-        {primarySymbol ? ` ${primarySymbol}` : ""}
-      </div>
-
-      <!-- Provider info -->
       <div class="provider-info">Via {providerName}</div>
-      <div class="provider-info">
-        {isTargetOut
-          ? `You receive: ${quote.output_amount} ${quote.to_symbol}`
-          : `You pay: ${quote.input_amount} ${quote.from_symbol}`}
+      <div class="quote-amounts">
+        <div>
+          <div class="output-label">You pay</div>
+          <div class="input-amount">{quote.input_amount} {quote.from_symbol}</div>
+        </div>
+        <div>
+          <div class="output-label">You receive</div>
+          <div class="output-amount">{quote.output_amount} {quote.to_symbol}</div>
+        </div>
       </div>
 
       <!-- Gas cost -->
       <QuoteCosts {quote} basis={recommendationBasis} />
-      {#if gasPriceGwei}
-        <div class="gas-info">
-          <span class="gas-label">Gas Price</span>
-          <span class="gas-value">{gasPriceGwei} gwei</span>
-        </div>
-      {/if}
-
       <!-- Expandable details -->
       <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} />
 
-      {#if !quote.execution}
-        <div class="tx-actions">
-          {#if !walletStore.isConnected}
-            <button type="button" class="tx-btn" onclick={() => walletStore.requestMenu()}
-              >Connect wallet</button
-            >
-          {/if}
-          <span>Preview only. Connect your wallet and review a fresh quote before swapping.</span>
-        </div>
-      {/if}
+      <div class="execution-status">
+        {#if !quote.execution}
+          <div class="tx-actions">
+            <span>Connect your wallet to swap.</span>
+          </div>
+        {/if}
 
-      {#if quote.execution && walletCheck}<p role="status">{walletCheck.message}</p>{/if}
-      <!-- Transaction actions -->
-      {#if needsApproval || canSwap}
-        <div class="tx-actions">
-          {#if needsApproval}
-            <button
-              type="button"
-              class="tx-btn approve-btn"
-              class:confirmed={approveConfirmed}
-              disabled={transactionStore.busy ||
-                !validContext ||
-                walletCheck?.status !== "approval" ||
-                approvePending ||
-                approveConfirmed}
-              aria-label={approveConfirmed
-                ? "Already approved"
-                : approvePending
-                  ? "Approving..."
+        {#if quote.execution && walletCheck}<p class="wallet-check" role="status">
+            {walletCheck.message}
+          </p>{/if}
+        <!-- Transaction actions -->
+        {#if needsApproval || canSwap}
+          <div class="tx-actions">
+            {#if needsApproval}
+              <button
+                type="button"
+                class="tx-btn approve-btn"
+                class:confirmed={approveConfirmed}
+                disabled={transactionStore.busy ||
+                  !validContext ||
+                  walletCheck?.status !== "approval" ||
+                  approvePending ||
+                  approveConfirmed}
+                aria-label={approveConfirmed
+                  ? "Already approved"
+                  : approvePending
+                    ? "Approving..."
+                    : walletStore.isConnected
+                      ? "Approve token spending"
+                      : "Connect wallet to approve"}
+                onclick={handleApprove}
+              >
+                {#if approveConfirmed}
+                  Approved ✓
+                {:else if approvePending}
+                  Approving...
+                {:else}
+                  Approve
+                {/if}
+              </button>
+            {/if}
+
+            {#if canSwap}
+              <button
+                type="button"
+                class="tx-btn swap-btn"
+                disabled={transactionStore.busy ||
+                  !validContext ||
+                  walletCheck?.status !== "ready" ||
+                  (needsApproval && !approveConfirmed) ||
+                  swapPending}
+                aria-label={swapPending
+                  ? "Swap in progress..."
                   : walletStore.isConnected
-                    ? "Approve token spending"
-                    : "Connect wallet to approve"}
-              onclick={handleApprove}
-            >
-              {#if approveConfirmed}
-                Approved ✓
-              {:else if approvePending}
-                Approving...
-              {:else}
-                Approve
-              {/if}
-            </button>
-          {/if}
+                    ? "Execute swap"
+                    : "Connect wallet to swap"}
+                onclick={handleSwap}
+              >
+                {#if swapPending}
+                  Swapping...
+                {:else}
+                  Swap
+                {/if}
+              </button>
+            {/if}
 
-          {#if canSwap}
-            <button
-              type="button"
-              class="tx-btn swap-btn"
-              disabled={transactionStore.busy ||
-                !validContext ||
-                walletCheck?.status !== "ready" ||
-                (needsApproval && !approveConfirmed) ||
-                swapPending}
-              aria-label={swapPending
-                ? "Swap in progress..."
-                : walletStore.isConnected
-                  ? "Execute swap"
-                  : "Connect wallet to swap"}
-              onclick={handleSwap}
-            >
-              {#if swapPending}
-                Swapping...
-              {:else}
-                Swap
-              {/if}
-            </button>
-          {/if}
-
-          <!-- Transaction status indicator -->
-          {#if approveStatus === "failed"}
-            <span class="tx-status error" role="alert">Approve failed</span>
-          {:else if swapStatus === "confirmed"}
-            <span class="tx-status success" role="status">Swap confirmed ✓</span>
-          {:else if swapStatus === "failed"}
-            <span class="tx-status error" role="alert">Swap failed</span>
-          {/if}
-        </div>
-      {/if}
+            <!-- Transaction status indicator -->
+            {#if approveStatus === "failed"}
+              <span class="tx-status error" role="alert">Approve failed</span>
+            {:else if swapStatus === "confirmed"}
+              <span class="tx-status success" role="status">Swap confirmed ✓</span>
+            {:else if swapStatus === "failed"}
+              <span class="tx-status error" role="alert">Swap failed</span>
+            {/if}
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
 </div>
 
 <style>
+  .quote-amounts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  .execution-status {
+    min-height: 5rem;
+  }
+  .wallet-check {
+    min-height: 3em;
+    font-size: 0.8125rem;
+  }
+
   .quote-card {
-    border: 2px solid var(--border, #000);
+    border: 0;
     background: var(--bg-card, #fff);
-    padding: 1rem;
+    padding: 0.5rem 0;
   }
 
   .quote-card.winner {
-    border-color: var(--success-text, #007700);
-    border-width: 3px;
+    border: 0;
   }
 
   .quote-card.alternative {
-    border-color: var(--border-light, #e0e0e0);
+    border: 0;
   }
 
   /* Loading state */
@@ -302,7 +298,7 @@
 
   .recommendation-badge {
     display: inline-block;
-    padding: 0.125rem 0.5rem;
+    padding: 0;
     font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -310,12 +306,12 @@
   }
 
   .winner-badge {
-    background: var(--green, #007700);
-    color: #fff;
+    background: transparent;
+    color: var(--success-text);
   }
 
   .alt-badge {
-    background: var(--border-light, #e0e0e0);
+    background: transparent;
     color: var(--text-muted, #666);
   }
 
@@ -328,8 +324,11 @@
     margin-top: 0.25rem;
   }
 
+  .input-amount,
   .output-amount {
-    font-size: 1.5rem;
+    font-size: clamp(1rem, 2.5vw, 1.5rem);
+    overflow-wrap: anywhere;
+    min-height: 2.4em;
     font-weight: 700;
     font-family: monospace;
     line-height: 1.2;
@@ -339,26 +338,6 @@
     font-size: 0.75rem;
     color: var(--text-muted, #666);
     margin-top: 0.125rem;
-  }
-
-  .gas-info {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-  }
-
-  .gas-label {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted, #666);
-  }
-
-  .gas-value {
-    font-family: monospace;
-    font-weight: 600;
   }
 
   .provider-label {
@@ -376,8 +355,8 @@
     gap: 0.5rem;
     flex-wrap: wrap;
     margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--border-light, #e0e0e0);
+    padding-top: 0;
+    border-top: 0;
   }
 
   .tx-btn {

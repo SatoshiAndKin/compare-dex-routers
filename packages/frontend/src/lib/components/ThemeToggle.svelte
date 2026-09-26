@@ -25,7 +25,7 @@
     height: 44px;
     padding: 0;
     background: var(--bg-card, #fff);
-    border: 2px solid var(--border, #000);
+    border: 0;
     color: var(--text, #000);
     cursor: pointer;
     font-size: 1.125rem;

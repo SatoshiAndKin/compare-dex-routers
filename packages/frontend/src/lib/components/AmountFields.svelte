@@ -4,6 +4,7 @@
    * Ports behavior from src/client/amount-fields.ts.
    */
   import { formStore } from "../stores/formStore.svelte.js";
+  import { comparisonStore } from "../stores/comparisonStore.svelte.js";
 
   // ---------------------------------------------------------------------------
   // State
@@ -21,6 +22,25 @@
 
   let sellLabel = $derived(fromSymbol ? `YOU SELL ${fromSymbol}` : "YOU SELL");
   let receiveLabel = $derived(toSymbol ? `YOU RECEIVE ${toSymbol}` : "YOU RECEIVE");
+  const quote = $derived.by(() => {
+    const active = comparisonStore.activeQuote;
+    return active &&
+      active.chainId === formStore.chainId &&
+      active.mode === formStore.mode &&
+      active.from.toLowerCase() === formStore.fromToken?.address.toLowerCase() &&
+      active.to.toLowerCase() === formStore.toToken?.address.toLowerCase()
+      ? active
+      : null;
+  });
+  const sellValue = $derived(isExactIn ? formStore.sellAmount : (quote?.input_amount ?? ""));
+  const receiveValue = $derived(isExactIn ? (quote?.output_amount ?? "") : formStore.receiveAmount);
+  const estimateStatus = $derived(
+    !quote
+      ? "Waiting for quote"
+      : comparisonStore.isStale
+        ? "Previous estimate"
+        : "Estimated from selected route"
+  );
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -46,14 +66,14 @@
   function handleSellFocus(): void {
     if (isProgrammaticUpdate) return;
     if (formStore.mode !== "exactIn") {
-      formStore.mode = "exactIn";
+      setMode("exactIn");
     }
   }
 
   function handleReceiveFocus(): void {
     if (isProgrammaticUpdate) return;
     if (formStore.mode !== "targetOut") {
-      formStore.mode = "targetOut";
+      setMode("targetOut");
     }
   }
 
@@ -76,6 +96,9 @@
   }
 
   function setMode(mode: "exactIn" | "targetOut"): void {
+    if (mode === formStore.mode) return;
+    if (mode === "exactIn") formStore.sellAmount = sellValue;
+    else formStore.receiveAmount = receiveValue;
     formStore.mode = mode;
   }
 </script>
@@ -110,13 +133,14 @@
         min="0"
         step="any"
         placeholder={isExactIn ? "Enter amount" : ""}
-        value={formStore.sellAmount}
+        value={sellValue}
         readonly={!isExactIn}
         onfocus={handleSellFocus}
         oninput={handleSellInput}
         aria-label={sellLabel}
       />
     </div>
+    <span class="amount-hint">{isExactIn ? "Exact amount" : estimateStatus}</span>
   </div>
 
   <div class={`amount-group${!isExactIn ? " active" : " computed"}`}>
@@ -129,27 +153,35 @@
         min="0"
         step="any"
         placeholder={!isExactIn ? "Enter amount" : ""}
-        value={formStore.receiveAmount}
+        value={receiveValue}
         readonly={isExactIn}
         onfocus={handleReceiveFocus}
         oninput={handleReceiveInput}
         aria-label={receiveLabel}
       />
     </div>
+    <span class="amount-hint">{!isExactIn ? "Exact amount" : estimateStatus}</span>
   </div>
 </div>
 
 <style>
   .amount-fields {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 0.75rem;
   }
 
   .amount-group {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    min-width: 0;
+  }
+  .amount-hint {
+    min-height: 3em;
+    line-height: 1.5;
+    font-size: 0.7rem;
+    color: var(--text-muted);
   }
 
   .amount-group.computed .amount-input {
@@ -180,7 +212,7 @@
   .amount-input {
     width: 100%;
     padding: 0.5rem 0.75rem;
-    border: 2px solid var(--border, #000);
+    border: 1px solid var(--border-light);
     background: var(--bg-input, #fff);
     color: var(--text, #000);
     font-size: 1rem;
@@ -211,6 +243,7 @@
   }
 
   .mode-toggle-row {
+    grid-column: 1 / -1;
     display: flex;
     gap: 0;
   }
@@ -219,7 +252,7 @@
     flex: 1;
     padding: 0.35rem 0.75rem;
     background: var(--bg-muted, #f0f0f0);
-    border: 2px solid var(--border, #000);
+    border: 0;
     cursor: pointer;
     font-size: 0.85rem;
     font-weight: 600;

@@ -33,11 +33,10 @@
   .refresh-indicator {
     font-size: 0.625rem;
     color: var(--text-muted, #666);
-    padding: 0.25rem 0.5rem;
-    border: 1px solid var(--border-light, #e0e0e0);
-    border-left: 4px solid var(--accent, #0055ff);
-    background: var(--bg-muted, #f0f0f0);
-    margin-top: 0.5rem;
+    padding: 0.25rem 0;
+    border: 0;
+    background: transparent;
+    margin: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;

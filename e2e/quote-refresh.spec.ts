@@ -59,7 +59,8 @@ for (const connected of [false, true]) {
     }
     expect(await position()).toEqual(before);
     release.resolve(true);
-    await expect(status).toBeEmpty();
+    await expect(status.locator(".spinner")).toHaveCount(0);
+    await expect(status).toContainText("Refreshing in");
     await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Select curve" })).toContainText("200 USDC");
     await expect(providers).toHaveAttribute("open", "");

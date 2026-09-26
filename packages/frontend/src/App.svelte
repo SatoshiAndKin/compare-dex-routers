@@ -140,29 +140,7 @@
 <div class="app">
   <header class="app-header">
     <div class="brand">
-      <svg class="brand-planet" viewBox="0 0 100 100" aria-hidden="true">
-        <circle cx="50" cy="50" r="28" fill="#4477AA" stroke="#66CCEE" stroke-width="2" />
-        <path
-          d="M28 36c18 13 28 2 42 14M26 53c20 14 32 2 45 12"
-          fill="none"
-          stroke="#66CCEE"
-          stroke-width="4"
-          opacity=".6"
-        />
-        <ellipse
-          cx="50"
-          cy="50"
-          rx="47"
-          ry="12"
-          transform="rotate(-28 50 50)"
-          fill="none"
-          stroke="#CCBB44"
-          stroke-width="4"
-        />
-        <path d="m83 14 2-7 2 7 7 2-7 2-2 7-2-7-7-2z" fill="#EE6677" />
-      </svg>
       <div>
-        <p class="brand-eyebrow">Explore your next swap</p>
         <h1>Compare DEX Routers</h1>
       </div>
     </div>
@@ -223,36 +201,31 @@
 <SettingsModal />
 
 <style>
+  .app-main {
+    background: var(--bg-card);
+    padding: 1rem;
+    border-radius: 0.75rem;
+  }
   .brand {
     display: flex;
     align-items: center;
     gap: 1rem;
-    color: var(--space-text);
+    color: var(--text);
     min-width: 0;
-  }
-  .brand-planet {
-    width: 90px;
-    flex: 0 0 90px;
-  }
-  .brand-eyebrow {
-    color: #66ccee;
-    text-transform: uppercase;
-    font-size: 0.7rem;
-    letter-spacing: 0.2em;
-    margin-bottom: 0.3rem;
   }
   h1 {
     margin: 0;
     line-height: 1.15;
-    text-shadow: 3px 3px 0 #aa3377;
+    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    color: var(--text);
   }
   .space-footer {
     text-align: center;
-    color: #bbbbbb;
+    color: var(--text-muted);
     font-size: 0.75rem;
-    margin-top: 2.5rem;
+    margin-top: 1rem;
     padding: 1rem;
-    border-top: 1px dotted #4477aa;
+    border-top: 0;
   }
   .space-footer span {
     color: #ccbb44;
@@ -260,10 +233,6 @@
   @media (max-width: 600px) {
     .brand {
       gap: 0.5rem;
-    }
-    .brand-planet {
-      width: 58px;
-      flex-basis: 58px;
     }
     .app {
       padding: 0.5rem;
@@ -273,24 +242,24 @@
     }
   }
   .app {
-    max-width: 1200px;
+    max-width: 840px;
     margin: 0 auto;
-    padding: 1rem;
+    padding: 0.5rem;
   }
 
   .app-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1.75rem;
-    gap: 1.25rem;
+    margin-bottom: 0.5rem;
+    gap: 0.5rem;
     flex-wrap: wrap;
   }
 
   .header-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.25rem;
   }
 
   .github-link {
@@ -302,7 +271,7 @@
     padding: 0;
     background: var(--bg-card, #fff);
     color: var(--text, #000);
-    border: 2px solid var(--border, #000);
+    border: 0;
     cursor: pointer;
     flex-shrink: 0;
     text-decoration: none;
@@ -322,7 +291,9 @@
     justify-content: center;
     width: 100%;
     max-width: 800px;
-    margin: 0 auto 1rem;
+    margin: 0 auto 0.5rem;
+    min-height: 5rem;
+    color: var(--text);
   }
 
   .settings-btn {
@@ -334,7 +305,7 @@
     padding: 0;
     background: var(--bg-card, #fff);
     color: var(--text, #000);
-    border: 2px solid var(--border, #000);
+    border: 0;
     cursor: pointer;
     flex-shrink: 0;
     font-size: 1.125rem;
