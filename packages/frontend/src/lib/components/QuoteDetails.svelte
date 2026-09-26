@@ -1,10 +1,12 @@
 <script lang="ts">
-  import type { Quote } from "../stores/comparisonStore.svelte.js";
+  import type { Quote, QuoteResponse } from "../stores/comparisonStore.svelte.js";
+  import { quoteCostFields } from "../quote-costs.js";
   interface Props {
     quote: Quote;
     gasPriceGwei?: string | null;
+    recommendationBasis?: QuoteResponse["recommendation_basis"];
   }
-  let { quote, gasPriceGwei = null }: Props = $props();
+  let { quote, gasPriceGwei = null, recommendationBasis = "none" }: Props = $props();
   let open = $state(false);
   const fields = $derived(
     [
@@ -26,16 +28,7 @@
           ? null
           : `${gasPriceGwei ?? quote.gas_price_gwei} gwei`,
       ],
-      [
-        "Gas Cost",
-        quote.gas_cost_native === null ? null : `${quote.gas_cost_native} ${quote.native_currency}`,
-      ],
-      [
-        quote.mode === "targetOut" ? "Total Cost" : "Output After Gas",
-        quote.net_value_native === null
-          ? null
-          : `${quote.net_value_native} ${quote.native_currency}`,
-      ],
+      ...quoteCostFields(quote, recommendationBasis),
     ].filter((field) => field[1] !== null && field[1] !== undefined)
   );
 </script>

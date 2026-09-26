@@ -5,8 +5,9 @@
    * Includes Approve and Swap transaction buttons when a quote is available.
    */
   import { untrack } from "svelte";
-  import type { Quote } from "../stores/comparisonStore.svelte.js";
+  import type { Quote, QuoteResponse } from "../stores/comparisonStore.svelte.js";
   import QuoteDetails from "./QuoteDetails.svelte";
+  import QuoteCosts from "./QuoteCosts.svelte";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
 
@@ -17,6 +18,7 @@
     loading?: boolean;
     isRecommended?: boolean;
     gasPriceGwei?: string | null;
+    recommendationBasis?: QuoteResponse["recommendation_basis"];
   }
 
   let {
@@ -26,6 +28,7 @@
     loading = false,
     isRecommended = false,
     gasPriceGwei = null,
+    recommendationBasis = "none",
   }: Props = $props();
 
   const providerName = $derived(quote?.provider ?? provider);
@@ -34,9 +37,6 @@
   const primaryAmount = $derived(isTargetOut ? quote?.input_amount : quote?.output_amount);
   const primarySymbol = $derived(isTargetOut ? quote?.from_symbol : quote?.to_symbol);
   const primaryLabel = $derived(isTargetOut ? "You pay (required)" : "You receive (estimated)");
-  const hasGasCost = $derived(
-    Boolean(quote?.gas_cost_native) && Number(quote?.gas_cost_native) > 0
-  );
 
   // ---------------------------------------------------------------------------
   // Transaction state
@@ -106,7 +106,7 @@
         class:winner-badge={isRecommended}
         class:alt-badge={!isRecommended}
       >
-        {isRecommended ? "RECOMMENDED" : "ALTERNATIVE"}
+        {isRecommended ? "RECOMMENDED" : "SELECTED"}
       </span>
 
       <!-- Primary output -->
@@ -118,14 +118,14 @@
 
       <!-- Provider info -->
       <div class="provider-info">Via {providerName}</div>
+      <div class="provider-info">
+        {isTargetOut
+          ? `You receive: ${quote.output_amount} ${quote.to_symbol}`
+          : `You pay: ${quote.input_amount} ${quote.from_symbol}`}
+      </div>
 
       <!-- Gas cost -->
-      {#if hasGasCost}
-        <div class="gas-info">
-          <span class="gas-label">Gas Cost</span>
-          <span class="gas-value">{quote.gas_cost_native} {quote.native_currency}</span>
-        </div>
-      {/if}
+      <QuoteCosts {quote} basis={recommendationBasis} />
       {#if gasPriceGwei}
         <div class="gas-info">
           <span class="gas-label">Gas Price</span>
@@ -134,7 +134,7 @@
       {/if}
 
       <!-- Expandable details -->
-      <QuoteDetails {quote} {gasPriceGwei} />
+      <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} />
 
       {#if !quote.execution}
         <div class="tx-actions">

@@ -53,34 +53,52 @@ function comparisons() {
   return get.mock.calls.filter(([path]) => path === "/quote");
 }
 describe("mounted comparison lifecycle", () => {
-  it.each(["slippage", "chain", "account", "wallet chain"])(
-    "invalidates and requotes when %s changes",
-    async (change) => {
-      render(CompareForm);
-      await tick();
-      expect(comparisonStore.quotes).toHaveLength(2);
-      if (change === "slippage") formStore.slippageBps = 100;
-      if (change === "chain") formStore.chainId = 8453;
-      if (change === "account") walletStore.address = SENDER;
-      if (change === "wallet chain") walletStore.chainId = 8453;
-      flushSync();
-      expect(comparisonStore.quotes).toEqual(makeComparison().quotes);
-      expect(comparisonStore.isCurrent(comparisonStore.quotes[0]!)).toBe(false);
-      expect(comparisonStore.isLoading).toBe(true);
-      expect(autoRefreshStore.active).toBe(false);
-      await tick();
-      expect(comparisons()).toHaveLength(2);
-      const query = comparisons()[1]?.[1]?.params?.query;
-      expect(query).toMatchObject({
-        chainId: change === "chain" ? 8453 : 1,
-        slippageBps: change === "slippage" ? 100 : 50,
-        sender: change === "account" ? SENDER : undefined,
-      });
-      await tick(15000);
-      expect(comparisons()).toHaveLength(3);
-      expect(comparisons()[2]?.[1]?.params?.query).toEqual(query);
+  it.each([
+    "slippage",
+    "chain",
+    "account",
+    "wallet chain",
+    "wallet provider",
+    "from",
+    "to",
+    "amount",
+    "mode",
+  ])("invalidates and requotes when %s changes", async (change) => {
+    render(CompareForm);
+    await tick();
+    expect(comparisonStore.quotes).toHaveLength(2);
+    comparisonStore.workflowProvider = "curve";
+    if (change === "slippage") formStore.slippageBps = 100;
+    if (change === "chain") formStore.chainId = 8453;
+    if (change === "account") walletStore.address = SENDER;
+    if (change === "wallet chain") walletStore.chainId = 8453;
+    if (change === "wallet provider") walletStore.provider = { request: vi.fn() };
+    if (change === "from") formStore.fromToken!.address = SENDER;
+    if (change === "to") formStore.toToken!.address = SENDER;
+    if (change === "amount") formStore.sellAmount = "200";
+    if (change === "mode") {
+      formStore.receiveAmount = "100";
+      formStore.mode = "targetOut";
     }
-  );
+    flushSync();
+    expect(comparisonStore.workflowProvider).toBeNull();
+    expect(comparisonStore.activeQuote?.provider).toBe("curve");
+    expect(comparisonStore.quotes).toEqual(makeComparison().quotes);
+    expect(comparisonStore.isCurrent(comparisonStore.quotes[0]!)).toBe(false);
+    expect(comparisonStore.isLoading).toBe(true);
+    expect(autoRefreshStore.active).toBe(false);
+    await tick();
+    expect(comparisons()).toHaveLength(2);
+    const query = comparisons()[1]?.[1]?.params?.query;
+    expect(query).toMatchObject({
+      chainId: change === "chain" ? 8453 : 1,
+      slippageBps: change === "slippage" ? 100 : 50,
+      sender: change === "account" ? SENDER : undefined,
+    });
+    await tick(15000);
+    expect(comparisons()).toHaveLength(3);
+    expect(comparisons()[2]?.[1]?.params?.query).toEqual(query);
+  });
   it("retains the selected quote through amount edits, a slow response, and failure", async () => {
     render(CompareForm);
     await tick();
@@ -110,7 +128,7 @@ describe("mounted comparison lifecycle", () => {
     expect(comparisons()).toHaveLength(2);
     formStore.sellAmount = "100";
     await tick();
-    expect(comparisonStore.activeQuote?.provider).toBe("curve");
+    expect(comparisonStore.activeQuote?.provider).toBe("0x");
     expect(comparisonStore.isCurrent(comparisonStore.activeQuote!)).toBe(true);
   });
   it("waits for selected metadata before sending the amount", async () => {

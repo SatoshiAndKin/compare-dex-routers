@@ -1,7 +1,10 @@
 import { parseUnits } from "viem";
 import type { Page } from "@playwright/test";
 import { FROM, TO, makeComparison } from "../packages/frontend/src/__tests__/quote-fixture.js";
-export async function fixture(page: Page) {
+export async function fixture(
+  page: Page,
+  transform?: (comparison: ReturnType<typeof makeComparison>) => void
+) {
   const tokens = [
     { chainId: 1, address: FROM, name: "USD Coin", symbol: "USDC", decimals: 6 },
     { chainId: 1, address: TO, name: "Tether USD", symbol: "USDT", decimals: 6 },
@@ -52,6 +55,7 @@ export async function fixture(page: Page) {
       quote.to = params.get("to") ?? TO;
       quote.amount = params.get("amount") ?? "100";
       quote.mode = params.get("mode") === "targetOut" ? "targetOut" : "exactIn";
+      comparison.mode = quote.mode;
       quote.sender = params.get("sender");
       const native = quote.from.toLowerCase() === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
       quote.from_symbol = native ? "ETH" : "USDC";
@@ -70,6 +74,7 @@ export async function fixture(page: Page) {
         }
       }
     }
+    transform?.(comparison);
     return route.fulfill({ json: comparison });
   });
 }

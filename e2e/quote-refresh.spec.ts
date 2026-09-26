@@ -60,8 +60,58 @@ for (const connected of [false, true]) {
     expect(await position()).toEqual(before);
     release.resolve(true);
     await expect(status).toBeEmpty();
-    await expect(page.getByText("Via curve", { exact: true })).toBeVisible();
+    await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Select curve" })).toContainText("200 USDC");
     await expect(providers).toHaveAttribute("open", "");
+  });
+}
+
+for (const mode of ["exactIn", "targetOut"] as const) {
+  test(`follows recommendation changes and shows ${mode} comparison costs`, async ({ page }) => {
+    let recommendation = "curve";
+    let raw = false;
+    await fixture(page, (comparison) => {
+      comparison.recommendation = recommendation;
+      comparison.recommendation_basis = raw ? "raw_amount" : "gas_adjusted";
+      comparison.recommendation_reason = raw
+        ? "Gas comparison unavailable."
+        : "Comparable gas estimates available.";
+      for (const quote of comparison.quotes) {
+        quote.net_value_native = mode === "exactIn" ? "0.4976" : "0.5024";
+      }
+    });
+    await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&mode=${mode}`);
+    await expect(page.getByText("Via curve", { exact: true })).toBeVisible();
+    await page.locator("details.provider-list summary").click();
+    const label =
+      mode === "exactIn"
+        ? "Estimated output value after gas"
+        : "Estimated input cost including gas";
+    const value = mode === "exactIn" ? "0.4976" : "0.5024";
+    await expect(page.locator(".quote-card .quote-costs")).toContainText(`${label}: ${value} ETH`);
+    for (const provider of ["0x", "curve"]) {
+      const row = page.getByRole("button", { name: `Select ${provider}` });
+      await expect(row).toContainText("Estimated gas cost: 0.0024 ETH");
+      await expect(row).toContainText(`${label}: ${value} ETH`);
+    }
+    recommendation = "0x";
+    await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
+    await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Select curve" }).click();
+    await expect(page.getByText("SELECTED", { exact: true })).toBeVisible();
+    await expect(page.getByText("Recommended: 0x", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
+    await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
+    raw = true;
+    await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
+    await expect(page.getByText(/Ranking by raw/)).toBeVisible();
+    await page.getByRole("button", { name: /Details/ }).click();
+    await expect(page.getByText(new RegExp(label))).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Select curve" })).toContainText(
+      "Estimated gas cost (excluded from ranking): 0.0024 ETH"
+    );
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+    ).toBe(true);
   });
 }

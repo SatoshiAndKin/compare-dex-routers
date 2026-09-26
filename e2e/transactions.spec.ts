@@ -3,6 +3,51 @@ import { fixture } from "./fixtures.js";
 import { installWallet } from "./wallet.js";
 import { FROM, TO, SENDER } from "../packages/frontend/src/__tests__/quote-fixture.js";
 
+test("approval retains its provider through refresh, then cancellation follows the recommendation", async ({
+  page,
+}) => {
+  let approved = false;
+  await fixture(page);
+  await installWallet(page, 1, SENDER, async (method, params) => {
+    if (method === "eth_call")
+      return (params[0] as { data: string }).data.startsWith("0x70a08231")
+        ? "0x5f5e100"
+        : approved
+          ? `0x${"f".repeat(64)}`
+          : "0x0";
+    if (method === "eth_getBalance") return "0x8ac7230489e80000";
+    if (method === "eth_gasPrice") return "0x4a817c800";
+    if (method === "eth_estimateGas") return "0x1d4c0";
+    if (method === "eth_sendTransaction") {
+      approved = true;
+      return `0x${"1".repeat(64)}`;
+    }
+    if (method === "eth_getTransactionReceipt") return { status: "0x1" };
+    throw new Error(`Unexpected wallet method: ${method}`);
+  });
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
+  await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
+  await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+  await expect(page.getByRole("button", { name: "Approve token spending" })).toBeEnabled();
+  await page.locator("details.provider-list summary").click();
+  await page.getByRole("button", { name: "Select curve" }).click();
+  await page.getByRole("button", { name: "Approve token spending" }).click();
+  await expect(page.getByRole("button", { name: "Execute swap" })).toBeEnabled();
+  await expect(page.getByText("Via curve", { exact: true })).toBeVisible();
+  await expect(page.getByText("Recommended: 0x", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Execute swap" })).toBeEnabled();
+  await expect(page.getByText("Via curve", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Execute swap" }).click();
+  const dialog = page.getByRole("dialog", { name: "Confirm Swap" });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use recommended route" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Select 0x" })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
+  await expect(page.getByText("Selected for approval / swap: curve")).toHaveCount(0);
+});
+
 for (const scenario of [
   "reject approval",
   "reverted swap",
