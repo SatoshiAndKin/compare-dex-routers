@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.0 AS bun
+FROM oven/bun:1.4.2 AS bun
 
 # Stage 1: Build
 FROM node:24.21.0-slim AS builder
@@ -14,7 +14,7 @@ COPY packages/frontend/package.json ./packages/frontend/
 COPY packages/api/package.json ./packages/api/
 
 # Enable pnpm
-RUN corepack enable && corepack prepare pnpm@12.3.1 --activate
+RUN corepack enable && corepack prepare pnpm@12.5.1 --activate
 
 # Disable husky git hooks (not applicable in Docker)
 ENV HUSKY=0
@@ -29,7 +29,7 @@ COPY packages/frontend/ ./packages/frontend/
 RUN pnpm --filter @compare-dex/frontend run build
 
 # Stage 2: Serve
-FROM nginx:1.30.4-alpine
+FROM nginx:1.30.5-alpine
 
 # Copy built files
 COPY --from=builder /app/packages/frontend/dist/ /usr/share/nginx/html/

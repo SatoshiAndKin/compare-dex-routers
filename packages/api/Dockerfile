@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.0 AS bun
+FROM oven/bun:1.4.2 AS bun
 
 FROM node:24.21.0-slim
 
@@ -13,7 +13,7 @@ COPY packages/api/package.json ./packages/api/
 COPY packages/frontend/package.json ./packages/frontend/
 
 # Enable pnpm
-RUN corepack enable && corepack prepare pnpm@12.3.1 --activate
+RUN corepack enable && corepack prepare pnpm@12.5.1 --activate
 
 # Disable husky git hooks (not applicable in Docker)
 ENV HUSKY=0

@@ -8,7 +8,7 @@ Compare all [Spandex](https://www.spandex.exchange/) providers, including Curve,
 
 ## Quick start
 
-Use Node.js 24.21.0, pnpm 12.3.1, and Bun 1.4.0. Bun builds the pinned Spandex Git dependency during installation. Docker and CI install these versions.
+Use Node.js 24.21.0, pnpm 12.5.1, and Bun 1.4.2. Bun builds the pinned Spandex Git dependency during installation. Docker and CI install these versions.
 
 ```sh
 cp env.example .env   # set RPC_URL_<chainId> or ALCHEMY_API_KEY
@@ -133,7 +133,7 @@ Copy `env.example` to `.env` and fill in your keys.
 
 ## Dependency builds
 
-The app pins `SatoshiAndKin/spandex` at `3a88dab87c42f124d23cb541a8747143d5d1cd06`, rebased on upstream `9bdca4c76bd58b9e25607607f46c59be0829e700`, with SDK-owned Node workers and browser/ESM/CommonJS entry points. The package builds its ESM, CommonJS, and type exports with `prepack`. `pnpm-workspace.yaml` permits the build only for this exact Git package. Update the pin and build allowlist together. No local module aliases or dependency export overrides are required.
+The app pins `SatoshiAndKin/spandex` at `f63d05f41c22825f6a684e48451cfff37b54b1ae`, rebased on upstream `9bdca4c76bd58b9e25607607f46c59be0829e700`, with SDK-owned Node workers and browser/ESM/CommonJS entry points. The package builds its ESM, CommonJS, and type exports with `prepack`. `pnpm-workspace.yaml` permits the build only for this exact Git package. Update the pin and build allowlist together. No local module aliases or dependency export overrides are required.
 
 The workspace retains its seven-day release age policy and strict build allowlist. `js-yaml@4.3.1` is overridden to the patched 4.3.2 because a transitive generator dependency pins the affected version. TypeScript stays within the supported ranges of the Svelte, ESLint, and OpenAPI tools.
 
