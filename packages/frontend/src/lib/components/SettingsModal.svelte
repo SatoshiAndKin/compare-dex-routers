@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { dialogFocus } from "../dialog-focus.js";
   /**
    * SettingsModal — gear icon panel for app settings.
@@ -15,6 +16,31 @@
    */
   import { settingsStore } from "../stores/settingsStore.svelte.js";
   import { tokenListStore } from "../stores/tokenListStore.svelte.js";
+  import { preferencesStore } from "../stores/preferencesStore.svelte.js";
+  import { formStore } from "../stores/formStore.svelte.js";
+  import { configStore } from "../stores/configStore.svelte.js";
+
+  let explorerUrl = $state("");
+  let explorerError = $state("");
+  let explorerSaved = $state(false);
+  const chainName = $derived(
+    configStore.supportedChains.find((chain) => chain.id === formStore.chainId)?.name ??
+      `chain ${formStore.chainId}`
+  );
+
+  $effect(() => {
+    if (settingsStore.isSettingsOpen) {
+      const chainId = formStore.chainId;
+      explorerUrl = untrack(() => preferencesStore.getExplorerUrl(chainId)) ?? "";
+      explorerError = "";
+      explorerSaved = false;
+    }
+  });
+
+  function saveExplorer(value: string): void {
+    explorerError = preferencesStore.setExplorerUrl(formStore.chainId, value) ?? "";
+    explorerSaved = !explorerError;
+  }
 
   // ---------------------------------------------------------------------------
   // Internal state
@@ -127,6 +153,37 @@
       </div>
 
       <div class="modal-body">
+        <div class="settings-section">
+          <label class="settings-section-title" for="explorer-url"
+            >Block explorer for {chainName}</label
+          >
+          <p class="refresh-note">
+            Leave empty to use the chain default. Custom explorers use /tx/ links.
+          </p>
+          <div class="explorer-controls">
+            <input
+              id="explorer-url"
+              type="url"
+              class="add-list-input"
+              placeholder="https://eth.blockscout.com"
+              bind:value={explorerUrl}
+              oninput={() => {
+                explorerSaved = false;
+                explorerError = "";
+              }}
+            />
+            <button type="button" onclick={() => saveExplorer(explorerUrl)}>Save explorer</button>
+            <button
+              type="button"
+              onclick={() => {
+                explorerUrl = "";
+                saveExplorer("");
+              }}>Use chain default</button
+            >
+          </div>
+          {#if explorerError}<p role="alert">{explorerError}</p>{/if}
+          {#if explorerSaved}<p role="status">Explorer preference saved.</p>{/if}
+        </div>
         <!-- ---------------------------------------------------------------- -->
         <!-- Token Lists Section                                               -->
         <!-- ---------------------------------------------------------------- -->
@@ -306,6 +363,22 @@
 {/if}
 
 <style>
+  .explorer-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .explorer-controls input {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+  }
+  .explorer-controls button {
+    min-width: 0;
+    min-height: 2.75rem;
+    padding: 0.5rem;
+    font-size: 0.8125rem;
+  }
   .modal-overlay {
     position: fixed;
     inset: 0;

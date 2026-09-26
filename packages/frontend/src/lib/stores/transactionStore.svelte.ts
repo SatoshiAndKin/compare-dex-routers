@@ -12,6 +12,7 @@ import { comparisonStore, type Quote } from "./comparisonStore.svelte.js";
 import { walletStore, type EIP1193Provider } from "./walletStore.svelte.js";
 import { autoRefreshStore } from "./autoRefreshStore.svelte.js";
 import { formStore } from "./formStore.svelte.js";
+import type { TransactionReference } from "../explorers.js";
 
 export type TxStatus = "idle" | "pending" | "confirmed" | "failed";
 export interface SwapConfirmationData {
@@ -67,6 +68,7 @@ function quoteKey(quote: Quote): string {
 class TransactionStore {
   allowances = $state<Record<string, Allowance>>({});
   swapStatus = $state<Record<string, TxStatus>>({});
+  private swapTransactions = $state<Record<string, TransactionReference>>({});
   swapConfirmation = $state<SwapConfirmationData | null>(null);
   busy = $state(false);
   checks = $state<
@@ -138,6 +140,10 @@ class TransactionStore {
 
   getSwapStatus(quote: Quote): TxStatus {
     return this.swapStatus[quoteKey(quote)] ?? "idle";
+  }
+
+  getSwapTransaction(quote: Quote): TransactionReference | null {
+    return this.swapTransactions[quoteKey(quote)] ?? null;
   }
 
   private async readAllowance(quote: Quote, provider: EIP1193Provider): Promise<bigint> {
@@ -373,12 +379,13 @@ class TransactionStore {
         params: [{ ...tx, gas: hex(gas), gasPrice: hex(fees.gasPrice) }],
       });
       if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
-      walletStore.setMessage(`Approval submitted: ${hash}`);
+      const transaction = { chainId: quote.chainId, hash };
+      walletStore.setMessage("Approval submitted", false, transaction);
       await this.receipt(provider, hash, quote);
       const confirmedAmount = await this.readAllowance(quote, provider);
       await this.assertContext(quote, provider);
       this.allowances[key] = { amount: confirmedAmount, status: "idle" };
-      walletStore.setMessage(`Approval confirmed: ${hash}`);
+      walletStore.setMessage("Approval confirmed", false, transaction);
       await this.refreshQuote(quote, provider);
       balanceStore.clearCache();
     } catch (error) {
@@ -453,11 +460,13 @@ class TransactionStore {
         params: [{ ...transaction, gas: hex(gas), gasPrice: hex(fees.gasPrice) }],
       });
       if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
-      walletStore.setMessage(`Swap submitted: ${hash}`);
+      const reference = { chainId: quote.chainId, hash };
+      this.swapTransactions[key] = reference;
+      walletStore.setMessage("Swap submitted", false, reference);
       await this.receipt(provider, hash, quote);
       this.swapStatus[key] = "confirmed";
       comparisonStore.releaseWorkflow();
-      walletStore.setMessage(`Swap confirmed: ${hash}`);
+      walletStore.setMessage("Swap confirmed", false, reference);
       balanceStore.clearCache();
     } catch (error) {
       if (rejected(error)) comparisonStore.releaseWorkflow();

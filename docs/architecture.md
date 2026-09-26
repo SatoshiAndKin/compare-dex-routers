@@ -87,6 +87,15 @@ alive.
 | `GET`  | `/openapi.json`               | OpenAPI spec (also at `/openapi.yaml`)             |
 | `GET`  | `/.well-known/farcaster.json` | Farcaster frame manifest                           |
 
+### USD display values
+
+`usd-price.ts` fetches one DeFiLlama native-asset/USD rate per quote response,
+shared across routes. Requests have a two-second timeout, a 60-second cache,
+and a ten-minute source-age limit. The API returns nullable dollar values plus
+`usd_conversion` provenance. Decimal multiplication happens after native-currency
+ranking, including required wallet approvals. A missing USD rate leaves the
+recommendation intact; raw rankings omit gas-adjusted USD totals.
+
 ## Frontend (`packages/frontend`)
 
 A Svelte 5 SPA built with Vite. In production it is served as static files by nginx.
@@ -111,6 +120,12 @@ A Svelte 5 SPA built with Vite. In production it is served as static files by ng
 | `ChainMismatchWarning.svelte`   | Warning when wallet chain differs from selected chain     |
 | `AutoRefreshIndicator.svelte`   | Visual indicator for auto-refresh countdown               |
 | `ThemeToggle.svelte`            | Light/dark theme toggle                                   |
+
+Transaction status links carry the submitted chain ID and full hash. Explorer
+defaults come from viem chain metadata; users can save a per-chain HTTPS explorer
+base URL in Settings. Links use `/tx/{hash}` and retain the submitted chain when
+the wallet changes networks. Explorer preferences share the existing local
+preferences storage and survive trade preference updates.
 
 ### Stores (`src/lib/stores/`)
 

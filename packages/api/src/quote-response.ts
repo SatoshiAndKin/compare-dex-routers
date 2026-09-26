@@ -7,6 +7,13 @@ const address = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 const quantity = z.string().regex(/^\d+$/);
 const nativeValue = z.string().nullable();
 
+const UsdConversionSchema = z.object({
+  native_price_usd: z.string(),
+  source: z.literal("defillama"),
+  updated_at: z.number().int(),
+});
+export type UsdConversion = z.infer<typeof UsdConversionSchema>;
+
 const QuoteSchema = z.object({
   chainId: z.number().int(),
   from: address,
@@ -56,6 +63,10 @@ const QuoteSchema = z.object({
   ),
   trade_value_native: nativeValue,
   net_value_native: nativeValue,
+  gas_cost_usd: nativeValue,
+  approval_gas_cost_usd: nativeValue,
+  trade_value_usd: nativeValue,
+  net_value_usd: nativeValue,
 });
 
 const ProviderFailureSchema = z.object({
@@ -81,6 +92,9 @@ export const QuoteResponseSchema = z.object({
   wallet_readiness: z.literal("unchecked"),
   gas_price_gwei: nativeValue,
   native_currency: z.string(),
+  usd_conversion: UsdConversionSchema.nullable().describe(
+    "Display-only native currency to USD conversion; timestamp in Unix seconds"
+  ),
   mode: z.enum(["exactIn", "targetOut"]),
 });
 

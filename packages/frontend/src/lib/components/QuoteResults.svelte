@@ -50,6 +50,7 @@
           isRecommended={comparisonStore.activeQuote.provider === comparisonStore.recommendation}
           gasPriceGwei={comparisonStore.gasPriceGwei}
           recommendationBasis={comparisonStore.recommendationBasis}
+          usdConversion={comparisonStore.usdConversion}
         />
       {:else}
         <div class="quote-placeholder" aria-label="Quote result">

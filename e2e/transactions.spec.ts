@@ -191,3 +191,60 @@ test("missing native fee data prevents automatic balance entry", async ({ page }
   await expect(page.getByText("Cannot fill balance: Fee data unavailable")).toBeVisible();
   await expect(page.locator("#sell-amount")).toHaveValue("0.01");
 });
+
+test("transaction links follow saved explorer preferences and retain the submitted chain", async ({
+  page,
+}) => {
+  await fixture(page);
+  await installWallet(page, 1, SENDER, async (method, params) => {
+    if (method === "eth_call")
+      return (params[0] as { data: string }).data.startsWith("0x70a08231")
+        ? "0x5f5e100"
+        : `0x${"f".repeat(64)}`;
+    if (method === "eth_getBalance") return "0x8ac7230489e80000";
+    if (method === "eth_gasPrice") return "0x4a817c800";
+    if (method === "eth_estimateGas") return "0x1d4c0";
+    if (method === "eth_sendTransaction") return `0x${"a".repeat(64)}`;
+    if (method === "eth_getTransactionReceipt") return { status: "0x1" };
+    throw new Error(`Unexpected wallet method: ${method}`);
+  });
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100`);
+  await page.getByRole("button", { name: "Open settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  expect((await settings.getByLabel(/Block explorer for/).boundingBox())?.width).toBeGreaterThan(
+    200
+  );
+  await settings.getByLabel(/Block explorer for/).fill("https://eth.blockscout.com/");
+  await settings.getByRole("button", { name: "Save explorer" }).click();
+  await expect(settings.getByText("Explorer preference saved.")).toBeVisible();
+  await settings.getByRole("button", { name: "Close settings" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
+  await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+  await page.getByRole("button", { name: "Execute swap" }).click();
+  await page
+    .getByRole("dialog", { name: "Confirm Swap" })
+    .getByRole("button", { name: "Confirm Swap", exact: true })
+    .click();
+  const status = page.locator(".wallet-message");
+  await expect(status).toContainText("Swap confirmed");
+  const link = status.getByRole("link");
+  const hash = `0x${"a".repeat(64)}`;
+  await expect(link).toHaveAttribute("href", `https://eth.blockscout.com/tx/${hash}`);
+  await expect(link).toHaveAttribute("target", "_blank");
+  await status.getByText("Transaction details").click();
+  await expect(status.getByText(hash, { exact: true })).toBeVisible();
+  await page.evaluate(() =>
+    (
+      window as unknown as { testWallet: { changeChain(chain: number): void } }
+    ).testWallet.changeChain(8453)
+  );
+  await expect(link).toHaveAttribute("href", `https://eth.blockscout.com/tx/${hash}`);
+  await page.getByRole("button", { name: "Open settings", exact: true }).click();
+  await settings.getByRole("button", { name: "Use chain default" }).click();
+  await settings.getByRole("button", { name: "Close settings" }).click();
+  await expect(link).toHaveAttribute("href", `https://etherscan.io/tx/${hash}`);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true
+  );
+});

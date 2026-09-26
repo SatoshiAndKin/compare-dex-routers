@@ -29,6 +29,7 @@ class ComparisonStore {
   isLoading = $state(false);
   isStale = $state(false);
   gasPriceGwei = $state<string | null>(null);
+  usdConversion = $state<QuoteResponse["usd_conversion"]>(null);
   recommendation = $state<string | null>(null);
   recommendationReason = $state<string | null>(null);
   recommendationBasis = $state<QuoteResponse["recommendation_basis"]>("none");
@@ -81,6 +82,7 @@ class ComparisonStore {
     this.failures = [];
     this.error = null;
     this.gasPriceGwei = null;
+    this.usdConversion = null;
     this.recommendation = null;
     this.recommendationReason = null;
     this.recommendationBasis = "none";
@@ -110,6 +112,7 @@ class ComparisonStore {
       this.quotes = data.quotes;
       this.failures = data.failures;
       this.gasPriceGwei = data.gas_price_gwei;
+      this.usdConversion = data.usd_conversion ?? null;
       this.recommendation = data.recommendation;
       this.recommendationReason = data.recommendation_reason;
       this.recommendationBasis = data.recommendation_basis;

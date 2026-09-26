@@ -155,7 +155,7 @@ describe("QuoteCard", () => {
         isRecommended: false,
       },
     });
-    expect(getByText(/0\.0024 ETH/)).toBeTruthy();
+    expect(getByText("$4.80")).toBeTruthy();
   });
 
   it("does not show loading state when loading=false and quote provided", () => {

@@ -22,6 +22,7 @@ import type { QuoteResponse, QuoteResult, ProviderFailure } from "./quote-respon
 import { redact, redactText } from "./redaction.js";
 import { createPreviewState } from "./preview-simulation.js";
 import { createApprovalGasEstimator } from "./approval-gas.js";
+import { getNativeUsdConversion, nativeToUsd } from "./usd-price.js";
 
 // Used only for previews and exchange-rate estimates. Its calldata never leaves the API.
 const PREVIEW_ACCOUNT: Address = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
@@ -133,6 +134,10 @@ async function requestQuotes(params: QuoteParams) {
         gas_cost_native: null,
         trade_value_native: null,
         net_value_native: null,
+        gas_cost_usd: null,
+        approval_gas_cost_usd: null,
+        trade_value_usd: null,
+        net_value_usd: null,
       }))
   );
   const failures: ProviderFailure[] = [];
@@ -209,7 +214,8 @@ async function nativeRate(chainId: number, token: string, decimals: number) {
 }
 
 export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
-  const { results, failures, inputDecimals, outputDecimals, account } = await requestQuotes(params);
+  const [{ results, failures, inputDecimals, outputDecimals, account }, usdConversion] =
+    await Promise.all([requestQuotes(params), getNativeUsdConversion(params.chainId)]);
   const native = getNativeAsset(params.chainId);
   const targetOut = params.mode === "targetOut";
   const [gas, rate] = await Promise.all([
@@ -263,6 +269,15 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
       right = value(b);
     return left === right ? 0 : (left < right ? -1 : 1) * (targetOut ? 1 : -1);
   });
+  // Display conversion never participates in ranking or transaction readiness.
+  const conversion =
+    usdConversion && Date.now() / 1000 - usdConversion.updated_at <= 600 ? usdConversion : null;
+  for (const quote of results) {
+    quote.gas_cost_usd = nativeToUsd(quote.gas_cost_native, conversion);
+    quote.approval_gas_cost_usd = nativeToUsd(quote.approval_gas_cost_native, conversion);
+    quote.trade_value_usd = nativeToUsd(quote.trade_value_native, conversion);
+    quote.net_value_usd = adjusted ? nativeToUsd(quote.net_value_native, conversion) : null;
+  }
   return {
     quotes: results,
     failures,
@@ -279,6 +294,7 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
     wallet_readiness: "unchecked",
     gas_price_gwei: gas.gasPriceGwei,
     native_currency: native.symbol,
+    usd_conversion: conversion,
     mode: params.mode,
   };
 }

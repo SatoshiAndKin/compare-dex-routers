@@ -1,5 +1,21 @@
 import type { Quote, QuoteResponse } from "./stores/comparisonStore.svelte.js";
 
+export function formatUsd(value: string | null | undefined): string {
+  if (value == null) return "USD unavailable";
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
+  if (!match) return "USD unavailable";
+  const [, sign, whole = "0", fraction = ""] = match;
+  const nonzero = /[1-9]/.test(whole + fraction);
+  if (BigInt(whole) === 0n && fraction.padEnd(2, "0").slice(0, 2) === "00" && nonzero)
+    return sign ? "−<$0.01" : "<$0.01";
+  const cents =
+    BigInt(whole) * 100n +
+    BigInt(fraction.padEnd(2, "0").slice(0, 2)) +
+    (Number(fraction[2] ?? "0") >= 5 ? 1n : 0n);
+  const dollars = (cents / 100n).toLocaleString("en-US");
+  return `${sign && nonzero ? "−" : ""}$${dollars}.${(cents % 100n).toString().padStart(2, "0")}`;
+}
+
 export function quoteCostFields(
   quote: Quote,
   basis: QuoteResponse["recommendation_basis"]
@@ -7,9 +23,7 @@ export function quoteCostFields(
   const fields: [string, string][] = [
     [
       basis === "raw_amount" ? "Estimated gas cost (excluded from ranking)" : "Estimated gas cost",
-      quote.gas_cost_native === null
-        ? "Unavailable"
-        : `${quote.gas_cost_native} ${quote.native_currency}`,
+      quote.gas_cost_native === null ? "Unavailable" : formatUsd(quote.gas_cost_usd),
     ],
     [
       "Required approval gas cost",
@@ -17,7 +31,7 @@ export function quoteCostFields(
         ? "None needed"
         : quote.approval_gas_cost_native == null
           ? "Unavailable"
-          : `${quote.approval_gas_cost_native} ${quote.native_currency}${quote.gas_cost_native === null ? "" : " (included above)"}`,
+          : `${formatUsd(quote.approval_gas_cost_usd)}${quote.gas_cost_native === null ? "" : " (included above)"}`,
     ],
   ];
   if (
@@ -30,7 +44,7 @@ export function quoteCostFields(
       quote.mode === "targetOut"
         ? "Estimated input cost including gas"
         : "Estimated output value after gas",
-      `${quote.net_value_native} ${quote.native_currency}`,
+      formatUsd(quote.net_value_usd),
     ]);
   }
   return fields;

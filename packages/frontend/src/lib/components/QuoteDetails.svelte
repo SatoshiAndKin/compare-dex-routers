@@ -5,8 +5,14 @@
     quote: Quote;
     gasPriceGwei?: string | null;
     recommendationBasis?: QuoteResponse["recommendation_basis"];
+    usdConversion?: QuoteResponse["usd_conversion"];
   }
-  let { quote, gasPriceGwei = null, recommendationBasis = "none" }: Props = $props();
+  let {
+    quote,
+    gasPriceGwei = null,
+    recommendationBasis = "none",
+    usdConversion = null,
+  }: Props = $props();
   let open = $state(false);
   const fields = $derived(
     [
@@ -30,6 +36,33 @@
           : `${gasPriceGwei ?? quote.gas_price_gwei} gwei`,
       ],
       ...quoteCostFields(quote, recommendationBasis),
+      [
+        "Gas cost in native currency",
+        quote.gas_cost_native === null ? null : `${quote.gas_cost_native} ${quote.native_currency}`,
+      ],
+      [
+        "Approval cost in native currency",
+        quote.approval_gas_cost_native === null
+          ? null
+          : `${quote.approval_gas_cost_native} ${quote.native_currency}`,
+      ],
+      [
+        "Comparison value in native currency",
+        recommendationBasis === "gas_adjusted" && quote.net_value_native !== null
+          ? `${quote.net_value_native} ${quote.native_currency}`
+          : null,
+      ],
+      [
+        "USD conversion",
+        usdConversion
+          ? `1 ${quote.native_currency} = $${usdConversion.native_price_usd}`
+          : "USD unavailable",
+      ],
+      ["Price source", usdConversion?.source],
+      [
+        "Price updated",
+        usdConversion ? new Date(usdConversion.updated_at * 1000).toISOString() : null,
+      ],
     ].filter((field) => field[1] !== null && field[1] !== undefined)
   );
 </script>
