@@ -22,7 +22,6 @@
   import TokenInput from "./TokenInput.svelte";
   import AmountFields from "./AmountFields.svelte";
   import SlippagePresets from "./SlippagePresets.svelte";
-  import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
 
   const AUTO_COMPARE_DELAY_MS = 600;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -214,43 +213,48 @@
 </script>
 
 <form class="compare-form" onsubmit={handleSubmit} novalidate>
-  <div class="form-section">
+  <div class="form-section chain-section">
     <span class="section-label">Chain</span>
     <ChainSelector />
   </div>
 
-  <div class="form-section">
-    <span class="section-label">From Token</span>
-    <TokenInput type="from" />
-    {#if walletStore.isConnected}
-      <button
-        type="button"
-        class="balance-display"
-        aria-label="From token balance"
-        disabled={fillingBalance ||
-          transactionStore.busy ||
-          (walletStore.chainId === formStore.chainId &&
-            balanceStore.from.status !== "ready" &&
-            balanceStore.from.status !== "wrong_network")}
-        onclick={() => void useSellBalance()}
-      >
-        {balanceLabel("from")}
-        {formStore.fromToken?.symbol ?? ""}
-      </button>
+  <div class="token-pair">
+    <div class="form-section">
+      <span class="section-label">From Token</span>
+      <TokenInput type="from" />
+      <div class="balance-slot">
+        {#if walletStore.isConnected}
+          <button
+            type="button"
+            class="balance-display"
+            aria-label="From token balance"
+            disabled={fillingBalance ||
+              transactionStore.busy ||
+              (walletStore.chainId === formStore.chainId &&
+                balanceStore.from.status !== "ready" &&
+                balanceStore.from.status !== "wrong_network")}
+            onclick={() => void useSellBalance()}
+          >
+            {balanceLabel("from")}
+            {formStore.fromToken?.symbol ?? ""}
+          </button>
+        {/if}
+      </div>
       {#if balanceMessage}<span role="status">{balanceMessage}</span>{/if}
-    {/if}
-  </div>
+    </div>
 
-  <div class="form-section">
-    <span class="section-label">To Token</span>
-    <TokenInput type="to" />
-    {#if walletStore.isConnected}
-      <span class="balance-display" aria-label="To token balance"
-        >{balanceLabel("to")} {formStore.toToken?.symbol ?? ""}</span
-      >
-    {/if}
+    <div class="form-section">
+      <span class="section-label">To Token</span>
+      <TokenInput type="to" />
+      <div class="balance-slot">
+        {#if walletStore.isConnected}
+          <span class="balance-display" aria-label="To token balance"
+            >{balanceLabel("to")} {formStore.toToken?.symbol ?? ""}</span
+          >
+        {/if}
+      </div>
+    </div>
   </div>
-
   <div class="form-section">
     <AmountFields />
   </div>
@@ -272,21 +276,42 @@
         Compare Quotes
       {/if}
     </button>
-    <div class="refresh-slot"><AutoRefreshIndicator /></div>
   </div>
 </form>
 
 <style>
+  .token-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  .chain-section {
+    max-width: 16rem;
+  }
+  .balance-slot {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  .balance-slot .balance-display {
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
   .compare-form {
+    margin-bottom: 0;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.75rem;
   }
 
   .form-section {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.25rem;
   }
 
   .section-label {
@@ -302,7 +327,7 @@
     padding: 0.75rem 1.5rem;
     background: var(--accent, #0055ff);
     color: var(--text-inverse, #fff);
-    border: 2px solid var(--accent, #0055ff);
+    border: 0;
     cursor: pointer;
     font-size: 1rem;
     font-weight: 600;
@@ -324,10 +349,6 @@
   .submit-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-
-  .refresh-slot {
-    min-height: 3rem;
   }
 
   .balance-display {

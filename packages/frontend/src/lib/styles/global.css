@@ -80,14 +80,11 @@ body {
     system-ui,
     -apple-system,
     sans-serif;
-  background-color: var(--space);
-  background-image:
-    url("../assets/starfield.svg"), radial-gradient(ellipse at 50% 0, #26305a, var(--space) 65%);
-  background-attachment: fixed;
+  background: var(--bg);
   color: var(--text);
   max-width: 1040px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 8px;
   line-height: 1.5;
   transition:
     background-color 0.15s,
@@ -126,8 +123,8 @@ label {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 0.25rem;
-  padding-left: 0.5rem;
-  border-left: 4px solid var(--accent);
+  padding-left: 0;
+  border-left: 0;
 }
 input,
 select {
@@ -1458,9 +1455,9 @@ button:focus {
 
 /* Secondary Details - Collapsible */
 .details-toggle {
-  width: 100%;
+  width: auto;
   text-align: left;
-  padding: 0.5rem;
+  padding: 0.5rem 0;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -1474,11 +1471,11 @@ button:focus {
   background: var(--bg-hover);
 }
 .details-toggle::after {
-  content: " [+]";
+  content: none;
   font-family: monospace;
 }
 .details-toggle.open::after {
-  content: " [-]";
+  content: none;
 }
 .details-content {
   display: none;
@@ -1753,10 +1750,10 @@ button:focus {
 /* Shared form and dialog surfaces retain the existing component layout. */
 .app-main > form,
 .compare-form {
-  padding: clamp(1rem, 3vw, 1.75rem);
-  background: var(--bg-card);
-  border: 2px solid var(--border);
-  box-shadow: var(--panel-shadow);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 button,
 input,
@@ -1790,7 +1787,7 @@ a:focus-visible {
 }
 @media (max-width: 600px) {
   body {
-    padding: 10px;
+    padding: 4px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1805,14 +1802,16 @@ a:focus-visible {
 }
 
 .selected-token-address {
-  display: none;
+  display: block;
+  min-height: 3em;
+  line-height: 1.5;
   color: var(--text-muted);
   font: 0.75rem monospace;
   overflow-wrap: anywhere;
-  margin-top: 0.4rem;
+  margin-top: 0.25rem;
 }
-@media (max-width: 600px) {
+@media (max-width: 360px) {
   .selected-token-address {
-    display: block;
+    min-height: 4.5em;
   }
 }

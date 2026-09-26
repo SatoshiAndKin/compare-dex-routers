@@ -6,6 +6,7 @@
   import { formStore } from "../stores/formStore.svelte.js";
   import QuoteCard from "./QuoteCard.svelte";
   import QuoteCosts from "./QuoteCosts.svelte";
+  import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
 
   function selectProvider(provider: string): void {
     if (transactionStore.busy || comparisonStore.isLoading) return;
@@ -35,17 +36,45 @@
         {comparisonStore.quotes.length ? "Refreshing quotes…" : "Loading provider prices…"}
       {:else if comparisonStore.isStale && !comparisonStore.error}
         Previous quote. Enter a valid trade to refresh.
+      {:else}
+        <AutoRefreshIndicator />
       {/if}
     </div>
+    <div class="quote-body">
+      {#if comparisonStore.activeQuote}
+        <QuoteCard
+          provider={comparisonStore.activeQuote.provider}
+          quote={comparisonStore.activeQuote}
+          error={null}
+          loading={false}
+          isRecommended={comparisonStore.activeQuote.provider === comparisonStore.recommendation}
+          gasPriceGwei={comparisonStore.gasPriceGwei}
+          recommendationBasis={comparisonStore.recommendationBasis}
+        />
+      {:else}
+        <div class="quote-placeholder" aria-label="Quote result">
+          {#if comparisonStore.isLoading}<span>Finding your best route…</span>
+          {:else}<p class="quote-error" role="alert">
+              {comparisonStore.workflowProvider || comparisonStore.selectedProvider
+                ? `${comparisonStore.activeProvider} is unavailable for this workflow. Select and review a route to continue.`
+                : "No successful price simulations. Review provider failures below."}
+            </p>{/if}
+        </div>
+      {/if}
+    </div>
+    {#if comparisonStore.error}<div class="quote-error" role="alert">
+        {comparisonStore.error}. Refresh quotes to retry.
+      </div>{/if}
     {#if !hasFullBalance}
       <p class="price-simulation">
-        Price simulations use temporary funding. They do not prove that your wallet is ready to
-        swap.
+        Price simulations use temporary funding; wallet checks are separate.
       </p>
     {/if}
-    {#if comparisonStore.recommendationReason}<div class="reason-box" role="status">
-        {comparisonStore.recommendationReason}
-      </div>{/if}
+    {#if comparisonStore.recommendationBasis === "gas_adjusted"}<p class="reason-box" role="status">
+        {comparisonStore.mode === "targetOut"
+          ? "Ranked by estimated input cost including gas."
+          : "Ranked by estimated output value after gas."}
+      </p>{/if}
     {#if comparisonStore.recommendationBasis === "raw_amount"}
       <p class="reason-box">
         Ranking by raw {comparisonStore.mode === "targetOut"
@@ -75,24 +104,6 @@
         >
       </div>
     {/if}
-    {#if comparisonStore.error}<div class="quote-error" role="alert">
-        {comparisonStore.error}. Refresh quotes to retry.
-      </div>{/if}
-    {#if comparisonStore.activeQuote}
-      <QuoteCard
-        provider={comparisonStore.activeQuote.provider}
-        quote={comparisonStore.activeQuote}
-        error={null}
-        loading={false}
-        isRecommended={comparisonStore.activeQuote.provider === comparisonStore.recommendation}
-        gasPriceGwei={comparisonStore.gasPriceGwei}
-        recommendationBasis={comparisonStore.recommendationBasis}
-      />
-    {:else if !comparisonStore.isLoading}<p class="quote-error" role="alert">
-        {comparisonStore.workflowProvider || comparisonStore.selectedProvider
-          ? `${comparisonStore.activeProvider} is unavailable for this workflow. Select and review a route to continue.`
-          : "No successful price simulations. Review provider failures below."}
-      </p>{/if}
     <details class="provider-list">
       <summary
         >Provider results and failures ({comparisonStore.quotes.length +
@@ -115,27 +126,45 @@
         </button>
       {/each}
       {#each comparisonStore.failures as failure (failure.provider)}
-        <div class="provider-failure">
-          <strong>{failure.provider}</strong> ({failure.stage}): {failure.error.message}
-        </div>
+        <details class="provider-failure">
+          <summary>{failure.provider} — {failure.stage} failed</summary>
+          <p>{failure.error.message}</p>
+        </details>
       {/each}
     </details>
   </div>
 {/if}
 
 <style>
+  .quote-body {
+    min-height: 22rem;
+  }
+  .quote-placeholder {
+    min-height: 22rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+  }
+  .price-simulation,
+  .reason-box {
+    border: 0;
+    background: transparent;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
   .quote-results {
-    margin-top: 1.5rem;
-    border: 2px solid var(--border, #000);
+    margin-top: 0.25rem;
+    border: 0;
     background: var(--bg-card, #fff);
   }
 
   .quote-status {
-    min-height: 2.5rem;
+    min-height: 2rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.5rem 1rem;
+    padding: 0.25rem 0;
     font-size: 0.75rem;
   }
   .spinner {
@@ -159,11 +188,11 @@
   }
 
   .provider-list {
-    padding: 1rem;
-    border-top: 2px solid var(--border);
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--border-light);
   }
   .route-choice {
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -173,11 +202,16 @@
     font: inherit;
     color: var(--text);
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: 0;
+    border-bottom: 1px solid var(--border-light);
     padding: 0.5rem;
     cursor: pointer;
   }
   .provider-list button {
+    text-transform: none;
+    letter-spacing: normal;
+    line-height: 1.5;
+    font-size: 0.85rem;
     cursor: pointer;
     padding: 0.5rem;
     margin-top: 0.5rem;
@@ -186,12 +220,13 @@
     font: inherit;
     background: var(--bg-card);
     color: var(--text);
-    border: 1px solid var(--border);
+    border: 0;
+    border-bottom: 1px solid var(--border-light);
   }
   .reason-box,
   .price-simulation,
   .quote-error {
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0;
   }
   .provider-failure {
     overflow-wrap: anywhere;

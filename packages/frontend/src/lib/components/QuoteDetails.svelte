@@ -76,17 +76,17 @@
 
 <style>
   .quote-details {
-    margin-top: 0.75rem;
+    margin-top: 0.25rem;
   }
 
   .details-toggle {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    padding: 0.375rem 0.75rem;
-    background: var(--bg-muted, #f0f0f0);
+    padding: 0.25rem 0;
+    background: transparent;
     color: var(--text, #000);
-    border: 2px solid var(--border, #000);
+    border: 0;
     cursor: pointer;
     font-size: 0.75rem;
     font-weight: 600;
@@ -111,9 +111,9 @@
 
   .details-content {
     margin-top: 0.5rem;
-    padding: 0.75rem;
-    border: 2px solid var(--border-light, #e0e0e0);
-    background: var(--bg-muted, #f0f0f0);
+    padding: 0.5rem 0;
+    border: 0;
+    background: transparent;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;

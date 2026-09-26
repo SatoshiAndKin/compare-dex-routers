@@ -132,7 +132,7 @@
   .slippage-presets {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.25rem;
   }
 
   .slippage-label {
@@ -157,9 +157,9 @@
   }
 
   .slippage-btn {
-    padding: 0.25rem 0.6rem;
+    padding: 0.25rem 0.5rem;
     background: var(--bg-muted, #f0f0f0);
-    border: 2px solid var(--border, #000);
+    border: 1px solid var(--border-light);
     cursor: pointer;
     font-size: 0.85rem;
     font-family: inherit;
@@ -189,9 +189,9 @@
   }
 
   .slippage-custom-input {
-    width: 90px;
+    width: 76px;
     padding: 0.25rem 0.5rem;
-    border: 2px solid var(--border, #000);
+    border: 1px solid var(--border-light);
     background: var(--bg-input, #fff);
     color: var(--text, #000);
     font-size: 0.85rem;
