@@ -31,10 +31,15 @@ class ComparisonStore {
   gasPriceGwei = $state<string | null>(null);
   recommendation = $state<string | null>(null);
   recommendationReason = $state<string | null>(null);
+  recommendationBasis = $state<QuoteResponse["recommendation_basis"]>("none");
   selectedProvider = $state<string | null>(null);
-  activeProvider = $derived(this.selectedProvider ?? this.recommendation);
+  workflowProvider = $state<string | null>(null);
+  routeChoiceRequired = $state(false);
+  activeProvider = $derived(this.workflowProvider ?? this.selectedProvider ?? this.recommendation);
   activeQuote = $derived(
-    this.quotes.find((quote) => quote.provider === this.activeProvider) ?? null
+    this.routeChoiceRequired
+      ? null
+      : (this.quotes.find((quote) => quote.provider === this.activeProvider) ?? null)
   );
   mode = $state<"exactIn" | "targetOut">("exactIn");
   hasResults = $derived(
@@ -48,6 +53,17 @@ class ComparisonStore {
   private abortController: AbortController | null = null;
   private sequence = 0;
 
+  selectProvider(provider: string): void {
+    this.releaseWorkflow();
+    this.selectedProvider = provider;
+  }
+
+  releaseWorkflow(retainDisplay = false): void {
+    this.selectedProvider = retainDisplay ? this.activeProvider : null;
+    this.workflowProvider = null;
+    this.routeChoiceRequired = false;
+  }
+
   cancel(): void {
     this.sequence++;
     this.abortController?.abort();
@@ -57,6 +73,7 @@ class ComparisonStore {
 
   invalidate(retainResults = false): void {
     this.cancel();
+    this.releaseWorkflow(retainResults);
     // Retained results are display-only until a replacement request succeeds.
     this.isStale = retainResults;
     if (retainResults) return;
@@ -66,6 +83,7 @@ class ComparisonStore {
     this.gasPriceGwei = null;
     this.recommendation = null;
     this.recommendationReason = null;
+    this.recommendationBasis = "none";
     this.selectedProvider = null;
     this.updatedAt = 0;
   }
@@ -80,7 +98,6 @@ class ComparisonStore {
 
   async compare(params: CompareParams): Promise<void> {
     this.cancel();
-    this.mode = params.mode;
     this.error = null;
     this.isLoading = true;
     this.isStale = true;
@@ -95,6 +112,14 @@ class ComparisonStore {
       this.gasPriceGwei = data.gas_price_gwei;
       this.recommendation = data.recommendation;
       this.recommendationReason = data.recommendation_reason;
+      this.recommendationBasis = data.recommendation_basis;
+      this.mode = data.mode;
+      this.selectedProvider = null;
+      if (
+        this.workflowProvider &&
+        !data.quotes.some((quote) => quote.provider === this.workflowProvider)
+      )
+        this.routeChoiceRequired = true;
       this.updatedAt = Date.now();
       this.isStale = false;
     } catch (error) {

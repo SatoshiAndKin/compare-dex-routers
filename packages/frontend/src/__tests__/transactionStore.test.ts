@@ -218,6 +218,7 @@ describe("quote-bound wallet actions", () => {
       },
     ]);
     expect(transactions.getSwapStatus(quote)).toBe("confirmed");
+    expect(comparisonStore.workflowProvider).toBeNull();
     expect(walletStore.message).toContain(HASH);
   });
   it.each([
@@ -307,6 +308,7 @@ describe("quote-bound wallet actions", () => {
     await pending;
     expect(sent()).toEqual([]);
     expect(transactions.busy).toBe(false);
+    expect(comparisonStore.workflowProvider).toBeNull();
   });
   it.each(["approve", "swap"] as const)(
     "stops after wallet rejection during %s, including obsolete saved MEV settings",
@@ -333,6 +335,7 @@ describe("quote-bound wallet actions", () => {
       );
       expect(transactions.busy).toBe(false);
       expect(walletStore.message).toContain("canceled");
+      expect(comparisonStore.workflowProvider).toBeNull();
       localStorage.removeItem("compare-dex-settings");
     }
   );
@@ -381,7 +384,34 @@ describe("quote-bound wallet actions", () => {
       expect(path).toBe("/quote");
       expect(options.params.query.sender).toBe(SENDER);
     }
-    expect(comparisonStore.selectedProvider).toBe("0x");
+    expect(comparisonStore.workflowProvider).toBe("0x");
+  });
+  it("keeps the approved provider through ordinary refreshes and swap confirmation despite a new recommendation", async () => {
+    const quote = current({ provider: "curve" });
+    get.mockResolvedValue({ data: makeComparison(), response: new Response() });
+    await transactions.approve("curve", quote);
+    expect(comparisonStore.recommendation).toBe("0x");
+    expect(comparisonStore.activeQuote?.provider).toBe("curve");
+    expect(transactions.getApproveStatus(comparisonStore.activeQuote!)).toBe("confirmed");
+    await comparisonStore.compare({
+      chainId: 1,
+      from: FROM,
+      to: TO,
+      amount: "100",
+      slippageBps: 50,
+      mode: "exactIn",
+      sender: SENDER,
+    });
+    expect(comparisonStore.activeQuote?.provider).toBe("curve");
+    const pending = transactions.swap("curve", comparisonStore.activeQuote!);
+    await confirmation();
+    expect(transactions.swapConfirmation?.quote.provider).toBe("curve");
+    expect(comparisonStore.workflowProvider).toBe("curve");
+    transactions.confirmSwap();
+    await pending;
+    expect(sent()).toHaveLength(2);
+    expect(comparisonStore.workflowProvider).toBeNull();
+    expect(comparisonStore.activeQuote?.provider).toBe("0x");
   });
   it("confirms refreshed calldata and never substitutes another provider", async () => {
     allowance = 100000000n;
@@ -407,7 +437,7 @@ describe("quote-bound wallet actions", () => {
     await transactions.swap("0x", current());
     expect(sent()).toEqual([]);
     expect(walletStore.message).toContain("0x is unavailable");
-    expect(comparisonStore.selectedProvider).toBe("0x");
+    expect(comparisonStore.workflowProvider).toBe("0x");
   });
   it.each(["tokens", "gas", "unknown"])(
     "keeps prices visible and blocks %s insufficiency",

@@ -5,6 +5,13 @@
   import { walletStore } from "../stores/walletStore.svelte.js";
   import { formStore } from "../stores/formStore.svelte.js";
   import QuoteCard from "./QuoteCard.svelte";
+  import QuoteCosts from "./QuoteCosts.svelte";
+
+  function selectProvider(provider: string): void {
+    if (transactionStore.busy || comparisonStore.isLoading) return;
+    transactionStore.cancelSwap();
+    comparisonStore.selectProvider(provider);
+  }
 
   const hasFullBalance = $derived(
     comparisonStore.activeQuote !== null &&
@@ -39,6 +46,35 @@
     {#if comparisonStore.recommendationReason}<div class="reason-box" role="status">
         {comparisonStore.recommendationReason}
       </div>{/if}
+    {#if comparisonStore.recommendationBasis === "raw_amount"}
+      <p class="reason-box">
+        Ranking by raw {comparisonStore.mode === "targetOut"
+          ? "input amount (lowest first)"
+          : "output amount (highest first)"}. Gas is excluded because comparable gas costs are
+        unavailable.
+      </p>
+    {/if}
+    {#if comparisonStore.recommendation && (comparisonStore.activeProvider !== comparisonStore.recommendation || comparisonStore.routeChoiceRequired)}
+      <div class="route-choice">
+        <span>Recommended: {comparisonStore.recommendation}</span>
+        <button
+          type="button"
+          disabled={transactionStore.busy || comparisonStore.isLoading}
+          onclick={() => selectProvider(comparisonStore.recommendation!)}
+          >Use recommended route</button
+        >
+      </div>
+    {/if}
+    {#if comparisonStore.workflowProvider}
+      <div class="route-choice">
+        <span>Selected for approval / swap: {comparisonStore.workflowProvider}</span>
+        <button
+          type="button"
+          disabled={transactionStore.busy}
+          onclick={() => transactionStore.cancelSwap()}>Cancel route workflow</button
+        >
+      </div>
+    {/if}
     {#if comparisonStore.error}<div class="quote-error" role="alert">
         {comparisonStore.error}. Refresh quotes to retry.
       </div>{/if}
@@ -50,10 +86,11 @@
         loading={false}
         isRecommended={comparisonStore.activeQuote.provider === comparisonStore.recommendation}
         gasPriceGwei={comparisonStore.gasPriceGwei}
+        recommendationBasis={comparisonStore.recommendationBasis}
       />
     {:else if !comparisonStore.isLoading}<p class="quote-error" role="alert">
-        {comparisonStore.selectedProvider
-          ? `${comparisonStore.selectedProvider} is unavailable. Select and review another route.`
+        {comparisonStore.workflowProvider || comparisonStore.selectedProvider
+          ? `${comparisonStore.activeProvider} is unavailable for this workflow. Select and review a route to continue.`
           : "No successful price simulations. Review provider failures below."}
       </p>{/if}
     <details class="provider-list">
@@ -67,16 +104,14 @@
           aria-label={`Select ${quote.provider}`}
           disabled={transactionStore.busy || comparisonStore.isLoading}
           aria-pressed={comparisonStore.activeProvider === quote.provider}
-          onclick={() => {
-            transactionStore.cancelSwap();
-            comparisonStore.selectedProvider = quote.provider;
-          }}
+          onclick={() => selectProvider(quote.provider)}
         >
           {quote.provider}{quote.provider === comparisonStore.recommendation
             ? " — Recommended"
-            : ""}: {quote.input_amount}
+            : ""}{quote.provider === comparisonStore.activeProvider ? " — Selected" : ""}: {quote.input_amount}
           {quote.from_symbol} → {quote.output_amount}
           {quote.to_symbol}
+          <QuoteCosts {quote} basis={comparisonStore.recommendationBasis} />
         </button>
       {/each}
       {#each comparisonStore.failures as failure (failure.provider)}
@@ -126,6 +161,21 @@
   .provider-list {
     padding: 1rem;
     border-top: 2px solid var(--border);
+  }
+  .route-choice {
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .route-choice button {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 0.5rem;
+    cursor: pointer;
   }
   .provider-list button {
     cursor: pointer;

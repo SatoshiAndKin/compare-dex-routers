@@ -93,7 +93,7 @@ describe("QuoteCard", () => {
     expect(getByText("RECOMMENDED")).toBeTruthy();
   });
 
-  it("shows ALTERNATIVE badge when isRecommended=false", () => {
+  it("shows SELECTED badge when isRecommended=false", () => {
     const { getByText } = render(QuoteCard, {
       props: {
         provider: "curve",
@@ -102,7 +102,7 @@ describe("QuoteCard", () => {
         isRecommended: false,
       },
     });
-    expect(getByText("ALTERNATIVE")).toBeTruthy();
+    expect(getByText("SELECTED")).toBeTruthy();
   });
 
   it("applies winner CSS class when isRecommended=true", () => {

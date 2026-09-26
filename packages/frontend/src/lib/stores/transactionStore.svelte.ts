@@ -80,6 +80,8 @@ class TransactionStore {
   matches(quote: Quote): boolean {
     return Boolean(
       quote.execution &&
+      !comparisonStore.routeChoiceRequired &&
+      quote.provider === comparisonStore.activeProvider &&
       quote.sender &&
       walletStore.provider &&
       walletStore.chainId === quote.chainId &&
@@ -172,7 +174,8 @@ class TransactionStore {
 
   invalidate(): void {
     this.epoch++;
-    this.cancelSwap();
+    this.finishConfirmation(false);
+    comparisonStore.releaseWorkflow(true);
     this.checks = {};
     this.checksSequence.clear();
   }
@@ -182,6 +185,7 @@ class TransactionStore {
   }
   cancelSwap(): void {
     this.finishConfirmation(false);
+    comparisonStore.releaseWorkflow();
   }
   private finishConfirmation(confirmed: boolean): void {
     const resolve = this.confirmationResolve;
@@ -244,7 +248,7 @@ class TransactionStore {
   private async refreshQuote(quote: Quote, provider: EIP1193Provider): Promise<Quote> {
     await this.assertContext(quote, provider);
     const epoch = this.epoch;
-    comparisonStore.selectedProvider = quote.provider;
+    comparisonStore.workflowProvider = quote.provider;
     await comparisonStore.compare({
       chainId: quote.chainId,
       from: quote.from,
@@ -378,6 +382,7 @@ class TransactionStore {
       await this.refreshQuote(quote, provider);
       balanceStore.clearCache();
     } catch (error) {
+      if (rejected(error)) comparisonStore.releaseWorkflow();
       if (key) this.allowances[key] = { amount: null, status: rejected(error) ? "idle" : "failed" };
       walletStore.setMessage(
         rejected(error)
@@ -451,9 +456,11 @@ class TransactionStore {
       walletStore.setMessage(`Swap submitted: ${hash}`);
       await this.receipt(provider, hash, quote);
       this.swapStatus[key] = "confirmed";
+      comparisonStore.releaseWorkflow();
       walletStore.setMessage(`Swap confirmed: ${hash}`);
       balanceStore.clearCache();
     } catch (error) {
+      if (rejected(error)) comparisonStore.releaseWorkflow();
       this.swapStatus[key] = rejected(error) ? "idle" : "failed";
       walletStore.setMessage(
         rejected(error) ? "Swap canceled" : error instanceof Error ? error.message : "Swap failed",
