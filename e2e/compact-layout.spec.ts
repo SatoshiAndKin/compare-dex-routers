@@ -49,11 +49,25 @@ test("keeps precise input and output together through metadata and quote loading
   metadata.resolve(true);
   await expect(receive).toHaveValue(output);
   expect(await positions()).toEqual(before);
-  const sellBox = await sell.boundingBox();
-  const receiveBox = await receive.boundingBox();
-  if (!sellBox || !receiveBox) throw new Error("Both amount inputs must be visible");
-  expect(sellBox.y).toBe(receiveBox.y);
-  expect(receiveBox.x - sellBox.x - sellBox.width).toBeLessThanOrEqual(16);
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("The responsive layout check requires a viewport");
+  for (const selector of [".token-pair", ".amount-fields", ".quote-amounts"]) {
+    const groups = page.locator(
+      `${selector} > ${selector === ".amount-fields" ? ".amount-group" : "div"}`
+    );
+    const first = await groups.nth(0).boundingBox();
+    const second = await groups.nth(1).boundingBox();
+    if (!first || !second) throw new Error(`Both fields in ${selector} must be visible`);
+    if (viewport.width <= 600) {
+      expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
+      expect(second.x).toBe(first.x);
+      expect(first.width).toBeGreaterThan(viewport.width * 0.8);
+    } else {
+      expect(second.y).toBe(first.y);
+      expect(second.x).toBeGreaterThanOrEqual(first.x + first.width);
+      expect(second.x - first.x - first.width).toBeLessThanOrEqual(16);
+    }
+  }
   await expect(page.locator(".input-amount")).toHaveText(`${amount} CRV`);
   await expect(page.locator(".output-amount")).toHaveText(`${output} crvUSD`);
   const next = deferred<boolean>();
