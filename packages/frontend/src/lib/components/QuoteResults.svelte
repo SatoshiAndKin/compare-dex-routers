@@ -6,6 +6,13 @@
   import QuoteCosts from "./QuoteCosts.svelte";
   import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
 
+  const recommendedVerified = $derived(
+    comparisonStore.quotes.some(
+      (quote) =>
+        quote.provider === comparisonStore.recommendation && quote.simulation_status === "succeeded"
+    )
+  );
+
   function selectProvider(provider: string): void {
     if (transactionStore.busy || comparisonStore.isLoading) return;
     transactionStore.cancelSwap();
@@ -66,12 +73,14 @@
     {/if}
     {#if comparisonStore.recommendation && (comparisonStore.activeProvider !== comparisonStore.recommendation || comparisonStore.routeChoiceRequired)}
       <div class="route-choice">
-        <span>Recommended: {comparisonStore.recommendation}</span>
+        <span
+          >{recommendedVerified ? "Recommended" : "Best quoted price"}: {comparisonStore.recommendation}</span
+        >
         <button
           type="button"
           disabled={transactionStore.busy || comparisonStore.isLoading}
           onclick={() => selectProvider(comparisonStore.recommendation!)}
-          >Use recommended route</button
+          >{recommendedVerified ? "Use recommended route" : "Show best quoted price"}</button
         >
       </div>
     {/if}
@@ -90,22 +99,29 @@
         >Provider results and failures ({comparisonStore.quotes.length +
           comparisonStore.failures.length})</summary
       >
-      {#each comparisonStore.quotes as quote (quote.provider)}
-        <button
-          type="button"
-          aria-label={`Select ${quote.provider}`}
-          disabled={transactionStore.busy || comparisonStore.isLoading}
-          aria-pressed={comparisonStore.activeProvider === quote.provider}
-          onclick={() => selectProvider(quote.provider)}
-        >
-          {quote.provider}{quote.provider === comparisonStore.recommendation
-            ? " — Recommended"
-            : ""}{quote.provider === comparisonStore.activeProvider ? " — Selected" : ""}: {quote.input_amount}
-          {quote.from_symbol} → {quote.output_amount}
-          {quote.to_symbol}
-          <QuoteSimulation {quote} />
-          <QuoteCosts {quote} basis={comparisonStore.recommendationBasis} />
-        </button>
+      {#each [true, false] as verified}
+        {#if comparisonStore.quotes.some((quote) => (quote.simulation_status === "succeeded") === verified)}
+          <p>{verified ? "Simulated wallet routes" : "Unverified prices"}</p>
+        {/if}
+        {#each comparisonStore.quotes.filter((quote) => (quote.simulation_status === "succeeded") === verified) as quote (quote.provider)}
+          <button
+            type="button"
+            aria-label={`Select ${quote.provider}`}
+            disabled={transactionStore.busy || comparisonStore.isLoading}
+            aria-pressed={comparisonStore.activeProvider === quote.provider}
+            onclick={() => selectProvider(quote.provider)}
+          >
+            {quote.provider}{quote.provider === comparisonStore.recommendation
+              ? quote.simulation_status === "succeeded"
+                ? " — Recommended"
+                : " — Best quoted price — unverified"
+              : ""}{quote.provider === comparisonStore.activeProvider ? " — Selected" : ""}: {quote.input_amount}
+            {quote.from_symbol} → {quote.output_amount}
+            {quote.to_symbol}
+            <QuoteSimulation {quote} />
+            <QuoteCosts {quote} basis={comparisonStore.recommendationBasis} />
+          </button>
+        {/each}
       {/each}
       {#each comparisonStore.failures as failure (failure.provider)}
         <details class="provider-failure">

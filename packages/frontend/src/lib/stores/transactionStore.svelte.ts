@@ -81,6 +81,7 @@ class TransactionStore {
 
   matches(quote: Quote): boolean {
     return Boolean(
+      quote.simulation_status === "succeeded" &&
       quote.execution &&
       !comparisonStore.routeChoiceRequired &&
       quote.provider === comparisonStore.activeProvider &&

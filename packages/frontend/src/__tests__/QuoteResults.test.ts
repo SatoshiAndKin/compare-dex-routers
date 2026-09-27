@@ -55,7 +55,7 @@ describe("provider results", () => {
       store.isLoading = false;
       await tick();
       expect(view.container.querySelector(".quote-card")).toHaveTextContent(
-        "Simulated with your wallet’s token balance."
+        "Simulation passed. Wallet checks required."
       );
       expect(view.queryByText(/Not simulated/)).toBeNull();
       expect(view.getByRole("button", { name: "Execute swap" })).toBeDisabled();
@@ -72,7 +72,7 @@ describe("provider results", () => {
     expect(view.getByText("RECOMMENDED")).toBeVisible();
     expect(view.container.querySelectorAll(".quote-card")).toHaveLength(1);
     expect(view.container.querySelector(".quote-card")).toHaveTextContent(
-      "Simulated with your wallet’s token balance."
+      "Simulation passed. Wallet checks required."
     );
     expect(view.container.querySelector("details.provider-list")?.hasAttribute("open")).toBe(false);
   });

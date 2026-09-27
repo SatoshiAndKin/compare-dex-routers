@@ -373,7 +373,7 @@ test("Ethereum: unfunded 1,000 USDC to crvUSD retains prices and blocks submissi
     for (const quote of prices.quotes)
       expect(quote).toMatchObject({
         sender: account,
-        simulation_status: "not_run",
+        simulation_status: "failed",
         execution: null,
         gas_used: null,
       });
@@ -396,9 +396,7 @@ test("Ethereum: unfunded 1,000 USDC to crvUSD retains prices and blocks submissi
     await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
     await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
     await expect(page.getByLabel("From token balance")).toContainText("Balance: 0 USDC");
-    await expect(
-      page.locator(".quote-card").getByText(/Not simulated. Insufficient USDC balance/)
-    ).toBeVisible({
+    await expect(page.locator(".quote-card").getByText(/Insufficient USDC balance/)).toBeVisible({
       timeout: 60000,
     });
     await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);

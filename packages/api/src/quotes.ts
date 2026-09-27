@@ -2,12 +2,12 @@ import {
   prepareQuotes,
   simulateQuote,
   isNativeToken,
-  type SimulatedQuote,
-  type SuccessfulSimulatedQuote,
+  type Quote,
+  type SimulationResult,
   type SuccessfulQuote,
   type SwapParams,
 } from "@spandex/core";
-import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
+import { formatUnits, parseUnits, type Address } from "viem";
 import {
   getClient,
   getSpandexConfig,
@@ -29,19 +29,14 @@ const config = getSpandexConfig();
 const rates = new Map<string, { nativeRaw: bigint; tokenRaw: bigint; timestamp: number }>();
 const RATE_TTL_MS = 60_000;
 
-type UnsimulatedQuote = SuccessfulQuote & { simulation: null; simulationReason: string };
-type PricedQuote = SimulatedQuote | UnsimulatedQuote;
+type PricedQuote = Quote & {
+  simulation: SimulationResult | null;
+  simulationReason: string | null;
+  preview: boolean;
+};
 
-function successful(
-  quote: PricedQuote,
-  minimumOutput = 1n
-): quote is SuccessfulSimulatedQuote | UnsimulatedQuote {
-  return (
-    quote.success &&
-    (quote.simulation === null
-      ? quote.outputAmount >= minimumOutput
-      : quote.simulation.success && quote.simulation.outputAmount >= minimumOutput)
-  );
+function usable(quote: Quote, minimumOutput: bigint): boolean {
+  return quote.success && quote.inputAmount > 0n && quote.outputAmount >= minimumOutput;
 }
 
 async function requestQuotes(params: QuoteParams) {
@@ -63,45 +58,31 @@ async function requestQuotes(params: QuoteParams) {
       ? { ...common, mode: "targetOut", outputAmount: parseUnits(params.amount, outputDecimals) }
       : { ...common, mode: "exactIn", inputAmount: parseUnits(params.amount, inputDecimals) };
   const client = getClient(params.chainId);
-  // balanceOf is the ERC20 contract. Its internal accounting is irrelevant here.
-  const balance = params.sender
-    ? await (
-        isNativeToken(swap.inputToken)
-          ? client.getBalance({ address: swap.swapperAccount })
-          : client.readContract({
-              address: swap.inputToken,
-              abi: erc20Abi,
-              functionName: "balanceOf",
-              args: [swap.swapperAccount],
-            })
-      ).catch((error: unknown) => {
-        logger.debug({ error }, "Input balance unavailable");
-        return null;
-      })
-    : null;
+  const minimumOutput = swap.mode === "targetOut" ? swap.outputAmount : 1n;
   const quotes = config.aggregators.length
     ? await Promise.all(
         await prepareQuotes({
           config,
           swap,
           mapFn: async (quote): Promise<PricedQuote> => {
-            if (quote.success && (balance === null || balance < quote.inputAmount)) {
-              return {
-                ...quote,
-                simulation: null,
-                simulationReason: !params.sender
-                  ? "Connect a funded wallet to simulate this route."
-                  : balance === null
-                    ? "Could not read your input balance. Refresh to retry simulation."
-                    : `Insufficient ${fromSymbol} balance. Fund your wallet and refresh to simulate this route.`,
-              };
-            }
+            const preview = !params.sender;
+            const simulationReason = preview ? "Preview quote; wallet simulation not run." : null;
+            if (preview || !usable(quote, minimumOutput))
+              return { ...quote, simulation: null, simulationReason, preview };
             try {
-              return await simulateQuote({
-                client,
-                swap,
-                quote,
-              });
+              const simulated = await simulateQuote({ client, swap, quote });
+              const simulation = simulated.simulation;
+              if (simulation.success && simulation.outputAmount < minimumOutput)
+                return {
+                  ...quote,
+                  simulation: {
+                    success: false,
+                    error: new Error("Simulated output is below the requested amount"),
+                  },
+                  simulationReason: null,
+                  preview: false,
+                };
+              return { ...quote, simulation, simulationReason: null, preview: false };
             } catch (error) {
               return {
                 ...quote,
@@ -109,13 +90,14 @@ async function requestQuotes(params: QuoteParams) {
                   success: false,
                   error: error instanceof Error ? error : new Error(String(error)),
                 },
+                simulationReason: null,
+                preview: false,
               };
             }
           },
         })
       )
     : [];
-  const minimumOutput = swap.mode === "targetOut" ? swap.outputAmount : 1n;
   const approvalGas = createApprovalGasEstimator(
     client,
     swap.inputToken,
@@ -124,7 +106,7 @@ async function requestQuotes(params: QuoteParams) {
   );
   const results = await Promise.all(
     quotes
-      .filter((quote) => successful(quote, minimumOutput))
+      .filter((quote): quote is PricedQuote & SuccessfulQuote => usable(quote, minimumOutput))
       .map(async (quote): Promise<QuoteResult> => ({
         chainId: params.chainId,
         from: params.from,
@@ -135,18 +117,28 @@ async function requestQuotes(params: QuoteParams) {
         mode: params.mode,
         input_amount: formatUnits(quote.inputAmount, inputDecimals),
         output_amount: formatUnits(
-          quote.simulation?.outputAmount ?? quote.outputAmount,
+          quote.simulation?.success ? quote.simulation.outputAmount : quote.outputAmount,
           outputDecimals
         ),
         input_amount_raw: quote.inputAmount.toString(),
-        output_amount_raw: (quote.simulation?.outputAmount ?? quote.outputAmount).toString(),
+        output_amount_raw: (quote.simulation?.success
+          ? quote.simulation.outputAmount
+          : quote.outputAmount
+        ).toString(),
         slippage_bps: params.slippageBps,
         provider: quote.provider,
-        sender: params.sender ?? null,
-        simulation_status: quote.simulation ? "succeeded" : "not_run",
-        simulation_reason: quote.simulation === null ? quote.simulationReason : null,
+        sender: quote.preview ? null : (params.sender ?? null),
+        simulation_status: quote.simulation
+          ? quote.simulation.success
+            ? "succeeded"
+            : "failed"
+          : "not_run",
+        simulation_reason:
+          quote.simulation && !quote.simulation.success
+            ? redactText(quote.simulation.error.message)
+            : quote.simulationReason,
         execution:
-          params.sender && quote.simulation
+          params.sender && !quote.preview && quote.simulation?.success
             ? {
                 to: quote.txData.to,
                 data: quote.txData.data,
@@ -156,11 +148,11 @@ async function requestQuotes(params: QuoteParams) {
             : null,
         route: quote.route ?? null,
         gas_used:
-          quote.simulation?.gasUsed && quote.simulation.gasUsed > 0n
+          quote.simulation?.success && quote.simulation.gasUsed && quote.simulation.gasUsed > 0n
             ? quote.simulation.gasUsed.toString()
             : null,
         gas_price_gwei: null,
-        approval_gas_used: (await approvalGas(quote))?.toString() ?? null,
+        approval_gas_used: quote.preview ? null : ((await approvalGas(quote))?.toString() ?? null),
         approval_gas_cost_native: null,
         native_currency: getNativeAsset(params.chainId).symbol,
         gas_cost_native: null,
@@ -174,17 +166,13 @@ async function requestQuotes(params: QuoteParams) {
   );
   const failures: ProviderFailure[] = [];
   for (const quote of quotes) {
-    if (successful(quote, minimumOutput)) continue;
-    const error = !quote.success
-      ? quote.error
-      : quote.simulation && !quote.simulation.success
-        ? quote.simulation.error
-        : new Error("Output is below the requested amount");
+    if (usable(quote, minimumOutput)) continue;
+    const error = quote.success ? new Error("Output is below the requested amount") : quote.error;
     const diagnostic =
       error && typeof error === "object" ? (error as unknown as Record<string, unknown>) : {};
     failures.push({
       provider: quote.provider,
-      stage: quote.success && quote.simulation !== null ? "simulation" : "quote",
+      stage: "quote",
       error: {
         name: redactText(typeof diagnostic.name === "string" ? diagnostic.name : "Error"),
         message: redactText(
@@ -288,15 +276,22 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
   // Use a single comparable basis for every route, preserving configuration order on ties.
   // Simulation gas alone does not supply comparable rollup posting/operator fees.
   const completeGas = ![10, 8453, 42161].includes(params.chainId);
-  const adjusted = completeGas && results.length > 0 && values.size === results.length;
+  const verified = results.filter((quote) => quote.simulation_status === "succeeded");
+  const adjusted =
+    completeGas && verified.length > 0 && verified.every((quote) => values.has(quote));
   const order = new Map<string, number>(
     config.aggregators.map((provider, index) => [provider.name(), index])
   );
   results.sort((a, b) => (order.get(a.provider) ?? Infinity) - (order.get(b.provider) ?? Infinity));
   const field = targetOut ? "input_amount_raw" : "output_amount_raw";
   const value = (quote: QuoteResult) =>
-    adjusted ? (values.get(quote) ?? BigInt(quote[field])) : BigInt(quote[field]);
+    adjusted && quote.simulation_status === "succeeded"
+      ? (values.get(quote) ?? BigInt(quote[field]))
+      : BigInt(quote[field]);
   results.sort((a, b) => {
+    const verification =
+      Number(b.simulation_status === "succeeded") - Number(a.simulation_status === "succeeded");
+    if (verification) return verification;
     const left = value(a),
       right = value(b);
     return left === right ? 0 : (left < right ? -1 : 1) * (targetOut ? 1 : -1);
@@ -308,7 +303,10 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
     quote.gas_cost_usd = nativeToUsd(quote.gas_cost_native, conversion);
     quote.approval_gas_cost_usd = nativeToUsd(quote.approval_gas_cost_native, conversion);
     quote.trade_value_usd = nativeToUsd(quote.trade_value_native, conversion);
-    quote.net_value_usd = adjusted ? nativeToUsd(quote.net_value_native, conversion) : null;
+    quote.net_value_usd =
+      adjusted && quote.simulation_status === "succeeded"
+        ? nativeToUsd(quote.net_value_native, conversion)
+        : null;
   }
   return {
     quotes: results,
@@ -318,9 +316,11 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
     recommendation_reason:
       results.length === 0
         ? "No provider returned a successful quote."
-        : adjusted
-          ? `${targetOut ? "Lowest input plus estimated gas" : "Highest output after estimated gas"} in ${native.symbol}, including required approvals. Equal values use provider configuration order.`
-          : `Comparing all routes by raw ${targetOut ? "input" : "output"} amounts because comparable gas or conversion data is unavailable. Equal values use provider configuration order.`,
+        : verified.length === 0
+          ? "Best quoted price — unverified. No route simulated successfully for this wallet."
+          : adjusted
+            ? `${targetOut ? "Lowest input plus estimated gas" : "Highest output after estimated gas"} in ${native.symbol}, including required approvals. Equal values use provider configuration order.`
+            : `Comparing simulated wallet routes by raw ${targetOut ? "input" : "output"} amounts because comparable gas or conversion data is unavailable. Equal values use provider configuration order.`,
     simulation_basis: "wallet_balance",
     simulation_account: account,
     wallet_readiness: "unchecked",

@@ -29,7 +29,7 @@ const QuoteSchema = z.object({
   provider: z.string(),
   slippage_bps: z.number().int().min(0).max(10000),
   sender: address.nullable(),
-  simulation_status: z.enum(["succeeded", "not_run"]),
+  simulation_status: z.enum(["succeeded", "failed", "not_run"]),
   simulation_reason: z.string().nullable(),
   execution: z
     .object({

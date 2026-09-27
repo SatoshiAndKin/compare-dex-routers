@@ -1,7 +1,8 @@
-import { cleanup, render } from "@testing-library/svelte";
+import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import { flushSync } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CompareForm from "../lib/components/CompareForm.svelte";
+import { balanceStore } from "../lib/stores/balanceStore.svelte.js";
 import { formStore } from "../lib/stores/formStore.svelte.js";
 import { comparisonStore } from "../lib/stores/comparisonStore.svelte.js";
 import { walletStore } from "../lib/stores/walletStore.svelte.js";
@@ -23,6 +24,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   localStorage.clear();
   comparisonStore.invalidate();
+  balanceStore.clear();
+  balanceStore.clearCache();
   autoRefreshStore.stop();
   transactionStore.busy = false;
   walletStore.address = null;
@@ -93,7 +96,7 @@ describe("mounted comparison lifecycle", () => {
     expect(query).toMatchObject({
       chainId: change === "chain" ? 8453 : 1,
       slippageBps: change === "slippage" ? 100 : 50,
-      sender: change === "account" ? SENDER : undefined,
+      sender: undefined,
     });
     await tick(15000);
     expect(comparisons()).toHaveLength(3);
@@ -153,4 +156,75 @@ describe("mounted comparison lifecycle", () => {
     expect(comparisons()).toHaveLength(2);
     expect(comparisons()[1]?.[1]?.params?.query).toMatchObject({ slippageBps: 100 });
   });
+});
+
+it("promotes a newly funded wallet and does not requote for unchanged balance eligibility", async () => {
+  let raw = 99999999n;
+  const provider = {
+    request: vi.fn(async ({ method }: { method: string }) =>
+      method === "eth_chainId" ? "0x1" : `0x${raw.toString(16)}`
+    ),
+  };
+  walletStore.address = SENDER;
+  walletStore.chainId = 1;
+  walletStore.provider = provider;
+  const refresh = async () => {
+    balanceStore.clearCache();
+    await balanceStore.fetchBalances(
+      walletStore.provider!,
+      SENDER,
+      1,
+      { address: FROM, decimals: 6 },
+      null
+    );
+  };
+  await refresh();
+  render(CompareForm);
+  await tick();
+  expect(comparisons()).toHaveLength(1);
+  expect(comparisons()[0]?.[1]?.params?.query?.sender).toBeUndefined();
+  raw = 100000000n;
+  await refresh();
+  await tick();
+  expect(comparisons()).toHaveLength(2);
+  expect(comparisons()[1]?.[1]?.params?.query?.sender).toBe(SENDER);
+  await refresh();
+  await tick();
+  expect(comparisons()).toHaveLength(2);
+  raw = 0n;
+  await refresh();
+  await tick();
+  expect(comparisons()).toHaveLength(3);
+  expect(comparisons()[2]?.[1]?.params?.query?.sender).toBeUndefined();
+});
+
+it("waits for a manual balance refresh before sending a previously funded account", async () => {
+  const next = deferred<unknown>();
+  let refresh = false;
+  walletStore.address = SENDER;
+  walletStore.chainId = 1;
+  walletStore.provider = {
+    request: vi.fn(async ({ method }: { method: string }) =>
+      method === "eth_chainId" ? "0x1" : refresh ? next.promise : "0x5f5e100"
+    ),
+  };
+  await balanceStore.fetchBalances(
+    walletStore.provider,
+    SENDER,
+    1,
+    { address: FROM, decimals: 6 },
+    null
+  );
+  const view = render(CompareForm);
+  await tick();
+  expect(comparisons()[0]?.[1]?.params?.query?.sender).toBe(SENDER);
+  refresh = true;
+  await fireEvent.submit(view.container.querySelector("form")!);
+  await tick(0);
+  expect(comparisonStore.isLoading).toBe(true);
+  expect(comparisons()).toHaveLength(1);
+  next.resolve("0x0");
+  await tick(0);
+  expect(comparisons()).toHaveLength(2);
+  expect(comparisons()[1]?.[1]?.params?.query?.sender).toBeUndefined();
 });

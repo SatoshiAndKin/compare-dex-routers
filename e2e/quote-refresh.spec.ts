@@ -56,7 +56,7 @@ for (const connected of [false, true]) {
     if (connected) {
       await expect(page.getByRole("button", { name: "Execute swap" })).toBeDisabled();
       await expect(page.locator(".quote-card")).toContainText(
-        "Simulated with your wallet’s token balance."
+        "Simulation passed. Wallet checks required."
       );
     }
     expect(await position()).toEqual(before);
@@ -103,7 +103,19 @@ for (const mode of ["exactIn", "targetOut"] as const) {
         quote.gas_cost_native = quote.provider === "curve" ? "0.003" : "0.0024";
       }
     });
+    await installWallet(page, 1, SENDER, async (method, params) => {
+      if (method === "eth_call")
+        return (params[0] as { data: string }).data.startsWith("0x70a08231")
+          ? "0x5f5e100"
+          : `0x${"f".repeat(64)}`;
+      if (method === "eth_getBalance") return "0x8ac7230489e80000";
+      if (method === "eth_gasPrice") return "0x4a817c800";
+      throw new Error(`Unexpected wallet method: ${method}`);
+    });
     await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&mode=${mode}`);
+    await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
+    await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+    await expect(page.locator(".quote-card")).toContainText("Simulation passed.");
     await expect(page.getByText("Via curve", { exact: true })).toBeVisible();
     await page.locator("details.provider-list summary").click();
     const label =
@@ -184,11 +196,12 @@ test("keeps unfunded provider prices visible until a funded refresh can simulate
   await expect(card).toContainText("Not simulated. Connect a funded wallet");
   await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
   await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
-  await expect(card).toContainText("Not simulated. Insufficient USDC balance.");
+  await expect(card).toContainText("Insufficient USDC balance.");
   await expect(card.locator(".input-amount")).toHaveText("100 USDC");
   await expect(card.locator(".output-amount")).toHaveText("99.95 USDT");
   await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
   await expect(card.getByText(/Estimated output value after gas/)).toHaveCount(0);
+  await expect(page.locator(".quote-results")).toHaveAttribute("aria-busy", "false");
   await page.locator("details.provider-list summary").click();
   await expect(page.getByRole("button", { name: "Select curve" })).toContainText("Not simulated.");
   const position = () =>
@@ -211,10 +224,68 @@ test("keeps unfunded provider prices visible until a funded refresh can simulate
   await expect(card).toContainText("Not simulated.");
   await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
   release.resolve(true);
-  await expect(card).toContainText("Simulated with your wallet’s token balance.");
+  await expect(card).toContainText("Simulation passed. Wallet checks required.");
   await expect(page.getByRole("button", { name: "Execute swap" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Select curve" })).toContainText(
-    "Simulated with your wallet’s token balance."
+    "Simulation passed. Wallet checks required."
   );
   expect(sends).toBe(0);
+});
+
+for (const funded of [false, true]) {
+  test(`exact-output refresh uses ${funded ? "one preview and one wallet pass" : "only previews when unaffordable"}`, async ({
+    page,
+  }) => {
+    await fixture(page);
+    await installWallet(page, 1, SENDER, async (method, params) => {
+      if (method === "eth_call")
+        return (params[0] as { data: string }).data.startsWith("0x70a08231")
+          ? funded
+            ? "0x5f5e100"
+            : "0x0"
+          : `0x${"f".repeat(64)}`;
+      if (method === "eth_getBalance") return "0x8ac7230489e80000";
+      if (method === "eth_gasPrice") return "0x4a817c800";
+      throw new Error(`Unexpected wallet method: ${method}`);
+    });
+    await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&mode=targetOut`);
+    await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
+    await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+    const card = page.locator(".quote-card");
+    await expect(card).toContainText(funded ? "Simulation passed." : "Insufficient USDC balance.");
+    await expect(page.locator(".quote-results")).toHaveAttribute("aria-busy", "false");
+    const senders: (string | null)[] = [];
+    await page.route("**/api/quote?**", async (route) => {
+      senders.push(new URL(route.request().url()).searchParams.get("sender"));
+      await route.fallback();
+    });
+    await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
+    await expect.poll(() => senders.length).toBe(funded ? 2 : 1);
+    await expect(page.locator(".quote-results")).toHaveAttribute("aria-busy", "false");
+    expect(senders).toEqual(funded ? [null, SENDER] : [null]);
+    if (!funded) {
+      await expect(card).toContainText("Best quoted price — unverified");
+      await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
+    }
+  });
+}
+
+test("slow balance reads settle without restarting their own effect", async ({ page }) => {
+  let reads = 0;
+  await fixture(page);
+  await installWallet(page, 1, SENDER, async (method, params) => {
+    if (method === "eth_call") {
+      if ((params[0] as { data: string }).data.startsWith("0x70a08231")) reads++;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return "0x0";
+    }
+    throw new Error(`Unexpected wallet method: ${method}`);
+  });
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100`);
+  await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
+  await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+  await expect(page.getByLabel("From token balance")).toHaveText("Balance: 0 USDC");
+  await expect(page.getByLabel("To token balance")).toHaveText("Balance: 0 USDT");
+  await expect(page.locator(".quote-results")).toHaveAttribute("aria-busy", "false");
+  expect(reads).toBe(2);
 });

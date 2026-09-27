@@ -477,3 +477,26 @@ describe("quote-bound wallet actions", () => {
     expect(walletStore.message).toContain("expired");
   });
 });
+
+it("retains the selected provider and blocks sending when its wallet refresh fails simulation", async () => {
+  const quote = current({ provider: "curve" });
+  get.mockResolvedValue({
+    data: makeComparison({
+      quotes: [
+        makeQuote(),
+        makeQuote({
+          provider: "curve",
+          simulation_status: "failed",
+          execution: null,
+          simulation_reason: "Swap reverted",
+        }),
+      ],
+    }),
+    response: new Response(),
+  });
+  await transactions.approve("curve", quote);
+  expect(comparisonStore.workflowProvider).toBe("curve");
+  expect(comparisonStore.activeQuote?.simulation_status).toBe("failed");
+  expect(sent()).toEqual([]);
+  expect(transactions.matches(comparisonStore.activeQuote!)).toBe(false);
+});

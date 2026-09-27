@@ -190,29 +190,49 @@ Both app Compose files forward all seven `RPC_URL_<id>` overrides. The API liste
 
 `quotes.ts` ranks every successful provider together with exact integer arithmetic and configuration-order ties. It uses canonical wrapped native tokens for conversion rates. Missing gas or rate data causes an explicit raw-amount comparison. The quote endpoint uses `quote-response.ts`; OpenAPI and the generated frontend client share that contract.
 
-For a connected wallet, the API reads the input token's `balanceOf` (or the
-native balance) once per request and compares it with each route's required
-input. Sufficient balances are simulated with the original sender and token
-state. There is no token storage discovery or balance override. The SDK supplies
-native gas funds for price simulation; actual gas affordability remains a wallet
-readiness check. Required approval estimates use the wallet's real allowance.
+The frontend chooses whether to include `sender` using a matching raw sell-token
+balance. Exact Input requests omit it when the balance is insufficient or unknown.
+Disconnected and wrong-network wallets also use previews. Balance reads are scoped
+to account, provider, chain, and token, cached for 30 seconds, and refreshed during
+comparison cycles; manual comparisons bypass that cache. Unknown balances are not
+reported as zero.
 
-Without sufficient input funds or a successful balance read, provider quotes
-remain visible with `simulation_status: "not_run"` and an explanation. They have
-no execution payload or swap gas estimate. A funded refresh must simulate before
-the route can be used for approval or swap. Mixed simulated and unsimulated
-results use the same raw-amount ranking basis. Conversion-rate estimates use
-ordinary provider quotes without simulation or token funding.
+Exact Output comparisons first request previews to learn each route's required
+input. If at least one route is affordable, the browser automatically makes one
+wallet request. Both passes share one comparison lifecycle. The final response
+prefers wallet quotes and retains same-cycle preview prices for providers that
+cannot quote the wallet. No additional provider fallback requests are made.
 
-Exact-output quotes must meet the requested output amount. Simulated routes use
-the actual simulated output; unsimulated routes use the provider's quoted output.
-The API rejects even a one-unit shortfall before exposing a quote.
-The pinned Spandex SDK simulates the swap at the RPC gas price and rejects
-fee-sensitive reverts. It reports native output before gas costs so the API
-does not deduct the same fee twice when it calculates a recommendation.
-Before approval or confirmation, the browser refreshes `/quote` and retains the selected provider. It refreshes again after an approval receipt. After confirmation, the wallet store rechecks actual balances, allowances, account, network, and fresh fees and estimates gas for the exact transaction and
-sets a limit 20% above the larger of that estimate and simulated gas usage. It
-checks the wallet, chain, and quote again after the estimate before submission.
+The API requests all providers concurrently and delegates wallet simulation to
+Spandex. There is no token storage discovery or ERC-20 balance override. The SDK
+supplies native funds for simulation; actual gas affordability remains a wallet
+readiness check. Approval estimates use actual wallet allowances and retain their
+existing synthetic native funding for estimation.
+
+Preview prices have `simulation_status: "not_run"`, null sender and execution,
+and no wallet approval or swap gas estimate. Failed wallet simulations retain the
+provider's quoted amounts with `simulation_status: "failed"`, a redacted reason,
+and no execution payload. Exact-output prices must meet the requested output;
+a simulated shortfall leaves a valid quoted price unverified.
+
+Recommendations compare successfully simulated wallet routes using exact integer
+arithmetic, required approval costs, and configuration-order ties. Incomplete
+comparable costs, including rollup fee gaps, use raw amounts among verified routes.
+Unverified prices are listed separately. If no route verifies, the best raw price
+is labeled "Best quoted price — unverified." USD conversions remain display-only.
+
+Refreshes retain the previous cards and expanded provider list, mark them stale,
+and replace results together. Account and trade changes invalidate both balance
+and quote work, including requests without a sender. Balance eligibility changes
+can refresh prices without releasing the chosen approval/swap provider.
+
+Before approval or confirmation, the browser explicitly refreshes wallet quotes
+and retains the selected provider. It refreshes again after an approval receipt.
+A preview or failed simulation cannot continue that workflow. After confirmation,
+the wallet store rechecks actual balances, allowances, account, network, and fresh
+fees and estimates gas for the exact transaction. It sets a limit 20% above the
+larger of that estimate and simulated gas usage, then rechecks context before
+submission. Simulation success alone never authorizes a transaction.
 
 Saved token-list identities and enabled states enter memory before network requests start. Responses update lists by URL. Metadata requests are shared by chain and address, and late results cannot replace a newer selection. Balance caches store raw values and format them with the current decimals.
 
