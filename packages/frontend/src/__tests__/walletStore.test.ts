@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   walletStore,
   type EIP6963ProviderDetail,
@@ -62,8 +62,12 @@ function resetWalletStore(): void {
 
 describe("walletStore", () => {
   beforeEach(() => {
+    walletStore.stopDiscovery();
     resetWalletStore();
+    localStorage.clear();
   });
+
+  afterEach(() => walletStore.stopDiscovery());
 
   // ---------------------------------------------------------------------------
   // Initial state
