@@ -4,7 +4,8 @@ export async function installWallet(
   page: Page,
   chainId: number,
   account: string,
-  request: (method: string, params: unknown[]) => Promise<unknown>
+  request: (method: string, params: unknown[]) => Promise<unknown>,
+  authorized = false
 ) {
   await page.exposeBinding(
     "testWalletRpc",
@@ -12,7 +13,10 @@ export async function installWallet(
       request(args.method, args.params ?? [])
   );
   await page.addInitScript(
-    ({ chainId, account }) => {
+    ({ chainId, account, authorized }) => {
+      const permissionKey = "test-wallet-approved";
+      let approved = authorized || localStorage.getItem(permissionKey) === "true";
+      const accountRequests: string[] = [];
       let rejectNext = false;
       const events = new Map<string, Set<(...args: unknown[]) => void>>();
       const provider = {
@@ -21,8 +25,16 @@ export async function installWallet(
             rejectNext = false;
             throw Object.assign(new Error("User rejected transaction"), { code: 4001 });
           }
-          if (args.method === "eth_requestAccounts" || args.method === "eth_accounts")
+          if (args.method === "eth_requestAccounts") {
+            accountRequests.push(args.method);
+            approved = true;
+            localStorage.setItem(permissionKey, "true");
             return [account];
+          }
+          if (args.method === "eth_accounts") {
+            accountRequests.push(args.method);
+            return approved ? [account] : [];
+          }
           if (args.method === "eth_chainId") return `0x${chainId.toString(16)}`;
           return (
             window as unknown as { testWalletRpc: (args: unknown) => Promise<unknown> }
@@ -53,6 +65,7 @@ export async function installWallet(
       window.addEventListener("eip6963:requestProvider", announce);
       Object.assign(window, {
         testWallet: {
+          accountRequests,
           rejectNextTransaction() {
             rejectNext = true;
           },
@@ -68,6 +81,6 @@ export async function installWallet(
         },
       });
     },
-    { chainId, account }
+    { chainId, account, authorized }
   );
 }

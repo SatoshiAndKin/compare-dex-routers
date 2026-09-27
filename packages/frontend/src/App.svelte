@@ -125,6 +125,7 @@
     else preferencesStore.applyToForm(formStore.chainId);
     void configStore.init().then(() => {
       if (!active) return;
+      void walletStore.restoreSession(configStore.walletConnectProjectId);
       applyDefaults();
       formStore.isLoading = false;
     });

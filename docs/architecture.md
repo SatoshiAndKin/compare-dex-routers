@@ -247,6 +247,14 @@ content on read/validation failure. The browser token-list store schedules daily
 refreshes only while visible, supports manual refresh, and cancels removed or
 unmounted requests. Configured default files appear as one built-in list in Settings.
 
+Wallet discovery silently reads `eth_accounts` and restores an already authorized
+account without requesting permission. The browser remembers the selected wallet
+by its stable reverse-domain identifier, rather than its per-page discovery UUID.
+Explicit Disconnect persists across reloads. Locked or revoked wallets remain
+disconnected, and late restoration results cannot override a newer connection or
+disconnect. A remembered WalletConnect session restores without opening its QR
+modal; the previously selected Farcaster wallet uses the same silent account read.
+
 Wallet SDKs are pinned, lazy-loaded Vite dependencies. Farcaster uses the Mini App
 SDK's EIP-1193 provider. Swagger's CDN versions and hashes live in `docs-assets.ts`;
 its OpenAPI server URL is relative so direct and `/api`-prefixed deployments work.

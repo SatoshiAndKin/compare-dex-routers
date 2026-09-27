@@ -46,6 +46,8 @@ const CHAIN_ID_HEX_MAP: Readonly<Record<string, string>> = {
   "43114": "0xa86a",
 };
 
+const WALLET_PREFERENCE = "compare-dex-wallet";
+
 const WALLETCONNECT_ICON =
   `data:image/svg+xml,` +
   encodeURIComponent(
@@ -104,6 +106,18 @@ class WalletStore {
   /** Set to true when a transaction action needs the wallet menu to open */
   walletMenuRequested = $state(false);
 
+  private connectionSequence = 0;
+  private preferredWallet: string | null = null;
+
+  private rememberWallet(value: string): void {
+    this.preferredWallet = value;
+    try {
+      localStorage.setItem(WALLET_PREFERENCE, value);
+    } catch {
+      // Reconnection still works for this page when storage is unavailable.
+    }
+  }
+
   // Private event handler references (for cleanup)
   private _accountsChangedHandler: ((...args: unknown[]) => void) | null = null;
   private _chainChangedHandler: ((...args: unknown[]) => void) | null = null;
@@ -149,6 +163,11 @@ class WalletStore {
   startDiscovery(): void {
     if (this._announceHandler) return; // already running
 
+    try {
+      this.preferredWallet = localStorage.getItem(WALLET_PREFERENCE);
+    } catch {
+      // Storage can be unavailable.
+    }
     this._announceHandler = (event: Event) => {
       const detail = (event as CustomEvent<EIP6963ProviderDetail>).detail;
       if (!detail?.provider || !detail?.info?.uuid) return;
@@ -156,6 +175,7 @@ class WalletStore {
       const alreadyKnown = this.discoveredProviders.some((p) => p.info.uuid === detail.info.uuid);
       if (!alreadyKnown) {
         this.discoveredProviders = [...this.discoveredProviders, detail];
+        void this.connect(detail, true);
       }
     };
 
@@ -165,6 +185,7 @@ class WalletStore {
 
   /** Stop EIP-6963 provider discovery and remove listener. */
   stopDiscovery(): void {
+    this.connectionSequence++;
     if (this._announceHandler) {
       window.removeEventListener("eip6963:announceProvider", this._announceHandler);
       this._announceHandler = null;
@@ -176,30 +197,52 @@ class WalletStore {
   // ---------------------------------------------------------------------------
 
   /** Connect to an EIP-6963 provider. */
-  async connect(detail: EIP6963ProviderDetail): Promise<void> {
+  async connect(detail: EIP6963ProviderDetail, silent = false): Promise<void> {
     const { provider, info } = detail;
+    const identity = info.rdns || info.name;
+    if (
+      silent &&
+      (this.isConnected ||
+        this.isConnecting ||
+        (this.preferredWallet !== null && this.preferredWallet !== identity))
+    )
+      return;
+    const sequence = silent ? this.connectionSequence : ++this.connectionSequence;
 
     if (typeof provider?.request !== "function") {
-      this.setMessage("Wallet provider not available", true);
+      if (!silent) this.setMessage("Wallet provider not available", true);
       return;
     }
 
-    this.isConnecting = true;
-    this.setMessage("");
+    if (!silent) {
+      this.isConnecting = true;
+      this.setMessage("");
+    }
 
     try {
       const accounts = (await provider.request({
-        method: "eth_requestAccounts",
+        method: silent ? "eth_accounts" : "eth_requestAccounts",
       })) as string[];
 
       const account = Array.isArray(accounts) ? accounts[0] : null;
       if (typeof account !== "string" || !account) {
+        if (silent) return;
         throw new Error("No account returned by wallet");
       }
 
       // Get current chain ID from provider
       const chainIdHex = (await provider.request({ method: "eth_chainId" })) as string;
       const chainId = parseInt(chainIdHex, 16);
+      if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("Invalid wallet chain");
+      if (
+        sequence !== this.connectionSequence ||
+        (silent && (this.isConnected || this.isConnecting))
+      )
+        return;
+      this.removeProviderListeners();
+      this.connectionSequence++;
+      this.isConnecting = false;
+      this.rememberWallet(identity);
 
       // Update state — full address, never truncated
       this.address = account;
@@ -211,7 +254,7 @@ class WalletStore {
       this._accountsChangedHandler = (...args: unknown[]) => {
         const updatedAccounts = args[0] as string[];
         if (!Array.isArray(updatedAccounts) || updatedAccounts.length === 0) {
-          this.disconnect();
+          this.disconnect(false);
         } else {
           this.address = updatedAccounts[0] ?? null;
           this.ensName = null;
@@ -235,6 +278,7 @@ class WalletStore {
       // Resolve ENS name in background
       void this._resolveEns(account);
     } catch (err: unknown) {
+      if (silent || sequence !== this.connectionSequence) return;
       const code =
         err && typeof err === "object" ? (err as Record<string, unknown>).code : undefined;
       if (code === 4001) {
@@ -244,7 +288,7 @@ class WalletStore {
         this.setMessage("Connection failed: " + msg, true);
       }
     } finally {
-      this.isConnecting = false;
+      if (!silent && sequence === this.connectionSequence) this.isConnecting = false;
     }
   }
 
@@ -316,15 +360,26 @@ class WalletStore {
     }
   }
 
+  /** Restore only the connector the user selected; never open a connection prompt. */
+  async restoreSession(projectId: string): Promise<void> {
+    if (this.isConnected || this.isConnecting) return;
+    if (this.preferredWallet === "walletconnect" && projectId)
+      await this.connectWalletConnect(projectId, true);
+    else if (this.preferredWallet === "farcaster") await this.connectFarcaster(true);
+  }
+
   /** Load the pinned WalletConnect bundle only when requested. */
-  async connectWalletConnect(projectId: string): Promise<void> {
+  async connectWalletConnect(projectId: string, silent = false): Promise<void> {
     if (!projectId) {
       this.setMessage("WalletConnect not configured (missing project ID)", true);
       return;
     }
 
-    this.isConnecting = true;
-    this.setMessage("");
+    const sequence = silent ? this.connectionSequence : ++this.connectionSequence;
+    if (!silent) {
+      this.isConnecting = true;
+      this.setMessage("");
+    }
 
     try {
       const { EthereumProvider } = await import("@walletconnect/ethereum-provider");
@@ -338,25 +393,32 @@ class WalletStore {
           url: location.origin,
           icons: [],
         },
-        showQrModal: true,
+        showQrModal: !silent,
       });
 
       wcProvider.on("disconnect", () => {
-        this.disconnect();
+        if (this.provider === wcProvider) this.disconnect(false);
       });
 
-      await wcProvider.connect();
+      if (sequence !== this.connectionSequence) return;
+      if (silent && !wcProvider.session) return;
+      if (!silent) await wcProvider.connect();
+      if (sequence !== this.connectionSequence) return;
 
-      await this.connect({
-        info: {
-          uuid: "walletconnect",
-          name: "WalletConnect",
-          icon: WALLETCONNECT_ICON,
-          rdns: "walletconnect",
+      await this.connect(
+        {
+          info: {
+            uuid: "walletconnect",
+            name: "WalletConnect",
+            icon: WALLETCONNECT_ICON,
+            rdns: "walletconnect",
+          },
+          provider: wcProvider,
         },
-        provider: wcProvider,
-      });
+        silent
+      );
     } catch (err: unknown) {
+      if (silent || sequence !== this.connectionSequence) return;
       const code =
         err && typeof err === "object" ? (err as Record<string, unknown>).code : undefined;
       if (code === 4001) {
@@ -366,14 +428,17 @@ class WalletStore {
         this.setMessage("WalletConnect failed: " + msg, true);
       }
     } finally {
-      this.isConnecting = false;
+      if (!silent && sequence === this.connectionSequence) this.isConnecting = false;
     }
   }
 
   /** Load the pinned Farcaster Mini App SDK only when requested. */
-  async connectFarcaster(): Promise<void> {
-    this.isConnecting = true;
-    this.setMessage("");
+  async connectFarcaster(silent = false): Promise<void> {
+    const sequence = silent ? this.connectionSequence : ++this.connectionSequence;
+    if (!silent) {
+      this.isConnecting = true;
+      this.setMessage("");
+    }
 
     try {
       const { sdk } = await import("@farcaster/miniapp-sdk");
@@ -382,18 +447,23 @@ class WalletStore {
       const ethProvider = await sdk.wallet.getEthereumProvider();
       if (!ethProvider) throw new Error("No Farcaster Ethereum wallet is available");
 
-      await this.connect({
-        info: { uuid: "farcaster", name: "Farcaster", rdns: "farcaster" },
-        provider: ethProvider,
-      });
+      if (sequence !== this.connectionSequence) return;
+      await this.connect(
+        {
+          info: { uuid: "farcaster", name: "Farcaster", rdns: "farcaster" },
+          provider: ethProvider,
+        },
+        silent
+      );
 
       // Signal to Farcaster frame that the app is ready
       await sdk.actions.ready();
     } catch (err: unknown) {
+      if (silent || sequence !== this.connectionSequence) return;
       const msg = err instanceof Error ? err.message : String(err);
       this.setMessage("Farcaster connection failed: " + msg, true);
     } finally {
-      this.isConnecting = false;
+      if (!silent && sequence === this.connectionSequence) this.isConnecting = false;
     }
   }
 
@@ -401,8 +471,7 @@ class WalletStore {
   // Disconnect
   // ---------------------------------------------------------------------------
 
-  /** Disconnect the current wallet and clear all state. */
-  disconnect(): void {
+  private removeProviderListeners(): void {
     // Remove event listeners from previous provider
     if (this.provider?.removeListener) {
       if (this._accountsChangedHandler) {
@@ -413,6 +482,16 @@ class WalletStore {
       }
     }
 
+    this._accountsChangedHandler = null;
+    this._chainChangedHandler = null;
+  }
+
+  /** An explicit disconnect stays disconnected across reloads. */
+  disconnect(explicit = true): void {
+    this.connectionSequence++;
+    this.isConnecting = false;
+    if (explicit) this.rememberWallet("disconnected");
+    this.removeProviderListeners();
     this.address = null;
     this.ensName = null;
     this.chainId = null;
