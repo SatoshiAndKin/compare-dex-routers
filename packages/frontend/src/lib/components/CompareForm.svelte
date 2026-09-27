@@ -16,6 +16,7 @@
   import { balanceStore } from "../stores/balanceStore.svelte.js";
   import { onDestroy, untrack, tick } from "svelte";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
+  import { canQuoteWallet } from "../quote-preview.js";
   import { exactAmount, isNativeToken } from "../native.js";
   import { gasMargin, transactionFees, hex, readBalance } from "../wallet-rpc.js";
   import ChainSelector from "./ChainSelector.svelte";
@@ -85,12 +86,96 @@
     transactionStore.invalidate();
   });
 
-  async function runCompare(params: CompareParams, epoch: number): Promise<void> {
+  function inputBalance(): bigint | null {
+    if (walletStore.chainId !== formStore.chainId || !formStore.fromToken) return null;
+    return balanceStore.inputBalance(
+      walletStore.provider,
+      walletStore.address,
+      formStore.chainId,
+      formStore.fromToken.address
+    );
+  }
+
+  // A completed balance read can promote a preview without invalidating a route workflow.
+  let lastEligibility = "";
+  $effect(() => {
+    const status = balanceStore.from.status;
+    const raw = balanceStore.from.raw;
+    void status;
+    void raw;
+    untrack(() => {
+      const params = currentParams();
+      if (!params || transactionStore.busy || status === "loading") return;
+      const balance = inputBalance();
+      const eligible =
+        params.mode === "exactIn"
+          ? canQuoteWallet(params, balance, formStore.fromToken!.decimals!)
+          : balance !== null &&
+            comparisonStore.quotes.some(
+              (quote) =>
+                quote.chainId === params.chainId &&
+                quote.from.toLowerCase() === params.from.toLowerCase() &&
+                quote.to.toLowerCase() === params.to.toLowerCase() &&
+                quote.mode === params.mode &&
+                quote.amount === params.amount &&
+                BigInt(quote.input_amount_raw) <= balance
+            );
+      const key = `${params.sender}:${params.chainId}:${params.from}:${params.amount}:${params.mode}:${eligible}`;
+      if (
+        key === lastEligibility &&
+        !(
+          eligible &&
+          !comparisonStore.isLoading &&
+          comparisonStore.quotes.length > 0 &&
+          comparisonStore.quotes.every((quote) => quote.sender === null)
+        )
+      )
+        return;
+      lastEligibility = key;
+      if (comparisonStore.isLoading) return;
+      comparisonStore.isStale = true;
+      comparisonStore.isLoading = true;
+      clearTimer();
+      timer = setTimeout(() => void runCompare(params, generation), AUTO_COMPARE_DELAY_MS);
+    });
+  });
+
+  async function runCompare(
+    params: CompareParams,
+    epoch: number,
+    forceBalance = false
+  ): Promise<void> {
     if (epoch !== generation || transactionStore.busy) return;
     autoRefreshStore.stop();
     updateUrl(params);
     preferencesStore.saveForChain(params.chainId);
-    await comparisonStore.compare(params);
+    const token = formStore.fromToken;
+    const output = formStore.toToken;
+    if (
+      walletStore.provider &&
+      params.sender &&
+      walletStore.chainId === params.chainId &&
+      token?.decimals !== null &&
+      token
+    ) {
+      const refreshed = balanceStore.refresh(
+        walletStore.provider,
+        params.sender,
+        params.chainId,
+        { address: token.address, decimals: token.decimals },
+        output && output.decimals !== null
+          ? { address: output.address, decimals: output.decimals }
+          : null,
+        forceBalance
+      );
+      if (forceBalance) {
+        comparisonStore.isStale = true;
+        comparisonStore.isLoading = true;
+        await refreshed;
+        if (epoch !== generation || transactionStore.busy) return;
+      }
+    }
+    await comparisonStore.compare(params, { read: inputBalance, decimals: token?.decimals ?? 18 });
     if (epoch !== generation || transactionStore.busy) return;
     autoRefreshStore.start(AUTO_REFRESH_SECONDS, () => {
       const current = currentParams();
@@ -208,7 +293,7 @@
     event.preventDefault();
     clearTimer();
     const params = currentParams();
-    if (params) await runCompare(params, generation);
+    if (params) await runCompare(params, generation, true);
   }
 </script>
 
@@ -289,7 +374,7 @@
     max-width: 16rem;
   }
   .balance-slot {
-    min-height: 44px;
+    min-height: 3.5rem;
     display: flex;
     align-items: center;
   }

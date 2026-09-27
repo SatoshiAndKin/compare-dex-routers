@@ -79,7 +79,7 @@ for (const scenario of [
     await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
     await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
     await expect(page.locator(".quote-card")).toContainText(
-      "Simulated with your wallet’s token balance."
+      "Simulation passed. Wallet checks required."
     );
     if (scenario === "reject approval") {
       await page.evaluate(() =>
@@ -119,7 +119,7 @@ for (const scenario of [
       await expect(dialog).toBeHidden();
       expect(sent).toEqual([]);
       if (scenario === "chain change")
-        await expect(page.getByRole("button", { name: "Execute swap" })).toBeDisabled();
+        await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
       else {
         await page.getByRole("button", { name: "Execute swap" }).click();
         await expect(dialog).toContainText("0x3333333333333333333333333333333333333333");
@@ -173,8 +173,10 @@ test("zero balances keep prices visible and block an unfunded wallet", async ({ 
   await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
   await expect(page.getByLabel("From token balance")).toContainText("Balance: 0 USDC");
   await expect(page.getByLabel("To token balance")).toContainText("Balance: 0 USDT");
-  await expect(page.getByText("Insufficient USDC balance.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Execute swap" })).toBeDisabled();
+  await expect(
+    page.locator(".quote-card").getByText("Insufficient USDC balance.", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
 });
 
 test("missing native fee data prevents automatic balance entry", async ({ page }) => {

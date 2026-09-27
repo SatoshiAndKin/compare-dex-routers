@@ -165,3 +165,119 @@ it("retains the previous USD snapshot until the latest complete response succeed
   expect(store.quotes).toEqual(next.quotes);
   expect(store.isCurrent(store.quotes[0]!)).toBe(false);
 });
+
+describe("balance-aware comparisons", () => {
+  const walletParams = { ...params, sender: "0x2222222222222222222222222222222222222222" };
+  const preview = () => {
+    const data = makeComparison({ recommendation_basis: "raw_amount" });
+    data.quotes = data.quotes.map((quote) => ({
+      ...quote,
+      sender: null,
+      execution: null,
+      simulation_status: "not_run" as const,
+      gas_used: null,
+    }));
+    return data;
+  };
+  it.each([null, 0n, 99999999n, 100000000n, 100000001n])(
+    "selects the sender using raw input balance %s",
+    async (raw) => {
+      get.mockResolvedValue({
+        data: raw !== null && raw >= 100000000n ? makeComparison() : preview(),
+        response: new Response(),
+      });
+      await store.compare(walletParams, { read: () => raw, decimals: 6 });
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(get.mock.calls[0]?.[1]).toMatchObject({
+        params: {
+          query: { sender: raw !== null && raw >= 100000000n ? walletParams.sender : undefined },
+        },
+      });
+    }
+  );
+  it("does not send a wallet request when every exact-output preview is unaffordable", async () => {
+    get.mockResolvedValue({ data: preview(), response: new Response() });
+    await store.compare(
+      { ...walletParams, mode: "targetOut" },
+      { read: () => 99999999n, decimals: 6 }
+    );
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(store.quotes.every((quote) => quote.execution === null)).toBe(true);
+  });
+  it("publishes exact-output results together and preserves a preview when the wallet provider fails", async () => {
+    const first = preview();
+    first.mode = "targetOut";
+    first.quotes = first.quotes.map((quote) => ({ ...quote, mode: "targetOut" }));
+    const next = makeComparison({ mode: "targetOut", quotes: [makeComparison().quotes[0]!] });
+    next.failures = [
+      {
+        provider: "curve",
+        stage: "quote",
+        error: {
+          name: "Error",
+          message: "Wallet route unavailable",
+          code: null,
+          cause: null,
+          details: null,
+        },
+      },
+    ];
+    const pending = deferred<TestResponse>();
+    get
+      .mockResolvedValueOnce({ data: first, response: new Response() })
+      .mockReturnValueOnce(pending.promise);
+    const work = store.compare(
+      { ...walletParams, mode: "targetOut" },
+      { read: () => 100000000n, decimals: 6 }
+    );
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    expect(store.quotes).toEqual([]);
+    expect(store.isLoading).toBe(true);
+    expect(get.mock.calls[0]?.[1]).toMatchObject({ params: { query: { sender: undefined } } });
+    expect(get.mock.calls[1]?.[1]).toMatchObject({
+      params: { query: { sender: walletParams.sender } },
+    });
+    pending.resolve({ data: next, response: new Response() });
+    await work;
+    expect(store.quotes[1]).toMatchObject({
+      provider: "curve",
+      sender: null,
+      execution: null,
+      simulation_status: "not_run",
+      trade_value_usd: null,
+      gas_used: null,
+    });
+    expect(store.quotes[1]?.simulation_reason).toContain("Wallet route unavailable");
+    expect(store.failures).toEqual([]);
+    expect(store.recommendation).toBe("0x");
+  });
+  it("keeps previews when the wallet pass fails and never starts a third pass", async () => {
+    get
+      .mockResolvedValueOnce({ data: preview(), response: new Response() })
+      .mockRejectedValueOnce(new Error("offline"));
+    await store.compare(
+      { ...walletParams, mode: "targetOut" },
+      { read: () => 100000000n, decimals: 6 }
+    );
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(store.quotes).toHaveLength(2);
+    expect(store.error).toBe("Wallet verification failed: offline");
+    expect(store.isCurrent(store.quotes[0]!)).toBe(false);
+  });
+  it("ignores an obsolete wallet pass after an account change with sender-free requests", async () => {
+    const pending = deferred<TestResponse>();
+    get
+      .mockResolvedValueOnce({ data: preview(), response: new Response() })
+      .mockReturnValueOnce(pending.promise);
+    const old = store.compare(
+      { ...walletParams, mode: "targetOut" },
+      { read: () => 100000000n, decimals: 6 }
+    );
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    get.mockResolvedValueOnce({ data: preview(), response: new Response() });
+    await store.compare({ ...walletParams, sender: FROM }, { read: () => 0n, decimals: 6 });
+    pending.resolve({ data: makeComparison(), response: new Response() });
+    await old;
+    expect(store.quotes.every((quote) => quote.sender === null)).toBe(true);
+  });
+});

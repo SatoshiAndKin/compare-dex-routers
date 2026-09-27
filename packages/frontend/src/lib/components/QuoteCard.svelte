@@ -106,7 +106,11 @@
         class:winner-badge={isRecommended}
         class:alt-badge={!isRecommended}
       >
-        {isRecommended ? "RECOMMENDED" : "SELECTED"}
+        {isRecommended
+          ? quote.simulation_status === "succeeded"
+            ? "RECOMMENDED"
+            : "Best quoted price — unverified"
+          : "SELECTED"}
       </span>
 
       <div class="provider-info">Via {providerName}</div>

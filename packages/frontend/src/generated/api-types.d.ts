@@ -248,7 +248,7 @@ export interface components {
       slippage_bps: number;
       sender: string | null;
       /** @enum {string} */
-      simulation_status: "succeeded" | "not_run";
+      simulation_status: "succeeded" | "failed" | "not_run";
       simulation_reason: string | null;
       execution: {
         to: string;

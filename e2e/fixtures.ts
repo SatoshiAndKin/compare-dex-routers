@@ -67,10 +67,18 @@ export async function fixture(
       }
     }
     if (!new URL(route.request().url()).searchParams.get("sender")) {
+      comparison.recommendation_basis = "raw_amount";
       for (const quote of comparison.quotes) {
         if (quote) {
           quote.sender = null;
           quote.execution = null;
+          quote.simulation_status = "not_run";
+          quote.simulation_reason = "Preview quote; wallet simulation not run.";
+          quote.gas_used = null;
+          quote.gas_cost_native = null;
+          quote.gas_cost_usd = null;
+          quote.net_value_native = null;
+          quote.net_value_usd = null;
         }
       }
     }

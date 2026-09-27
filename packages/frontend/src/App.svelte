@@ -67,18 +67,18 @@
       return;
     }
 
-    balanceStore.clearCache();
-    void balanceStore.fetchBalances(
-      provider,
-      address,
-      chainId,
+    const from =
       fromToken && fromToken.decimals !== null
         ? { address: fromToken.address, decimals: fromToken.decimals }
-        : null,
+        : null;
+    const to =
       toToken && toToken.decimals !== null
         ? { address: toToken.address, decimals: toToken.decimals }
-        : null
-    );
+        : null;
+    untrack(() => {
+      balanceStore.clearCache();
+      void balanceStore.fetchBalances(provider, address, chainId, from, to);
+    });
   });
 
   // ---------------------------------------------------------------------------

@@ -102,3 +102,18 @@ describe("exact balance state", () => {
     expect(store.from.raw).toBeNull();
   });
 });
+
+it("never uses another wallet, provider, token, chain, or expired balance to select a sender", async () => {
+  const provider = { request };
+  request.mockImplementation(async ({ method }) => (method === "eth_chainId" ? "0x1" : "0x64"));
+  await store.fetchBalances(provider, SENDER, 1, { address: FROM, decimals: 6 }, null);
+  expect(store.inputBalance(provider, SENDER, 1, FROM)).toBe(100n);
+  expect(store.inputBalance({ request }, SENDER, 1, FROM)).toBeNull();
+  expect(store.inputBalance(provider, FROM, 1, FROM)).toBeNull();
+  expect(store.inputBalance(provider, SENDER, 2, FROM)).toBeNull();
+  expect(store.inputBalance(provider, SENDER, 1, SENDER)).toBeNull();
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now + 30001);
+  expect(store.inputBalance(provider, SENDER, 1, FROM)).toBeNull();
+  clock.mockRestore();
+});

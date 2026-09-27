@@ -44,6 +44,54 @@ export async function fetchTokenBalance(
 
 class BalanceStore {
   private sequence = 0;
+  private context: {
+    provider: EIP1193Provider;
+    account: string;
+    chainId: number;
+    token: string;
+    outputToken: string | null;
+  } | null = null;
+  private updatedAt = 0;
+
+  inputBalance(
+    provider: EIP1193Provider | null,
+    account: string | null,
+    chainId: number,
+    token: string
+  ): bigint | null {
+    const context = this.context;
+    return context &&
+      context.provider === provider &&
+      context.account === account?.toLowerCase() &&
+      context.chainId === chainId &&
+      context.token === canonicalToken(token).toLowerCase() &&
+      this.from.status === "ready" &&
+      Date.now() - this.updatedAt < 30_000
+      ? this.from.raw
+      : null;
+  }
+
+  refresh(
+    provider: EIP1193Provider,
+    account: string,
+    chainId: number,
+    fromToken: TokenRef,
+    toToken: TokenRef | null,
+    force = false
+  ): Promise<void> | undefined {
+    if (force) this.clearCache();
+    if (
+      !force &&
+      (this.inputBalance(provider, account, chainId, fromToken.address) !== null ||
+        (this.from.status === "loading" &&
+          this.context?.provider === provider &&
+          this.context.account === account.toLowerCase() &&
+          this.context.chainId === chainId &&
+          this.context.token === canonicalToken(fromToken.address).toLowerCase()))
+    )
+      return;
+    return this.fetchBalances(provider, account, chainId, fromToken, toToken);
+  }
   from = $state<BalanceState>({ status: "idle", raw: null, decimals: null });
   to = $state<BalanceState>({ status: "idle", raw: null, decimals: null });
   get fromBalance(): string | null {
@@ -66,13 +114,33 @@ class BalanceStore {
     toToken: TokenRef | null
   ): Promise<void> {
     const sequence = ++this.sequence;
+    const retain =
+      this.context?.provider === provider &&
+      this.context.account === account.toLowerCase() &&
+      this.context.chainId === chainId &&
+      this.context.token === canonicalToken(fromToken?.address ?? "").toLowerCase() &&
+      this.context.outputToken ===
+        (toToken ? canonicalToken(toToken.address).toLowerCase() : null) &&
+      this.from.status === "ready";
+    this.context = fromToken
+      ? {
+          provider,
+          account: account.toLowerCase(),
+          chainId,
+          token: canonicalToken(fromToken.address).toLowerCase(),
+          outputToken: toToken ? canonicalToken(toToken.address).toLowerCase() : null,
+        }
+      : null;
+    if (!retain) this.updatedAt = 0;
     const initial = (token: TokenRef | null): BalanceState => ({
       status: token ? "loading" : "idle",
       raw: null,
       decimals: token?.decimals ?? null,
     });
-    this.from = initial(fromToken);
-    this.to = initial(toToken);
+    if (!retain) {
+      this.from = initial(fromToken);
+      this.to = initial(toToken);
+    }
     try {
       const actualChain = quantity(
         await provider.request({ method: "eth_chainId" }),
@@ -108,6 +176,7 @@ class BalanceStore {
         raw,
         decimals: token?.decimals ?? null,
       });
+      this.updatedAt = Date.now();
       this.from = finish(fromToken, from);
       this.to = finish(toToken, to);
     } catch {
@@ -118,6 +187,8 @@ class BalanceStore {
   }
   clear(): void {
     this.sequence++;
+    this.context = null;
+    this.updatedAt = 0;
     this.from = { status: "idle", raw: null, decimals: null };
     this.to = { status: "idle", raw: null, decimals: null };
   }

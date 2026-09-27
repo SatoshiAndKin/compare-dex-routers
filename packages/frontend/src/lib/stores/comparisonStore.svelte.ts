@@ -1,4 +1,5 @@
 import type { components } from "../../generated/api-types.js";
+import { canQuoteWallet, mergePreview } from "../quote-preview.js";
 import { apiClient } from "../api.js";
 
 export type Quote = components["schemas"]["Quote"];
@@ -98,7 +99,10 @@ class ComparisonStore {
     return this.isCurrent(quote) && Date.now() - this.updatedAt < 30_000;
   }
 
-  async compare(params: CompareParams): Promise<void> {
+  async compare(
+    params: CompareParams,
+    balance?: { read: () => bigint | null; decimals: number }
+  ): Promise<void> {
     this.cancel();
     this.error = null;
     this.isLoading = true;
@@ -107,7 +111,29 @@ class ComparisonStore {
     const controller = new AbortController();
     this.abortController = controller;
     try {
-      const data = await requestQuotes(params, controller.signal);
+      const initial =
+        balance && !canQuoteWallet(params, balance.read(), balance.decimals)
+          ? { ...params, sender: undefined }
+          : params;
+      let data = await requestQuotes(initial, controller.signal);
+      if (sequence !== this.sequence || controller.signal.aborted) return;
+      const raw = balance?.read() ?? null;
+      if (
+        balance &&
+        !initial.sender &&
+        params.sender &&
+        raw !== null &&
+        (params.mode === "exactIn"
+          ? canQuoteWallet(params, raw, balance.decimals)
+          : data.quotes.some((quote) => BigInt(quote.input_amount_raw) <= raw))
+      ) {
+        try {
+          data = mergePreview(data, await requestQuotes(params, controller.signal));
+        } catch (error) {
+          if (sequence !== this.sequence || controller.signal.aborted) return;
+          this.error = `Wallet verification failed: ${error instanceof Error ? error.message : "Quote request failed"}`;
+        }
+      }
       if (sequence !== this.sequence || controller.signal.aborted) return;
       this.quotes = data.quotes;
       this.failures = data.failures;
