@@ -32,7 +32,9 @@ const networks = [
   },
 ] as const;
 
-for (const network of networks) {
+const selectedChainIds = process.env.FORK_TEST_CHAINS?.split(",").map(Number) ?? [1, 8453];
+
+for (const network of networks.filter((network) => selectedChainIds.includes(network.chain.id))) {
   test(`${network.chain.name}: previews isolate account code and token balances`, async ({
     request,
   }) => {

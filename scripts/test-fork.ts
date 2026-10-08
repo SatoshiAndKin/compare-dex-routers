@@ -94,33 +94,30 @@ async function stopChildren() {
 }
 
 try {
-  const base =
-    process.env.FORK_RPC_URL_8453 ||
-    process.env.RPC_URL_8453 ||
-    (process.env.ALCHEMY_API_KEY
-      ? `https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
-      : "");
-  if (!base) throw new Error("Set ALCHEMY_API_KEY or FORK_RPC_URL_8453 for Base fork tests");
-  await startFork(
-    1,
-    process.env.FORK_RPC_URL_1 ||
-      process.env.RPC_URL_1 ||
+  const args = process.argv.slice(2).filter((arg) => arg !== "--");
+  const selectionIndex = args.indexOf("--chains");
+  const selected =
+    selectionIndex < 0 ? [1, 8453] : args[selectionIndex + 1]?.split(",").map(Number);
+  if (!selected?.length || selected.some((chainId) => chainId !== 1 && chainId !== 8453))
+    throw new Error("Use --chains 1,8453, --chains 1, or --chains 8453");
+  if (new Set(selected).size !== selected.length) throw new Error("Select each fork chain once");
+  if (selectionIndex >= 0) args.splice(selectionIndex, 2);
+  env.FORK_TEST_CHAINS = selected.join(",");
+  for (const chainId of selected) {
+    const network = chainId === 1 ? "eth" : "base";
+    const url =
+      process.env[`FORK_RPC_URL_${chainId}`] ||
+      process.env[`RPC_URL_${chainId}`] ||
       (process.env.ALCHEMY_API_KEY
-        ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
-        : "")
-  );
-  await startFork(8453, base);
+        ? `https://${network}-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+        : "");
+    if (!url) throw new Error(`Set FORK_RPC_URL_${chainId} or RPC_URL_${chainId} for fork tests`);
+    await startFork(chainId, url);
+  }
   execFileSync("pnpm", ["--filter", "@compare-dex/frontend", "build"], { stdio: "inherit", env });
   const runner = spawn(
     "pnpm",
-    [
-      "exec",
-      "playwright",
-      "test",
-      "--config",
-      "playwright.fork.config.ts",
-      ...process.argv.slice(2).filter((arg) => arg !== "--"),
-    ],
+    ["exec", "playwright", "test", "--config", "playwright.fork.config.ts", ...args],
     { stdio: "inherit", env }
   );
   children.push(runner);
