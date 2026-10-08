@@ -27,10 +27,13 @@ The command starts its own loopback-only Anvil nodes and stops them on completio
 It funds Anvil's disposable development account on each fork. It does not use a
 personal signing key. Browser transactions use the production EIP-1193 wallet path.
 
-Ethereum uses `https://ski-lambo-1.shorthair-fir.ts.net:18544`. This node now requires
-HTTPS; its former HTTP URL returns HTTP 400. Override the source with
-`FORK_RPC_URL_1` when needed. Base uses `FORK_RPC_URL_8453`, then `RPC_URL_8453`,
+Use `FORK_RPC_URL_1` or `RPC_URL_1` for Ethereum. Use the NUC archive node
+`https://ski-nuc-1.shorthair-fir.ts.net:18545` while Lambo is off. Base uses `FORK_RPC_URL_8453`, then `RPC_URL_8453`,
 then the existing `ALCHEMY_API_KEY` from `.env`. Keep these credentials out of reports.
+
+To test Ethereum while Base is deferred, run `pnpm test:fork -- --chains 1`.
+The runner starts only the selected chains and runs their full trade assertions.
+With no selection, it tests both Ethereum and Base.
 
 Each run captures a block before starting each fork and explicitly pins Anvil to
 that block. `test-results/fork-manifest.json` records the block number, hash, and
