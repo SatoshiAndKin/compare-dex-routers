@@ -1,7 +1,7 @@
 FROM oven/bun:1.4.2 AS bun
 
 # Stage 1: Build
-FROM node:24.21.0-slim AS builder
+FROM node:24.22.1-slim AS builder
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 

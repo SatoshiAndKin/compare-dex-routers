@@ -8,7 +8,7 @@ Compare all [Spandex](https://www.spandex.exchange/) providers, including Curve,
 
 ## Quick start
 
-Use Node.js 24.21.0, pnpm 12.5.1, and Bun 1.4.2. Bun builds the pinned Spandex Git dependency during installation. Docker and CI install these versions.
+Use Node.js 24.22.1, pnpm 12.5.1, and Bun 1.4.2. Bun builds the pinned Spandex Git dependency during installation. Docker and CI install these versions.
 
 ```sh
 cp env.example .env   # set RPC_URL_<chainId> or ALCHEMY_API_KEY
