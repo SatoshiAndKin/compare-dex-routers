@@ -28,3 +28,7 @@ overrides:
   "js-yaml@4.3.1": "4.3.2"
   # Coinbase SDK pins an affected Axios release; use the patched 1.x API.
   "axios@1.16.0": "1.18.0"
+  # 1.16.1 fixes both credential-header leaks in the 1.16.0 release.
+  "follow-redirects@1.16.0": "1.16.1"
+  # Vite 8.3.3 fixes the launch-editor command handling advisories.
+  "vite@8.3.2": "8.3.3"

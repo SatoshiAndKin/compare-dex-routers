@@ -4,6 +4,14 @@ FROM node:24.21.0-slim
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 
+# Use the maintained system trust store until Node ships its CA distrust fix.
+RUN apt-get update && apt-get install --no-install-recommends -y ca-certificates \
+    && sed -i -e 's|^mozilla/emSign_ECC_Root_CA_-_G3.crt|!&|' \
+       -e 's|^mozilla/Comodo_AAA_Services_root.crt|!&|' /etc/ca-certificates.conf \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt SSL_CERT_DIR=/etc/ssl/certs
+
 WORKDIR /app
 
 # Copy root workspace config and package files for pnpm workspaces
@@ -36,4 +44,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 WORKDIR /app/packages/api
 
-CMD ["node", "--import", "tsx", "src/server.ts"]
+CMD ["node", "--use-openssl-ca", "--import", "tsx", "src/server.ts"]
