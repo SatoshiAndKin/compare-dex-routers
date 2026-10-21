@@ -30,3 +30,5 @@ overrides:
   "axios@1.16.0": "1.18.0"
   # 1.16.1 fixes both credential-header leaks in the 1.16.0 release.
   "follow-redirects@1.16.0": "1.16.1"
+  # Vite 8.3.3 fixes the launch-editor command handling advisories.
+  "vite@8.3.2": "8.3.3"
