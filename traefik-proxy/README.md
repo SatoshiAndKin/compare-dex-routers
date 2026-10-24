@@ -24,12 +24,20 @@ app's environment. Set `TRUSTED_PROXY_IPS` to the host's Docker bridge gateway
 address with a `/32` prefix so Traefik preserves Tailscale's HTTPS headers.
 
 ```bash
-sudo tailscale serve --bg --https=443 http://127.0.0.1:8080
 sudo tailscale serve --bg --https=8443 http://127.0.0.1:8000
 sudo tailscale serve --bg --https=9443 http://127.0.0.1:8001
 ```
 
-The dashboard is at `https://ski-nuc-3.shorthair-fir.ts.net/dashboard/`.
+Keep the dashboard on loopback. Do not publish port 8080 through Tailscale
+Serve or Funnel. Open an SSH tunnel when you need the dashboard:
+
+```bash
+ssh -N -L 18080:127.0.0.1:8080 ski-nuc-3
+```
+
+Open `http://127.0.0.1:18080/dashboard/` on the client and keep the tunnel
+running while using it.
+
 Compare DEX Routers uses `https://ski-nuc-3.shorthair-fir.ts.net:8443/` and
 ypricemagic-server uses `https://ski-nuc-3.shorthair-fir.ts.net:9443/`.
 These routes use private Tailscale Serve; do not enable Funnel for them.
