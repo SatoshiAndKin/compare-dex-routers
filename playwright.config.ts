@@ -15,7 +15,8 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+    // Use the bundled full Chromium browser for both headed and headless tests.
+    { name: "desktop", use: { ...devices["Desktop Chrome"], channel: "chromium" } },
     { name: "mobile", use: { ...devices["iPhone 13"], defaultBrowserType: "webkit" } },
   ],
   webServer: [
