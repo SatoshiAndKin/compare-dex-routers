@@ -29,7 +29,7 @@ COPY packages/frontend/ ./packages/frontend/
 RUN pnpm --filter @compare-dex/frontend run build
 
 # Stage 2: Serve
-FROM nginx:1.30.5-alpine
+FROM nginx:1.30.6-alpine
 
 # Copy built files
 COPY --from=builder /app/packages/frontend/dist/ /usr/share/nginx/html/
