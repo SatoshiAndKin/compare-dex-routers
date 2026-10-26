@@ -164,27 +164,6 @@ window.onload = function() {
     return;
   }
 
-  if (url.pathname === "/.well-known/farcaster.json" && req.method === "GET") {
-    const host = req.headers.host || "localhost:3100";
-    const protocol = req.headers["x-forwarded-proto"] || "http";
-    const baseUrl = `${protocol}://${host}`;
-    sendJson(res, 200, {
-      accountAssociation: {
-        header: process.env.FARCASTER_ACCOUNT_ASSOCIATION_HEADER || "",
-        payload: process.env.FARCASTER_ACCOUNT_ASSOCIATION_PAYLOAD || "",
-        signature: process.env.FARCASTER_ACCOUNT_ASSOCIATION_SIGNATURE || "",
-      },
-      miniapp: {
-        version: "1",
-        name: "Compare DEX Routers",
-        homeUrl: `${baseUrl}/?miniApp=true`,
-        iconUrl: `${baseUrl}/icon.png`,
-        primaryCategory: "finance",
-      },
-    });
-    return;
-  }
-
   if (url.pathname === "/health") {
     if (existsSync("/tmp/drain")) {
       sendError(res, 503, "Server is draining for deployment.");

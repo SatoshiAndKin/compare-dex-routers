@@ -187,7 +187,7 @@ git subtree push --prefix traefik-proxy git@github.com:SatoshiAndKin/traefik-pro
 
 ### Reliability and browser validation
 
-WalletConnect and Farcaster use pinned dependencies and lazy Vite bundles. Swagger
+WalletConnect uses a pinned dependency and a lazy Vite bundle. Swagger
 uses exact CDN URLs with SHA-384 integrity checks. Run `pnpm run verify:cdn` when
 updating those assets.
 

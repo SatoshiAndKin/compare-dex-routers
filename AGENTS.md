@@ -85,7 +85,6 @@ Svelte 5 SPA built with Vite. Source files in `packages/frontend/src/`:
 | `GET`  | `/errors`                     | Error insights dashboard                             |
 | `GET`  | `/docs`                       | API documentation UI                                 |
 | `GET`  | `/openapi.json`               | OpenAPI specification (also at `/openapi.yaml`)      |
-| `GET`  | `/.well-known/farcaster.json` | Farcaster frame manifest                             |
 
 ## Environment variables
 

@@ -72,14 +72,18 @@ describe("HTTP boundaries", () => {
     });
     expect(response.headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
   });
-  it("retains safe request identifiers in errors", async () => {
-    const response = await request("/missing", { headers: { "x-request-id": "client-123" } });
-    expect(JSON.parse(response.body)).toEqual({
-      error: "Not found",
-      code: "NOT_FOUND",
-      requestId: "client-123",
-    });
-  });
+  it.each(["/missing", "/.well-known/farcaster.json"])(
+    "returns not found with safe request identifiers for %s",
+    async (path) => {
+      const response = await request(path, { headers: { "x-request-id": "client-123" } });
+      expect(response.status).toBe(404);
+      expect(JSON.parse(response.body)).toEqual({
+        error: "Not found",
+        code: "NOT_FOUND",
+        requestId: "client-123",
+      });
+    }
+  );
   it("returns 204 for OPTIONS", async () => {
     expect((await request("/quote", { method: "OPTIONS" })).status).toBe(204);
   });
@@ -98,12 +102,6 @@ describe("HTTP boundaries", () => {
     const response = await request("/docs");
     expect(response.headers["content-type"]).toContain("text/html");
     expect(response.body).toContain('url: "./openapi.json"');
-  });
-  it("builds the Farcaster manifest from the request origin", async () => {
-    const response = await request("/.well-known/farcaster.json", {
-      headers: { host: "dex.example", "x-forwarded-proto": "https" },
-    });
-    expect(JSON.parse(response.body).miniapp.homeUrl).toBe("https://dex.example/?miniApp=true");
   });
   it("serves metrics only when enabled", async () => {
     expect((await request("/metrics")).body).toContain("spandex_requests_total");
