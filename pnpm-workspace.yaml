@@ -31,6 +31,6 @@ overrides:
   # 1.16.1 fixes both credential-header leaks in the 1.16.0 release.
   "follow-redirects@1.16.0": "1.16.1"
   # Vite 8.3.3 fixes the launch-editor command handling advisories.
-  "vite@8.3.2": "8.3.3"
+  "vite@8.3.2": "8.3.4"
   # Use patched Zod for API schemas and wallet SDK validation (GHSA-mrhx-c7xc-m3w5).
   "zod@<4.6.6": "4.6.7"

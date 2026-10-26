@@ -116,6 +116,19 @@ describe("credential removal before reporting", () => {
       request: { headers: { authorization: "hidden" }, url: message },
     };
     safe(options.beforeSend(event));
-    safe(options.beforeSendTransaction(event));
+    const span = {
+      name: message,
+      attributes: { "http.url": message, authorization: "hidden", txHash: HASH },
+    };
+    expect(safe(options.beforeSendSpan(span))).toContain(HASH);
+    expect(JSON.stringify(options.beforeSendSpan(span))).not.toContain("hidden");
+    expect(options.dataCollection).toMatchObject({
+      userInfo: false,
+      cookies: false,
+      httpBodies: [],
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      graphQL: { document: false, variables: false },
+    });
   });
 });
