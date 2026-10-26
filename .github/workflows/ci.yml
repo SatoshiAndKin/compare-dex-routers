@@ -19,6 +19,10 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: pnpm install --frozen-lockfile
+      - name: Verify generated API types
+        run: |
+          pnpm run generate:types
+          git diff --exit-code -- packages/frontend/src/generated/api-types.d.ts
       - run: pnpm run typecheck
       - run: pnpm run lint
       - run: pnpm run format:check
