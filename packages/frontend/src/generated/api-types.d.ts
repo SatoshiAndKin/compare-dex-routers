@@ -172,26 +172,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/.well-known/farcaster.json": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Farcaster manifest
-     * @description Returns the Farcaster mini-app manifest for frame integration.
-     */
-    get: operations["getFarcasterManifest"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -378,20 +358,6 @@ export interface components {
       from: string;
       /** @description Default output token address */
       to: string;
-    };
-    FarcasterManifest: {
-      accountAssociation: {
-        header: string;
-        payload: string;
-        signature: string;
-      };
-      miniapp: {
-        version: string;
-        name: string;
-        homeUrl: string;
-        iconUrl: string;
-        primaryCategory: string;
-      };
     };
   };
   responses: never;
@@ -736,35 +702,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Config"];
-        };
-      };
-      /** @description Server is shutting down; retry on an available instance */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  getFarcasterManifest: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Farcaster manifest */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["FarcasterManifest"];
         };
       };
       /** @description Server is shutting down; retry on an available instance */
