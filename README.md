@@ -135,7 +135,11 @@ Copy `env.example` to `.env` and fill in your keys.
 
 The app pins `SatoshiAndKin/spandex` at `f63d05f41c22825f6a684e48451cfff37b54b1ae`, rebased on upstream `9bdca4c76bd58b9e25607607f46c59be0829e700`, with SDK-owned Node workers and browser/ESM/CommonJS entry points. The package builds its ESM, CommonJS, and type exports with `prepack`. `pnpm-workspace.yaml` permits the build only for this exact Git package. Update the pin and build allowlist together. No local module aliases or dependency export overrides are required.
 
-The workspace retains its seven-day release age policy and strict build allowlist. `js-yaml@4.3.1` is overridden to the patched 4.3.2 because a transitive generator dependency pins the affected version. TypeScript stays within the supported ranges of the Svelte, ESLint, and OpenAPI tools.
+The workspace retains its seven-day release age policy and strict build allowlist. `js-yaml@4.3.1` is overridden to the patched 4.3.2 because a transitive generator dependency pins the affected version.
+
+TypeScript 7.0.2 provides the `tsc` command for API, frontend TypeScript, and tooling checks. The official `@typescript/typescript6` package supplies the JavaScript compiler API that Svelte and ESLint still require. Svelte templates retain the full `svelte-check` diagnostics. Its native `--tsgo` mode currently reports errors from deleted components ([upstream issue #3157](https://github.com/sveltejs/language-tools/issues/3157)).
+
+The OpenAPI generator has its own workspace at `tools/openapi`, with the TypeScript 5 API required by its peer contract. Run `pnpm run generate:types` from the root to regenerate and format the client types. CI checks that this command reproduces the committed output.
 
 ## Development
 
@@ -187,7 +191,7 @@ git subtree push --prefix traefik-proxy git@github.com:SatoshiAndKin/traefik-pro
 
 ### Reliability and browser validation
 
-WalletConnect and Farcaster use pinned dependencies and lazy Vite bundles. Swagger
+WalletConnect uses a pinned dependency and a lazy Vite bundle. Swagger
 uses exact CDN URLs with SHA-384 integrity checks. Run `pnpm run verify:cdn` when
 updating those assets.
 

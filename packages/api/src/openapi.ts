@@ -202,27 +202,6 @@ const ConfigSchema = z
   })
   .openapi("Config");
 
-const FarcasterAccountAssociationSchema = z.object({
-  header: z.string(),
-  payload: z.string(),
-  signature: z.string(),
-});
-
-const FarcasterMiniappSchema = z.object({
-  version: z.string(),
-  name: z.string(),
-  homeUrl: z.string(),
-  iconUrl: z.string(),
-  primaryCategory: z.string(),
-});
-
-const FarcasterManifestSchema = z
-  .object({
-    accountAssociation: FarcasterAccountAssociationSchema,
-    miniapp: FarcasterMiniappSchema,
-  })
-  .openapi("FarcasterManifest");
-
 // --- Helper for JSON responses ---
 
 function jsonContent(schema: z.ZodTypeAny, description: string) {
@@ -364,17 +343,6 @@ registry.registerPath({
   description: "Returns default token pairs per chain and wallet connect project ID.",
   responses: {
     200: jsonContent(ConfigSchema, "Server configuration"),
-  },
-});
-
-registry.registerPath({
-  method: "get",
-  path: "/.well-known/farcaster.json",
-  operationId: "getFarcasterManifest",
-  summary: "Farcaster manifest",
-  description: "Returns the Farcaster mini-app manifest for frame integration.",
-  responses: {
-    200: jsonContent(FarcasterManifestSchema, "Farcaster manifest"),
   },
 });
 

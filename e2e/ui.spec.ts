@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { FROM, TO } from "../packages/frontend/src/__tests__/quote-fixture.js";
+import { FROM, TO, SENDER } from "../packages/frontend/src/__tests__/quote-fixture.js";
 
 import { fixture } from "./fixtures.js";
+import { installWallet } from "./wallet.js";
 
 for (const theme of ["light", "dark"] as const) {
   test(`retro trade form and settings work in ${theme} mode`, async ({ page }, info) => {
@@ -35,23 +36,35 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
-test("Farcaster loads its local bundle and explains missing host context", async ({ page }) => {
-  await fixture(page);
-  const remoteScripts: string[] = [];
-  page.on("request", (request) => {
-    if (request.resourceType() === "script" && !request.url().startsWith("http://127.0.0.1:5180/"))
-      remoteScripts.push(request.url());
+for (const injected of [false, true]) {
+  test(`embedded wallet menu supports regular wallets (injected: ${injected})`, async ({
+    page,
+  }) => {
+    await fixture(page);
+    if (injected) await installWallet(page, 1, SENDER, async () => "0x0");
+    await page.route("**/test-host", (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: '<iframe title="Trade app" src="/"></iframe>',
+      })
+    );
+    await page.goto("/test-host");
+    const app = page.frameLocator('iframe[title="Trade app"]');
+    await app.getByRole("button", { name: /Connect Wallet/i, exact: true }).click();
+    const providers = app.getByRole("list", { name: "Available wallet providers" });
+    await expect(providers.getByRole("button")).toHaveCount(injected ? 1 : 0);
+    if (injected) {
+      await providers.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+      await expect(app.getByTitle("Connected wallet address")).toHaveText(SENDER);
+    } else {
+      await expect(
+        providers.getByText(
+          "No wallets detected. Install a browser wallet extension to get started."
+        )
+      ).toBeVisible();
+    }
   });
-  await page.route("**/test-host", (route) =>
-    route.fulfill({ contentType: "text/html", body: '<iframe title="Mini App" src="/"></iframe>' })
-  );
-  await page.goto("/test-host");
-  const app = page.frameLocator('iframe[title="Mini App"]');
-  await app.getByRole("button", { name: /Connect Wallet/i, exact: true }).click();
-  await app.getByRole("button", { name: /Connect with Farcaster/ }).click();
-  await expect(app.getByText(/Open this app in Farcaster to use its wallet/)).toBeVisible();
-  expect(remoteScripts).toEqual([]);
-});
+}
 
 test("native ETH precedes WETH and survives missing token lists", async ({ page }) => {
   await fixture(page);

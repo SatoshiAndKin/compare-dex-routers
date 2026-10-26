@@ -1611,7 +1611,7 @@ button:focus {
   /* Note: .form-row-fixed does NOT collapse - stays horizontal at all widths */
 }
 
-/* Farcaster miniapp viewport (424x695px) */
+/* Narrow phone viewports */
 @media (max-width: 424px) {
   /* Ensure settings modal fits within narrow viewport */
   .modal {

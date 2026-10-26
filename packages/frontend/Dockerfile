@@ -9,6 +9,7 @@ WORKDIR /app
 
 # Copy workspace config
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY tools/openapi/package.json ./tools/openapi/
 COPY packages/frontend/package.json ./packages/frontend/
 # Copy API package.json (required for workspace lockfile validation)
 COPY packages/api/package.json ./packages/api/
@@ -29,7 +30,7 @@ COPY packages/frontend/ ./packages/frontend/
 RUN pnpm --filter @compare-dex/frontend run build
 
 # Stage 2: Serve
-FROM nginx:1.30.5-alpine
+FROM nginx:1.30.6-alpine
 
 # Copy built files
 COPY --from=builder /app/packages/frontend/dist/ /usr/share/nginx/html/

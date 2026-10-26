@@ -5,9 +5,7 @@
    *
    * Discovers injected wallets via EIP-6963 announceProvider events.
    * Loads the pinned WalletConnect bundle on demand.
-   * Detects frame context and loads the pinned Farcaster Mini App SDK on demand.
    */
-  import { onMount } from "svelte";
   import { walletStore, type EIP6963ProviderDetail } from "../stores/walletStore.svelte.js";
 
   interface Props {
@@ -20,13 +18,6 @@
   }
 
   const { projectId, isOpen, onClose }: Props = $props();
-
-  // Farcaster frame detection: if window.parent !== window, we're inside a frame
-  let isFarcasterFrame = $state(false);
-
-  onMount(() => {
-    isFarcasterFrame = typeof window !== "undefined" && window.parent !== window;
-  });
 
   // Re-request providers each time menu opens (in case new wallets were installed)
   $effect(() => {
@@ -47,11 +38,6 @@
   async function handleConnectWalletConnect(): Promise<void> {
     onClose();
     await walletStore.connectWalletConnect(projectId);
-  }
-
-  async function handleConnectFarcaster(): Promise<void> {
-    onClose();
-    await walletStore.connectFarcaster();
   }
 
   // ---------------------------------------------------------------------------
@@ -130,19 +116,7 @@
           </button>
         {/if}
 
-        {#if isFarcasterFrame}
-          <button
-            type="button"
-            class="provider-option"
-            onclick={() => void handleConnectFarcaster()}
-            aria-label="Connect with Farcaster"
-          >
-            <span class="provider-icon-placeholder" aria-hidden="true">🟣</span>
-            <span class="provider-name">Farcaster</span>
-          </button>
-        {/if}
-
-        {#if walletStore.discoveredProviders.length === 0 && !projectId && !isFarcasterFrame}
+        {#if walletStore.discoveredProviders.length === 0 && !projectId}
           <p class="no-wallet-msg">
             No wallets detected. Install a browser wallet extension to get started.
           </p>

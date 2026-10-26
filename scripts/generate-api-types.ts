@@ -14,7 +14,16 @@ const typesPath = resolve(__dirname, "../packages/frontend/src/generated/api-typ
 writeFileSync(specPath, JSON.stringify(openapiDocument, null, 2));
 console.log(`Wrote OpenAPI spec to ${specPath}`);
 
-execFileSync("pnpm", ["exec", "openapi-typescript", specPath, "-o", typesPath], {
+execFileSync(
+  "pnpm",
+  ["--filter", "@compare-dex/openapi", "run", "generate", specPath, "-o", typesPath],
+  {
+    cwd: resolve(__dirname, ".."),
+    stdio: "inherit",
+  }
+);
+
+execFileSync("pnpm", ["exec", "prettier", "--write", typesPath], {
   cwd: resolve(__dirname, ".."),
   stdio: "inherit",
 });

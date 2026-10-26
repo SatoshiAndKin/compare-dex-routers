@@ -1,6 +1,6 @@
 /**
  * Wallet store managing wallet connection state.
- * Handles EIP-6963 provider discovery, lazy bundled WalletConnect, and the Farcaster Mini App SDK.
+ * Handles EIP-6963 provider discovery and lazy bundled WalletConnect.
  * Ported from src/client/wallet.ts for Svelte 5.
  */
 
@@ -365,7 +365,6 @@ class WalletStore {
     if (this.isConnected || this.isConnecting) return;
     if (this.preferredWallet === "walletconnect" && projectId)
       await this.connectWalletConnect(projectId, true);
-    else if (this.preferredWallet === "farcaster") await this.connectFarcaster(true);
   }
 
   /** Load the pinned WalletConnect bundle only when requested. */
@@ -427,41 +426,6 @@ class WalletStore {
         const msg = err instanceof Error ? err.message : String(err);
         this.setMessage("WalletConnect failed: " + msg, true);
       }
-    } finally {
-      if (!silent && sequence === this.connectionSequence) this.isConnecting = false;
-    }
-  }
-
-  /** Load the pinned Farcaster Mini App SDK only when requested. */
-  async connectFarcaster(silent = false): Promise<void> {
-    const sequence = silent ? this.connectionSequence : ++this.connectionSequence;
-    if (!silent) {
-      this.isConnecting = true;
-      this.setMessage("");
-    }
-
-    try {
-      const { sdk } = await import("@farcaster/miniapp-sdk");
-      if (!(await sdk.isInMiniApp()))
-        throw new Error("Open this app in Farcaster to use its wallet.");
-      const ethProvider = await sdk.wallet.getEthereumProvider();
-      if (!ethProvider) throw new Error("No Farcaster Ethereum wallet is available");
-
-      if (sequence !== this.connectionSequence) return;
-      await this.connect(
-        {
-          info: { uuid: "farcaster", name: "Farcaster", rdns: "farcaster" },
-          provider: ethProvider,
-        },
-        silent
-      );
-
-      // Signal to Farcaster frame that the app is ready
-      await sdk.actions.ready();
-    } catch (err: unknown) {
-      if (silent || sequence !== this.connectionSequence) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      this.setMessage("Farcaster connection failed: " + msg, true);
     } finally {
       if (!silent && sequence === this.connectionSequence) this.isConnecting = false;
     }
