@@ -15,7 +15,7 @@ committed SHA-384 hashes. It checks both CSS and JavaScript.
 Install the browsers once with `pnpm exec playwright install chromium webkit`.
 Run `pnpm run test:e2e`. The command builds the frontend, starts isolated API and
 preview listeners at ports 3120 and 5180, and tests desktop Chromium and mobile WebKit.
-It checks both themes, settings and keyboard focus, Farcaster SDK loading, wallet
+It checks both themes, settings and keyboard focus, wallet selection, wallet
 rejection, account/chain changes, failed receipts, Swagger base paths, and actual
 browser rejection of altered CDN JavaScript. Screenshots and traces go to
 `test-results/`; the HTML report goes to `playwright-report/`.
@@ -64,17 +64,6 @@ health, restart counts, CPU caps, and nginx's stop signal.
 ## Dependency audit limits
 
 `pnpm audit --audit-level=high` gates CI. Axios uses the patched 1.18.0 release.
-Farcaster's Solana dependency still brings Jayson 4.3.0 with two moderate advisories:
-
-- [uuid buffer bounds](https://github.com/advisories/GHSA-w5hq-g745-h8pq): the affected
-  functions are v3/v5/v6. Jayson's browser client calls v4.
-- [stream-json nested filters](https://github.com/advisories/GHSA-528h-pc64-c93x):
-  Jayson's Node stream parser is outside the browser entry used here. The API
-  production image does not install the Farcaster SDK.
-
-The current parent releases retain these versions. Track their upstream updates;
-do not force a major stream-json replacement with a different module contract.
-
 The 2026-09-12 local run passed all four fork trades at Ethereum block 25963441
 and Base block 51226066. See [fork evidence](../fork-validation.json) for the local
 transaction hashes and measured balances. These hashes exist only on the disposable

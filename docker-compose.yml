@@ -44,10 +44,6 @@ services:
       - traefik.http.routers.cdr-api.middlewares=cdr-api-strip
       - traefik.http.services.cdr-api.loadbalancer.server.port=3100
       - traefik.http.routers.cdr-api.priority=10
-      - traefik.http.routers.cdr-manifest.rule=Host(`${VIRTUAL_HOST:-localhost}`) && Path(`/.well-known/farcaster.json`)
-      - traefik.http.routers.cdr-manifest.entrypoints=web
-      - traefik.http.routers.cdr-manifest.service=cdr-api
-      - traefik.http.routers.cdr-manifest.priority=10
     deploy:
       resources:
         limits:

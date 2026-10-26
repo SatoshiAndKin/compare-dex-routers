@@ -3,11 +3,9 @@
 ## Remaining security work
 
 - [ ] Add API rate limits for quote and metadata requests.
-- [ ] Define security headers and a CSP that supports wallet and Mini App integrations.
+- [ ] Define security headers and a CSP that supports wallet integrations.
 - [ ] Protect diagnostics (`/analytics`, `/errors`, and `/metrics`) and document their access policy.
 - [ ] Review CORS policy for public API and diagnostic endpoints separately.
-
-- [ ] Update Farcaster's transitive Jayson dependencies when upstream removes the two moderate advisories described in `docs/runbooks/testing.md`.
 
 ## Remaining reliability work
 

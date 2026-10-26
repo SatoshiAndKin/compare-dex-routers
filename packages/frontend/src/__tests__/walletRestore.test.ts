@@ -2,23 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { walletStore, type EIP6963ProviderDetail } from "../lib/stores/walletStore.svelte.js";
 import { deferred, SENDER } from "./quote-fixture.js";
 
-const connectors = vi.hoisted(() => ({
-  init: vi.fn(),
-  mini: vi.fn(),
-  provider: vi.fn(),
-  ready: vi.fn(),
-}));
+const connectors = vi.hoisted(() => ({ init: vi.fn() }));
 vi.mock("@walletconnect/ethereum-provider", () => ({
   EthereumProvider: { init: connectors.init },
 }));
-vi.mock("@farcaster/miniapp-sdk", () => ({
-  sdk: {
-    isInMiniApp: connectors.mini,
-    wallet: { getEthereumProvider: connectors.provider },
-    actions: { ready: connectors.ready },
-  },
-}));
-
 function wallet(rdns = "test.wallet", accounts: Promise<string[]> = Promise.resolve([SENDER])) {
   return {
     info: { uuid: crypto.randomUUID(), name: rdns, rdns },
@@ -171,16 +158,16 @@ describe("silent wallet restoration", () => {
     }
   );
 
-  it("silently restores the previously chosen Farcaster wallet", async () => {
-    localStorage.setItem("compare-dex-wallet", "farcaster");
+  it("allows a regular wallet selection after a stored connector is unavailable", async () => {
+    localStorage.setItem("compare-dex-wallet", "unavailable.wallet");
     walletStore.startDiscovery();
-    const detail = wallet("farcaster");
-    connectors.mini.mockResolvedValue(true);
-    connectors.provider.mockResolvedValue(detail.provider);
-    await walletStore.restoreSession("");
+    await walletStore.restoreSession("project");
+    expect(connectors.init).not.toHaveBeenCalled();
+    const detail = wallet();
+    announce(detail);
+    expect(detail.provider.request).not.toHaveBeenCalled();
+    await walletStore.connect(detail);
     expect(walletStore.address).toBe(SENDER);
-    expect(detail.provider.request.mock.calls.map(([args]) => args.method)).not.toContain(
-      "eth_requestAccounts"
-    );
+    expect(localStorage.getItem("compare-dex-wallet")).toBe("test.wallet");
   });
 });

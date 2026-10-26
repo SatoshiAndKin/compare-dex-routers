@@ -84,7 +84,6 @@ alive.
 | `GET`  | `/errors`                     | Error pattern insights                             |
 | `GET`  | `/docs`                       | API documentation UI (Swagger)                     |
 | `GET`  | `/openapi.json`               | OpenAPI spec (also at `/openapi.yaml`)             |
-| `GET`  | `/.well-known/farcaster.json` | Farcaster frame manifest                           |
 
 ### USD display values
 
@@ -179,7 +178,6 @@ Three containers behind Traefik, defined across two compose files:
 Traefik routing:
 
 - `/api` and `/api/…` match at priority 10. The middleware removes `/api`.
-- `/.well-known/farcaster.json` routes directly to the API for the standard manifest path.
 - The frontend serves other paths at priority 1.
 
 Both app Compose files forward all seven `RPC_URL_<id>` overrides. The API listens on port 3100 inside the container. The services share the external `traefik-proxy` network.
@@ -253,11 +251,11 @@ by its stable reverse-domain identifier, rather than its per-page discovery UUID
 Explicit Disconnect persists across reloads. Locked or revoked wallets remain
 disconnected, and late restoration results cannot override a newer connection or
 disconnect. A remembered WalletConnect session restores without opening its QR
-modal; the previously selected Farcaster wallet uses the same silent account read.
+modal.
 
-Wallet SDKs are pinned, lazy-loaded Vite dependencies. Farcaster uses the Mini App
-SDK's EIP-1193 provider. Swagger's CDN versions and hashes live in `docs-assets.ts`;
-its OpenAPI server URL is relative so direct and `/api`-prefixed deployments work.
+WalletConnect uses a pinned, lazy-loaded Vite dependency. Swagger's CDN versions
+and hashes live in `docs-assets.ts`; its OpenAPI server URL is relative so direct
+and `/api`-prefixed deployments work.
 The space theme uses local SVG/CSS assets and the existing light/dark preference.
 
 Native assets come from `/config` independently of token lists. Native balances use `eth_getBalance` and need no approvals. Raw integer balances and decimals drive exact sell-balance entry. Native entry first obtains a route estimate, reserves gas with the 20% margin and fresh network fees, and fails closed when fees are unavailable. Balance response sequences discard outdated reads.
