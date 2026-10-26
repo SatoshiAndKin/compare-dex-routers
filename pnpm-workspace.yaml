@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "tools/openapi"
 
 # Supply chain security: wait 7 days (10080 min) before resolving
 # newly published versions. 1440 min = 1 day (pnpm default).

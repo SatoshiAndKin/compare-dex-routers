@@ -9,6 +9,7 @@ WORKDIR /app
 
 # Copy workspace config
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY tools/openapi/package.json ./tools/openapi/
 COPY packages/frontend/package.json ./packages/frontend/
 # Copy API package.json (required for workspace lockfile validation)
 COPY packages/api/package.json ./packages/api/
