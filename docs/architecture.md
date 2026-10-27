@@ -186,7 +186,7 @@ Both app Compose files forward all seven `RPC_URL_<id>` overrides. The API liste
 
 `@spandex/core` owns all provider adapters, including the maintained Curve fork. Curve initializes its SDK per chain and RPC URL, shares pending initialization, and retries failed initialization. It converts basis points to the SDK's percentage unit before building calldata.
 
-`quotes.ts` ranks every successful provider together with exact integer arithmetic and configuration-order ties. It uses canonical wrapped native tokens for conversion rates. Missing gas or rate data causes an explicit raw-amount comparison. The quote endpoint uses `quote-response.ts`; OpenAPI and the generated frontend client share that contract.
+`quotes.ts` ranks every successful provider together with exact integer arithmetic and configuration-order ties. It starts trade quotes and native-token valuation concurrently after sharing token metadata. It uses canonical wrapped native tokens for conversion rates. Missing gas or rate data causes an explicit raw-amount comparison. The quote endpoint uses `quote-response.ts`; OpenAPI and the generated frontend client share that contract.
 
 The frontend chooses whether to include `sender` using a matching raw sell-token
 balance. Exact Input requests omit it when the balance is insufficient or unknown.
