@@ -245,18 +245,20 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
   const native = getNativeAsset(params.chainId);
   const targetOut = params.mode === "targetOut";
   // Trade quotes and their reference price do not depend on each other's results.
-  const [{ results, failures, account }, usdConversion, gas, rate] = await Promise.all([
+  const valuation = config.aggregators.length
+    ? nativeRate(
+        params.chainId,
+        targetOut ? params.from : params.to,
+        targetOut ? inputDecimals : outputDecimals
+      )
+    : Promise.resolve(null);
+  const [{ results, failures, account }, usdConversion, gas] = await Promise.all([
     requestQuotes(params, { inputDecimals, outputDecimals, fromSymbol, toSymbol }),
     getNativeUsdConversion(params.chainId),
     getGasPriceWithCache(params.chainId, getClient(params.chainId)),
-    config.aggregators.length
-      ? nativeRate(
-          params.chainId,
-          targetOut ? params.from : params.to,
-          targetOut ? inputDecimals : outputDecimals
-        )
-      : null,
   ]);
+  // Failed trades have no amounts to value. Do not delay their response for a reference quote.
+  const rate = results.length ? await valuation : null;
   const values = new Map<QuoteResult, bigint>();
   for (const quote of results) {
     quote.gas_price_gwei = gas.gasPriceGwei;
