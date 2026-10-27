@@ -322,6 +322,44 @@ describe("unified quote contract", () => {
       });
     }
   );
+  it.each(["exactIn", "targetOut"])(
+    "returns failed %s trades without waiting for ETH valuation",
+    async (mode) => {
+      const valuation = Promise.withResolvers<ReturnType<typeof quote>[]>();
+      mocks.rate.mockReturnValue(valuation.promise);
+      mocks.quotes.mockResolvedValue([
+        { success: false, provider: "curve", error: new Error("No route") },
+      ]);
+      const { quoteRoutes } = await import("../quotes.js");
+      let settled = false;
+      const response = quoteRoutes({
+        chainId: 1,
+        from: FROM,
+        to: TO,
+        amount: "1",
+        slippageBps: 50,
+        mode: mode as "exactIn" | "targetOut",
+      }).then((result) => {
+        settled = true;
+        return result;
+      });
+      try {
+        await vi.waitFor(() => {
+          expect(mocks.rate).toHaveBeenCalledTimes(1);
+          expect(settled).toBe(true);
+        });
+        expect(await response).toMatchObject({
+          quotes: [],
+          failures: [{ provider: "curve", stage: "quote" }],
+          recommendation: null,
+          recommendation_basis: "none",
+        });
+      } finally {
+        valuation.resolve([]);
+        await response;
+      }
+    }
+  );
   it("retains trade quotes when concurrent ETH valuation fails", async () => {
     mocks.rate.mockRejectedValue(new Error("Reference price unavailable"));
     const { body } = await call({ to: TO });
