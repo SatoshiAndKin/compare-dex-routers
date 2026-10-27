@@ -228,8 +228,8 @@ importers:
         specifier: ^11.8.0
         version: 11.8.0
       '@spandex/core':
-        specifier: github:SatoshiAndKin/spandex#f63d05f41c22825f6a684e48451cfff37b54b1ae&path:/packages/core
-        version: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/f63d05f41c22825f6a684e48451cfff37b54b1ae#path:/packages/core(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(viem@2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7))
+        specifier: github:SatoshiAndKin/spandex#0cc05673f102f77583e99cba024aa240f387d436&path:/packages/core
+        version: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/0cc05673f102f77583e99cba024aa240f387d436#path:/packages/core(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(viem@2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7))
       openapi3-ts:
         specifier: ^4.6.2
         version: 4.6.2
@@ -440,8 +440,8 @@ packages:
     resolution: {integrity: sha512-OoKoR0f76dCY666JlcbhmVTs2drYj1GUXZTYTcbUgJjh9Nv41aFfZ21bPQTERm5+L5cBDo466NltB2lplS5GBw==}
     engines: {node: '>=20.19.0'}
 
-  '@curvefi/api@2.69.18':
-    resolution: {integrity: sha512-d8chqQAVaf/z25VUlV64vEh00SlGPjXn//gbcYSXvuC2ZdiD59R9shetDvteIzhw/VdDXGMmRJFVXQI/5dwfHA==}
+  '@curvefi/api@2.71.2':
+    resolution: {integrity: sha512-eyddwxhaGdCblbwSajUNiaFD5tBYbkdJim9+TXpnbacBFDMNnw19ZRbFQmuC1KcdqKSlHUrlZWmP4cRGVbCNlQ==}
     engines: {node: '24'}
 
   '@curvefi/ethcall@6.0.20':
@@ -1708,8 +1708,8 @@ packages:
       typescript:
         optional: true
 
-  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/f63d05f41c22825f6a684e48451cfff37b54b1ae#path:/packages/core':
-    resolution: {gitHosted: true, integrity: sha512-Cjh7vAU3sly/wvs3grH/wD3Ktm/0jAhdkeWVMpVO6EiDMf8nXhPsr/OguXZsfAtkGBDaRf1ta0Bz7ilGot9A4w==, path: /packages/core, tarball: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/f63d05f41c22825f6a684e48451cfff37b54b1ae}
+  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/0cc05673f102f77583e99cba024aa240f387d436#path:/packages/core':
+    resolution: {gitHosted: true, integrity: sha512-SCOak9x9HeqRQUR1GoufljymS3NhvZuRqCuqeDlFWgzwVHPQwHEnOrygGEj7heZC7ghalFrJclUnrGgAsl//2Q==, path: /packages/core, tarball: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/0cc05673f102f77583e99cba024aa240f387d436}
     version: 0.11.1
     peerDependencies:
       typescript: '>=5.0.4'
@@ -4119,7 +4119,7 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.2': {}
 
-  '@curvefi/api@2.69.18(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
+  '@curvefi/api@2.71.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
     dependencies:
       '@curvefi/ethcall': 6.0.20(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       bignumber.js: 10.0.2
@@ -5477,9 +5477,9 @@ snapshots:
       - fastestsmallesttextencoderdecoder
     optional: true
 
-  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/f63d05f41c22825f6a684e48451cfff37b54b1ae#path:/packages/core(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(viem@2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7))':
+  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/0cc05673f102f77583e99cba024aa240f387d436#path:/packages/core(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(viem@2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7))':
     dependencies:
-      '@curvefi/api': 2.69.18(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@curvefi/api': 2.71.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       viem: 2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7)
     optionalDependencies:
       typescript: '@typescript/typescript6@6.0.2'
