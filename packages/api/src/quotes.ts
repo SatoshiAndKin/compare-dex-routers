@@ -39,13 +39,15 @@ function usable(quote: Quote, minimumOutput: bigint): boolean {
   return quote.success && quote.inputAmount > 0n && quote.outputAmount >= minimumOutput;
 }
 
-async function requestQuotes(params: QuoteParams) {
-  const [inputDecimals, outputDecimals, fromSymbol, toSymbol] = await Promise.all([
-    getTokenDecimals(params.chainId, params.from),
-    getTokenDecimals(params.chainId, params.to),
-    getTokenSymbol(params.chainId, params.from),
-    getTokenSymbol(params.chainId, params.to),
-  ]);
+type TokenMetadata = {
+  inputDecimals: number;
+  outputDecimals: number;
+  fromSymbol: string;
+  toSymbol: string;
+};
+
+async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
+  const { inputDecimals, outputDecimals, fromSymbol, toSymbol } = metadata;
   const common = {
     chainId: params.chainId,
     inputToken: params.from as Address,
@@ -190,7 +192,7 @@ async function requestQuotes(params: QuoteParams) {
     });
     logger.debug({ provider: quote.provider, minimumOutput, error }, "Provider quote failed");
   }
-  return { results, failures, inputDecimals, outputDecimals, account: swap.swapperAccount };
+  return { results, failures, account: swap.swapperAccount };
 }
 
 async function nativeRate(chainId: number, token: string, decimals: number) {
@@ -234,13 +236,20 @@ async function nativeRate(chainId: number, token: string, decimals: number) {
 }
 
 export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
-  const [{ results, failures, inputDecimals, outputDecimals, account }, usdConversion] =
-    await Promise.all([requestQuotes(params), getNativeUsdConversion(params.chainId)]);
+  const [inputDecimals, outputDecimals, fromSymbol, toSymbol] = await Promise.all([
+    getTokenDecimals(params.chainId, params.from),
+    getTokenDecimals(params.chainId, params.to),
+    getTokenSymbol(params.chainId, params.from),
+    getTokenSymbol(params.chainId, params.to),
+  ]);
   const native = getNativeAsset(params.chainId);
   const targetOut = params.mode === "targetOut";
-  const [gas, rate] = await Promise.all([
+  // Trade quotes and their reference price do not depend on each other's results.
+  const [{ results, failures, account }, usdConversion, gas, rate] = await Promise.all([
+    requestQuotes(params, { inputDecimals, outputDecimals, fromSymbol, toSymbol }),
+    getNativeUsdConversion(params.chainId),
     getGasPriceWithCache(params.chainId, getClient(params.chainId)),
-    results.length
+    config.aggregators.length
       ? nativeRate(
           params.chainId,
           targetOut ? params.from : params.to,

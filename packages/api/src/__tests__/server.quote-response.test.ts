@@ -261,6 +261,78 @@ describe("unified quote contract", () => {
     expect(mocks.simulate).toHaveBeenCalledTimes(2);
     expect(mocks.balance).not.toHaveBeenCalled();
   });
+  it.each(["exactIn", "targetOut"])(
+    "runs %s trade quotes and ETH valuation concurrently and waits for both",
+    async (mode) => {
+      const trade = Promise.withResolvers<ReturnType<typeof quote>[]>();
+      const valuation = Promise.withResolvers<ReturnType<typeof quote>[]>();
+      mocks.quotes.mockReturnValue(trade.promise);
+      mocks.rate.mockReturnValue(valuation.promise);
+      const { quoteRoutes } = await import("../quotes.js");
+      let settled = false;
+      const response = quoteRoutes({
+        chainId: 1,
+        from: FROM,
+        to: TO,
+        amount: "1",
+        slippageBps: 50,
+        sender: SENDER,
+        mode: mode as "exactIn" | "targetOut",
+      }).then((result) => {
+        settled = true;
+        return result;
+      });
+      try {
+        await vi.waitFor(() => {
+          expect(mocks.quotes).toHaveBeenCalledTimes(1);
+          expect(mocks.rate).toHaveBeenCalledTimes(1);
+        });
+        expect(mocks.rate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            swap: expect.objectContaining({
+              inputToken: mode === "targetOut" ? FROM : TO,
+              outputToken: WETH,
+              inputAmount: mode === "targetOut" ? 1000000n : 10n ** 18n,
+              swapperAccount: PREVIEW,
+            }),
+          })
+        );
+        expect(settled).toBe(false);
+        // Exercise both completion orders without timing-based latency assertions.
+        if (mode === "exactIn") {
+          trade.resolve([quote()]);
+          await vi.waitFor(() => expect(mocks.simulate).toHaveBeenCalledTimes(1));
+        } else {
+          valuation.resolve([quote("curve", 1000000n, 500000000000000n)]);
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        expect(settled).toBe(false);
+      } finally {
+        trade.resolve([quote()]);
+        valuation.resolve([
+          quote("curve", mode === "targetOut" ? 1000000n : 10n ** 18n, 500000000000000n),
+        ]);
+      }
+      const body = await response;
+      expect(body.recommendation_basis).toBe("gas_adjusted");
+      expect(body.quotes[0]).toMatchObject({
+        simulation_status: "succeeded",
+        trade_value_native: "0.0005",
+        net_value_native: mode === "targetOut" ? "0.00056" : "0.00044",
+      });
+    }
+  );
+  it("retains trade quotes when concurrent ETH valuation fails", async () => {
+    mocks.rate.mockRejectedValue(new Error("Reference price unavailable"));
+    const { body } = await call({ to: TO });
+    expect(body.quotes).toHaveLength(2);
+    expect(body.quotes[0]).toMatchObject({
+      simulation_status: "succeeded",
+      trade_value_native: null,
+      net_value_native: null,
+    });
+    expect(body.recommendation_basis).toBe("raw_amount");
+  });
   it("reports nested diagnostic fields through shared credential redaction", async () => {
     vi.stubEnv("RPC_URL_1", "https://rpc.example/private-secret");
     const cause = Object.assign(new Error("https://rpc.example/private-secret"), { code: -32000 });
