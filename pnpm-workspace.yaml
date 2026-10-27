@@ -25,7 +25,7 @@ allowBuilds:
   utf-8-validate: false
   es5-ext: true
   esbuild: true
-  "@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/0cc05673f102f77583e99cba024aa240f387d436#path:/packages/core": true
+  "@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/7ab98c1fc34f51f35c169fc7164e6c675c12c948#path:/packages/core": true
 
 # The OpenAPI generator pins 4.3.1; 4.3.2 fixes GHSA-2883-xcg3-v3hh.
 overrides:
