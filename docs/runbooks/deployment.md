@@ -39,8 +39,8 @@ and flushes telemetry within the 45-second pod termination period. nginx uses SI
 Kubernetes readiness replaces Docker health checks for production routing.
 
 NUC3 remains the private Tailscale TLS entry point. The existing URL and `/api`
-paths stay the same. The ingress Service and application Services use ClusterIP;
-no public Kubernetes listener is installed.
+paths stay the same. Traefik binds only host loopback on NUC3 and Lambo. Application pods use
+the pod network and ClusterIP Services; no public Kubernetes listener is installed.
 
 A failed update restores the previous Helm revision, checks recovery, and reports
 the attempted deployment as failed. The infrastructure controller provides manual
