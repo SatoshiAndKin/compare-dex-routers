@@ -32,9 +32,10 @@ keeps its 2 CPU / 512 MiB cap; the frontend keeps its 0.5 CPU / 128 MiB cap.
 Rolling replacement allows one additional pod and waits for readiness before
 removing an old pod. CPU and memory requests also reserve scheduler capacity.
 
-The API pre-stop hook marks `/tmp/drain` and allows endpoint removal before
-SIGTERM. The existing shutdown handler drains requests, closes connections, and
-flushes telemetry within the 45-second pod termination period. nginx uses SIGQUIT.
+The API pre-stop hook waits five seconds for Kubernetes endpoint removal before
+SIGTERM. It creates no marker in the pod-scoped `/tmp` volume, which survives
+container restarts. The existing shutdown handler drains requests, closes connections,
+and flushes telemetry within the 45-second pod termination period. nginx uses SIGQUIT.
 Kubernetes readiness replaces Docker health checks for production routing.
 
 NUC3 remains the private Tailscale TLS entry point. The existing URL and `/api`
