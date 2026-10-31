@@ -98,10 +98,10 @@ See `env.example`. Configure `RPC_URL_<chainId>` for each used chain, or `ALCHEM
 
 ## Deployment
 
-- Docker Compose with Traefik reverse proxy (`docker-compose.prod.yml`)
+- Production: private K3s Helm release, deployed by the Tank worker
 - API image: `packages/api/Dockerfile`
 - Frontend image: `packages/frontend/Dockerfile` (multi-stage build, nginx)
-- `docker-rollout` for zero-downtime deploys
+- Kubernetes readiness, rolling updates, and graceful termination; Compose remains for local validation and retained rollback configuration
 
 ## Conventions
 

@@ -171,7 +171,7 @@ docker compose down       # to stop
 
 ### Zero-downtime deploys
 
-GitHub Actions builds both production images and queues deployment on Tank after a merge. Automatic merges explicitly dispatch CD after CI succeeds. The Tank worker uses [docker-rollout](https://github.com/Wowu/docker-rollout) with Traefik. See the [production deployment runbook](docs/runbooks/deployment.md) for completion checks and retries.
+GitHub Actions builds both production images and queues deployment on Tank after a merge. Automatic merges explicitly dispatch CD after CI succeeds. The Tank worker verifies commit-specific image digests and deploys the private K3s Helm release. See the [production deployment runbook](docs/runbooks/deployment.md) for completion checks and retries.
 
 ### Subtree Synchronization
 
