@@ -1,54 +1,50 @@
 # Production deployment
 
-GitHub owns the normal deployment trigger. Automatic merges wait for successful
-CI, merge the exact tested revision, then explicitly dispatch the CD workflow.
-Human merges trigger CD through the pull request event. GitHub suppresses merge
-events produced by `GITHUB_TOKEN`, so automatic merges require that explicit
-dispatch.
+GitHub builds and publishes both images before requesting deployment through Tank.
+Each image has a `sha-<full-commit>` tag and an OCI revision label. Tank checks the
+merged commit, resolves both Linux amd64 image digests, and rejects a mismatch
+before changing the private K3s Helm release.
 
-CD builds and pushes both images, then sends the repository, merged commit, and
-`compare-dex-routers` target to Tank's authenticated `/hooks/deploy` endpoint.
-Tank stores the request before returning its receipt ID. Its host worker deploys
-clean fetched main through the managed application script and checks Traefik
-before starting the application rollout.
+The existing authenticated `/hooks/deploy` request keeps its `repository`, `commit`,
+and `targets` fields. GitHub has no Kubernetes administration credentials.
+The private Dockerfiles repository owns Helm configuration, routing, secrets,
+namespace-scoped deployment access, and infrastructure promotion.
 
-A successful GitHub deploy job confirms request storage. To confirm deployment,
-read `/opt/deploy-webhooks/queue/results/<receipt-id>.json` on Tank and check the
-API, frontend, and deployed image revisions. Worker logs are available with
-`sudo journalctl -u deploy-webhooks-worker.service`.
+A successful GitHub deploy job confirms queue storage. Confirm completion through
+Tank's `/opt/deploy-webhooks/queue/results/<receipt-id>.json`, its
+`worker/compare-dex-routers.json` release record, running image revisions, and real
+application checks. Worker logs use `journalctl -u deploy-webhooks-worker.service`.
 
-To request a fresh build and deployment, dispatch CD on main:
+To build and request deployment again, dispatch CD on main:
 
 ```sh
 gh workflow run cd.yml --repo SatoshiAndKin/compare-dex-routers --ref main
 ```
 
-If image builds passed but the worker failed, fix the reported cause and rerun
-the deploy job from that GitHub run. Keep the successful image build jobs.
+Automatic merges explicitly dispatch CD because `GITHUB_TOKEN` suppresses merge
+events. Human merges trigger CD through the pull-request event. Existing checks
+and this trigger behavior remain unchanged.
 
-The private [Dockerfiles controller](https://github.com/SatoshiAndKin/dockerfiles/blob/main/docs/webhooks-cutover.md)
-owns Tank setup, trusted keys, and caller configuration. It sets
-`DEPLOY_WEBHOOK_URL` and `WEBHOOK_SECRET`; the runtime worker has no GitHub admin
-token. Preserve the production `.env` and shared Traefik project.
+## Runtime behavior
 
-## Draining and resource limits
+The API and frontend each have two replicas on separate physical hosts. The API
+keeps its 2 CPU / 512 MiB cap; the frontend keeps its 0.5 CPU / 128 MiB cap.
+Rolling replacement allows one additional pod and waits for readiness before
+removing an old pod. CPU and memory requests also reserve scheduler capacity.
 
-Each API container has a 2 CPU / 512 MiB limit. Each frontend container has a
-0.5 CPU / 128 MiB limit. These are per-container caps; rolling replacement can
-briefly double the container count.
+The API pre-stop hook waits five seconds for Kubernetes endpoint removal before
+SIGTERM. It creates no marker in the pod-scoped `/tmp` volume, which survives
+container restarts. The existing shutdown handler drains requests, closes connections,
+and flushes telemetry within the 45-second pod termination period. nginx uses SIGQUIT.
+Kubernetes readiness replaces Docker health checks for production routing.
 
-The `docker-rollout.pre-stop-hook` label creates `/tmp/drain` and waits 40 seconds.
-The existing 10-second, three-failure health check removes the old container from
-Traefik before Docker sends the stop signal. Rollout reads labels from the old
-container, so the new hook first applies when replacing a container from this release.
+NUC3 remains the private Tailscale TLS entry point. The existing URL and `/api`
+paths stay the same. Traefik binds only host loopback on NUC3 and Lambo. Application pods use
+the pod network and ClusterIP Services; no public Kubernetes listener is installed.
 
-The API handles SIGTERM and SIGINT once. It closes the listener, lets accepted
-requests finish for up to 25 seconds, closes remaining connections, and gives
-telemetry/log flushing up to 5 seconds. The total fits Docker's 35-second grace
-period. Health checks and requests that reach a draining process return HTTP 503
-with code `SHUTTING_DOWN`. Normal shutdown exits 0; a forced close or failed flush exits 1.
-The frontend uses nginx's SIGQUIT graceful shutdown.
-
-After rollout, inspect the final Tank receipt, image revisions, health, restart
-counts, and Docker CPU limits. A stored webhook request alone does not prove that
-production updated successfully.
+A failed update restores the previous Helm revision, checks recovery, and reports
+the attempted deployment as failed. The infrastructure controller provides manual
+status and rollback operations. Original Docker containers and Compose files stay
+available for a platform rollback; Docker rollout is no longer an active
+production deployment command. Compose-based tests still check local container
+shutdown behavior and do not prove Kubernetes deployment acceptance.
