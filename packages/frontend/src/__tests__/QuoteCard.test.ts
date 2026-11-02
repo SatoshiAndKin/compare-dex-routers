@@ -158,6 +158,37 @@ describe("QuoteCard", () => {
     expect(getByText("$4.80")).toBeTruthy();
   });
 
+  it("shows both average prices after the totals and updates them with the quote", async () => {
+    const quote = makeQuote({
+      from_symbol: "USDC",
+      to_symbol: "BAL",
+      input_amount: "1257.7",
+      output_amount: "10000",
+      mode: "targetOut",
+    });
+    const { getByRole, getByText, rerender } = render(QuoteCard, {
+      props: { provider: "0x", quote },
+    });
+    const rates = getByRole("group", { name: "Average trade price" });
+    expect(rates.textContent).toContain("1 USDC ≈ 7.95102 BAL");
+    expect(rates.textContent).toContain("1 BAL ≈ 0.12577 USDC");
+    expect(rates.textContent).toContain("Based on the full quote, before gas.");
+    expect(
+      getByText("10000 BAL").compareDocumentPosition(rates) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await rerender({ provider: "0x", quote: { ...quote, input_amount: "2000" } });
+    expect(rates.textContent).toContain("1 USDC ≈ 5 BAL");
+    expect(rates.textContent).toContain("1 BAL ≈ 0.2 USDC");
+  });
+
+  it("omits the average price when the quote has a zero amount", () => {
+    const { queryByRole } = render(QuoteCard, {
+      props: { provider: "0x", quote: makeQuote({ output_amount: "0" }) },
+    });
+    expect(queryByRole("group", { name: "Average trade price" })).toBeNull();
+  });
+
   it("does not show loading state when loading=false and quote provided", () => {
     const { container } = render(QuoteCard, {
       props: {

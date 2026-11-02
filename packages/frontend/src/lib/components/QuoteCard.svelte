@@ -12,6 +12,7 @@
   import TransactionLink from "./TransactionLink.svelte";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
+  import { formatQuoteRate } from "../quote-rates.js";
 
   interface Props {
     provider: string;
@@ -36,6 +37,10 @@
   }: Props = $props();
 
   const providerName = $derived(quote?.provider ?? provider);
+  const rate = $derived(quote ? formatQuoteRate(quote.output_amount, quote.input_amount) : null);
+  const inverseRate = $derived(
+    quote ? formatQuoteRate(quote.input_amount, quote.output_amount) : null
+  );
 
   // ---------------------------------------------------------------------------
   // Transaction state
@@ -124,6 +129,15 @@
           <div class="output-amount">{quote.output_amount} {quote.to_symbol}</div>
         </div>
       </div>
+
+      {#if rate && inverseRate}
+        <div class="quote-rates" role="group" aria-label="Average trade price">
+          <div class="output-label">Average trade price</div>
+          <div>1 {quote.from_symbol} ≈ {rate} {quote.to_symbol}</div>
+          <div>1 {quote.to_symbol} ≈ {inverseRate} {quote.from_symbol}</div>
+          <div class="rate-note">Based on the full quote, before gas.</div>
+        </div>
+      {/if}
 
       <QuoteSimulation {quote} />
       <!-- Gas cost -->
@@ -216,6 +230,17 @@
 </div>
 
 <style>
+  .quote-rates {
+    font-family: monospace;
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+  }
+  .rate-note {
+    color: var(--text-muted, #666);
+    font-family: inherit;
+    font-size: 0.75rem;
+  }
+
   .quote-amounts {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
