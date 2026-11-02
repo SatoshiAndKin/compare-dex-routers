@@ -51,11 +51,17 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("Coinbase estimate panel", () => {
   it("shows a before-fee estimate and an external link without wallet actions", async () => {
-    const view = render(CoinbaseEstimate, { params, quotes: [quote()], stale: false });
+    const view = render(CoinbaseEstimate, {
+      params,
+      quotes: [quote()],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
     const link = await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
     expect(link).toHaveAttribute("href", "https://www.coinbase.com/advanced-trade/spot/ETH-USDC");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
@@ -65,7 +71,12 @@ describe("Coinbase estimate panel", () => {
     expect(view.queryByRole("button", { name: /swap|approve/i })).toBeNull();
   });
   it("applies and saves a fee and compares amounts without transfer-cost claims", async () => {
-    const view = render(CoinbaseEstimate, { params, quotes: [quote()], stale: false });
+    const view = render(CoinbaseEstimate, {
+      params,
+      quotes: [quote()],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
     await view.findByRole("link");
     await fireEvent.input(view.getByLabelText("Your taker fee (%)"), { target: { value: "1" } });
     await fireEvent.click(view.getByRole("button", { name: "Apply fee" }));
@@ -76,7 +87,12 @@ describe("Coinbase estimate panel", () => {
     expect(
       JSON.parse(localStorage.getItem("compare-dex-preferences") ?? "{}").coinbaseTakerFeePercent
     ).toBe("1");
-    await view.rerender({ params, quotes: [quote()], stale: true });
+    await view.rerender({
+      params,
+      quotes: [quote()],
+      stale: true,
+      dexExpiresAt: Date.now() + 30_000,
+    });
     expect(view.queryByText(/than the best DEX/)).toBeNull();
   });
   it("compares input costs for a target-output buy", async () => {
@@ -103,6 +119,7 @@ describe("Coinbase estimate panel", () => {
       params: target,
       quotes: [makeQuote({ ...target, input_amount_raw: "4300000000" })],
       stale: false,
+      dexExpiresAt: Date.now() + 30_000,
     });
     expect(
       await view.findByText(
@@ -137,6 +154,7 @@ describe("Coinbase estimate panel", () => {
         params: trade,
         quotes: [working, failed],
         stale: false,
+        dexExpiresAt: Date.now() + 30_000,
       });
       const expected =
         mode === "exactIn"
@@ -151,12 +169,18 @@ describe("Coinbase estimate panel", () => {
       params,
       quotes: [quote()].map((q) => ({ ...q, simulation_status: "failed", execution: null })),
       stale: false,
+      dexExpiresAt: Date.now() + 30_000,
     });
     await view.findByRole("link");
     expect(view.queryByText(/than the best DEX/)).toBeNull();
   });
   it("supports an explicit zero fee but rejects invalid fees", async () => {
-    const view = render(CoinbaseEstimate, { params, quotes: [], stale: false });
+    const view = render(CoinbaseEstimate, {
+      params,
+      quotes: [],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
     await view.findByRole("link");
     const input = view.getByLabelText("Your taker fee (%)");
     for (const invalid of ["100", "-1", "NaN", "0.00001"]) {
@@ -174,7 +198,12 @@ describe("Coinbase estimate panel", () => {
     get.mockResolvedValueOnce({
       data: { status: "unavailable", reason: "No supported direct market." },
     });
-    const view = render(CoinbaseEstimate, { params, quotes: [quote()], stale: false });
+    const view = render(CoinbaseEstimate, {
+      params,
+      quotes: [quote()],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
     expect(await view.findByText("No supported direct market.")).toBeVisible();
     get.mockRejectedValueOnce(new Error("offline"));
     await fireEvent.click(view.getByRole("button", { name: "Refresh estimate" }));
@@ -184,10 +213,20 @@ describe("Coinbase estimate panel", () => {
   it("discards old requests after a trade change and cancels on invalidation", async () => {
     const old = deferred<ReturnType<typeof reply>>();
     get.mockReturnValueOnce(old.promise);
-    const view = render(CoinbaseEstimate, { params, quotes: [], stale: false });
+    const view = render(CoinbaseEstimate, {
+      params,
+      quotes: [],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
     await tick();
     const signal = get.mock.calls[0]?.[1].signal as AbortSignal;
-    await view.rerender({ params: { ...params, amount: "3" }, quotes: [], stale: false });
+    await view.rerender({
+      params: { ...params, amount: "3" },
+      quotes: [],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
     await view.findByRole("link");
     expect(signal.aborted).toBe(true);
     const late = reply();
@@ -195,15 +234,54 @@ describe("Coinbase estimate panel", () => {
     old.resolve(late);
     await tick();
     expect(view.queryByText(/9999/)).toBeNull();
-    await view.rerender({ params: null, quotes: [], stale: false });
+    await view.rerender({
+      params: null,
+      quotes: [],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
     expect(view.queryByRole("region")).toBeNull();
     expect(get.mock.lastCall?.[1].signal.aborted).toBe(true);
+  });
+  it("keeps expired DEX quotes out of the comparison when only Coinbase refreshes", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    localStorage.setItem(
+      "compare-dex-preferences",
+      JSON.stringify({ chains: {}, coinbaseTakerFeePercent: "1" })
+    );
+    const dexExpiresAt = Date.now() + 30_000;
+    const quotes = [quote()];
+    const view = render(CoinbaseEstimate, { params, quotes, stale: false, dexExpiresAt });
+    await vi.advanceTimersByTimeAsync(0);
+    await tick();
+    expect(
+      view.getByText("61 USDC more output than the best DEX price before gas and transfers.")
+    ).toBeVisible();
+    await vi.advanceTimersByTimeAsync(61_000);
+    await fireEvent.click(view.getByRole("button", { name: "Refresh estimate" }));
+    await vi.advanceTimersByTimeAsync(0);
+    await tick();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(view.getByText("Includes an assumed 1% fee (39 USDC).")).toBeVisible();
+    expect(view.queryByText("Estimate expired. Refresh before comparing prices.")).toBeNull();
+    expect(view.queryByText(/than the best DEX/)).toBeNull();
+    expect(view.getByText("DEX quotes expired. Refresh quotes to compare prices.")).toBeVisible();
+    await view.rerender({ params, quotes, stale: false, dexExpiresAt: Date.now() + 30_000 });
+    expect(
+      view.getByText("61 USDC more output than the best DEX price before gas and transfers.")
+    ).toBeVisible();
+    expect(view.queryByText("DEX quotes expired. Refresh quotes to compare prices.")).toBeNull();
   });
   it("marks expired estimates and removes their price comparison", async () => {
     const expired = reply("1");
     expired.data.expires_at = new Date(Date.now() - 1000).toISOString();
     get.mockResolvedValueOnce(expired);
-    const view = render(CoinbaseEstimate, { params, quotes: [quote()], stale: false });
+    const view = render(CoinbaseEstimate, {
+      params,
+      quotes: [quote()],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
     expect(
       await view.findByText("Estimate expired. Refresh before comparing prices.")
     ).toBeVisible();
