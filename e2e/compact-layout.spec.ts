@@ -70,6 +70,13 @@ test("keeps precise input and output together through metadata and quote loading
   }
   await expect(page.locator(".input-amount")).toHaveText(`${amount} CRV`);
   await expect(page.locator(".output-amount")).toHaveText(`${output} crvUSD`);
+  const rates = page.getByRole("group", { name: "Average trade price" });
+  await expect(rates).toContainText("1 CRV ≈ 0.349453 crvUSD");
+  await expect(rates).toContainText("1 crvUSD ≈ 2.86161 CRV");
+  const totalsBox = await page.locator(".quote-amounts").boundingBox();
+  const ratesBox = await rates.boundingBox();
+  if (!totalsBox || !ratesBox) throw new Error("Quote totals and rates must be visible");
+  expect(ratesBox.y).toBeGreaterThanOrEqual(totalsBox.y + totalsBox.height);
   const next = deferred<boolean>();
   await page.route("**/api/quote?**", async (route) => {
     await next.promise;
