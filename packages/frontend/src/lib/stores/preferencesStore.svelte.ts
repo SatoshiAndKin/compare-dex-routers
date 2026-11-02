@@ -75,6 +75,23 @@ export function getChainPreferences(chainId: number): ChainPreferences | null {
 
 class PreferencesStore {
   private explorerRevision = $state(0);
+  private coinbaseRevision = $state(0);
+
+  get coinbaseTakerFeePercent(): string {
+    void this.coinbaseRevision;
+    const fee = loadPreferences()?.coinbaseTakerFeePercent;
+    return typeof fee === "string" && (fee === "" || /^\d{1,2}(?:\.\d{1,4})?$/.test(fee))
+      ? fee
+      : "";
+  }
+
+  setCoinbaseTakerFeePercent(value: string): string | null {
+    if (value !== "" && !/^\d{1,2}(?:\.\d{1,4})?$/.test(value))
+      return "Enter 0 to less than 100 percent, with at most four decimal places.";
+    savePreferences({ ...(loadPreferences() ?? { chains: {} }), coinbaseTakerFeePercent: value });
+    this.coinbaseRevision++;
+    return null;
+  }
 
   getExplorerUrl(chainId: number): string | null {
     void this.explorerRevision;

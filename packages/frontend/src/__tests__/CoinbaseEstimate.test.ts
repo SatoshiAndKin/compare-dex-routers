@@ -1,6 +1,8 @@
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
+import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tick } from "svelte";
+import SettingsModal from "../lib/components/SettingsModal.svelte";
+import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
 import CoinbaseEstimate from "../lib/components/CoinbaseEstimate.svelte";
 import type { CompareParams } from "../lib/stores/comparisonStore.svelte.js";
 import { deferred, makeQuote } from "./quote-fixture.js";
@@ -43,6 +45,7 @@ const quote = () =>
   makeQuote({ from: params.from, to: params.to, amount: "2", output_amount_raw: "3800000000" });
 beforeEach(() => {
   localStorage.clear();
+  settingsStore.closeSettings();
   get.mockReset();
   get.mockImplementation((_path, options) =>
     Promise.resolve(reply(options.params.query.takerFeePercent ?? null))
@@ -66,6 +69,12 @@ describe("Coinbase estimate panel", () => {
     expect(link).toHaveAttribute("href", "https://www.coinbase.com/advanced-trade/spot/ETH-USDC");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(view.getByText(/Before trading fees;/)).toBeVisible();
+    expect(view.getByText("2 ETH → 3900 USDC")).toBeVisible();
+    expect(view.getByRole("group", { name: "Coinbase average trade price" })).toHaveTextContent(
+      "1 ETH = 1950 USDC"
+    );
+    expect(view.getByRole("group")).toHaveTextContent("1 USDC = 0.000512821 ETH");
+    expect(view.queryByRole("textbox")).toBeNull();
     expect(view.getByText(/Excludes deposits, withdrawals/)).toBeVisible();
     expect(view.queryByText(/than the best DEX/)).toBeNull();
     expect(view.queryByRole("button", { name: /swap|approve/i })).toBeNull();
@@ -78,8 +87,13 @@ describe("Coinbase estimate panel", () => {
       dexExpiresAt: Date.now() + 30_000,
     });
     await view.findByRole("link");
-    await fireEvent.input(view.getByLabelText("Your taker fee (%)"), { target: { value: "1" } });
-    await fireEvent.click(view.getByRole("button", { name: "Apply fee" }));
+    settingsStore.openSettings();
+    const settings = render(SettingsModal);
+    await fireEvent.input(settings.getByLabelText("Your taker fee (%)"), {
+      target: { value: "1" },
+    });
+    await fireEvent.click(settings.getByRole("button", { name: "Save fee" }));
+    await fireEvent.click(settings.getByRole("button", { name: "Close settings" }));
     expect(
       await view.findByText("61 USDC more output than the best DEX price before gas and transfers.")
     ).toBeVisible();
@@ -126,6 +140,7 @@ describe("Coinbase estimate panel", () => {
         "43 USDC more input required than the best DEX price before gas and transfers."
       )
     ).toBeVisible();
+    expect(view.getByRole("group")).toHaveTextContent("1 ETH = 4343 USDC");
   });
   it.each(["exactIn", "targetOut"] as const)(
     "excludes failed simulations from the %s DEX comparison",
@@ -173,26 +188,6 @@ describe("Coinbase estimate panel", () => {
     });
     await view.findByRole("link");
     expect(view.queryByText(/than the best DEX/)).toBeNull();
-  });
-  it("supports an explicit zero fee but rejects invalid fees", async () => {
-    const view = render(CoinbaseEstimate, {
-      params,
-      quotes: [],
-      stale: false,
-      dexExpiresAt: Date.now() + 30_000,
-    });
-    await view.findByRole("link");
-    const input = view.getByLabelText("Your taker fee (%)");
-    for (const invalid of ["100", "-1", "NaN", "0.00001"]) {
-      await fireEvent.input(input, { target: { value: invalid } });
-      await fireEvent.click(view.getByRole("button", { name: "Apply fee" }));
-      expect(view.getByRole("alert")).toHaveTextContent("Enter 0 to less than 100 percent");
-    }
-    expect(get).toHaveBeenCalledTimes(1);
-    await fireEvent.input(input, { target: { value: "0" } });
-    await fireEvent.click(view.getByRole("button", { name: "Apply fee" }));
-    await waitFor(() => expect(get.mock.lastCall?.[1].params.query.takerFeePercent).toBe("0"));
-    expect(view.queryByRole("alert")).toBeNull();
   });
   it("shows unsupported pairs and upstream outages without hiding DEX data", async () => {
     get.mockResolvedValueOnce({

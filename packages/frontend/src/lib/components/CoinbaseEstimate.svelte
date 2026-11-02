@@ -3,7 +3,8 @@
   import { apiClient } from "../api.js";
   import type { components } from "../../generated/api-types.js";
   import type { CompareParams, Quote } from "../stores/comparisonStore.svelte.js";
-  import { loadPreferences, savePreferences } from "../stores/preferencesStore.svelte.js";
+  import { preferencesStore } from "../stores/preferencesStore.svelte.js";
+  import { formatQuoteRate } from "../quote-rates.js";
 
   let {
     params,
@@ -16,10 +17,6 @@
     stale: boolean;
     dexExpiresAt: number;
   } = $props();
-  const savedFee = loadPreferences()?.coinbaseTakerFeePercent ?? "";
-  let feeInput = $state(savedFee);
-  let fee = $state(savedFee);
-  let feeError = $state("");
   let result = $state<components["schemas"]["CoinbaseEstimate"] | null>(null);
   let error = $state("");
   let loading = $state(false);
@@ -28,16 +25,12 @@
   const dexExpired = $derived(now >= dexExpiresAt);
   const expired = $derived(result?.status === "ready" && now > Date.parse(result.expires_at));
 
-  function applyFee(): void {
-    if (feeInput !== "" && !/^\d{1,2}(?:\.\d{1,4})?$/.test(feeInput)) {
-      feeError = "Enter 0 to less than 100 percent, with at most four decimal places.";
-      return;
-    }
-    feeError = "";
-    fee = feeInput;
-    savePreferences({ ...(loadPreferences() ?? { chains: {} }), coinbaseTakerFeePercent: fee });
-    revision++;
-  }
+  const rate = $derived(
+    result?.status === "ready" ? formatQuoteRate(result.output_amount, result.input_amount) : null
+  );
+  const inverseRate = $derived(
+    result?.status === "ready" ? formatQuoteRate(result.input_amount, result.output_amount) : null
+  );
 
   $effect(() => {
     const timer = setInterval(() => {
@@ -48,7 +41,7 @@
 
   $effect(() => {
     const current = params;
-    const assumedFee = fee;
+    const assumedFee = preferencesStore.coinbaseTakerFeePercent;
     void revision;
     result = null;
     error = "";
@@ -124,32 +117,6 @@
 {#if params}
   <section aria-label="Coinbase Advanced estimate" class="coinbase-estimate">
     <h3>Coinbase Advanced estimate</h3>
-    <form
-      onsubmit={(event) => {
-        event.preventDefault();
-        applyFee();
-      }}
-    >
-      <label for="coinbase-taker-fee">Your taker fee (%)</label>
-      <div class="fee-controls">
-        <input
-          id="coinbase-taker-fee"
-          type="text"
-          inputmode="decimal"
-          placeholder="Enter your fee"
-          bind:value={feeInput}
-          aria-describedby="coinbase-fee-note"
-        />
-        <button type="submit">Apply fee</button>
-        <button type="button" onclick={() => revision++} disabled={loading}>Refresh estimate</button
-        >
-      </div>
-    </form>
-    <p id="coinbase-fee-note">
-      Use your Coinbase Advanced taker rate for this market. Coinbase One Basic does not reduce this
-      fee. Leave empty for a price before fees.
-    </p>
-    {#if feeError}<p role="alert">{feeError}</p>{/if}
     <div aria-live="polite" aria-busy={loading}>
       {#if loading}<p>Loading Coinbase order book…</p>
       {:else if error}<p>{error}</p>
@@ -160,9 +127,16 @@
           {result.input_symbol} → {result.output_amount}
           {result.output_symbol}
         </p>
+        {#if rate && inverseRate}
+          <div role="group" aria-label="Coinbase average trade price" class="quote-rates">
+            <p>Average trade price</p>
+            <p>1 {result.input_symbol} = {rate} {result.output_symbol}</p>
+            <p>1 {result.output_symbol} = {inverseRate} {result.input_symbol}</p>
+          </div>
+        {/if}
         <p>
           {result.fee_percent === null
-            ? "Before trading fees; enter your taker rate for an after-fee estimate."
+            ? "Before trading fees; set your taker rate in Settings for an after-fee estimate."
             : `Includes an assumed ${result.fee_percent}% fee (${result.fee_amount} ${result.fee_symbol}).`}
         </p>
         {#if result.limit_only}<p>
@@ -183,6 +157,7 @@
         >
       {/if}
     </div>
+    <button type="button" onclick={() => revision++} disabled={loading}>Refresh estimate</button>
     <p>
       Estimate from public order-book depth. Assumes funds are already on Coinbase. Excludes
       deposits, withdrawals, network costs, and wrapping. Check asset/network support, order-size
@@ -209,19 +184,11 @@
   .difference {
     font-weight: 700;
   }
-  .fee-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
+  .amounts {
+    font-size: 1.25rem;
   }
-  input {
-    min-width: 0;
-    width: 10rem;
-    padding: 0.5rem;
-    background: var(--bg-card);
-    color: var(--text);
-    border: 1px solid var(--border);
+  .quote-rates p {
+    margin: 0.25rem 0;
   }
   button {
     padding: 0.5rem;

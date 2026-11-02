@@ -20,6 +20,23 @@
   import { formStore } from "../stores/formStore.svelte.js";
   import { configStore } from "../stores/configStore.svelte.js";
 
+  let coinbaseFee = $state("");
+  let coinbaseFeeError = $state("");
+  let coinbaseFeeSaved = $state(false);
+
+  $effect(() => {
+    if (settingsStore.isSettingsOpen) {
+      coinbaseFee = untrack(() => preferencesStore.coinbaseTakerFeePercent);
+      coinbaseFeeError = "";
+      coinbaseFeeSaved = false;
+    }
+  });
+
+  function saveCoinbaseFee(): void {
+    coinbaseFeeError = preferencesStore.setCoinbaseTakerFeePercent(coinbaseFee) ?? "";
+    coinbaseFeeSaved = !coinbaseFeeError;
+  }
+
   let explorerUrl = $state("");
   let explorerError = $state("");
   let explorerSaved = $state(false);
@@ -153,6 +170,38 @@
       </div>
 
       <div class="modal-body">
+        <form
+          class="settings-section"
+          onsubmit={(event) => {
+            event.preventDefault();
+            saveCoinbaseFee();
+          }}
+        >
+          <h3 class="settings-section-title">Coinbase Advanced</h3>
+          <label for="coinbase-taker-fee">Your taker fee (%)</label>
+          <p id="coinbase-fee-note" class="refresh-note">
+            Use your Coinbase Advanced taker rate for this market. Coinbase One Basic does not
+            reduce this fee. Leave empty for a price before fees.
+          </p>
+          <div class="add-list-row">
+            <input
+              id="coinbase-taker-fee"
+              class="add-list-input"
+              type="text"
+              inputmode="decimal"
+              placeholder="Enter your fee"
+              bind:value={coinbaseFee}
+              aria-describedby="coinbase-fee-note"
+              oninput={() => {
+                coinbaseFeeError = "";
+                coinbaseFeeSaved = false;
+              }}
+            />
+            <button type="submit" class="add-list-btn">Save fee</button>
+          </div>
+          {#if coinbaseFeeError}<p role="alert">{coinbaseFeeError}</p>{/if}
+          {#if coinbaseFeeSaved}<p role="status">Coinbase fee saved.</p>{/if}
+        </form>
         <div class="settings-section">
           <label class="settings-section-title" for="explorer-url"
             >Block explorer for {chainName}</label

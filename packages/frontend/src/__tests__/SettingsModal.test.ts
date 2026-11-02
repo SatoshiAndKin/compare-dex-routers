@@ -47,6 +47,41 @@ describe("SettingsModal", () => {
     formStore.chainId = 1;
   });
 
+  it("validates, saves, restores and clears the Coinbase fee without changing chain preferences", async () => {
+    localStorage.setItem(
+      "compare-dex-preferences",
+      JSON.stringify({
+        chains: { 1: { slippageBps: 75 } },
+        coinbaseTakerFeePercent: "0.6",
+      })
+    );
+    settingsStore.openSettings();
+    const view = render(SettingsModal);
+    const input = view.getByLabelText("Your taker fee (%)");
+    expect(input).toHaveValue("0.6");
+    for (const invalid of ["100", "-1", "NaN", "0.00001"]) {
+      await fireEvent.input(input, { target: { value: invalid } });
+      await fireEvent.click(view.getByRole("button", { name: "Save fee" }));
+      expect(view.getByRole("alert")).toHaveTextContent("Enter 0 to less than 100 percent");
+      expect(
+        JSON.parse(localStorage.getItem("compare-dex-preferences")!).coinbaseTakerFeePercent
+      ).toBe("0.6");
+    }
+    for (const fee of ["0", "99.9999", ""]) {
+      await fireEvent.input(input, { target: { value: fee } });
+      await fireEvent.click(view.getByRole("button", { name: "Save fee" }));
+      expect(view.queryByRole("alert")).toBeNull();
+      expect(view.getByText("Coinbase fee saved.")).toBeVisible();
+      expect(JSON.parse(localStorage.getItem("compare-dex-preferences")!)).toEqual({
+        chains: { 1: { slippageBps: 75 } },
+        coinbaseTakerFeePercent: fee,
+      });
+      await fireEvent.click(view.getByRole("button", { name: "Close settings" }));
+      settingsStore.openSettings();
+      expect(await view.findByLabelText("Your taker fee (%)")).toHaveValue(fee);
+    }
+  });
+
   // -------------------------------------------------------------------------
   // Render state
   // -------------------------------------------------------------------------

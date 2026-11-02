@@ -32,6 +32,15 @@ async function mockCoinbase(page: Page) {
   });
 }
 
+async function saveFee(page: Page, fee: string) {
+  await page.getByRole("button", { name: "Open settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByLabel("Your taker fee (%)").fill(fee);
+  await settings.getByRole("button", { name: "Save fee" }).click();
+  await expect(settings.getByText("Coinbase fee saved.")).toBeVisible();
+  await settings.getByRole("button", { name: "Close settings" }).click();
+}
+
 test("shows a fee-adjusted Coinbase estimate without changing the selected DEX", async ({
   page,
 }) => {
@@ -41,8 +50,7 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
   await expect(panel.getByText(/Before trading fees;/)).toBeVisible();
   await expect(panel).toContainText("This market accepts limit orders only.");
-  await panel.getByLabel("Your taker fee (%)").fill("0.1");
-  await panel.getByRole("button", { name: "Apply fee" }).click();
+  await saveFee(page, "0.1");
   await expect(panel).toContainText("Includes an assumed 0.1% fee");
   await expect(panel).toContainText(
     "0.08 USDT less output than the best DEX price before gas and transfers."
@@ -56,7 +64,14 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(panel.getByRole("button", { name: /swap|approve/i })).toHaveCount(0);
   await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
   await page.reload();
-  await expect(panel.getByLabel("Your taker fee (%)")).toHaveValue("0.1");
+  await expect(panel).toContainText("Includes an assumed 0.1% fee");
+  await expect(panel.getByRole("textbox")).toHaveCount(0);
+  await expect(panel.getByRole("group", { name: "Coinbase average trade price" })).toContainText(
+    "1 USDC = 0.999 USDT"
+  );
+  await page.getByRole("button", { name: "Open settings" }).click();
+  await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toHaveValue("0.1");
+  await page.getByRole("button", { name: "Close settings" }).click();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth
   );
@@ -91,8 +106,7 @@ test("compares Coinbase with a working route instead of a reverted quote", async
   await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
   await expect(page.getByRole("button", { name: "Execute swap" })).toBeEnabled();
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
-  await panel.getByLabel("Your taker fee (%)").fill("0.1");
-  await panel.getByRole("button", { name: "Apply fee" }).click();
+  await saveFee(page, "0.1");
   await expect(panel).toContainText(
     "0.08 USDT less output than the best DEX price before gas and transfers."
   );
@@ -134,8 +148,7 @@ test("keeps DEX expiry after refreshing Coinbase during a pending approval", asy
     await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
     await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
     const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
-    await panel.getByLabel("Your taker fee (%)").fill("0.1");
-    await panel.getByRole("button", { name: "Apply fee" }).click();
+    await saveFee(page, "0.1");
     await page.getByRole("button", { name: "Approve token spending" }).click();
     await expect.poll(() => waiting).toBe(true);
     await expect(panel).toContainText(
