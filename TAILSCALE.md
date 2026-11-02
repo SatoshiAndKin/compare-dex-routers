@@ -1,16 +1,17 @@
 # Private Tailscale access
 
-The deployed app uses https://ski-nuc-3.shorthair-fir.ts.net:8443/.
-The API stays under `/api` on the same origin. Connect to Tailscale before
-opening the app. The previous `swap.stytt.com` route is retired.
+The deployed app uses https://compare-dex-routers.shorthair-fir.ts.net/.
+The API uses `https://compare-dex-routers.shorthair-fir.ts.net/api`.
+Connect to Tailscale before opening the app or calling the API. The previous
+`ski-nuc-3.shorthair-fir.ts.net:8443` and `swap.stytt.com` routes are retired.
 
-Set these values in the production `.env`:
+Check the live API without a wallet or a transaction:
 
-```dotenv
-VIRTUAL_HOST=ski-nuc-3.shorthair-fir.ts.net
-RPC_URL_1=https://ski-lambo-1.shorthair-fir.ts.net:18544
+```sh
+curl --fail https://compare-dex-routers.shorthair-fir.ts.net/api/health
 ```
 
-The shared Traefik `web` entrypoint receives traffic on loopback port 8000.
-See `traefik-proxy/README.md` for the private Serve configuration. The app and
-dashboard backends must remain on loopback; do not enable Tailscale Funnel.
+The private Dockerfiles repository owns production K3s routing and RPC
+configuration. See `docs/runbooks/deployment.md` for deployment verification.
+The repo-local `traefik-proxy` directory documents the retained Compose setup,
+not the current production access URL. Do not enable Tailscale Funnel.
