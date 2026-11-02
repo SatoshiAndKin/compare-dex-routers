@@ -110,6 +110,51 @@ describe("Coinbase estimate panel", () => {
       )
     ).toBeVisible();
   });
+  it.each(["exactIn", "targetOut"] as const)(
+    "excludes failed simulations from the %s DEX comparison",
+    async (mode) => {
+      localStorage.setItem(
+        "compare-dex-preferences",
+        JSON.stringify({ chains: {}, coinbaseTakerFeePercent: "1" })
+      );
+      const trade = { ...params, mode, amount: mode === "exactIn" ? "2" : "3861" };
+      const working = makeQuote({
+        ...trade,
+        output_amount_raw: "3800000000",
+        input_amount_raw: "2100000000000000000",
+        simulation_status: "succeeded",
+      });
+      const failed = makeQuote({
+        ...trade,
+        provider: "reverted",
+        output_amount_raw: "4000000000",
+        input_amount_raw: "1900000000000000000",
+        simulation_status: "failed",
+        simulation_reason: "execution reverted",
+        execution: null,
+      });
+      const view = render(CoinbaseEstimate, {
+        params: trade,
+        quotes: [working, failed],
+        stale: false,
+      });
+      const expected =
+        mode === "exactIn"
+          ? "61 USDC more output than the best DEX price before gas and transfers."
+          : "0.1 ETH less input required than the best DEX price before gas and transfers.";
+      expect(await view.findByText(expected)).toBeVisible();
+    }
+  );
+  it("does not compare Coinbase with a set containing only failed simulations", async () => {
+    get.mockResolvedValueOnce(reply("1"));
+    const view = render(CoinbaseEstimate, {
+      params,
+      quotes: [quote()].map((q) => ({ ...q, simulation_status: "failed", execution: null })),
+      stale: false,
+    });
+    await view.findByRole("link");
+    expect(view.queryByText(/than the best DEX/)).toBeNull();
+  });
   it("supports an explicit zero fee but rejects invalid fees", async () => {
     const view = render(CoinbaseEstimate, { params, quotes: [], stale: false });
     await view.findByRole("link");
