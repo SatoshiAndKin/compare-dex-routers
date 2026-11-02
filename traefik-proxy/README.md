@@ -2,6 +2,10 @@
 
 Repo-local shared Traefik stack for running `ypricemagic-server` and other Docker apps on the same machine.
 
+This is the retained Compose setup. Production Compare DEX Routers uses
+https://compare-dex-routers.shorthair-fir.ts.net/ with its API under `/api`.
+See [private access](../TAILSCALE.md). The NUC3 `:8443` route below is historical.
+
 ## Run
 
 ```bash
@@ -38,7 +42,8 @@ ssh -N -L 18080:127.0.0.1:8080 ski-nuc-3
 Open `http://127.0.0.1:18080/dashboard/` on the client and keep the tunnel
 running while using it.
 
-Compare DEX Routers uses `https://ski-nuc-3.shorthair-fir.ts.net:8443/` and
+This historical configuration served Compare DEX Routers at
+`https://ski-nuc-3.shorthair-fir.ts.net:8443/`; that app URL is retired. In this setup,
 ypricemagic-server uses `https://ski-nuc-3.shorthair-fir.ts.net:9443/`.
 These routes use private Tailscale Serve; do not enable Funnel for them.
 

@@ -38,8 +38,10 @@ container restarts. The existing shutdown handler drains requests, closes connec
 and flushes telemetry within the 45-second pod termination period. nginx uses SIGQUIT.
 Kubernetes readiness replaces Docker health checks for production routing.
 
-NUC3 remains the private Tailscale TLS entry point. The existing URL and `/api`
-paths stay the same. Traefik binds only host loopback on NUC3 and Lambo. Application pods use
+The production URL is `https://compare-dex-routers.shorthair-fir.ts.net/`, with
+the API under `/api` on the same origin. Connect to Tailscale before checking it.
+The former `https://ski-nuc-3.shorthair-fir.ts.net:8443/` URL is retired.
+Traefik binds only host loopback on NUC3 and Lambo. Application pods use
 the pod network and ClusterIP Services; no public Kubernetes listener is installed.
 
 A failed update restores the previous Helm revision, checks recovery, and reports

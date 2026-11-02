@@ -4,6 +4,10 @@
 
 Compare all [Spandex](https://www.spandex.exchange/) providers, including Curve, in one ranked list and execute a selected route through your wallet.
 
+Production: https://compare-dex-routers.shorthair-fir.ts.net/ (Tailscale required).
+The API base URL is `https://compare-dex-routers.shorthair-fir.ts.net/api`.
+See [private access](TAILSCALE.md) for a health check.
+
 ![Web UI screenshot](docs/screenshot.png)
 
 ## Coinbase Advanced estimates
