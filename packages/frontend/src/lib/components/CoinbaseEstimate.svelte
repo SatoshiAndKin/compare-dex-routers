@@ -88,6 +88,7 @@
       return null;
     const current = quotes.filter(
       (q) =>
+        q.simulation_status !== "failed" &&
         q.chainId === params.chainId &&
         q.from.toLowerCase() === params.from.toLowerCase() &&
         q.to.toLowerCase() === params.to.toLowerCase() &&
