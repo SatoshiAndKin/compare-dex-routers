@@ -23,6 +23,7 @@ export interface ChainPreferences {
 }
 
 export interface Preferences {
+  coinbaseTakerFeePercent?: string;
   chains: Record<number, ChainPreferences>;
 }
 

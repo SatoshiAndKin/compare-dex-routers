@@ -47,6 +47,9 @@ export async function fixture(
       json: tokens.find((token) => token.address.toLowerCase() === address?.toLowerCase()),
     });
   });
+  await page.route("**/api/coinbase-estimate?**", (route) =>
+    route.fulfill({ json: { status: "unavailable", reason: "No supported direct market." } })
+  );
   await page.route("**/api/quote?**", (route) => {
     const comparison = makeComparison();
     const params = new URL(route.request().url()).searchParams;

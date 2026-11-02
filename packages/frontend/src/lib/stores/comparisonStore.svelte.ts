@@ -24,6 +24,7 @@ export async function requestQuotes(
 }
 
 class ComparisonStore {
+  params = $state<CompareParams | null>(null);
   quotes = $state<Quote[]>([]);
   failures = $state<QuoteResponse["failures"]>([]);
   error = $state<string | null>(null);
@@ -51,7 +52,8 @@ class ComparisonStore {
       this.isLoading ||
       this.recommendationReason !== null
   );
-  private updatedAt = 0;
+  private updatedAt = $state<number | null>(null);
+  expiresAt = $derived(this.updatedAt === null ? 0 : this.updatedAt + 30_000);
   private abortController: AbortController | null = null;
   private sequence = 0;
 
@@ -67,6 +69,7 @@ class ComparisonStore {
   }
 
   cancel(): void {
+    this.params = null;
     this.sequence++;
     this.abortController?.abort();
     this.abortController = null;
@@ -88,7 +91,7 @@ class ComparisonStore {
     this.recommendationReason = null;
     this.recommendationBasis = "none";
     this.selectedProvider = null;
-    this.updatedAt = 0;
+    this.updatedAt = null;
   }
 
   isCurrent(quote: Quote): boolean {
@@ -96,7 +99,7 @@ class ComparisonStore {
   }
 
   isFresh(quote: Quote): boolean {
-    return this.isCurrent(quote) && Date.now() - this.updatedAt < 30_000;
+    return this.isCurrent(quote) && Date.now() < this.expiresAt;
   }
 
   async compare(
@@ -105,6 +108,7 @@ class ComparisonStore {
   ): Promise<void> {
     this.cancel();
     this.error = null;
+    this.params = { ...params };
     this.isLoading = true;
     this.isStale = true;
     const sequence = this.sequence;

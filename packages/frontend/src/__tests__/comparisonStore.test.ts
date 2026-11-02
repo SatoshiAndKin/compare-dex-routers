@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { comparisonStore as store } from "../lib/stores/comparisonStore.svelte.js";
 import { deferred, FROM, TO, makeComparison } from "./quote-fixture.js";
 type TestResponse = { data: ReturnType<typeof makeComparison>; response: Response };
@@ -16,7 +16,27 @@ beforeEach(() => {
   store.invalidate();
   get.mockReset();
 });
+afterEach(() => vi.useRealTimers());
+
 describe("one comparison response", () => {
+  it("publishes the same expiration used by wallet freshness checks", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000);
+    expect(store.expiresAt).toBe(0);
+    get.mockResolvedValue({ data: makeComparison(), response: new Response() });
+    await store.compare(params);
+    const quote = store.quotes[0]!;
+    expect(store.expiresAt).toBe(31_000);
+    expect(store.isFresh(quote)).toBe(true);
+    vi.setSystemTime(31_000);
+    expect(store.isFresh(quote)).toBe(false);
+    expect(store.expiresAt).toBe(31_000);
+    vi.setSystemTime(61_000);
+    await store.compare(params);
+    expect(store.expiresAt).toBe(91_000);
+    store.invalidate();
+    expect(store.expiresAt).toBe(0);
+  });
   it("follows a new recommendation after a temporary Curve selection", async () => {
     get.mockResolvedValue({
       data: makeComparison({ recommendation: "curve" }),

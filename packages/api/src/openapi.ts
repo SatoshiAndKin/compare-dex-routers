@@ -5,6 +5,7 @@ import {
 } from "@asteasolutions/zod-to-openapi";
 import type { OpenAPIObject } from "openapi3-ts/oas30";
 import { z } from "zod";
+import { CoinbaseEstimateSchema, TakerFeePercentSchema } from "./coinbase.js";
 import { QuoteResponseSchema } from "./quote-response.js";
 
 extendZodWithOpenApi(z);
@@ -244,6 +245,29 @@ registry.registerPath({
       z.record(z.string(), z.object({ name: z.string(), alchemySubdomain: z.string() })),
       "Map of chain IDs to chain metadata"
     ),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/coinbase-estimate",
+  operationId: "getCoinbaseEstimate",
+  summary: "Estimate a direct Coinbase Advanced trade from public order-book depth",
+  request: {
+    query: QuoteQuerySchema.omit({ sender: true, slippageBps: true }).extend({
+      takerFeePercent: TakerFeePercentSchema.optional().openapi({
+        param: { name: "takerFeePercent", in: "query" },
+        description:
+          "Assumed taker fee as a percentage, e.g. 0.6 means 0.6%. Omit for a before-fee estimate. No Coinbase One rebate is assumed.",
+      }),
+    }),
+  },
+  responses: {
+    200: jsonContent(
+      CoinbaseEstimateSchema.openapi("CoinbaseEstimate"),
+      "Indicative exchange estimate or an unavailable reason; excludes transfers and network costs"
+    ),
+    400: errorResponse("Invalid parameters"),
   },
 });
 
