@@ -167,7 +167,7 @@ describe("Coinbase estimate panel", () => {
     get.mockResolvedValueOnce(reply("1"));
     const view = render(CoinbaseEstimate, {
       params,
-      quotes: [quote()].map((q) => ({ ...q, simulation_status: "failed", execution: null })),
+      quotes: [makeQuote({ ...quote(), simulation_status: "failed", execution: null })],
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
@@ -267,6 +267,8 @@ describe("Coinbase estimate panel", () => {
     expect(view.queryByText(/than the best DEX/)).toBeNull();
     expect(view.getByText("DEX quotes expired. Refresh quotes to compare prices.")).toBeVisible();
     await view.rerender({ params, quotes, stale: false, dexExpiresAt: Date.now() + 30_000 });
+    await vi.advanceTimersByTimeAsync(0);
+    await tick();
     expect(
       view.getByText("61 USDC more output than the best DEX price before gas and transfers.")
     ).toBeVisible();

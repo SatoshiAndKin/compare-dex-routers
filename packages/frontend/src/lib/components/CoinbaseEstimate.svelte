@@ -5,8 +5,17 @@
   import type { CompareParams, Quote } from "../stores/comparisonStore.svelte.js";
   import { loadPreferences, savePreferences } from "../stores/preferencesStore.svelte.js";
 
-  let { params, quotes, stale }: { params: CompareParams | null; quotes: Quote[]; stale: boolean } =
-    $props();
+  let {
+    params,
+    quotes,
+    stale,
+    dexExpiresAt,
+  }: {
+    params: CompareParams | null;
+    quotes: Quote[];
+    stale: boolean;
+    dexExpiresAt: number;
+  } = $props();
   const savedFee = loadPreferences()?.coinbaseTakerFeePercent ?? "";
   let feeInput = $state(savedFee);
   let fee = $state(savedFee);
@@ -16,6 +25,7 @@
   let loading = $state(false);
   let revision = $state(0);
   let now = $state(Date.now());
+  const dexExpired = $derived(now >= dexExpiresAt);
   const expired = $derived(result?.status === "ready" && now > Date.parse(result.expires_at));
 
   function applyFee(): void {
@@ -81,6 +91,7 @@
       stale ||
       loading ||
       expired ||
+      dexExpired ||
       result?.status !== "ready" ||
       result.fee_percent === null ||
       !quotes.length
@@ -159,6 +170,9 @@
             available order-book liquidity.
           </p>{/if}
         {#if expired}<p>Estimate expired. Refresh before comparing prices.</p>{/if}
+        {#if dexExpired && !stale && result.fee_percent !== null}<p>
+            DEX quotes expired. Refresh quotes to compare prices.
+          </p>{/if}
         {#if difference}<p class="difference">{difference}</p>{/if}
         <p>
           {result.product_id} · Order book:

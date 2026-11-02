@@ -99,6 +99,7 @@
       params={comparisonStore.params}
       quotes={comparisonStore.quotes}
       stale={comparisonStore.isStale}
+      dexExpiresAt={comparisonStore.expiresAt}
     />
     <details class="provider-list">
       <summary

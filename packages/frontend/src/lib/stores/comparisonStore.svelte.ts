@@ -52,7 +52,8 @@ class ComparisonStore {
       this.isLoading ||
       this.recommendationReason !== null
   );
-  private updatedAt = 0;
+  private updatedAt = $state<number | null>(null);
+  expiresAt = $derived(this.updatedAt === null ? 0 : this.updatedAt + 30_000);
   private abortController: AbortController | null = null;
   private sequence = 0;
 
@@ -90,7 +91,7 @@ class ComparisonStore {
     this.recommendationReason = null;
     this.recommendationBasis = "none";
     this.selectedProvider = null;
-    this.updatedAt = 0;
+    this.updatedAt = null;
   }
 
   isCurrent(quote: Quote): boolean {
@@ -98,7 +99,7 @@ class ComparisonStore {
   }
 
   isFresh(quote: Quote): boolean {
-    return this.isCurrent(quote) && Date.now() - this.updatedAt < 30_000;
+    return this.isCurrent(quote) && Date.now() < this.expiresAt;
   }
 
   async compare(
