@@ -8,6 +8,7 @@ import { docsAssets, docsAssetUrl } from "./docs-assets.js";
 import { pathToFileURL } from "node:url";
 import { openapiDocument } from "./openapi.js";
 import { serializeWithBigInt } from "@spandex/core";
+import { getCoinbaseEstimate, TakerFeePercentSchema } from "./coinbase.js";
 import { quoteRoutes } from "./quotes.js";
 import { redactText } from "./redaction.js";
 import { parseQuoteParams } from "./quote.js";
@@ -282,6 +283,27 @@ window.onload = function() {
         sendError(res, 500, "Token metadata is unavailable. Please try again.");
       }
     }
+    return;
+  }
+
+  if (url.pathname === "/coinbase-estimate" && req.method === "GET") {
+    const parsed = parseQuoteParams(url.searchParams);
+    if (!parsed.success) {
+      sendError(res, 400, parsed.error);
+      return;
+    }
+    const fee = url.searchParams.get("takerFeePercent");
+    if (fee !== null && !TakerFeePercentSchema.safeParse(fee).success) {
+      sendError(
+        res,
+        400,
+        "Invalid takerFeePercent: use 0 to less than 100 percent with at most four decimal places."
+      );
+      return;
+    }
+    const result = await getCoinbaseEstimate(parsed.data, fee);
+    sendJson(res, 200, result);
+    recordRequest("/coinbase-estimate", Date.now() - requestStart, result.status === "unavailable");
     return;
   }
 

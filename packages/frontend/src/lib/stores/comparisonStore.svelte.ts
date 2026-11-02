@@ -24,6 +24,7 @@ export async function requestQuotes(
 }
 
 class ComparisonStore {
+  params = $state<CompareParams | null>(null);
   quotes = $state<Quote[]>([]);
   failures = $state<QuoteResponse["failures"]>([]);
   error = $state<string | null>(null);
@@ -67,6 +68,7 @@ class ComparisonStore {
   }
 
   cancel(): void {
+    this.params = null;
     this.sequence++;
     this.abortController?.abort();
     this.abortController = null;
@@ -105,6 +107,7 @@ class ComparisonStore {
   ): Promise<void> {
     this.cancel();
     this.error = null;
+    this.params = { ...params };
     this.isLoading = true;
     this.isStale = true;
     const sequence = this.sequence;

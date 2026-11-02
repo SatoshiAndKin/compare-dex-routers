@@ -1,6 +1,7 @@
 <script lang="ts">
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
+  import CoinbaseEstimate from "./CoinbaseEstimate.svelte";
   import QuoteCard from "./QuoteCard.svelte";
   import QuoteSimulation from "./QuoteSimulation.svelte";
   import QuoteCosts from "./QuoteCosts.svelte";
@@ -94,6 +95,11 @@
         >
       </div>
     {/if}
+    <CoinbaseEstimate
+      params={comparisonStore.params}
+      quotes={comparisonStore.quotes}
+      stale={comparisonStore.isStale}
+    />
     <details class="provider-list">
       <summary
         >Provider results and failures ({comparisonStore.quotes.length +

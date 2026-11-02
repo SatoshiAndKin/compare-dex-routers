@@ -38,6 +38,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/coinbase-estimate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Estimate a direct Coinbase Advanced trade from public order-book depth */
+    get: operations["getCoinbaseEstimate"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/quote": {
     parameters: {
       query?: never;
@@ -176,6 +193,41 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    CoinbaseEstimate:
+      | {
+          /** @enum {string} */
+          status: "unavailable";
+          reason: string;
+        }
+      | {
+          /** @enum {string} */
+          status: "ready";
+          product_id: string;
+          /** @enum {string} */
+          side: "BUY" | "SELL";
+          input_symbol: string;
+          output_symbol: string;
+          input_amount: string;
+          output_amount: string;
+          input_amount_raw: string;
+          output_amount_raw: string;
+          input_decimals: number;
+          output_decimals: number;
+          fee_percent: string | null;
+          fee_amount: string | null;
+          fee_symbol: string;
+          as_of: string;
+          expires_at: string;
+          limit_only: boolean;
+          /** Format: uri */
+          trade_url: string;
+        };
+    Error: {
+      error: string;
+      /** @enum {string} */
+      code: "INVALID_REQUEST" | "NOT_FOUND" | "UPSTREAM_ERROR" | "SHUTTING_DOWN";
+      requestId: string;
+    };
     QuoteResponse: {
       quotes: components["schemas"]["Quote"][];
       failures: {
@@ -267,12 +319,6 @@ export interface components {
       approval_gas_cost_usd: string | null;
       trade_value_usd: string | null;
       net_value_usd: string | null;
-    };
-    Error: {
-      error: string;
-      /** @enum {string} */
-      code: "INVALID_REQUEST" | "NOT_FOUND" | "UPSTREAM_ERROR" | "SHUTTING_DOWN";
-      requestId: string;
     };
     TokenListResponse: {
       /** @description Name of the token list (or "Default Tokenlists" if multiple) */
@@ -425,6 +471,57 @@ export interface operations {
               alchemySubdomain: string;
             };
           };
+        };
+      };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  getCoinbaseEstimate: {
+    parameters: {
+      query: {
+        /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
+        chainId?: number | null;
+        /** @description Input token address */
+        from: string;
+        /** @description Output token address */
+        to: string;
+        /** @description Human-readable amount. For exactIn: input amount. For targetOut: desired output amount. */
+        amount: string;
+        /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
+        mode?: "exactIn" | "targetOut";
+        /** @description Assumed taker fee as a percentage, e.g. 0.6 means 0.6%. Omit for a before-fee estimate. No Coinbase One rebate is assumed. */
+        takerFeePercent?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Indicative exchange estimate or an unavailable reason; excludes transfers and network costs */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CoinbaseEstimate"];
+        };
+      };
+      /** @description Invalid parameters */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
         };
       };
       /** @description Server is shutting down; retry on an available instance */

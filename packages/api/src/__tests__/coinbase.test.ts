@@ -154,18 +154,33 @@ describe("Coinbase Advanced estimates", () => {
       });
     }
   );
-  it.each(["trading_disabled", "cancel_only", "limit_only", "post_only", "auction_mode"])(
+  it.each(["trading_disabled", "cancel_only", "post_only", "auction_mode"])(
     "rejects a market with %s",
     async (flag) => {
       product[flag] = true;
       expect(await estimate()).toMatchObject({ status: "unavailable" });
     }
   );
+  it("estimates limit-only markets and reports the required order type", async () => {
+    product.limit_only = true;
+    expect(await estimate()).toMatchObject({ status: "ready", limit_only: true });
+  });
+  it.each([
+    [8453, "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"],
+    [10, "0x0b2c639c533813f4aa9d7837caf62653d097ff85"],
+    [42161, "0xaf88d065e77c8cc2239327c5edb3a432268e5831"],
+  ])("maps native ETH and USDC by chain/address on %i", async (chainId, to) => {
+    expect(await estimate({ chainId, to })).toMatchObject({
+      status: "ready",
+      input_symbol: "ETH",
+      output_symbol: "USDC",
+    });
+  });
   it("rejects mismatched product identity", async () => {
     product.quote_currency_id = "USD";
     expect(await estimate()).toMatchObject({ status: "unavailable" });
   });
-  it.each([-20000, 10000])("rejects old or future books (%i ms)", async (offset) => {
+  it.each([-31000, 10000])("rejects old or future books (%i ms)", async (offset) => {
     book.time = new Date(Date.now() + offset).toISOString();
     expect(await estimate()).toMatchObject({
       status: "unavailable",
