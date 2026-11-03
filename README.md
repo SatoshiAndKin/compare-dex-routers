@@ -14,14 +14,21 @@ See [private access](TAILSCALE.md) for a health check.
 
 The comparison page shows a separate Coinbase Advanced estimate from public
 order-book depth. No Coinbase account or API key is required. Enter your taker fee
-percentage in the estimate panel; the browser saves the assumption locally. An
+percentage under the Settings gear; the browser saves the assumption locally. An
 empty rate shows a price before fees. Coinbase One Basic provides no Advanced fee
 rebate. The estimate never supplies wallet execution data or changes DEX rankings.
 
-Supported identities are native ETH and native USDC on Ethereum, Base, Optimism,
-and Arbitrum, plus Ethereum USDT. Supported direct markets are ETH–USDC, ETH–USDT,
-and USDT–USDC, in either direction. Wrapped ETH, bridged variants, unlisted assets,
-and routes requiring multiple exchange trades do not get substituted.
+Assets and direct spot markets come from Coinbase's public currency/network and
+Advanced Trade catalogs, refreshed every five minutes. This covers listed assets
+on the app's supported EVM chains, including BAL, without a per-asset market
+allowlist. Identity uses chain and Coinbase-published contract addresses, including
+explicit token-address links. Coinbase omits some L2 USDC contracts; those entries
+use Circle's published addresses only when Coinbase lists that network. Native
+assets use the chain's native currency. Decimals come from the selected contract.
+Unverified addresses and ambiguous identities are rejected; symbols alone never
+identify an asset. Wrapped or bridged assets qualify only when Coinbase explicitly
+identifies that representation. Pairs requiring multiple exchange trades remain
+unavailable; USD is not silently substituted for USDC.
 
 Both exact-input and target-output estimates consume book depth. Limit-only
 markets show that a limit price must take available liquidity. The API rejects
@@ -32,7 +39,10 @@ Coinbase's final preview before trading. Public API:
 `GET /coinbase-estimate?chainId=1&from=0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE&to=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&amount=1&mode=exactIn&takerFeePercent=0.6`.
 The rate in this example is an assumption, not Coinbase's published fee schedule.
 
-Sources: [public order books](https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/public/get-public-product-book)
+Sources: [currency/network catalog](https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/currencies/get-all-known-currencies),
+[spot markets](https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/public/list-public-products),
+[Circle USDC contracts](https://developers.circle.com/stablecoins/usdc-contract-addresses),
+[public order books](https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/public/get-public-product-book)
 and [Coinbase One benefits](https://help.coinbase.com/en/coinbase/other-topics/coinbase-one/benefit-disclosures).
 
 ## Quick start

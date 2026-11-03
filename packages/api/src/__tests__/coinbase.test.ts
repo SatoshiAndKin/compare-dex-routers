@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { QuoteParams } from "../quote.js";
 
+const decimalsMock = vi.hoisted(() => vi.fn());
+vi.mock("../config.js", () => ({
+  getNativeAsset: (chainId: number) => ({
+    symbol: chainId === 137 ? "POL" : chainId === 43114 ? "AVAX" : chainId === 56 ? "BNB" : "ETH",
+  }),
+  getTokenDecimals: decimalsMock,
+}));
+
 const ETH = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDT = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
@@ -15,10 +23,43 @@ const params: QuoteParams = {
 };
 let product: Record<string, unknown>;
 let book: Record<string, unknown>;
+let currencies: Record<string, unknown>[];
+let products: Record<string, unknown>[] | undefined;
 beforeEach(() => {
   vi.resetModules();
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
+  decimalsMock
+    .mockReset()
+    .mockImplementation(async (_chainId: number, address: string) =>
+      [
+        USDC.toLowerCase(),
+        USDT.toLowerCase(),
+        "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+      ].includes(address.toLowerCase())
+        ? 6
+        : 18
+    );
+  currencies = [
+    {
+      id: "ETH",
+      supported_networks: ["ethereum", "base", "arbitrum", "optimism"].map((id) => ({
+        id,
+        contract_address: "",
+      })),
+    },
+    {
+      id: "USDC",
+      supported_networks: [
+        { id: "ethereum", contract_address: USDC },
+        ...["base", "arbitrum", "optimism"].map((id) => ({ id, contract_address: "" })),
+      ],
+    },
+    { id: "USDT", supported_networks: [{ id: "ethereum", contract_address: USDT }] },
+  ];
+  products = undefined;
   product = {
     product_id: "ETH-USDC",
     base_currency_id: "ETH",
@@ -46,11 +87,17 @@ beforeEach(() => {
       { price: "2200", size: "2" },
     ],
   };
-  fetchMock.mockImplementation((url: string) =>
-    Promise.resolve(
-      new Response(JSON.stringify(url.includes("product_book") ? { pricebook: book } : product))
-    )
-  );
+  fetchMock.mockImplementation((url: string) => {
+    let body: unknown = product;
+    if (url.includes("api.exchange.coinbase.com/currencies")) body = currencies;
+    else if (url.includes("/market/products?"))
+      body = {
+        products: products ?? [{ ...product, product_type: "SPOT" }],
+        pagination: { has_next: false, next_cursor: "" },
+      };
+    else if (url.includes("product_book")) body = { pricebook: book };
+    return Promise.resolve(new Response(JSON.stringify(body)));
+  });
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -141,9 +188,11 @@ describe("Coinbase Advanced estimates", () => {
     { chainId: 56 },
     { from: "0x1111111111111111111111111111111111111111" },
     { to: ETH },
-  ])("rejects unmapped, wrapped, or identical assets without a fetch: %j", async (override) => {
+  ])("rejects unmapped, wrapped, or identical assets: %j", async (override) => {
     expect(await estimate(override)).toMatchObject({ status: "unavailable" });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.some((call) => (call[0] as string).includes("product_book"))).toBe(
+      false
+    );
   });
   it.each(["exactIn", "targetOut"] as const)(
     "rejects insufficient %s depth instead of quoting a partial fill",
@@ -208,7 +257,240 @@ describe("Coinbase Advanced estimates", () => {
   });
   it("coalesces requests for the same public market", async () => {
     await Promise.all([estimate(), estimate({ amount: "1" })]);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("Coinbase asset catalog", () => {
+  function balMarket() {
+    const address = "0xba100000625a3754423978a60c9317c58a424e3D";
+    currencies.push({
+      id: "BAL",
+      supported_networks: [{ id: "ethereum", contract_address: address }],
+    });
+    product = { ...product, product_id: "BAL-USDC", base_currency_id: "BAL", limit_only: true };
+    book = {
+      ...book,
+      product_id: "BAL-USDC",
+      bids: [{ price: "1.9", size: "1000" }],
+      asks: [{ price: "2", size: "1000" }],
+    };
+    return address;
+  }
+  it("discovers BAL and its USDC market without a per-asset allowlist", async () => {
+    const bal = balMarket();
+    expect(await estimate({ from: USDC, to: bal, amount: "100" }, "0")).toMatchObject({
+      status: "ready",
+      product_id: "BAL-USDC",
+      side: "BUY",
+      input_amount: "100",
+      output_amount: "50",
+      output_symbol: "BAL",
+      limit_only: true,
+    });
+    expect(await estimate({ from: bal, to: USDC, amount: "10" }, "0")).toMatchObject({
+      status: "ready",
+      side: "SELL",
+      input_amount: "10",
+      output_amount: "19",
+    });
+    expect(decimalsMock).toHaveBeenCalledWith(1, bal);
+  });
+  it("discovers an arbitrary new listing and its onchain decimal precision", async () => {
+    const address = "0x1234567890123456789012345678901234567890";
+    currencies.push({
+      id: "NEW",
+      supported_networks: [{ id: "ethereum", contract_address: address }],
+    });
+    product = { ...product, product_id: "NEW-USDC", base_currency_id: "NEW" };
+    book = { ...book, product_id: "NEW-USDC" };
+    decimalsMock.mockResolvedValue(8);
+    expect(await estimate({ from: USDC, to: address, amount: "2100" }, "0")).toMatchObject({
+      status: "ready",
+      output_symbol: "NEW",
+      output_decimals: 8,
+      output_amount_raw: "100000000",
+    });
+    expect(await estimate({ from: address, amount: "1.000000001" }, "0")).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("precision"),
+    });
+  });
+  it("preserves onchain precision above 18 decimals", async () => {
+    const bal = balMarket();
+    decimalsMock.mockImplementation(async (_chainId: number, address: string) =>
+      address === bal ? 24 : 6
+    );
+    book.bids = [{ price: "1", size: "1000" }];
+    product.base_min_size = "0.000000000000000001";
+    product.quote_min_size = "0.000000000000000001";
+    expect(await estimate({ from: USDC, to: bal, amount: "100" }, "0")).toMatchObject({
+      status: "ready",
+      output_decimals: 24,
+      output_amount_raw: "50000000000000000000000000",
+    });
+    expect(await estimate({ from: bal, amount: "1.000000000000000001000001" }, "0")).toMatchObject({
+      status: "ready",
+      input_amount: "1.000000000000000001000001",
+      input_amount_raw: "1000000000000000001000001",
+      output_amount: "1",
+    });
+  });
+  it("rejects the real contract on a different chain", async () => {
+    const bal = balMarket();
+    expect(
+      await estimate({ chainId: 8453, from: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", to: bal })
+    ).toMatchObject({ status: "unavailable", reason: expect.stringContaining("identity") });
+  });
+  it("rejects conflicting Coinbase identities for the same contract", async () => {
+    const bal = balMarket();
+    currencies.push({
+      id: "OTHER",
+      supported_networks: [{ id: "ethereum", contract_address: bal }],
+    });
+    expect(await estimate({ to: bal })).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("unambiguous"),
+    });
+  });
+  it("uses explicit Coinbase token links when its contract field is empty", async () => {
+    const bal = balMarket();
+    currencies[currencies.length - 1] = {
+      id: "BAL",
+      supported_networks: [
+        {
+          id: "ethereum",
+          contract_address: "",
+          crypto_address_link: `https://etherscan.io/token/${bal}?a={{address}}`,
+        },
+      ],
+    };
+    expect(await estimate({ from: USDC, to: bal, amount: "100" }, "0")).toMatchObject({
+      status: "ready",
+      output_amount: "50",
+    });
+  });
+  it("never guesses a token identity from a wallet-address link", async () => {
+    const bal = balMarket();
+    currencies[currencies.length - 1] = {
+      id: "BAL",
+      supported_networks: [
+        {
+          id: "ethereum",
+          contract_address: "",
+          crypto_address_link: "https://etherscan.io/address/{{address}}",
+        },
+      ],
+    };
+    expect(await estimate({ from: USDC, to: bal })).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("identity"),
+    });
+  });
+  it("requires Coinbase network support even for issuer-published USDC", async () => {
+    currencies[1] = {
+      id: "USDC",
+      supported_networks: [{ id: "ethereum", contract_address: USDC }],
+    };
+    expect(
+      await estimate({ chainId: 8453, to: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" })
+    ).toMatchObject({ status: "unavailable", reason: expect.stringContaining("identity") });
+  });
+  it("does not replace a missing USDC market with USD or a synthetic route", async () => {
+    const bal = balMarket();
+    products = [
+      { ...product, product_type: "SPOT", product_id: "BAL-USD", quote_currency_id: "USD" },
+    ];
+    expect(await estimate({ from: USDC, to: bal })).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("No direct Coinbase market"),
+    });
+  });
+  it("follows catalog pagination to discover assets beyond the first page", async () => {
+    const bal = balMarket();
+    const original = fetchMock.getMockImplementation();
+    if (!original) throw new Error("Missing fetch fixture");
+    fetchMock.mockImplementation((url: string) => {
+      if (!url.includes("/market/products?")) return original(url);
+      const next = new URL(url).searchParams.get("cursor");
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            products: next ? [{ ...product, product_type: "SPOT" }] : [],
+            pagination: { has_next: !next, next_cursor: next ? "" : "page2" },
+          })
+        )
+      );
+    });
+    expect(await estimate({ from: USDC, to: bal, amount: "100" }, "0")).toMatchObject({
+      status: "ready",
+      output_amount: "50",
+    });
+    expect(fetchMock.mock.calls.some((call) => (call[0] as string).includes("cursor=page2"))).toBe(
+      true
+    );
+  });
+  it("rejects a repeated catalog cursor instead of accepting a partial list", async () => {
+    const original = fetchMock.getMockImplementation();
+    if (!original) throw new Error("Missing fetch fixture");
+    fetchMock.mockImplementation((url: string) =>
+      url.includes("/market/products?")
+        ? Promise.resolve(
+            new Response(
+              JSON.stringify({
+                products: [{ ...product, product_type: "SPOT" }],
+                pagination: { has_next: true, next_cursor: "same" },
+              })
+            )
+          )
+        : original(url)
+    );
+    expect(await estimate()).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("incomplete market catalog"),
+    });
+  });
+  it("excludes derivative products from spot comparison", async () => {
+    products = [{ ...product, product_type: "FUTURE" }];
+    expect(await estimate()).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("No direct Coinbase market"),
+    });
+  });
+  it("refreshes listings after the catalog TTL instead of keeping an asset allowlist", async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    expect(await estimate({}, "0")).toMatchObject({ status: "ready" });
+    const bal = balMarket();
+    expect(await estimate({ from: USDC, to: bal, amount: "100" }, "0")).toMatchObject({
+      status: "unavailable",
+    });
+    clock.mockReturnValue(now + 300001);
+    book.time = new Date(now + 300001).toISOString();
+    expect(await estimate({ from: USDC, to: bal, amount: "100" }, "0")).toMatchObject({
+      status: "ready",
+      output_amount: "50",
+    });
+  });
+  it("fails closed on expired catalog refresh errors and recovers on the next request", async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    expect(await estimate()).toMatchObject({ status: "ready" });
+    clock.mockReturnValue(now + 300001);
+    fetchMock.mockResolvedValueOnce(new Response("", { status: 503 }));
+    expect(await estimate()).toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("catalog is unavailable"),
+    });
+    book.time = new Date(now + 300001).toISOString();
+    expect(await estimate()).toMatchObject({ status: "ready" });
+  });
+  it("reports token metadata failure without leaking RPC details", async () => {
+    decimalsMock.mockRejectedValue(new Error("https://private-rpc.example/secret"));
+    expect(await estimate()).toEqual({
+      status: "unavailable",
+      reason: "Coinbase estimate is unavailable. Refresh to retry.",
+    });
   });
   it("aborts stalled upstream calls within the request budget", async () => {
     fetchMock.mockImplementation(
