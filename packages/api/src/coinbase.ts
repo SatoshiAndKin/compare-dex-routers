@@ -2,14 +2,12 @@ import { formatUnits, parseUnits } from "viem";
 import { z } from "zod";
 import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
 import type { QuoteParams } from "./quote.js";
+import { CoinbaseError as EstimateError, resolveCoinbasePair } from "./coinbase-catalog.js";
 
 extendZodWithOpenApi(z);
 
-const SCALE = 10n ** 18n;
-const PERCENT = 100n * SCALE;
 // Match the app's 30-second wallet-quote freshness window.
 const MAX_BOOK_AGE_MS = 30_000;
-class EstimateError extends Error {}
 
 export const TakerFeePercentSchema = z.string().regex(/^\d{1,2}(?:\.\d{1,4})?$/);
 
@@ -67,34 +65,7 @@ export const CoinbaseEstimateSchema = z.discriminatedUnion("status", [
 ]);
 export type CoinbaseEstimate = z.infer<typeof CoinbaseEstimateSchema>;
 
-// Identity is chain + contract, never a token's user-supplied symbol. WETH is deliberately
-// absent: spending WETH as Coinbase ETH would require a separate unwrap/transfer step.
-const ETH = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 type Asset = { symbol: string; decimals: number };
-const assets: Record<number, Record<string, Asset>> = {
-  1: {
-    [ETH]: { symbol: "ETH", decimals: 18 },
-    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": { symbol: "USDC", decimals: 6 },
-    "0xdac17f958d2ee523a2206206994597c13d831ec7": { symbol: "USDT", decimals: 6 },
-  },
-  8453: {
-    [ETH]: { symbol: "ETH", decimals: 18 },
-    "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": { symbol: "USDC", decimals: 6 },
-  },
-  10: {
-    [ETH]: { symbol: "ETH", decimals: 18 },
-    "0x0b2c639c533813f4aa9d7837caf62653d097ff85": { symbol: "USDC", decimals: 6 },
-  },
-  42161: {
-    [ETH]: { symbol: "ETH", decimals: 18 },
-    "0xaf88d065e77c8cc2239327c5edb3a432268e5831": { symbol: "USDC", decimals: 6 },
-  },
-};
-const markets = [
-  ["ETH", "USDC"],
-  ["ETH", "USDT"],
-  ["USDT", "USDC"],
-] as const;
 type Market = {
   product: z.infer<typeof productSchema>;
   book: z.infer<typeof bookSchema>["pricebook"];
@@ -145,22 +116,27 @@ function fill(
   levels: z.infer<typeof levelSchema>[],
   target: bigint,
   targetBase: boolean,
-  buy: boolean
+  buy: boolean,
+  precision: number
 ) {
+  const scale = 10n ** BigInt(precision);
   let remaining = target,
     base = 0n,
     quote = 0n;
   const sorted = levels
-    .map((level) => ({ price: parseUnits(level.price, 18), size: parseUnits(level.size, 18) }))
+    .map((level) => ({
+      price: parseUnits(level.price, precision),
+      size: parseUnits(level.size, precision),
+    }))
     .sort((a, b) => (a.price === b.price ? 0 : (a.price < b.price ? -1 : 1) * (buy ? 1 : -1)));
   for (const level of sorted) {
     const requested = targetBase
       ? remaining
       : buy
-        ? (remaining * SCALE) / level.price
-        : ceil(remaining * SCALE, level.price);
+        ? (remaining * scale) / level.price
+        : ceil(remaining * scale, level.price);
     const quantity = requested < level.size ? requested : level.size;
-    const value = buy ? ceil(quantity * level.price, SCALE) : (quantity * level.price) / SCALE;
+    const value = buy ? ceil(quantity * level.price, scale) : (quantity * level.price) / scale;
     base += quantity;
     quote += value;
     const consumed = targetBase ? quantity : value;
@@ -170,29 +146,14 @@ function fill(
   throw new EstimateError("Available Coinbase order-book depth cannot fill this amount.");
 }
 
-function resolveAssets(params: QuoteParams) {
-  const from = assets[params.chainId]?.[params.from.toLowerCase()];
-  const to = assets[params.chainId]?.[params.to.toLowerCase()];
-  const pair = markets.find(
-    ([base, quote]) =>
-      (from?.symbol === base && to?.symbol === quote) ||
-      (to?.symbol === base && from?.symbol === quote)
-  );
-  if (!from || !to || !pair)
-    throw new EstimateError(
-      "No supported direct Coinbase market for these chain/token addresses. Wrapped and bridged assets are not substituted."
-    );
-  return { from, to, pair };
-}
-
-function tradeAmount(params: QuoteParams, from: Asset, to: Asset) {
+function tradeAmount(params: QuoteParams, from: Asset, to: Asset, precision: number) {
   const amountDecimals = params.mode === "exactIn" ? from.decimals : to.decimals;
   if (
     !/^\d+(?:\.\d+)?$/.test(params.amount) ||
     (params.amount.split(".")[1]?.length ?? 0) > amountDecimals
   )
     throw new EstimateError("Amount exceeds the token's supported decimal precision.");
-  const amount = parseUnits(params.amount, 18);
+  const amount = parseUnits(params.amount, precision);
   if (amount <= 0n) throw new EstimateError("Enter a positive trade amount.");
   return amount;
 }
@@ -228,14 +189,15 @@ export async function getCoinbaseEstimate(
   feePercent: string | null
 ): Promise<CoinbaseEstimate> {
   try {
-    const { from, to, pair } = resolveAssets(params);
+    const { from, to, pair, id } = await resolveCoinbasePair(params);
     if (feePercent !== null && !TakerFeePercentSchema.safeParse(feePercent).success)
       throw new EstimateError(
         "Enter a taker fee from 0 to less than 100 percent, with at most four decimal places."
       );
-    const fee = feePercent === null ? 0n : parseUnits(feePercent, 18);
-    const amount = tradeAmount(params, from, to);
-    const id = pair.join("-");
+    const precision = Math.max(18, from.decimals, to.decimals);
+    const percent = 100n * 10n ** BigInt(precision);
+    const fee = feePercent === null ? 0n : parseUnits(feePercent, precision);
+    const amount = tradeAmount(params, from, to, precision);
     const { product, book } = await loadMarket(id);
     validateMarket(product, book, id, pair);
     const buy = from.symbol === pair[1];
@@ -243,21 +205,21 @@ export async function getCoinbaseEstimate(
     const target = targetBase
       ? amount
       : buy
-        ? (amount * PERCENT) / (PERCENT + fee)
-        : ceil(amount * PERCENT, PERCENT - fee);
-    const filled = fill(buy ? book.asks : book.bids, target, targetBase, buy);
+        ? (amount * percent) / (percent + fee)
+        : ceil(amount * percent, percent - fee);
+    const filled = fill(buy ? book.asks : book.bids, target, targetBase, buy, precision);
     if (
-      filled.base < parseUnits(product.base_min_size, 18) ||
-      filled.base > parseUnits(product.base_max_size, 18) ||
-      filled.quote < parseUnits(product.quote_min_size, 18) ||
-      filled.quote > parseUnits(product.quote_max_size, 18)
+      filled.base < parseUnits(product.base_min_size, precision) ||
+      filled.base > parseUnits(product.base_max_size, precision) ||
+      filled.quote < parseUnits(product.quote_min_size, precision) ||
+      filled.quote > parseUnits(product.quote_max_size, precision)
     )
       throw new EstimateError("Amount is outside Coinbase market size limits.");
-    const commission = ceil(filled.quote * fee, PERCENT);
+    const commission = ceil(filled.quote * fee, percent);
     const input = buy ? filled.quote + commission : filled.base;
     const output = buy ? filled.base : filled.quote - commission;
-    const inputRaw = ceil(input, 10n ** BigInt(18 - from.decimals));
-    const outputRaw = output / 10n ** BigInt(18 - to.decimals);
+    const inputRaw = ceil(input, 10n ** BigInt(precision - from.decimals));
+    const outputRaw = output / 10n ** BigInt(precision - to.decimals);
     return {
       status: "ready",
       product_id: id,
@@ -271,7 +233,7 @@ export async function getCoinbaseEstimate(
       input_decimals: from.decimals,
       output_decimals: to.decimals,
       fee_percent: feePercent,
-      fee_amount: feePercent === null ? null : formatUnits(commission, 18),
+      fee_amount: feePercent === null ? null : formatUnits(commission, precision),
       fee_symbol: pair[1],
       as_of: book.time,
       expires_at: new Date(Date.parse(book.time) + MAX_BOOK_AGE_MS).toISOString(),
