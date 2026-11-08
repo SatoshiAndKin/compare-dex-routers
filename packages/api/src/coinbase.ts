@@ -22,6 +22,8 @@ const productSchema = z.object({
   quote_currency_id: z.string(),
   status: z.string(),
   trading_disabled: z.boolean(),
+  is_disabled: z.boolean(),
+  view_only: z.boolean(),
   cancel_only: z.boolean(),
   limit_only: z.boolean(),
   post_only: z.boolean(),
@@ -174,6 +176,8 @@ function validateMarket(
   if (
     product.status !== "online" ||
     product.trading_disabled ||
+    product.is_disabled ||
+    product.view_only ||
     product.cancel_only ||
     product.post_only ||
     product.auction_mode

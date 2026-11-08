@@ -66,6 +66,8 @@ beforeEach(() => {
     quote_currency_id: "USDC",
     status: "online",
     trading_disabled: false,
+    is_disabled: false,
+    view_only: false,
     cancel_only: false,
     limit_only: false,
     post_only: false,
@@ -203,11 +205,25 @@ describe("Coinbase Advanced estimates", () => {
       });
     }
   );
-  it.each(["trading_disabled", "cancel_only", "post_only", "auction_mode"])(
-    "rejects a market with %s",
+  it.each([
+    "trading_disabled",
+    "is_disabled",
+    "view_only",
+    "cancel_only",
+    "post_only",
+    "auction_mode",
+  ])("rejects a market with %s", async (flag) => {
+    product[flag] = true;
+    expect(await estimate()).toMatchObject({ status: "unavailable" });
+  });
+  it.each(["is_disabled", "view_only"])(
+    "requires the %s status instead of assuming trading is enabled",
     async (flag) => {
-      product[flag] = true;
-      expect(await estimate()).toMatchObject({ status: "unavailable" });
+      product[flag] = undefined;
+      expect(await estimate()).toMatchObject({
+        status: "unavailable",
+        reason: "Coinbase returned invalid market data.",
+      });
     }
   );
   it("estimates limit-only markets and reports the required order type", async () => {
