@@ -90,7 +90,7 @@ describe("QuoteCard", () => {
         isRecommended: true,
       },
     });
-    expect(getByText("RECOMMENDED")).toBeTruthy();
+    expect(getByText("RECOMMENDED DEX ROUTE")).toBeTruthy();
   });
 
   it("shows SELECTED badge when isRecommended=false", () => {
