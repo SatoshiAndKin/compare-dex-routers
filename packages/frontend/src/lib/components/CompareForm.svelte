@@ -307,8 +307,8 @@
     <div class="form-section">
       <span class="section-label">From Token</span>
       <TokenInput type="from" />
-      <div class="balance-slot">
-        {#if walletStore.isConnected}
+      {#if walletStore.isConnected}
+        <div class="balance-slot">
           <button
             type="button"
             class="balance-display"
@@ -323,21 +323,21 @@
             {balanceLabel("from")}
             {formStore.fromToken?.symbol ?? ""}
           </button>
-        {/if}
-      </div>
+        </div>
+      {/if}
       {#if balanceMessage}<span role="status">{balanceMessage}</span>{/if}
     </div>
 
     <div class="form-section">
       <span class="section-label">To Token</span>
       <TokenInput type="to" />
-      <div class="balance-slot">
-        {#if walletStore.isConnected}
+      {#if walletStore.isConnected}
+        <div class="balance-slot">
           <span class="balance-display" aria-label="To token balance"
             >{balanceLabel("to")} {formStore.toToken?.symbol ?? ""}</span
           >
-        {/if}
-      </div>
+        </div>
+      {/if}
     </div>
   </div>
   <div class="form-section">
@@ -379,7 +379,7 @@
     max-width: 16rem;
   }
   .balance-slot {
-    min-height: 3.5rem;
+    min-height: 2.75rem;
     display: flex;
     align-items: center;
   }

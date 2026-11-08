@@ -31,6 +31,7 @@
   let activeIdx = $state(-1);
   let inputEl = $state<HTMLInputElement | null>(null);
   let containerEl = $state<HTMLElement | null>(null);
+  let copyResult = $state<{ address: string; status: "copied" | "failed" } | null>(null);
   let pendingSelectedToken = $state<TokenInfo | null>(null);
   let pendingCurrentSideToken = $state<TokenInfo | null>(null);
 
@@ -42,15 +43,32 @@
   // ---------------------------------------------------------------------------
 
   let currentToken = $derived(type === "from" ? formStore.fromToken : formStore.toToken);
+  const copied = $derived(
+    copyResult?.address === currentToken?.address && copyResult?.status === "copied"
+  );
+  const copyFailed = $derived(
+    copyResult?.address === currentToken?.address && copyResult?.status === "failed"
+  );
   let showClearButton = $derived(inputValue.trim().length > 0 || currentToken !== null);
 
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
-  /** Format token display: "SYMBOL (0xFullAddress)" — NEVER truncate */
+  /** The input shows the token label; the full address has its own copyable row. */
   function formatTokenDisplay(symbol: string, address: string): string {
-    return `${symbol}${isNativeToken(address) ? " — Native" : ""} (${address})`;
+    return `${symbol || "Token"}${isNativeToken(address) ? " — Native" : ""}`;
+  }
+
+  async function copyAddress(): Promise<void> {
+    const address = currentToken?.address;
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      copyResult = { address, status: "copied" };
+    } catch {
+      copyResult = { address, status: "failed" };
+    }
   }
 
   /** Normalize address for comparison */
@@ -110,6 +128,7 @@
 
   /** Select a token and update store, swapping sides when the new selection duplicates the opposite side */
   function selectToken(token: TokenInfo): void {
+    copyResult = null;
     const currentSideToken =
       pendingCurrentSideToken ?? (type === "from" ? formStore.fromToken : formStore.toToken);
     const otherSideToken = type === "from" ? formStore.toToken : formStore.fromToken;
@@ -148,6 +167,7 @@
   }
 
   function clearToken(): void {
+    copyResult = null;
     inputValue = "";
     hideDropdown();
     openedModal = false;
@@ -177,6 +197,7 @@
   async function handleInput(e: Event): Promise<void> {
     const target = e.target as HTMLInputElement;
     inputValue = target.value;
+    copyResult = null;
 
     if (pendingCurrentSideToken === null) {
       pendingCurrentSideToken = type === "from" ? formStore.fromToken : formStore.toToken;
@@ -355,9 +376,21 @@
     {/if}
   </div>
 
-  <p class="selected-token-address" aria-hidden={!currentToken}>
-    {currentToken?.address ?? "\u00a0"}
-  </p>
+  {#if currentToken}
+    <div class="selected-token-details">
+      <p class="selected-token-address">{currentToken.address}</p>
+      <button
+        type="button"
+        class="copy-address-button"
+        aria-label={`Copy ${type} token address`}
+        onclick={copyAddress}
+        ><span role="status">{copied ? "Copied" : copyFailed ? "Retry" : "Copy"}</span></button
+      >
+    </div>
+    {#if copyFailed}<p class="copy-error" role="alert">
+        Could not copy. Select and copy the full address.
+      </p>{/if}
+  {/if}
 
   {#if dropdownVisible && matches.length > 0}
     <div class="token-autocomplete-list" role="listbox">
@@ -406,6 +439,43 @@
 {/if}
 
 <style>
+  .selected-token-details {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    min-width: 0;
+  }
+  .selected-token-address {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    color: var(--text-muted);
+    font: 0.75rem/1.5 monospace;
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
+  .copy-address-button {
+    flex-shrink: 0;
+    width: 3.5rem;
+    min-height: 44px;
+    padding: 0.25rem;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--border-light);
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .copy-address-button:hover {
+    background: var(--bg-hover);
+  }
+  .copy-error {
+    font-size: 0.75rem;
+    color: var(--error);
+    margin-top: 0.25rem;
+  }
   .token-input-wrapper {
     position: relative;
     width: 100%;

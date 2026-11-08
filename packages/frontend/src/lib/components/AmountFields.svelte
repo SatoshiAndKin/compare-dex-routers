@@ -183,7 +183,7 @@
     min-width: 0;
   }
   .amount-hint {
-    min-height: 3em;
+    min-height: 1.5em;
     line-height: 1.5;
     font-size: 0.7rem;
     color: var(--text-muted);

@@ -260,6 +260,11 @@ The space theme uses local SVG/CSS assets and the existing light/dark preference
 
 Native assets come from `/config` independently of token lists. Native balances use `eth_getBalance` and need no approvals. Raw integer balances and decimals drive exact sell-balance entry. Native entry first obtains a route estimate, reserves gas with the 20% margin and fresh network fees, and fails closed when fees are unavailable. Balance response sequences discard outdated reads.
 
+Selected token inputs show the token label. Each full address appears once in a
+wrapping row beside a Copy button. Copy failures keep the address selectable and
+permit a retry. Disconnected wallets have no balance or wallet-message spacer.
+Form spacing follows visible content and keeps 44-pixel touch targets.
+
 ### DEX and Coinbase price comparison
 
 `VenueComparison.svelte` displays DEX routers and Coinbase Advanced as equal

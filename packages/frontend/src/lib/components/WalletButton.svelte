@@ -60,16 +60,14 @@
     {/if}
   </div>
 {/if}
-<div class="wallet-message-space">
-  {#if walletStore.message}
-    <div class="wallet-message" class:error={walletStore.messageIsError} role="status">
-      {walletStore.message}
-      {#if walletStore.messageTransaction}
-        · <TransactionLink transaction={walletStore.messageTransaction} />
-      {/if}
-    </div>
-  {/if}
-</div>
+{#if walletStore.message}
+  <div class="wallet-message" class:error={walletStore.messageIsError} role="status">
+    {walletStore.message}
+    {#if walletStore.messageTransaction}
+      · <TransactionLink transaction={walletStore.messageTransaction} />
+    {/if}
+  </div>
+{/if}
 
 <style>
   .wallet-area {
@@ -179,9 +177,6 @@
     font-size: 0.78rem;
     margin: 0;
     color: var(--text-muted, #666);
-  }
-  .wallet-message-space {
-    min-height: 3.5rem;
   }
 
   .wallet-message.error {

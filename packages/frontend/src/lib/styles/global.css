@@ -1800,18 +1800,3 @@ a:focus-visible {
     scroll-behavior: auto !important;
   }
 }
-
-.selected-token-address {
-  display: block;
-  min-height: 3em;
-  line-height: 1.5;
-  color: var(--text-muted);
-  font: 0.75rem monospace;
-  overflow-wrap: anywhere;
-  margin-top: 0.25rem;
-}
-@media (max-width: 360px) {
-  .selected-token-address {
-    min-height: 4.5em;
-  }
-}
