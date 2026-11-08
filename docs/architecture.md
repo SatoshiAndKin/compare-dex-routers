@@ -259,3 +259,24 @@ and `/api`-prefixed deployments work.
 The space theme uses local SVG/CSS assets and the existing light/dark preference.
 
 Native assets come from `/config` independently of token lists. Native balances use `eth_getBalance` and need no approvals. Raw integer balances and decimals drive exact sell-balance entry. Native entry first obtains a route estimate, reserves gas with the 20% margin and fresh network fees, and fails closed when fees are unavailable. Balance response sequences discard outdated reads.
+
+### DEX and Coinbase price comparison
+
+`VenueComparison.svelte` displays DEX routers and Coinbase Advanced as equal
+boxed sections. It compares the best matching, non-failed DEX quoted amount with
+the Coinbase depth estimate. Exact-input trades prefer more output; target-output
+trades prefer less input. It shows ties and the amount difference. The selected
+DEX route can differ from the best price before gas because of gas costs or a
+manual route choice. Both price boxes use the same amount display. The selected
+DEX route and its wallet controls follow below the comparison. The server
+recommendation continues to select only DEX routes.
+
+The comparison excludes gas and transfers. It uses the user's assumed Coinbase
+taker fee when set, and labels the comparison before Coinbase fees otherwise.
+Stale, expired, loading, mismatched, or failed quotes cannot produce a price winner.
+
+The API rejects disabled and view-only Coinbase markets, including public
+`is_disabled` and `view_only` flags. Public data cannot confirm that the user's
+account can trade a pair in the Coinbase mobile app. The Coinbase box states
+that mobile trading is unverified and links to Coinbase's app guidance. It never
+presents the public market status as account-specific trading approval.

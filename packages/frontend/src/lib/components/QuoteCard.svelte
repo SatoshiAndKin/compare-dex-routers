@@ -113,8 +113,8 @@
       >
         {isRecommended
           ? quote.simulation_status === "succeeded"
-            ? "RECOMMENDED"
-            : "Best quoted price — unverified"
+            ? "RECOMMENDED DEX ROUTE"
+            : "Best DEX route — unverified"
           : "SELECTED"}
       </span>
 

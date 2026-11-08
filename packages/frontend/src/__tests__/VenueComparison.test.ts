@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, within } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tick } from "svelte";
+import { formatUnits } from "viem";
 import SettingsModal from "../lib/components/SettingsModal.svelte";
 import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
-import CoinbaseEstimate from "../lib/components/CoinbaseEstimate.svelte";
+import VenueComparison from "../lib/components/VenueComparison.svelte";
 import type { CompareParams } from "../lib/stores/comparisonStore.svelte.js";
 import { deferred, makeQuote } from "./quote-fixture.js";
 
@@ -22,7 +23,7 @@ function reply(fee: string | null = null) {
     data: {
       status: "ready",
       product_id: "ETH-USDC",
-      side: "SELL",
+      side: "SELL" as const,
       input_symbol: "ETH",
       output_symbol: "USDC",
       input_amount: "2",
@@ -42,7 +43,17 @@ function reply(fee: string | null = null) {
   };
 }
 const quote = () =>
-  makeQuote({ from: params.from, to: params.to, amount: "2", output_amount_raw: "3800000000" });
+  makeQuote({
+    from: params.from,
+    to: params.to,
+    amount: "2",
+    from_symbol: "ETH",
+    to_symbol: "USDC",
+    input_amount: "2",
+    input_amount_raw: "2000000000000000000",
+    output_amount: "3800",
+    output_amount_raw: "3800000000",
+  });
 beforeEach(() => {
   localStorage.clear();
   settingsStore.closeSettings();
@@ -57,9 +68,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("Coinbase estimate panel", () => {
+describe("Venue price comparison", () => {
   it("shows a before-fee estimate and an external link without wallet actions", async () => {
-    const view = render(CoinbaseEstimate, {
+    const view = render(VenueComparison, {
       params,
       quotes: [quote()],
       stale: false,
@@ -69,24 +80,30 @@ describe("Coinbase estimate panel", () => {
     expect(link).toHaveAttribute("href", "https://www.coinbase.com/advanced-trade/spot/ETH-USDC");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(view.getByText(/Before trading fees;/)).toBeVisible();
-    expect(view.getByText("2 ETH → 3900 USDC")).toBeVisible();
+    expect(view.getByRole("region", { name: "Coinbase Advanced estimate" })).toHaveTextContent(
+      "You pay2 ETH You receive3900 USDC"
+    );
     expect(view.getByRole("group", { name: "Coinbase average trade price" })).toHaveTextContent(
       "1 ETH = 1950 USDC"
     );
-    expect(view.getByRole("group")).toHaveTextContent("1 USDC = 0.000512821 ETH");
+    expect(view.getByRole("group", { name: "Coinbase average trade price" })).toHaveTextContent(
+      "1 USDC = 0.000512821 ETH"
+    );
     expect(view.queryByRole("textbox")).toBeNull();
     expect(view.getByText(/Excludes deposits, withdrawals/)).toBeVisible();
-    expect(view.queryByText(/than the best DEX/)).toBeNull();
+    expect(
+      view.getByText("Coinbase has the better quoted price before Coinbase fees")
+    ).toBeVisible();
     expect(view.queryByRole("button", { name: /swap|approve/i })).toBeNull();
   });
   it("applies and saves a fee and compares amounts without transfer-cost claims", async () => {
-    const view = render(CoinbaseEstimate, {
+    const view = render(VenueComparison, {
       params,
       quotes: [quote()],
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
-    await view.findByRole("link");
+    await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
     settingsStore.openSettings();
     const settings = render(SettingsModal);
     await fireEvent.input(settings.getByLabelText("Your taker fee (%)"), {
@@ -129,7 +146,7 @@ describe("Coinbase estimate panel", () => {
       output_decimals: 18,
     });
     get.mockResolvedValueOnce(response);
-    const view = render(CoinbaseEstimate, {
+    const view = render(VenueComparison, {
       params: target,
       quotes: [makeQuote({ ...target, input_amount_raw: "4300000000" })],
       stale: false,
@@ -140,7 +157,9 @@ describe("Coinbase estimate panel", () => {
         "43 USDC more input required than the best DEX price before gas and transfers."
       )
     ).toBeVisible();
-    expect(view.getByRole("group")).toHaveTextContent("1 ETH = 4343 USDC");
+    expect(view.getByRole("group", { name: "Coinbase average trade price" })).toHaveTextContent(
+      "1 ETH = 4343 USDC"
+    );
   });
   it.each(["exactIn", "targetOut"] as const)(
     "excludes failed simulations from the %s DEX comparison",
@@ -165,7 +184,7 @@ describe("Coinbase estimate panel", () => {
         simulation_reason: "execution reverted",
         execution: null,
       });
-      const view = render(CoinbaseEstimate, {
+      const view = render(VenueComparison, {
         params: trade,
         quotes: [working, failed],
         stale: false,
@@ -180,20 +199,20 @@ describe("Coinbase estimate panel", () => {
   );
   it("does not compare Coinbase with a set containing only failed simulations", async () => {
     get.mockResolvedValueOnce(reply("1"));
-    const view = render(CoinbaseEstimate, {
+    const view = render(VenueComparison, {
       params,
       quotes: [makeQuote({ ...quote(), simulation_status: "failed", execution: null })],
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
-    await view.findByRole("link");
+    await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
     expect(view.queryByText(/than the best DEX/)).toBeNull();
   });
   it("shows unsupported pairs and upstream outages without hiding DEX data", async () => {
     get.mockResolvedValueOnce({
       data: { status: "unavailable", reason: "No supported direct market." },
     });
-    const view = render(CoinbaseEstimate, {
+    const view = render(VenueComparison, {
       params,
       quotes: [quote()],
       stale: false,
@@ -208,7 +227,7 @@ describe("Coinbase estimate panel", () => {
   it("discards old requests after a trade change and cancels on invalidation", async () => {
     const old = deferred<ReturnType<typeof reply>>();
     get.mockReturnValueOnce(old.promise);
-    const view = render(CoinbaseEstimate, {
+    const view = render(VenueComparison, {
       params,
       quotes: [],
       stale: false,
@@ -222,7 +241,7 @@ describe("Coinbase estimate panel", () => {
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
-    await view.findByRole("link");
+    await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
     expect(signal.aborted).toBe(true);
     const late = reply();
     late.data.output_amount = "9999";
@@ -246,7 +265,7 @@ describe("Coinbase estimate panel", () => {
     );
     const dexExpiresAt = Date.now() + 30_000;
     const quotes = [quote()];
-    const view = render(CoinbaseEstimate, { params, quotes, stale: false, dexExpiresAt });
+    const view = render(VenueComparison, { params, quotes, stale: false, dexExpiresAt });
     await vi.advanceTimersByTimeAsync(0);
     await tick();
     expect(
@@ -269,11 +288,109 @@ describe("Coinbase estimate panel", () => {
     ).toBeVisible();
     expect(view.queryByText("DEX quotes expired. Refresh quotes to compare prices.")).toBeNull();
   });
+});
+
+describe("Venue price winners and mobile availability", () => {
+  it.each([
+    ["exactIn", "4000000000", "Coinbase", "coinbase"],
+    ["exactIn", "3700000000", "DEX", "dex"],
+    ["targetOut", "1900000000000000000", "Coinbase", "coinbase"],
+    ["targetOut", "2100000000000000000", "DEX", "dex"],
+  ] as const)(
+    "labels the better %s price when %s is quoted",
+    async (mode, amount, venue, winner) => {
+      const response = reply("0");
+      if (mode === "exactIn") {
+        response.data.output_amount_raw = amount;
+        response.data.output_amount = formatUnits(BigInt(amount), 6);
+      } else {
+        response.data.input_amount_raw = amount;
+        response.data.input_amount = formatUnits(BigInt(amount), 18);
+      }
+      get.mockResolvedValueOnce(response);
+      const trade = { ...params, mode };
+      const view = render(VenueComparison, {
+        params: trade,
+        quotes: [
+          makeQuote({
+            ...quote(),
+            ...trade,
+            input_amount_raw: "2000000000000000000",
+            output_amount_raw: "3800000000",
+          }),
+        ],
+        stale: false,
+        dexExpiresAt: Date.now() + 30_000,
+      });
+      expect(await view.findByText(`${venue} has the better quoted price`)).toBeVisible();
+      const dex = view.getByRole("region", { name: "DEX router quotes" });
+      const coinbase = view.getByRole("region", { name: "Coinbase Advanced estimate" });
+      expect(
+        within(winner === "dex" ? dex : coinbase).getByText("Better quoted price")
+      ).toBeVisible();
+      expect(
+        within(winner === "dex" ? coinbase : dex).queryByText("Better quoted price")
+      ).toBeNull();
+      expect(dex.parentElement).toBe(coinbase.parentElement);
+    }
+  );
+  it("shows a tie without declaring a winner", async () => {
+    const response = reply("0");
+    response.data.output_amount_raw = "3800000000";
+    response.data.output_amount = "3800";
+    get.mockResolvedValueOnce(response);
+    const view = render(VenueComparison, {
+      params,
+      quotes: [quote()],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
+    const comparison = await view.findByRole("status", { name: "Venue price comparison" });
+    expect(comparison).toHaveTextContent("Same quoted price");
+    expect(view.queryByText("Better quoted price")).toBeNull();
+  });
+  it("does not claim mobile trading support from a ready public book", async () => {
+    const response = reply();
+    Object.assign(response.data, { product_id: "YFI-USDC", side: "BUY", output_symbol: "YFI" });
+    get.mockResolvedValueOnce(response);
+    const view = render(VenueComparison, {
+      params,
+      quotes: [quote()],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
+    expect(await view.findByText("Mobile trading not verified")).toBeVisible();
+    expect(
+      view.getByText(/does not confirm that your account can buy YFI in the YFI-USDC market/)
+    ).toBeVisible();
+    expect(
+      view.getByRole("link", { name: "About Advanced in the Coinbase app ↗" })
+    ).toHaveAttribute("href", expect.stringContaining("help.coinbase.com"));
+  });
+  it.each([
+    { chainId: 8453 },
+    { from: "0x1111111111111111111111111111111111111111" },
+    { to: "0x1111111111111111111111111111111111111111" },
+    { mode: "targetOut" as const },
+    { amount: "3" },
+  ])("does not compare a retained DEX quote from another request: %o", async (mismatch) => {
+    get.mockResolvedValueOnce(reply("0"));
+    const view = render(VenueComparison, {
+      params,
+      quotes: [makeQuote({ ...quote(), ...mismatch })],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
+    await view.findByText("Mobile trading not verified");
+    expect(view.queryByRole("status", { name: "Venue price comparison" })).toBeNull();
+    expect(view.queryByText("Better quoted price")).toBeNull();
+  });
+
   it("marks expired estimates and removes their price comparison", async () => {
     const expired = reply("1");
     expired.data.expires_at = new Date(Date.now() - 1000).toISOString();
     get.mockResolvedValueOnce(expired);
-    const view = render(CoinbaseEstimate, {
+    const view = render(VenueComparison, {
       params,
       quotes: [quote()],
       stale: false,

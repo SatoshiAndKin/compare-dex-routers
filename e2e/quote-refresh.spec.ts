@@ -264,7 +264,7 @@ for (const funded of [false, true]) {
     await expect(page.locator(".quote-results")).toHaveAttribute("aria-busy", "false");
     expect(senders).toEqual(funded ? [null, SENDER] : [null]);
     if (!funded) {
-      await expect(card).toContainText("Best quoted price — unverified");
+      await expect(card).toContainText("Best DEX route — unverified");
       await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
     }
   });

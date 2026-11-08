@@ -69,7 +69,7 @@ describe("provider results", () => {
     store.recommendation = "0x";
     const view = render(QuoteResults);
     expect(view.queryAllByRole("tab")).toEqual([]);
-    expect(view.getByText("RECOMMENDED")).toBeVisible();
+    expect(view.getByText("RECOMMENDED DEX ROUTE")).toBeVisible();
     expect(view.container.querySelectorAll(".quote-card")).toHaveLength(1);
     expect(view.container.querySelector(".quote-card")).toHaveTextContent(
       "Simulation passed. Wallet checks required."

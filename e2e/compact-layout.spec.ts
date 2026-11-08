@@ -70,7 +70,7 @@ test("keeps precise input and output together through metadata and quote loading
   }
   await expect(page.locator(".input-amount")).toHaveText(`${amount} CRV`);
   await expect(page.locator(".output-amount")).toHaveText(`${output} crvUSD`);
-  const rates = page.getByRole("group", { name: "Average trade price" });
+  const rates = page.getByRole("group", { name: "Average trade price", exact: true });
   await expect(rates).toContainText("1 CRV ≈ 0.349453 crvUSD");
   await expect(rates).toContainText("1 crvUSD ≈ 2.86161 CRV");
   const totalsBox = await page.locator(".quote-amounts").boundingBox();
