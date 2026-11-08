@@ -1,5 +1,5 @@
 import { render, fireEvent, waitFor } from "@testing-library/svelte";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import TokenInput from "../lib/components/TokenInput.svelte";
 import { formStore } from "../lib/stores/formStore.svelte.js";
 import { tokensStore } from "../lib/stores/tokensStore.svelte.js";
@@ -82,41 +82,14 @@ describe("TokenInput", () => {
     expect(options.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('formats selected token as "SYMBOL (0xFullAddress)" - never truncates address', async () => {
-    const { getByPlaceholderText } = render(TokenInput, { props: { type: "from" } });
-    const input = getByPlaceholderText("Sell token...");
-
-    await fireEvent.focus(input);
-    await fireEvent.input(input, { target: { value: "USDC" } });
-    await new Promise((r) => setTimeout(r, 10));
-
-    // Simulate selecting first option
-    if (formStore.fromToken === null) {
-      // Manually select token to test formatting
-      formStore.fromToken = {
-        address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        symbol: "USDC",
-        decimals: 6,
-        name: "USD Coin",
-      };
-    }
-
-    // The display value should show full address, never truncated
-    const displayValue = `USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)`;
-
-    // Verify the format includes full address
-    expect(displayValue).not.toContain("...");
-    expect(displayValue.length).toBeGreaterThan(20);
-    expect(displayValue).toContain("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
-  });
-
-  it("never truncates addresses in display", () => {
-    const fullAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-    const display = `USDC (${fullAddress})`;
-
-    // Ensure the full address is always shown
-    expect(display).toContain(fullAddress);
-    expect(display).not.toMatch(/0x[0-9a-fA-F]{4}\.{3}[0-9a-fA-F]{4}/);
+  it("shows the selected label and one full address", async () => {
+    const address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+    formStore.fromToken = { address, symbol: "USDC", decimals: 6 };
+    const view = render(TokenInput, { type: "from" });
+    await waitFor(() => expect(view.getByRole("textbox")).toHaveValue("USDC"));
+    expect(view.getAllByText(address, { exact: true })).toHaveLength(1);
+    expect(view.getByText(address)).toHaveClass("selected-token-address");
+    expect(view.getByRole("button", { name: "Copy from token address" })).toBeVisible();
   });
 
   it("updates formStore.fromToken when from token selected", async () => {
@@ -458,16 +431,16 @@ describe("TokenInput", () => {
     const fromInput = getByPlaceholderText("Sell token...") as HTMLInputElement;
     const toInput = getToPlaceholder("Receive token...") as HTMLInputElement;
 
-    expect(fromInput.value).toBe("USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)");
-    expect(toInput.value).toBe("WETH (0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2)");
+    expect(fromInput.value).toBe("USDC");
+    expect(toInput.value).toBe("WETH");
     await fireEvent.focus(fromInput);
     await fireEvent.input(fromInput, { target: { value: "WETH" } });
     await new Promise((r) => setTimeout(r, 10));
 
     await fireEvent.mouseDown(getAllByRole("option")[0]!);
     await waitFor(() => {
-      expect(fromInput.value).toBe("WETH (0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2)");
-      expect(toInput.value).toBe("USDC (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)");
+      expect(fromInput.value).toBe("WETH");
+      expect(toInput.value).toBe("USDC");
     });
   });
 
@@ -513,7 +486,63 @@ describe("TokenInput", () => {
         symbol: "USDC",
         address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       });
-      expect(fromInput.value).toBe("WETH (0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2)");
+      expect(fromInput.value).toBe("WETH");
     });
+  });
+});
+
+describe("selected address copying", () => {
+  const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  const from = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+  const to = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e";
+  const writeText = vi.fn();
+  beforeEach(() => {
+    formStore.chainId = 1;
+    formStore.fromToken = { address: from, symbol: "USDC", decimals: 6 };
+    formStore.toToken = { address: to, symbol: "YFI", decimals: 18 };
+    writeText.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  });
+  afterEach(() => {
+    if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  });
+  it.each(["from", "to"] as const)(
+    "copies the exact %s address and shows confirmation",
+    async (type) => {
+      const view = render(TokenInput, { type });
+      const button = view.getByRole("button", { name: `Copy ${type} token address` });
+      await fireEvent.click(button);
+      await waitFor(() => expect(button).toHaveTextContent("Copied"));
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(type === "from" ? from : to);
+      expect(formStore.fromToken?.address).toBe(from);
+      expect(formStore.toToken?.address).toBe(to);
+    }
+  );
+  it("shows a failed-copy message, preserves the address, and permits retry", async () => {
+    writeText.mockRejectedValueOnce(new DOMException("Clipboard denied", "NotAllowedError"));
+    const view = render(TokenInput, { type: "from" });
+    const button = view.getByRole("button", { name: "Copy from token address" });
+    await fireEvent.click(button);
+    expect(await view.findByRole("alert")).toHaveTextContent(
+      "Could not copy. Select and copy the full address."
+    );
+    expect(button).toHaveTextContent("Retry");
+    expect(view.getByText(from)).toBeVisible();
+    await fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveTextContent("Copied"));
+    expect(view.queryByRole("alert")).toBeNull();
+    expect(writeText).toHaveBeenLastCalledWith(from);
+  });
+  it("does not carry copy confirmation to a different selected token", async () => {
+    const view = render(TokenInput, { type: "from" });
+    const button = view.getByRole("button", { name: "Copy from token address" });
+    await fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveTextContent("Copied"));
+    formStore.fromToken = { address: to, symbol: "YFI", decimals: 18 };
+    await waitFor(() => expect(button).toHaveTextContent("Copy"));
+    expect(view.queryByText(from)).toBeNull();
+    await fireEvent.click(button);
+    expect(writeText).toHaveBeenLastCalledWith(to);
   });
 });
