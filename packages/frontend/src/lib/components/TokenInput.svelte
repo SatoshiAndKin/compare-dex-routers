@@ -383,9 +383,31 @@
         type="button"
         class="copy-address-button"
         aria-label={`Copy ${type} token address`}
+        title={copied ? "Copied" : copyFailed ? "Retry copy" : "Copy address"}
         onclick={copyAddress}
-        ><span role="status">{copied ? "Copied" : copyFailed ? "Retry" : "Copy"}</span></button
       >
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          {#if copied}
+            <path d="m5 12 4 4L19 6" />
+          {:else}
+            <path d="M9 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
+            <rect x="3" y="7" width="14" height="14" rx="3" />
+          {/if}
+        </svg>
+        <span class="copy-status" role="status"
+          >{copied ? "Copied" : copyFailed ? "Retry" : "Copy"}</span
+        >
+      </button>
     {/if}
   </div>
   {#if copyFailed}<p class="copy-error" role="alert">
@@ -457,20 +479,36 @@
     user-select: text;
   }
   .copy-address-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
-    width: 3.5rem;
-    min-height: 44px;
-    padding: 0.25rem;
-    color: var(--text);
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    color: var(--text-muted);
     background: transparent;
-    border: 1px solid var(--border-light);
-    font-family: inherit;
-    font-size: 0.75rem;
-    font-weight: 600;
+    border: none;
     cursor: pointer;
   }
   .copy-address-button:hover {
+    color: var(--text);
     background: var(--bg-hover);
+  }
+  .copy-address-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .copy-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
   .copy-error {
     font-size: 0.75rem;
