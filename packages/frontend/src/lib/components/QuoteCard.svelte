@@ -13,6 +13,7 @@
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
+  import TokenSymbol from "./TokenSymbol.svelte";
 
   interface Props {
     provider: string;
@@ -122,11 +123,17 @@
       <div class="quote-amounts">
         <div>
           <div class="output-label">You pay</div>
-          <div class="input-amount">{quote.input_amount} {quote.from_symbol}</div>
+          <div class="input-amount">
+            {quote.input_amount}
+            <TokenSymbol chainId={quote.chainId} address={quote.from} symbol={quote.from_symbol} />
+          </div>
         </div>
         <div>
           <div class="output-label">You receive</div>
-          <div class="output-amount">{quote.output_amount} {quote.to_symbol}</div>
+          <div class="output-amount">
+            {quote.output_amount}
+            <TokenSymbol chainId={quote.chainId} address={quote.to} symbol={quote.to_symbol} />
+          </div>
         </div>
       </div>
 

@@ -6,6 +6,7 @@
   import type { CompareParams, Quote } from "../stores/comparisonStore.svelte.js";
   import { preferencesStore } from "../stores/preferencesStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
+  import TokenSymbol from "./TokenSymbol.svelte";
 
   let {
     params,
@@ -145,10 +146,26 @@
   });
 </script>
 
-{#snippet amounts(input: string, inputSymbol: string, output: string, outputSymbol: string)}
+{#snippet amounts(
+  input: string,
+  inputSymbol: string,
+  output: string,
+  outputSymbol: string,
+  chainId: number,
+  from: string,
+  to: string
+)}
   <div class="amounts">
-    <div><span class="amount-label">You pay</span><strong>{input} {inputSymbol}</strong></div>
-    <div><span class="amount-label">You receive</span><strong>{output} {outputSymbol}</strong></div>
+    <div>
+      <span class="amount-label">You pay</span><strong
+        >{input} <TokenSymbol {chainId} address={from} symbol={inputSymbol} /></strong
+      >
+    </div>
+    <div>
+      <span class="amount-label">You receive</span><strong
+        >{output} <TokenSymbol {chainId} address={to} symbol={outputSymbol} /></strong
+      >
+    </div>
   </div>
 {/snippet}
 
@@ -200,7 +217,10 @@
             bestDex.input_amount,
             bestDex.from_symbol,
             bestDex.output_amount,
-            bestDex.to_symbol
+            bestDex.to_symbol,
+            bestDex.chainId,
+            bestDex.from,
+            bestDex.to
           )}
           <div role="group" aria-label="DEX average trade price" class="quote-rates">
             <p class="amount-label">Average trade price</p>
@@ -267,7 +287,10 @@
                 result.input_amount,
                 result.input_symbol,
                 result.output_amount,
-                result.output_symbol
+                result.output_symbol,
+                params.chainId,
+                params.from,
+                params.to
               )}
               {#if rate && inverseRate}
                 <div role="group" aria-label="Coinbase average trade price" class="quote-rates">
