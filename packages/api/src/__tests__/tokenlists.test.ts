@@ -24,6 +24,22 @@ afterEach(async () => {
 });
 
 describe("token-list file refresh", () => {
+  it("loads EVM artwork from a list that also contains Uniswap Solana entries", async () => {
+    const files = new TokenlistFiles();
+    const evm = { ...token, logoURI: "https://example.com/usdc.png" };
+    await writeFile(
+      path,
+      JSON.stringify({
+        name: "Mixed networks",
+        tokens: [
+          evm,
+          { ...token, chainId: 501000101, address: "So11111111111111111111111111111111111111112" },
+        ],
+      })
+    );
+    expect(await files.load()).toEqual([{ name: "Mixed networks", tokens: [evm] }]);
+  });
+
   it("notices replacement without changing the configured path", async () => {
     const files = new TokenlistFiles();
     await writeFile(path, JSON.stringify({ name: "First", tokens: [token] }));
@@ -43,7 +59,11 @@ describe("token-list file refresh", () => {
     const files = new TokenlistFiles();
     await writeFile(path, JSON.stringify({ name: "Good", tokens: [token] }));
     await files.load();
-    for (const text of ["{", JSON.stringify({ tokens: [{ ...token, decimals: -1 }] })]) {
+    for (const text of [
+      "{",
+      JSON.stringify({ tokens: [{ ...token, decimals: -1 }] }),
+      JSON.stringify({ tokens: [{ ...token, address: "invalid-evm-address" }] }),
+    ]) {
       await writeFile(path, text);
       expect(await files.load()).toEqual([
         { name: "Good", tokens: [token], error: "Refresh failed. Showing the last valid list." },

@@ -5,15 +5,31 @@ import { logger } from "./logger.js";
 
 const payloadSchema = z.object({
   name: z.string().optional(),
-  tokens: z.array(
-    z.object({
-      chainId: z.number().int().positive(),
-      address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-      name: z.string(),
-      symbol: z.string(),
-      decimals: z.number().int().min(0).max(255),
-      logoURI: z.string().optional(),
-    })
+  tokens: z.preprocess(
+    // Uniswap's mixed list uses this chain ID for Solana, outside this EVM app.
+    // https://github.com/Uniswap/default-token-list/blob/main/src/tokens/solana.json
+    (value) =>
+      Array.isArray(value)
+        ? value.filter(
+            (token: unknown) =>
+              !(
+                typeof token === "object" &&
+                token !== null &&
+                "chainId" in token &&
+                token.chainId === 501000101
+              )
+          )
+        : value,
+    z.array(
+      z.object({
+        chainId: z.number().int().positive(),
+        address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+        name: z.string(),
+        symbol: z.string(),
+        decimals: z.number().int().min(0).max(255),
+        logoURI: z.string().optional(),
+      })
+    )
   ),
 });
 
