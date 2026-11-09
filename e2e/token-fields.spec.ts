@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { fixture } from "./fixtures.js";
-import { FROM } from "../packages/frontend/src/__tests__/quote-fixture.js";
+import { FROM, TO } from "../packages/frontend/src/__tests__/quote-fixture.js";
 
 const YFI = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e";
 
@@ -104,4 +104,57 @@ test("keeps token fields compact with one full address and a working copy button
     }
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("keeps fields and amounts fixed when addresses appear and clear", async ({ page }, info) => {
+  await fixture(page);
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}`);
+  const from = page.getByRole("textbox", { name: "From token", exact: true });
+  const to = page.getByRole("textbox", { name: "To token", exact: true });
+  await expect(from).toHaveValue("USDC");
+  await expect(to).toHaveValue("USDT");
+  await page.evaluate(() => document.fonts.ready);
+
+  const positions = () =>
+    page.locator(".compare-form").evaluate((form) =>
+      [...form.querySelectorAll(".token-pair > div, .mode-toggle-row, .amount-fields")].map(
+        (element) => {
+          const rect = element.getBoundingClientRect();
+          return { top: rect.top + window.scrollY, height: rect.height };
+        }
+      )
+    );
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("The address layout check requires a viewport");
+  for (const width of viewport.width <= 600 ? [viewport.width, 320] : [viewport.width]) {
+    await page.setViewportSize({ width, height: viewport.height });
+    await page.getByRole("button", { name: "Clear from token", exact: true }).click();
+    await page.getByRole("button", { name: "Clear to token", exact: true }).click();
+    await expect(from).toHaveValue("");
+    await expect(to).toHaveValue("");
+    const empty = await positions();
+    expect(empty).toHaveLength(4);
+    await page.screenshot({ path: info.outputPath(`empty-addresses-${width}.png`) });
+
+    for (const [input, symbol, address] of [
+      [from, "USDC", FROM],
+      [to, "USDT", TO],
+    ] as const) {
+      await input.fill(symbol);
+      await page.getByRole("option").filter({ hasText: address }).click();
+      await expect(input).toHaveValue(symbol);
+      expect(await positions()).toEqual(empty);
+    }
+    await page.screenshot({ path: info.outputPath(`selected-addresses-${width}.png`) });
+    await page.getByRole("button", { name: "Clear from token", exact: true }).click();
+    expect(await positions()).toEqual(empty);
+    await page.getByRole("button", { name: "Clear to token", exact: true }).click();
+    expect(await positions()).toEqual(empty);
+
+    // Restore both fields before checking the next viewport.
+    await from.fill("USDC");
+    await page.getByRole("option").filter({ hasText: FROM }).click();
+    await to.fill("USDT");
+    await page.getByRole("option").filter({ hasText: TO }).click();
+  }
 });

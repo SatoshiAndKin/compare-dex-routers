@@ -376,8 +376,8 @@
     {/if}
   </div>
 
-  {#if currentToken}
-    <div class="selected-token-details">
+  <div class="selected-token-details" aria-hidden={!currentToken}>
+    {#if currentToken}
       <p class="selected-token-address">{currentToken.address}</p>
       <button
         type="button"
@@ -386,11 +386,11 @@
         onclick={copyAddress}
         ><span role="status">{copied ? "Copied" : copyFailed ? "Retry" : "Copy"}</span></button
       >
-    </div>
-    {#if copyFailed}<p class="copy-error" role="alert">
-        Could not copy. Select and copy the full address.
-      </p>{/if}
-  {/if}
+    {/if}
+  </div>
+  {#if copyFailed}<p class="copy-error" role="alert">
+      Could not copy. Select and copy the full address.
+    </p>{/if}
 
   {#if dropdownVisible && matches.length > 0}
     <div class="token-autocomplete-list" role="listbox">
@@ -445,6 +445,7 @@
     gap: 0.5rem;
     margin-top: 0.25rem;
     min-width: 0;
+    min-height: 44px;
   }
   .selected-token-address {
     flex: 1;
