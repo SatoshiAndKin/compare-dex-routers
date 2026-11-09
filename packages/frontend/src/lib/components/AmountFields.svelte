@@ -5,6 +5,7 @@
    */
   import { formStore } from "../stores/formStore.svelte.js";
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
+  import TokenSymbol from "./TokenSymbol.svelte";
 
   // ---------------------------------------------------------------------------
   // State
@@ -124,7 +125,17 @@
   </div>
 
   <div class={`amount-group${isExactIn ? " active" : " computed"}`}>
-    <label class="amount-label" for="sell-amount">{sellLabel}</label>
+    <label class="amount-label" for="sell-amount">
+      YOU SELL
+      {#if formStore.fromToken}
+        <TokenSymbol
+          chainId={formStore.chainId}
+          address={formStore.fromToken.address}
+          symbol={formStore.fromToken.symbol}
+          logoURI={formStore.fromToken.logoURI}
+        />
+      {/if}
+    </label>
     <div class="amount-input-row">
       <input
         id="sell-amount"
@@ -144,7 +155,17 @@
   </div>
 
   <div class={`amount-group${!isExactIn ? " active" : " computed"}`}>
-    <label class="amount-label" for="receive-amount">{receiveLabel}</label>
+    <label class="amount-label" for="receive-amount">
+      YOU RECEIVE
+      {#if formStore.toToken}
+        <TokenSymbol
+          chainId={formStore.chainId}
+          address={formStore.toToken.address}
+          symbol={formStore.toToken.symbol}
+          logoURI={formStore.toToken.logoURI}
+        />
+      {/if}
+    </label>
     <div class="amount-input-row">
       <input
         id="receive-amount"
@@ -202,6 +223,11 @@
   }
 
   .amount-label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 1.5em;
+    --token-icon-size: 16px;
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.05em;

@@ -173,9 +173,9 @@ describe("QuoteCard", () => {
     expect(rates.textContent).toContain("1 USDC ≈ 7.95102 BAL");
     expect(rates.textContent).toContain("1 BAL ≈ 0.12577 USDC");
     expect(rates.textContent).toContain("Based on the full quote, before gas.");
-    expect(
-      getByText("10000 BAL").compareDocumentPosition(rates) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    const total = getByText("10000");
+    expect(total).toHaveTextContent("10000 BAL");
+    expect(total.compareDocumentPosition(rates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     await rerender({ provider: "0x", quote: { ...quote, input_amount: "2000" } });
     expect(rates.textContent).toContain("1 USDC ≈ 5 BAL");
