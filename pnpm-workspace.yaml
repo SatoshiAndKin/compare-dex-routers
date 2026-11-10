@@ -11,7 +11,8 @@ minimumReleaseAgeStrict: false
 minimumReleaseAgeIgnoreMissingTime: true
 # Reviewed exact-version exceptions; retain the age gate for all other versions.
 minimumReleaseAgeExclude:
-  - "@curvefi/api@2.71.2"
+  # Approved refresh of the exact Curve SDK version.
+  - "@curvefi/api@2.72.5"
   # Approved security exception: GHSA-mrwp-f3q8-3g9p, published 2026-10-25.
   - "follow-redirects@1.16.2"
 
@@ -27,7 +28,7 @@ allowBuilds:
   utf-8-validate: false
   es5-ext: true
   esbuild: true
-  "@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/7ab98c1fc34f51f35c169fc7164e6c675c12c948#path:/packages/core": true
+  "@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/1190bcb5cf2f68ea3dbdce3988513bd35730e216#path:/packages/core": true
 
 # The OpenAPI generator pins 4.3.1; 4.3.2 fixes GHSA-2883-xcg3-v3hh.
 overrides:
