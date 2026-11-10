@@ -27,8 +27,8 @@ and this trigger behavior remain unchanged.
 
 ## Runtime behavior
 
-The API and frontend each have two replicas on separate physical hosts. The API
-keeps its 2 CPU / 512 MiB cap; the frontend keeps its 0.5 CPU / 128 MiB cap.
+The API and frontend each run one replica. The API keeps its 2 CPU / 512 MiB cap;
+the frontend keeps its 0.5 CPU / 128 MiB cap.
 Rolling replacement allows one additional pod and waits for readiness before
 removing an old pod. CPU and memory requests also reserve scheduler capacity.
 
