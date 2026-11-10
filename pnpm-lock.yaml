@@ -228,8 +228,8 @@ importers:
         specifier: ^11.8.0
         version: 11.8.0
       '@spandex/core':
-        specifier: github:SatoshiAndKin/spandex#1190bcb5cf2f68ea3dbdce3988513bd35730e216&path:/packages/core
-        version: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/1190bcb5cf2f68ea3dbdce3988513bd35730e216#path:/packages/core(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(viem@2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7))
+        specifier: github:SatoshiAndKin/spandex#4d0906cdfd31de50cf4160e0ff4d70497d957627&path:/packages/core
+        version: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/4d0906cdfd31de50cf4160e0ff4d70497d957627#path:/packages/core(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(viem@2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7))
       openapi3-ts:
         specifier: ^4.6.2
         version: 4.6.2
@@ -1708,8 +1708,8 @@ packages:
       typescript:
         optional: true
 
-  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/1190bcb5cf2f68ea3dbdce3988513bd35730e216#path:/packages/core':
-    resolution: {gitHosted: true, integrity: sha512-xQwBRnuIbzXdKIR/OfmvUygyr5fcPOGZTTfLTLHbbIpPq3Gw4nZgax+RFlTlD39KSxOdSqb9n7Y84wr8gKwWuQ==, path: /packages/core, tarball: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/1190bcb5cf2f68ea3dbdce3988513bd35730e216}
+  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/4d0906cdfd31de50cf4160e0ff4d70497d957627#path:/packages/core':
+    resolution: {gitHosted: true, integrity: sha512-80FGsqgyDUwAHYP3dmqMmGAPDBv27W9QBAnFPtkbC+hQdooe1rf60P7/XSGRj80CT1vqAGihImhasDVUPwVFFw==, path: /packages/core, tarball: https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/4d0906cdfd31de50cf4160e0ff4d70497d957627}
     version: 0.11.1
     peerDependencies:
       typescript: '>=5.0.4'
@@ -5477,7 +5477,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
     optional: true
 
-  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/1190bcb5cf2f68ea3dbdce3988513bd35730e216#path:/packages/core(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(viem@2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7))':
+  '@spandex/core@https://codeload.github.com/SatoshiAndKin/spandex/tar.gz/4d0906cdfd31de50cf4160e0ff4d70497d957627#path:/packages/core(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(viem@2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7))':
     dependencies:
       '@curvefi/api': 2.72.5(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       viem: 2.57.7(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6)(zod@4.6.7)
