@@ -175,7 +175,7 @@ describe("QuoteCard", () => {
     expect(getByText("1 BAL ≈ 0.12577 USDC")).toBeVisible();
     expect(getByText("Average trade price before gas.")).toBeVisible();
     const total = getByText("10000");
-    expect(total).toHaveTextContent("10000 BAL");
+    expect(total.parentElement).toHaveTextContent("10000 BAL");
     expect(total.compareDocumentPosition(rates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     await rerender({ provider: "0x", quote: { ...quote, input_amount: "2000" } });

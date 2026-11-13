@@ -6,15 +6,20 @@ const CRV = "0xD533a949740bb3306d119CC777fa900bA034cd52";
 const CRVUSD = "0xf939e0a03fb07f59a73314e73794be0e57ac1b4e";
 const amount = "4161.636507410085088097";
 const output = "1454.297535508463832644";
+const sellSymbol = "WRAPPED-LONG-STAKE-CRV";
+const buySymbol = "VAULT-LONG-STAKE-crvUSD";
 
 test("keeps precise input and output together through metadata and quote loading", async ({
   page,
 }, info) => {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("The responsive layout check requires a viewport");
+  if (viewport.width < 600) await page.setViewportSize({ width: 320, height: viewport.height });
   const metadata = deferred<boolean>();
   await fixture(page, (comparison) => {
     for (const quote of comparison.quotes) {
-      quote.from_symbol = "CRV";
-      quote.to_symbol = "crvUSD";
+      quote.from_symbol = sellSymbol;
+      quote.to_symbol = buySymbol;
       quote.input_amount = amount;
       quote.output_amount = output;
       quote.input_amount_raw = "4161636507410085088097";
@@ -22,8 +27,8 @@ test("keeps precise input and output together through metadata and quote loading
     }
   });
   const tokens = [
-    { chainId: 1, address: CRV, symbol: "CRV", name: "Curve", decimals: 18 },
-    { chainId: 1, address: CRVUSD, symbol: "crvUSD", name: "Curve USD", decimals: 18 },
+    { chainId: 1, address: CRV, symbol: sellSymbol, name: "Curve", decimals: 18 },
+    { chainId: 1, address: CRVUSD, symbol: buySymbol, name: "Curve USD", decimals: 18 },
   ];
   await page.route("**/api/tokenlist", async (route) => {
     await metadata.promise;
@@ -41,16 +46,16 @@ test("keeps precise input and output together through metadata and quote loading
   const receive = page.locator("#receive-amount");
   await expect(sell).toHaveValue(amount);
   const positions = () =>
-    page.locator(".amount-fields").evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return { top: rect.top + window.scrollY, width: rect.width, height: rect.height };
-    });
+    page.locator(".amount-fields, .swap-tokens, .swap-actions button").evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return [rect.left, rect.top + window.scrollY, rect.width, rect.height];
+      })
+    );
   const before = await positions();
   metadata.resolve(true);
   await expect(receive).toHaveValue(output);
   expect(await positions()).toEqual(before);
-  const viewport = page.viewportSize();
-  if (!viewport) throw new Error("The responsive layout check requires a viewport");
   const sellPanel = page.locator(".amount-group").nth(0);
   const buyPanel = page.locator(".amount-group").nth(1);
   const swap = page.getByRole("button", { name: "Swap tokens" });
@@ -63,21 +68,30 @@ test("keeps precise input and output together through metadata and quote loading
   expect(swapBox.y - sellBox.y - sellBox.height).toBeLessThanOrEqual(4);
   expect(buyBox.y - swapBox.y - swapBox.height).toBeLessThanOrEqual(4);
   expect(swapBox.width).toBeGreaterThanOrEqual(44);
-  for (const [panel, side] of [
-    [sellPanel, "From"],
-    [buyPanel, "To"],
+  for (const [panel, side, symbol] of [
+    [sellPanel, "From", sellSymbol],
+    [buyPanel, "To", buySymbol],
   ] as const) {
     const value = await panel.getByRole("spinbutton").boundingBox();
     const token = await panel.getByRole("textbox", { name: `${side} token` }).boundingBox();
     if (!value || !token) throw new Error("Missing amount or token picker");
-    expect(value.x + value.width).toBeLessThan(token.x);
-    expect(Math.abs(value.y - token.y)).toBeLessThan(4);
+    expect(value.y).toBeGreaterThanOrEqual(token.y + token.height);
+    expect(value.width).toBeGreaterThan(token.width);
+    const label = panel.locator(".selected-symbol");
+    await expect(label).toHaveText(symbol);
+    expect(await label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true
+    );
   }
-  const connect = await page
-    .getByRole("button", { name: "Connect wallet", exact: true })
-    .boundingBox();
-  if (!connect) throw new Error("Missing connect button");
-  expect(connect.y + connect.height).toBeLessThan(viewport.height);
+  const connect = page.getByRole("button", { name: "Connect wallet", exact: true });
+  await expect(connect).toBeVisible();
+  await page.getByRole("button", { name: "Exchange rate details" }).click();
+  await expect(page.locator(".exchange-rate")).toContainText(
+    `1 ${sellSymbol} ≈ 0.349453 ${buySymbol}`,
+    { useInnerText: true }
+  );
+  expect(await positions()).toEqual(before);
+  await page.keyboard.press("Escape");
   const slippage = page.getByRole("button", { name: "Edit slippage" });
   await slippage.focus();
   await page.keyboard.press("Enter");
@@ -90,12 +104,21 @@ test("keeps precise input and output together through metadata and quote loading
   await expect(
     page.getByRole("spinbutton", { name: "Custom slippage in basis points" })
   ).toBeHidden();
-  await expect(page.locator(".input-amount")).toHaveText(`${amount} CRV`);
-  await expect(page.locator(".output-amount")).toHaveText(`${output} crvUSD`);
+  for (const [selector, value, symbol] of [
+    [".input-amount", amount, sellSymbol],
+    [".output-amount", output, buySymbol],
+  ]) {
+    const total = page.locator(selector);
+    await expect(total).toHaveText(`${value} ${symbol}`);
+    const valueBox = await total.getByText(value, { exact: true }).boundingBox();
+    const symbolBox = await total.getByText(symbol, { exact: true }).boundingBox();
+    if (!valueBox || !symbolBox) throw new Error("Missing quote amount or symbol");
+    expect(symbolBox.y).toBeGreaterThanOrEqual(valueBox.y + valueBox.height);
+  }
   const rates = page.getByRole("group", { name: "Average trade price", exact: true });
-  await expect(rates).toContainText("1 CRV ≈ 0.349453 crvUSD");
+  await expect(rates).toContainText(`1 ${sellSymbol} ≈ 0.349453 ${buySymbol}`);
   await page.getByRole("button", { name: "Selected route details" }).click();
-  await expect(page.getByText("1 crvUSD ≈ 2.86161 CRV")).toBeVisible();
+  await expect(page.getByText(`1 ${buySymbol} ≈ 2.86161 ${sellSymbol}`)).toBeVisible();
   await page.keyboard.press("Escape");
   const totalsBox = await page.locator(".quote-amounts").boundingBox();
   const ratesBox = await rates.boundingBox();

@@ -352,19 +352,24 @@
     {:else}
       <span class="token-icon-selected" aria-hidden="true">{currentToken?.symbol?.[0] ?? ""}</span>
     {/if}
-    <input
-      bind:this={inputEl}
-      class="token-input"
-      type="text"
-      placeholder={type === "from" ? "Sell token..." : "Receive token..."}
-      value={inputValue}
-      oninput={handleInput}
-      onfocus={handleFocus}
-      onkeydown={handleKeydown}
-      onblur={handleBlur}
-      autocomplete="off"
-      aria-label={type === "from" ? "From token" : "To token"}
-    />
+    <div class="token-name">
+      <input
+        bind:this={inputEl}
+        class="token-input"
+        type="text"
+        placeholder={type === "from" ? "Sell token..." : "Receive token..."}
+        value={inputValue}
+        oninput={handleInput}
+        onfocus={handleFocus}
+        onkeydown={handleKeydown}
+        onblur={handleBlur}
+        autocomplete="off"
+        aria-label={type === "from" ? "From token" : "To token"}
+      />
+      {#if currentToken}
+        <span class="selected-symbol" aria-hidden="true">{inputValue}</span>
+      {/if}
+    </div>
     <span class="picker-chevron" aria-hidden="true">⌄</span>
   </div>
 
@@ -541,6 +546,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) 44px;
     width: 100%;
+    min-height: 44px;
   }
 
   .token-input-field {
@@ -576,8 +582,30 @@
     padding: 0 0.5rem;
     border: 1px solid var(--border-light);
   }
-  .token-input-field .token-input {
+  .token-name {
+    display: grid;
     flex: 1;
+    min-width: 0;
+  }
+  .token-name > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+  .selected-symbol {
+    align-self: center;
+    padding-inline-start: 0.25rem;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+    font-weight: 650;
+    line-height: 1.25;
+  }
+  .token-name:has(.selected-symbol) .token-input:not(:focus) {
+    color: transparent;
+  }
+  .token-input:focus + .selected-symbol {
+    visibility: hidden;
+  }
+  .token-input-field .token-input {
     padding: 0.25rem 0 0.25rem 0.25rem;
     border: none;
     background: transparent;
