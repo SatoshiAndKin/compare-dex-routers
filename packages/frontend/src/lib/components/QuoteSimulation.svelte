@@ -3,7 +3,7 @@
   import { balanceStore } from "../stores/balanceStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
   import { formStore } from "../stores/formStore.svelte.js";
-  let { quote }: { quote: Quote } = $props();
+  let { quote, balanceOnly = false }: { quote: Quote; balanceOnly?: boolean } = $props();
   const balanceMessage = $derived.by(() => {
     if (!walletStore.address) return "Connect your wallet to simulate this route.";
     if (
@@ -29,23 +29,30 @@
   });
 </script>
 
-<div class="simulation-status">
-  <div class="balance-status">{balanceMessage ?? ""}</div>
-  {quote.simulation_status === "succeeded"
-    ? "Simulation passed. Wallet checks required."
-    : quote.simulation_status === "failed"
-      ? `Simulation failed. ${quote.simulation_reason ?? "Refresh to retry simulation."}`
-      : `Not simulated. ${quote.simulation_reason ?? "Refresh to retry simulation."}`}
-</div>
+{#if !balanceOnly || walletStore.isConnected}
+  <span class="simulation-status" class:balance-only={balanceOnly}>
+    {#if balanceMessage}<span class="balance-status">{balanceMessage}</span>{/if}
+    {#if !balanceOnly}
+      {quote.simulation_status === "succeeded"
+        ? "Simulation passed. Wallet checks required."
+        : quote.simulation_status === "failed"
+          ? `Simulation failed. ${quote.simulation_reason ?? "Refresh to retry simulation."}`
+          : `Not simulated. ${quote.simulation_reason ?? "Refresh to retry simulation."}`}
+    {/if}
+  </span>
+{/if}
 
 <style>
   .balance-status {
-    min-height: 3em;
+    display: block;
   }
   .simulation-status {
-    min-height: 3em;
     overflow-wrap: anywhere;
     font-size: 0.75rem;
     color: var(--text-muted);
+  }
+  .balance-only {
+    display: block;
+    min-height: 3em;
   }
 </style>

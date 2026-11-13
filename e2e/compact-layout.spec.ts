@@ -51,39 +51,52 @@ test("keeps precise input and output together through metadata and quote loading
   expect(await positions()).toEqual(before);
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("The responsive layout check requires a viewport");
-  for (const selector of [".token-pair", ".amount-fields", ".quote-amounts"]) {
-    const groups = page.locator(
-      `${selector} > ${selector === ".amount-fields" ? ".amount-group" : "div"}`
-    );
-    const first = await groups.nth(0).boundingBox();
-    const second = await groups.nth(1).boundingBox();
-    if (!first || !second) throw new Error(`Both fields in ${selector} must be visible`);
-    if (viewport.width <= 600) {
-      expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
-      expect(second.x).toBe(first.x);
-      expect(first.width).toBeGreaterThan(viewport.width * 0.8);
-    } else {
-      expect(second.y).toBe(first.y);
-      expect(second.x).toBeGreaterThanOrEqual(first.x + first.width);
-      if (selector === ".token-pair") {
-        const swap = await page.getByRole("button", { name: "Swap tokens" }).boundingBox();
-        if (!swap) throw new Error("The swap button must be visible");
-        expect(swap.width).toBeGreaterThanOrEqual(44);
-        expect(swap.height).toBeGreaterThanOrEqual(44);
-        expect(swap.x - first.x - first.width).toBeGreaterThanOrEqual(0);
-        expect(swap.x - first.x - first.width).toBeLessThanOrEqual(16);
-        expect(second.x - swap.x - swap.width).toBeGreaterThanOrEqual(0);
-        expect(second.x - swap.x - swap.width).toBeLessThanOrEqual(16);
-      } else {
-        expect(second.x - first.x - first.width).toBeLessThanOrEqual(16);
-      }
-    }
+  const sellPanel = page.locator(".amount-group").nth(0);
+  const buyPanel = page.locator(".amount-group").nth(1);
+  const swap = page.getByRole("button", { name: "Swap tokens" });
+  const sellBox = await sellPanel.boundingBox();
+  const buyBox = await buyPanel.boundingBox();
+  const swapBox = await swap.boundingBox();
+  if (!sellBox || !buyBox || !swapBox) throw new Error("Missing swap panel");
+  expect(sellBox.x).toBe(buyBox.x);
+  expect(sellBox.width).toBe(buyBox.width);
+  expect(swapBox.y - sellBox.y - sellBox.height).toBeLessThanOrEqual(4);
+  expect(buyBox.y - swapBox.y - swapBox.height).toBeLessThanOrEqual(4);
+  expect(swapBox.width).toBeGreaterThanOrEqual(44);
+  for (const [panel, side] of [
+    [sellPanel, "From"],
+    [buyPanel, "To"],
+  ] as const) {
+    const value = await panel.getByRole("spinbutton").boundingBox();
+    const token = await panel.getByRole("textbox", { name: `${side} token` }).boundingBox();
+    if (!value || !token) throw new Error("Missing amount or token picker");
+    expect(value.x + value.width).toBeLessThan(token.x);
+    expect(Math.abs(value.y - token.y)).toBeLessThan(4);
   }
+  const connect = await page
+    .getByRole("button", { name: "Connect wallet", exact: true })
+    .boundingBox();
+  if (!connect) throw new Error("Missing connect button");
+  expect(connect.y + connect.height).toBeLessThan(viewport.height);
+  const slippage = page.getByRole("button", { name: "Edit slippage" });
+  await slippage.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("spinbutton", { name: "Custom slippage in basis points" })
+  ).toBeVisible();
+  expect(await positions()).toEqual(before);
+  await page.keyboard.press("Escape");
+  await expect(slippage).toBeFocused();
+  await expect(
+    page.getByRole("spinbutton", { name: "Custom slippage in basis points" })
+  ).toBeHidden();
   await expect(page.locator(".input-amount")).toHaveText(`${amount} CRV`);
   await expect(page.locator(".output-amount")).toHaveText(`${output} crvUSD`);
   const rates = page.getByRole("group", { name: "Average trade price", exact: true });
   await expect(rates).toContainText("1 CRV ≈ 0.349453 crvUSD");
-  await expect(rates).toContainText("1 crvUSD ≈ 2.86161 CRV");
+  await page.getByRole("button", { name: "Selected route details" }).click();
+  await expect(page.getByText("1 crvUSD ≈ 2.86161 CRV")).toBeVisible();
+  await page.keyboard.press("Escape");
   const totalsBox = await page.locator(".quote-amounts").boundingBox();
   const ratesBox = await rates.boundingBox();
   if (!totalsBox || !ratesBox) throw new Error("Quote totals and rates must be visible");

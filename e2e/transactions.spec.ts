@@ -225,7 +225,9 @@ test("zero balances keep prices visible and block an unfunded wallet", async ({ 
   await expect(page.getByLabel("From token balance")).toContainText("Balance: 0 USDC");
   await expect(page.getByLabel("To token balance")).toContainText("Balance: 0 USDT");
   await expect(
-    page.locator(".quote-card").getByText("Insufficient USDC balance.", { exact: true })
+    page
+      .locator(".quote-card .execution-status")
+      .getByText("Insufficient USDC balance.", { exact: true })
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
 });

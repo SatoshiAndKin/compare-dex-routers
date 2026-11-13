@@ -75,15 +75,11 @@ test("native ETH precedes WETH and survives missing token lists", async ({ page 
   await expect(options.first()).toContainText("Native");
   await expect(options.filter({ hasText: "WETH" })).toBeVisible();
   await options.first().click();
-  await expect(page.getByRole("textbox", { name: "From token", exact: true })).toHaveValue(
-    /ETH.*Native/
-  );
+  await expect(page.getByRole("textbox", { name: "From token", exact: true })).toHaveValue("ETH");
   await expect(page).toHaveURL(/from=0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE/);
   await page.route("**/api/tokenlist", (route) =>
     route.fulfill({ json: { tokens: [], tokenlists: [] } })
   );
   await page.reload();
-  await expect(page.getByRole("textbox", { name: "From token", exact: true })).toHaveValue(
-    /ETH.*Native/
-  );
+  await expect(page.getByRole("textbox", { name: "From token", exact: true })).toHaveValue("ETH");
 });

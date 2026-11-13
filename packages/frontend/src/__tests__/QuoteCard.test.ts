@@ -1,5 +1,5 @@
 import { makeQuote, FROM, TO } from "./quote-fixture.js";
-import { render } from "@testing-library/svelte";
+import { fireEvent, render } from "@testing-library/svelte";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import QuoteCard from "../lib/components/QuoteCard.svelte";
 
@@ -171,15 +171,16 @@ describe("QuoteCard", () => {
     });
     const rates = getByRole("group", { name: "Average trade price" });
     expect(rates.textContent).toContain("1 USDC ≈ 7.95102 BAL");
-    expect(rates.textContent).toContain("1 BAL ≈ 0.12577 USDC");
-    expect(rates.textContent).toContain("Based on the full quote, before gas.");
+    await fireEvent.click(getByRole("button", { name: "Selected route details" }));
+    expect(getByText("1 BAL ≈ 0.12577 USDC")).toBeVisible();
+    expect(getByText("Average trade price before gas.")).toBeVisible();
     const total = getByText("10000");
     expect(total).toHaveTextContent("10000 BAL");
     expect(total.compareDocumentPosition(rates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     await rerender({ provider: "0x", quote: { ...quote, input_amount: "2000" } });
     expect(rates.textContent).toContain("1 USDC ≈ 5 BAL");
-    expect(rates.textContent).toContain("1 BAL ≈ 0.2 USDC");
+    expect(getByText("1 BAL ≈ 0.2 USDC")).toBeVisible();
   });
 
   it("omits the average price when the quote has a zero amount", () => {

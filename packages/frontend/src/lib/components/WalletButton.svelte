@@ -135,6 +135,8 @@
     color: var(--text-inverse, #fff);
     transition: background 0.1s;
     white-space: nowrap;
+    text-transform: none;
+    letter-spacing: normal;
   }
 
   .connect-btn:hover:not(:disabled) {

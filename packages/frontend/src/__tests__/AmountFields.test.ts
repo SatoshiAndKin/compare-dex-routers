@@ -71,7 +71,7 @@ describe("AmountFields", () => {
     comparisonStore.recommendation = "0x";
     const view = render(AmountFields);
     expect((view.getByLabelText("YOU RECEIVE USDC") as HTMLInputElement).value).toBe("");
-    expect(view.getByText("Waiting for quote")).toBeVisible();
+    expect(view.queryByText("Estimate")).toBeNull();
   });
 
   it("renders sell and receive inputs", () => {

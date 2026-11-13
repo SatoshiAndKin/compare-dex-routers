@@ -146,7 +146,9 @@ for (const mode of ["exactIn", "targetOut"] as const) {
     await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
     raw = true;
     await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
+    await page.getByRole("button", { name: "Selected route details" }).click();
     await expect(page.getByText(/Ranking by raw/)).toBeVisible();
+    await page.keyboard.press("Escape");
     await page.getByRole("button", { name: /Details/ }).click();
     await expect(page.getByText(new RegExp(label))).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Select curve" })).toContainText(

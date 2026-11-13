@@ -270,10 +270,10 @@ The space theme uses local SVG/CSS assets and the existing light/dark preference
 
 Native assets come from `/config` independently of token lists. Native balances use `eth_getBalance` and need no approvals. Raw integer balances and decimals drive exact sell-balance entry. Native entry first obtains a route estimate, reserves gas with the 20% margin and fresh network fees, and fails closed when fees are unavailable. Balance response sequences discard outdated reads.
 
-Selected token inputs show the token label. Each full address appears once in a
-wrapping row beside a Copy button. Copy failures keep the address selectable and
-permit a retry. Disconnected wallets have no balance or wallet-message spacer.
-Form spacing follows visible content and keeps 44-pixel touch targets.
+Each swap panel puts the amount beside its token picker. The token info control
+opens the full address and Copy button. Copy failures keep the address selectable
+and permit a retry. The form keeps 44-pixel touch targets. The summary shows
+slippage, the exchange rate, and the selected DEX route.
 
 ### DEX and Coinbase price comparison
 
@@ -292,7 +292,5 @@ taker fee when set. The Coinbase card states whether the estimate includes this 
 Stale, expired, loading, mismatched, or failed quotes cannot produce a price winner.
 
 The API rejects disabled and view-only Coinbase markets, including public
-`is_disabled` and `view_only` flags. Public data cannot confirm that the user's
-account can trade a pair in the Coinbase mobile app. The Coinbase box states
-that mobile trading is unverified and links to Coinbase's app guidance. It never
-presents the public market status as account-specific trading approval.
+`is_disabled` and `view_only` flags. The Coinbase info popover explains that
+mobile trading is unverified and links to Coinbase's app guidance.

@@ -14,7 +14,7 @@
   import { autoRefreshStore, AUTO_REFRESH_SECONDS } from "../stores/autoRefreshStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
   import { balanceStore } from "../stores/balanceStore.svelte.js";
-  import { onDestroy, untrack, tick } from "svelte";
+  import { onDestroy, untrack, tick, type Snippet } from "svelte";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { canQuoteWallet } from "../quote-preview.js";
   import { exactAmount, isNativeToken } from "../native.js";
@@ -23,6 +23,8 @@
   import TokenInput from "./TokenInput.svelte";
   import AmountFields from "./AmountFields.svelte";
   import SlippagePresets from "./SlippagePresets.svelte";
+
+  let { wallet }: { wallet?: Snippet } = $props();
 
   const AUTO_COMPARE_DELAY_MS = 600;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -283,10 +285,10 @@
   }
   function balanceLabel(side: "from" | "to"): string {
     if (walletStore.chainId !== formStore.chainId || balanceStore[side].status === "wrong_network")
-      return "Switch network to view balance";
+      return "Switch network";
     const value = side === "from" ? balanceStore.fromBalance : balanceStore.toBalance;
     if (value !== null) return `Balance: ${value}`;
-    return balanceStore[side].status === "loading" ? "Balance: Loading…" : "Balance: Unavailable";
+    return balanceStore[side].status === "loading" ? "Balance loading…" : "Balance unavailable";
   }
 
   function swapTokens(): void {
@@ -305,169 +307,146 @@
 </script>
 
 <form class="compare-form" onsubmit={handleSubmit} novalidate>
-  <div class="form-section chain-section">
-    <span class="section-label">Chain</span>
+  <div class="chain-section">
+    <h2>Swap</h2>
     <ChainSelector />
   </div>
 
-  <div class="token-pair">
-    <div class="form-section">
-      <span class="section-label">From Token</span>
-      <TokenInput type="from" />
+  <AmountFields>
+    {#snippet sellToken()}<TokenInput type="from" />{/snippet}
+    {#snippet buyToken()}<TokenInput type="to" />{/snippet}
+    {#snippet settings()}<SlippagePresets />{/snippet}
+    {#snippet reverse()}
+      <button
+        type="button"
+        class="swap-tokens"
+        aria-label="Swap tokens"
+        title="Swap tokens"
+        disabled={!formStore.fromToken ||
+          !formStore.toToken ||
+          transactionStore.busy ||
+          fillingBalance}
+        onclick={swapTokens}
+      >
+        <span aria-hidden="true">⇅</span>
+      </button>
+    {/snippet}
+    {#snippet sellBalance()}
       {#if walletStore.isConnected}
-        <div class="balance-slot">
-          <button
-            type="button"
-            class="balance-display"
-            aria-label="From token balance"
-            disabled={fillingBalance ||
-              transactionStore.busy ||
-              (walletStore.chainId === formStore.chainId &&
-                balanceStore.from.status !== "ready" &&
-                balanceStore.from.status !== "wrong_network")}
-            onclick={() => void useSellBalance()}
-          >
-            {balanceLabel("from")}
-            {formStore.fromToken?.symbol ?? ""}
-          </button>
-        </div>
+        <button
+          type="button"
+          class="balance-display"
+          aria-label="From token balance"
+          disabled={fillingBalance ||
+            transactionStore.busy ||
+            (walletStore.chainId === formStore.chainId &&
+              balanceStore.from.status !== "ready" &&
+              balanceStore.from.status !== "wrong_network")}
+          onclick={() => void useSellBalance()}
+        >
+          {balanceLabel("from")}
+          {formStore.fromToken?.symbol ?? ""}
+        </button>
       {/if}
-      {#if balanceMessage}<span role="status">{balanceMessage}</span>{/if}
-    </div>
-
-    <button
-      type="button"
-      class="swap-tokens"
-      aria-label="Swap tokens"
-      title="Swap tokens"
-      disabled={!formStore.fromToken ||
-        !formStore.toToken ||
-        transactionStore.busy ||
-        fillingBalance}
-      onclick={swapTokens}
-    >
-      <span aria-hidden="true">↔</span>
-    </button>
-
-    <div class="form-section">
-      <span class="section-label">To Token</span>
-      <TokenInput type="to" />
+    {/snippet}
+    {#snippet buyBalance()}
       {#if walletStore.isConnected}
-        <div class="balance-slot">
-          <span class="balance-display" aria-label="To token balance"
-            >{balanceLabel("to")} {formStore.toToken?.symbol ?? ""}</span
-          >
-        </div>
+        <span class="balance-display" aria-label="To token balance"
+          >{balanceLabel("to")} {formStore.toToken?.symbol ?? ""}</span
+        >
       {/if}
-    </div>
-  </div>
-  <div class="form-section">
-    <AmountFields />
-  </div>
+    {/snippet}
+  </AmountFields>
+  {#if balanceMessage}<span class="balance-display" role="status">{balanceMessage}</span>{/if}
 
-  <div class="form-section">
-    <SlippagePresets />
-  </div>
-
-  <div class="form-section">
+  <div class="swap-actions">
     <button
       class="submit-btn"
       type="submit"
       disabled={!formStore.canSubmit || comparisonStore.isLoading || transactionStore.busy}
       aria-busy={comparisonStore.isLoading}
     >
-      {#if comparisonStore.isLoading}
-        Comparing...
-      {:else}
-        Compare Quotes
-      {/if}
+      {comparisonStore.isLoading ? "Comparing…" : "Compare Quotes"}
     </button>
+    <div class="wallet-row">{@render wallet?.()}</div>
   </div>
 </form>
 
 <style>
-  .token-pair {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    gap: 0.75rem;
-  }
   .swap-tokens {
     display: grid;
     place-items: center;
-    place-self: start center;
+    justify-self: center;
     width: 44px;
     height: 44px;
-    margin-top: 1.375rem;
     padding: 0;
-    font-size: 1.5rem;
+    font-size: 1.375rem;
     line-height: 1;
     letter-spacing: 0;
-  }
-  @media (max-width: 600px) {
-    .token-pair {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .swap-tokens {
-      margin-top: 0;
-    }
-    .swap-tokens span {
-      transform: rotate(90deg);
-    }
-  }
-  .chain-section {
-    max-width: 16rem;
-  }
-  .balance-slot {
-    min-height: 2.75rem;
-    display: flex;
-    align-items: center;
-  }
-  .balance-slot .balance-display {
-    min-width: 0;
     border: 0;
     background: transparent;
-    text-align: left;
-    overflow-wrap: anywhere;
+    color: var(--text-muted);
   }
-
+  .swap-tokens:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+  .chain-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .chain-section h2 {
+    font-size: 1.125rem;
+  }
+  button.balance-display {
+    border: 0;
+    background: transparent;
+    padding: 0 0.375rem;
+    text-align: right;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+  button.balance-display:hover:not(:disabled) {
+    background: var(--bg-hover);
+  }
   .compare-form {
     margin-bottom: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .form-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .section-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--text-muted, #666);
+    gap: 0.375rem;
   }
 
   .submit-btn {
     width: 100%;
-    padding: 0.75rem 1.5rem;
-    background: var(--accent, #0055ff);
-    color: var(--text-inverse, #fff);
-    border: 0;
+    padding: 0.25rem 0.5rem;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border-light);
     cursor: pointer;
-    font-size: 1rem;
+    font-size: 0.875rem;
     font-weight: 600;
     font-family: inherit;
-    letter-spacing: 0.02em;
+    text-transform: none;
+    letter-spacing: normal;
     transition: background 0.1s;
+  }
+  .swap-actions {
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr);
+    gap: 0.375rem;
+    align-items: start;
+  }
+  .wallet-row {
+    display: grid;
+    min-width: 0;
+    gap: 0;
   }
 
   .submit-btn:hover:not(:disabled) {
-    background: var(--accent-hover, #0046cc);
-    border-color: var(--accent-hover, #0046cc);
+    background: var(--bg-hover);
+    border-color: var(--border);
   }
 
   .submit-btn:focus {

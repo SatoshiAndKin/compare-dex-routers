@@ -9,6 +9,7 @@
   import { tokensStore } from "../stores/tokensStore.svelte.js";
   import { tokenListStore } from "../stores/tokenListStore.svelte.js";
   import UnrecognizedTokenModal from "./UnrecognizedTokenModal.svelte";
+  import InfoPopover from "./InfoPopover.svelte";
   import { onMount } from "svelte";
 
   // ---------------------------------------------------------------------------
@@ -55,9 +56,9 @@
   // Helpers
   // ---------------------------------------------------------------------------
 
-  /** The input shows the token label; the full address has its own copyable row. */
-  function formatTokenDisplay(symbol: string, address: string): string {
-    return `${symbol || "Token"}${isNativeToken(address) ? " — Native" : ""}`;
+  /** The input shows the token label; token details contain the full address. */
+  function formatTokenDisplay(symbol: string): string {
+    return symbol || "Token";
   }
 
   async function copyAddress(): Promise<void> {
@@ -152,7 +153,7 @@
       }
     }
 
-    inputValue = formatTokenDisplay(token.symbol, token.address);
+    inputValue = formatTokenDisplay(token.symbol);
     matches = [];
     dropdownVisible = false;
     activeIdx = -1;
@@ -320,7 +321,7 @@
   $effect(() => {
     const token = type === "from" ? formStore.fromToken : formStore.toToken;
     if (token) {
-      const expected = formatTokenDisplay(token.symbol, token.address);
+      const expected = formatTokenDisplay(token.symbol);
       if (inputValue !== expected) {
         inputValue = expected;
       }
@@ -343,11 +344,13 @@
       <img
         class="token-icon-selected"
         src={currentToken.logoURI}
-        alt={`${currentToken.symbol} logo`}
+        alt=""
         onerror={(e) => {
-          (e.target as HTMLImageElement).style.display = "none";
+          (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
         }}
       />
+    {:else}
+      <span class="token-icon-selected" aria-hidden="true">{currentToken?.symbol?.[0] ?? ""}</span>
     {/if}
     <input
       bind:this={inputEl}
@@ -362,57 +365,76 @@
       autocomplete="off"
       aria-label={type === "from" ? "From token" : "To token"}
     />
-
-    {#if showClearButton}
-      <button
-        type="button"
-        class="clear-token-button"
-        aria-label={type === "from" ? "Clear from token" : "Clear to token"}
-        onmousedown={handleClearMousedown}
-        onclick={clearToken}
-      >
-        ×
-      </button>
-    {/if}
+    <span class="picker-chevron" aria-hidden="true">⌄</span>
   </div>
 
-  <div class="selected-token-details" aria-hidden={!currentToken}>
+  {#snippet clearButton()}
+    <button
+      type="button"
+      class="clear-token-button"
+      aria-label={type === "from" ? "Clear from token" : "Clear to token"}
+      onmousedown={handleClearMousedown}
+      onclick={clearToken}
+    >
+      ×
+    </button>
+  {/snippet}
+
+  <div class="token-info">
     {#if currentToken}
-      <p class="selected-token-address">{currentToken.address}</p>
-      <button
-        type="button"
-        class="copy-address-button"
-        aria-label={`Copy ${type} token address`}
-        title={copied ? "Copied" : copyFailed ? "Retry copy" : "Copy address"}
-        onclick={copyAddress}
-      >
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
+      <InfoPopover label={type === "from" ? "Sell token details" : "Buy token details"}>
+        <strong
+          >{currentToken.symbol}{isNativeToken(currentToken.address) ? " · Native" : ""}</strong
         >
-          {#if copied}
-            <path d="m5 12 4 4L19 6" />
-          {:else}
-            <path d="M9 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
-            <rect x="3" y="7" width="14" height="14" rx="3" />
-          {/if}
-        </svg>
-        <span class="copy-status" role="status"
-          >{copied ? "Copied" : copyFailed ? "Retry" : "Copy"}</span
-        >
-      </button>
+        <span class="selected-token-details">
+          <span class="selected-token-address">{currentToken.address}</span>
+          <button
+            type="button"
+            class="copy-address-button"
+            aria-label={`Copy ${type} token address`}
+            title={copied ? "Copied" : copyFailed ? "Retry copy" : "Copy address"}
+            onclick={copyAddress}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              {#if copied}
+                <path d="m5 12 4 4L19 6" />
+              {:else}
+                <path d="M9 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2" />
+                <rect x="3" y="7" width="14" height="14" rx="3" />
+              {/if}
+            </svg>
+            <span class="copy-status" role="status"
+              >{copied ? "Copied" : copyFailed ? "Retry" : "Copy"}</span
+            >
+          </button>
+        </span>
+        <span class="token-detail-actions">
+          <button
+            type="button"
+            class="change-token-button"
+            aria-label={type === "from" ? "Clear from token" : "Clear to token"}
+            onmousedown={handleClearMousedown}
+            onclick={clearToken}>Change token</button
+          >
+        </span>
+        {#if copyFailed}<span class="copy-error" role="alert">
+            Could not copy. Select and copy the full address.
+          </span>{/if}
+      </InfoPopover>
+    {:else if showClearButton}
+      {@render clearButton()}
     {/if}
   </div>
-  {#if copyFailed}<p class="copy-error" role="alert">
-      Could not copy. Select and copy the full address.
-    </p>{/if}
 
   {#if dropdownVisible && matches.length > 0}
     <div class="token-autocomplete-list" role="listbox">
@@ -465,7 +487,6 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-top: 0.25rem;
     min-width: 0;
     min-height: 44px;
   }
@@ -516,35 +537,60 @@
     margin-top: 0.25rem;
   }
   .token-input-wrapper {
-    position: relative;
+    position: static;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px;
     width: 100%;
   }
 
   .token-input-field {
     display: flex;
     align-items: center;
-    border: 1px solid var(--border-light);
-    background: var(--bg-input, #fff);
+    min-width: 0;
   }
 
   .token-icon-selected {
-    width: 20px;
-    height: 20px;
-    margin-left: 0.5rem;
+    width: 1rem;
+    height: 1rem;
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
   }
+  span.token-icon-selected {
+    display: grid;
+    place-items: center;
+    background: var(--icon-bg);
+    color: var(--text-muted);
+    font-size: 0.625rem;
+    font-weight: 700;
+  }
+  .token-detail-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
 
-  .token-input {
+  .change-token-button {
+    font: inherit;
+    text-transform: none;
+    letter-spacing: normal;
+    padding: 0 0.5rem;
+    border: 1px solid var(--border-light);
+  }
+  .token-input-field .token-input {
     flex: 1;
-    padding: 0.5rem 0.75rem;
+    padding: 0.25rem 0 0.25rem 0.25rem;
     border: none;
     background: transparent;
     color: var(--text, #000);
-    font-size: 0.95rem;
+    font-size: 1rem;
+    font-weight: 650;
     font-family: inherit;
     min-width: 0;
+  }
+  .picker-chevron {
+    flex: none;
+    pointer-events: none;
+    color: var(--text-muted);
   }
 
   .clear-token-button {
@@ -556,7 +602,6 @@
     height: 44px;
     padding: 0;
     border: none;
-    border-left: 2px solid var(--border, #000);
     border-radius: 0;
     background: transparent;
     color: var(--text, #000);

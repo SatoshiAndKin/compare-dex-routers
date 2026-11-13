@@ -176,6 +176,7 @@ describe("provider results", () => {
       const view = render(QuoteResults);
       await fireEvent.click(view.getByText(/Provider results and failures/));
       await fireEvent.click(view.getByRole("button", { name: /Details/ }));
+      await fireEvent.click(view.getByRole("button", { name: "Selected route details" }));
       expect(view.getByText(/Ranking by raw output amount/)).toBeVisible();
       expect(
         view.queryByText(/Estimated (output value after gas|input cost including gas)/)

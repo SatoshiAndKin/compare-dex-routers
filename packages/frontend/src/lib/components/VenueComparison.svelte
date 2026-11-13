@@ -6,6 +6,7 @@
   import { autoRefreshStore } from "../stores/autoRefreshStore.svelte.js";
   import { preferencesStore } from "../stores/preferencesStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
+  import InfoPopover from "./InfoPopover.svelte";
   import TokenSymbol from "./TokenSymbol.svelte";
 
   let {
@@ -154,12 +155,12 @@
 )}
   <div class="amounts">
     <div>
-      <span class="amount-label">You pay</span><strong
+      <span class="amount-label">Sell</span><strong
         ><span>{input}</span> <TokenSymbol {chainId} address={from} symbol={inputSymbol} /></strong
       >
     </div>
     <div>
-      <span class="amount-label">You receive</span><strong
+      <span class="amount-label">Buy</span><strong
         ><span>{output}</span> <TokenSymbol {chainId} address={to} symbol={outputSymbol} /></strong
       >
     </div>
@@ -181,10 +182,24 @@
               {#if winner === "dex" || winner === "tie"}{@render winnerStar()}{/if}
             </span>
           </h3>
-          <p>Swap from your wallet</p>
+          <InfoPopover label="About DEX prices">
+            <strong>Best DEX price before gas</strong>
+            <span
+              >Prices include provider trading fees. The comparison excludes gas and approval costs.</span
+            >
+            <span>The selected route can differ because of gas costs or your route choice.</span>
+            {#if bestDex}
+              <span
+                >1 {bestDex.to_symbol} = {formatQuoteRate(
+                  bestDex.input_amount,
+                  bestDex.output_amount
+                )}
+                {bestDex.from_symbol}</span
+              >
+            {/if}
+          </InfoPopover>
         </header>
         {#if bestDex}
-          <p class="provider-name">Best DEX price before gas · via {bestDex.provider}</p>
           {@render amounts(
             bestDex.input_amount,
             bestDex.from_symbol,
@@ -195,34 +210,21 @@
             bestDex.to
           )}
           <div role="group" aria-label="DEX average trade price" class="quote-rates">
-            <p class="amount-label">Average trade price</p>
-            <p>
-              1 {bestDex.from_symbol} = {formatQuoteRate(
+            <span class="row-label">Rate</span>
+            <span
+              >1 {bestDex.from_symbol} = {formatQuoteRate(
                 bestDex.output_amount,
                 bestDex.input_amount
               )}
-              {bestDex.to_symbol}
-            </p>
-            <p>
-              1 {bestDex.to_symbol} = {formatQuoteRate(bestDex.input_amount, bestDex.output_amount)}
-              {bestDex.from_symbol}
-            </p>
+              {bestDex.to_symbol}</span
+            >
           </div>
-          {#if bestDex.simulation_status === "succeeded"}<p>
-              Wallet simulation passed for this DEX quote.
-            </p>
-          {:else}<p>Price only; wallet simulation not run.</p>{/if}
-          <p>
-            DEX prices include provider trading fees. Gas and approval costs are excluded from this
-            comparison. The selected route can differ because of gas costs or your route choice.
-          </p>
+          <div class="venue-row">
+            <span class="row-label">Best price</span><span>{bestDex.provider}</span>
+          </div>
           {#if dex}<a class="trade-link" href="#selected-dex-route">Review DEX route ↓</a>{/if}
         {:else}
-          <p>
-            {stale
-              ? "Previous DEX quotes. Refresh to compare this trade."
-              : "No matching DEX price is available."}
-          </p>
+          <p class="venue-status">{stale ? "Previous DEX quotes" : "No matching DEX price"}</p>
         {/if}
       </section>
       {#if params}
@@ -267,20 +269,70 @@
                   {:else}—{/if}
                 </span>
               </div>
+              <InfoPopover label="About the Coinbase estimate">
+                <strong>Mobile trading not verified</strong>
+                <span>
+                  Coinbase Advanced is part of the Coinbase iPhone and Android app.
+                  {#if result}
+                    This order book does not confirm that your account can {result.side === "BUY"
+                      ? "buy"
+                      : "sell"}
+                    {result.side === "BUY" ? result.output_symbol : result.input_symbol} in the {result.product_id}
+                    market.
+                  {/if}
+                  Check availability in your app before moving funds.
+                </span>
+                <a
+                  href="https://help.coinbase.com/en/pro/managing-my-account/account-information/transitioning-to-advanced-trade"
+                  target="_blank"
+                  rel="noopener noreferrer">About Advanced in the Coinbase app ↗</a
+                >
+                {#if result}
+                  <span>
+                    {result.fee_percent === null
+                      ? "Before trading fees. Set your taker rate in Settings for an after-fee estimate."
+                      : `Includes an assumed ${result.fee_percent}% fee (${result.fee_amount} ${result.fee_symbol}).`}
+                  </span>
+                  {#if result.limit_only}
+                    <span
+                      >This market accepts limit orders only. The estimate assumes a limit price
+                      that takes available liquidity.</span
+                    >
+                  {/if}
+                  <span
+                    >{result.product_id} · Order book
+                    <time datetime={result.as_of}
+                      >{new Date(result.as_of).toLocaleTimeString()}</time
+                    ></span
+                  >
+                  {#if rate && inverseRate}<span
+                      >{params.mode === "targetOut"
+                        ? `1 ${result.input_symbol} = ${rate} ${result.output_symbol}`
+                        : `1 ${result.output_symbol} = ${inverseRate} ${result.input_symbol}`}</span
+                    >{/if}
+                {/if}
+                <span
+                  >Assumes funds are already on Coinbase. Excludes deposits, withdrawals, network
+                  costs, and wrapping.</span
+                >
+              </InfoPopover>
             </div>
-            <p>Estimate for funds already on Coinbase</p>
           </header>
-          <p class="provider-name" role="status">
+          <p class="venue-status" role="status">
             {#if loading}
-              {result ? "Refreshing estimate…" : error || "Loading Coinbase order book…"}
+              {result ? "Refreshing estimate…" : error || "Loading order book…"}
             {:else if error}
-              {result ? "Refresh failed. Showing the last estimate." : error}
+              {result ? "Refresh failed · Previous estimate" : error}
             {:else if expired}
               Estimate expired.
             {:else if result && dexExpired && !stale}
               DEX quotes expired.
             {:else if result}
-              Public order-book estimate · {result.product_id}
+              {result.fee_percent === null
+                ? "Before trading fees"
+                : `Assumed fee ${result.fee_percent}%`}
+              {#if result.limit_only}
+                · Limit only{/if}
             {/if}
           </p>
           <div aria-busy={loading}>
@@ -294,42 +346,16 @@
                 params.from,
                 params.to
               )}
-              {#if rate && inverseRate}
+              {#if rate}
                 <div role="group" aria-label="Coinbase average trade price" class="quote-rates">
-                  <p class="amount-label">Average trade price</p>
-                  <p>1 {result.input_symbol} = {rate} {result.output_symbol}</p>
-                  <p>1 {result.output_symbol} = {inverseRate} {result.input_symbol}</p>
+                  <span class="row-label">Rate</span>
+                  <span
+                    >{params.mode === "targetOut" && inverseRate
+                      ? `1 ${result.output_symbol} = ${inverseRate} ${result.input_symbol}`
+                      : `1 ${result.input_symbol} = ${rate} ${result.output_symbol}`}</span
+                  >
                 </div>
               {/if}
-              <p>
-                {result.fee_percent === null
-                  ? "Before trading fees; set your taker rate in Settings for an after-fee estimate."
-                  : `Includes an assumed ${result.fee_percent}% fee (${result.fee_amount} ${result.fee_symbol}).`}
-              </p>
-              <div class="availability">
-                <strong>Mobile trading not verified</strong>
-                <p>
-                  Coinbase Advanced is part of the Coinbase iPhone and Android app. This public
-                  order book does not confirm that your account can {result.side === "BUY"
-                    ? "buy"
-                    : "sell"}
-                  {result.side === "BUY" ? result.output_symbol : result.input_symbol} in the {result.product_id}
-                  market. Check that this trade is available in your app before moving funds.
-                </p>
-                <a
-                  href="https://help.coinbase.com/en/pro/managing-my-account/account-information/transitioning-to-advanced-trade"
-                  target="_blank"
-                  rel="noopener noreferrer">About Advanced in the Coinbase app ↗</a
-                >
-              </div>
-              {#if result.limit_only}<p>
-                  This market accepts limit orders only. The estimate assumes a limit price that
-                  takes available order-book liquidity.
-                </p>{/if}
-              <p>
-                {result.product_id} · Order book:
-                <time datetime={result.as_of}>{new Date(result.as_of).toLocaleTimeString()}</time>
-              </p>
               <a
                 class="trade-link"
                 href={result.trade_url}
@@ -338,12 +364,6 @@
               >
             {/if}
           </div>
-          <p class="estimate-note">
-            Estimate from public order-book depth. Assumes funds are already on Coinbase. Excludes
-            deposits, withdrawals, network costs, and wrapping. Check asset/network support,
-            order-size rounding, and the final quote on Coinbase. This estimate does not change DEX
-            rankings.
-          </p>
         </section>
       {/if}
     </div>
@@ -361,149 +381,126 @@
     display: flow-root;
   }
   .selected-dex-route {
-    margin-top: 1.5rem;
+    margin-top: 0.875rem;
     scroll-margin-top: 1rem;
   }
-  .provider-name {
+  .venue-status {
     color: var(--text-muted);
     font-size: 0.75rem;
-    min-height: 3em;
+    min-height: 2.25rem;
+    overflow-wrap: anywhere;
   }
   .venue-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
+    gap: 0.375rem;
     align-items: start;
   }
   .venue-card {
     min-width: 0;
-    border: 2px solid var(--border);
-    padding: 1rem;
-    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    padding: 0.375rem 0.625rem 0.25rem;
+    background: var(--bg-muted);
     overflow-wrap: anywhere;
   }
-  .venue-heading {
-    margin-bottom: 0.75rem;
+  .venue-heading,
+  .coinbase-heading-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 44px;
+  }
+  .coinbase-heading-row {
+    width: 100%;
   }
   .venue-title {
     display: flex;
     align-items: baseline;
-    gap: 0.25rem;
+    gap: 0.2rem;
+    min-width: 0;
+    flex: 1;
+    line-height: 1.2;
   }
   .winner-slot {
-    flex: 0 0 1.25rem;
-  }
-  .coinbase-heading-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    flex: 0 0 1.125rem;
+    height: 1em;
   }
-  .coinbase-heading-row h3 {
-    margin: 0;
+  .coinbase-heading-row .venue-title > :first-child {
+    min-width: 0;
   }
   .estimate-refresh {
     display: flex;
+    flex: none;
     align-items: center;
-    gap: 0.375rem;
+    margin-left: auto;
   }
   .estimate-refresh-button {
     display: grid;
     place-items: center;
-    box-sizing: border-box;
-    width: 2.75rem;
-    height: 2.75rem;
+    width: 44px;
+    height: 44px;
     padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+  }
+  .estimate-refresh-button:hover {
+    background: var(--bg-hover);
   }
   .estimate-refresh-button[aria-disabled="true"] {
     opacity: 0.5;
     cursor: wait;
   }
   .estimate-countdown {
-    width: 3.125rem;
+    width: 2.25rem;
     color: var(--text-muted);
-    font: 0.75rem monospace;
+    font: 0.6875rem monospace;
     text-align: center;
   }
   h3 {
-    font-size: 1rem;
-    margin: 0 0 0.5rem;
+    font-size: 0.9375rem;
+    margin: 0;
   }
-  p {
-    font-size: 0.8125rem;
-    overflow-wrap: anywhere;
-  }
-  .venue-heading p {
-    color: var(--text-muted);
-    margin: 0.5rem 0 0;
-  }
-  .amounts {
+  .amounts > div,
+  .quote-rates,
+  .venue-row {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: baseline;
+    gap: 0.5rem;
+    min-height: 1.375rem;
+    font-size: 0.8125rem;
   }
   .amounts strong {
-    display: flex;
-    flex-wrap: wrap;
-    align-content: start;
-    align-items: center;
-    column-gap: 0.375em;
-    font-size: clamp(1rem, 2.5vw, 1.5rem);
-    min-height: 2.4em;
-    font-family: monospace;
-    line-height: 1.2;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   }
   .amounts strong > span {
-    min-width: 0;
+    margin-inline-end: 0.15em;
   }
+  .row-label,
   .amount-label {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     color: var(--text-muted);
-    margin: 0.25rem 0;
   }
-  .quote-rates p {
-    margin: 0.25rem 0;
-  }
-  .quote-rates {
-    font-family: monospace;
-    font-size: 0.875rem;
-  }
-  .availability {
-    border-left: 3px solid var(--border);
-    background: var(--bg-muted);
-    padding: 0.75rem;
-    font-size: 0.8125rem;
-    margin: 0.75rem 0;
-  }
-  .availability p {
-    margin: 0.5rem 0;
+  .quote-rates > :last-child,
+  .venue-row > :last-child {
+    text-align: right;
   }
   .trade-link {
-    display: inline-block;
-    padding: 0.5rem;
-    min-height: 2.75rem;
-    margin: 0.5rem 0 0;
-    box-sizing: border-box;
-  }
-  a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 0.8125rem;
     color: var(--text);
-    text-decoration: underline;
   }
-  .estimate-note {
-    color: var(--text-muted);
-  }
-  @media (min-width: 760px) {
+  @media (min-width: 600px) {
     .venue-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-  @media (max-width: 600px) {
-    .amounts {
-      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>

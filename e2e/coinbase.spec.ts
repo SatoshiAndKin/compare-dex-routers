@@ -58,11 +58,13 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await mockCoinbase(page);
   await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
-  await expect(panel.getByText(/Before trading fees;/)).toBeVisible();
+  await expect(
+    panel.getByText("Before trading fees", { exact: false }).filter({ visible: true })
+  ).toBeVisible();
   const dex = page.getByRole("region", { name: "DEX router quotes" });
   await expect(panel.getByRole("heading", { level: 3 })).toHaveText("Coinbase Advanced ⭐");
   await expect(dex.getByRole("heading", { level: 3 })).toHaveText("DEX routers");
-  await expect(panel).toContainText("Mobile trading not verified");
+  await expect(panel.getByText("Mobile trading not verified")).toBeHidden();
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   const boxes = await page.locator(".venue-card").evaluateAll((cards) =>
     cards.map((card) => {
@@ -78,18 +80,25 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
     })
   );
   expect(boxes).toHaveLength(2);
-  expect(boxes[0]?.border).toBe("2px");
+  expect(boxes[0]?.border).toBe("1px");
   expect(boxes[0]?.border).toBe(boxes[1]?.border);
   expect(boxes[0]?.padding).toBe(boxes[1]?.padding);
   expect(boxes[0]?.width).toBeCloseTo(boxes[1]?.width ?? 0, 0);
   const viewport = page.viewportSize();
   const [dexBox, coinbaseBox] = boxes;
   if (!viewport || !dexBox || !coinbaseBox) throw new Error("Missing comparison layout");
-  if (viewport.width >= 760) expect(dexBox.y).toBe(coinbaseBox.y);
+  if (viewport.width >= 600) expect(dexBox.y).toBe(coinbaseBox.y);
   else expect(coinbaseBox.y).toBeGreaterThan(dexBox.y);
-  await expect(panel).toContainText("This market accepts limit orders only.");
+  await expect(panel.getByRole("status")).toContainText("Limit only");
+  const info = panel.getByRole("button", { name: "About the Coinbase estimate" });
+  if (viewport.width >= 600) await info.hover();
+  else await info.tap();
+  await expect(panel.getByText("Mobile trading not verified")).toBeVisible();
+  await expect(panel.getByText(/This market accepts limit orders only/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(panel.getByText("Mobile trading not verified")).toBeHidden();
   await saveFee(page, "0.1");
-  await expect(panel).toContainText("Includes an assumed 0.1% fee");
+  await expect(panel.getByRole("status")).toContainText("Assumed fee 0.1%");
   await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
   await expect(page.getByText(/has the better quoted price|than the best DEX price/)).toHaveCount(
@@ -104,7 +113,7 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(panel.getByRole("button", { name: /swap|approve/i })).toHaveCount(0);
   await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
   await page.reload();
-  await expect(panel).toContainText("Includes an assumed 0.1% fee");
+  await expect(panel.getByRole("status")).toContainText("Assumed fee 0.1%");
   await expect(panel.getByRole("textbox")).toHaveCount(0);
   await expect(panel.getByRole("group", { name: "Coinbase average trade price" })).toContainText(
     "1 USDC = 0.999 USDT"
@@ -126,7 +135,7 @@ test("highlights Coinbase when its fee-adjusted quote beats every DEX price", as
   await saveFee(page, "0.1");
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
-  await expect(panel).toContainText("Mobile trading not verified");
+  await expect(panel.getByText("Mobile trading not verified")).toBeHidden();
   await expect(
     page
       .getByRole("region", { name: "DEX router quotes" })
@@ -242,10 +251,10 @@ test("keeps DEX expiry after refreshing Coinbase during a pending approval", asy
     await refresh.click();
     await expect(refresh).toBeDisabled();
     expect(await position()).toEqual(beforeExpiry);
-    await expect(panel).toContainText("Includes an assumed 0.1% fee");
+    await expect(panel.getByRole("status")).toContainText("Refreshing estimate");
+    await expect(tradeLink).toBeVisible();
     estimateRefresh.resolve(undefined);
     await expect(refresh).toBeEnabled();
-    await expect(panel).toContainText("Includes an assumed 0.1% fee");
     await expect(panel.getByText("Estimate expired.")).toHaveCount(0);
     await expect(panel).toContainText("DEX quotes expired.");
     await expect(page.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
