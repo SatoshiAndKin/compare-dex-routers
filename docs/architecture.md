@@ -280,9 +280,10 @@ Form spacing follows visible content and keeps 44-pixel touch targets.
 `VenueComparison.svelte` displays DEX routers and Coinbase Advanced as equal
 boxed sections. It compares the best matching, non-failed DEX quoted amount with
 the Coinbase depth estimate. Exact-input trades prefer more output. Target-output
-trades prefer less input. A star appears beside the winning venue. Ties have no
-star. The selected DEX route can differ from the best price before gas because of
-gas costs or a manual route choice. Both price boxes use the same amount display.
+trades prefer less input. A star appears beside the winning venue. Both venues
+get a star when their prices tie. The selected DEX route can differ from the best
+price before gas because of gas costs or a manual route choice. Both price boxes
+use the same amount display.
 The selected DEX route and its wallet controls follow below the comparison.
 The server recommendation continues to select only DEX routes.
 
