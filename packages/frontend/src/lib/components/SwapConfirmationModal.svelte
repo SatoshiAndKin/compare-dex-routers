@@ -17,6 +17,8 @@
 
   const data = $derived(transactionStore.swapConfirmation);
   const isOpen = $derived(data !== null);
+  const priceCheck = $derived(data?.quote.defillama_price_check);
+  const worsePrice = $derived(priceCheck?.worse_than_reference === true);
 
   function getQuoteDetails(quote: Quote) {
     const isTargetOut = quote.mode === "targetOut";
@@ -59,6 +61,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="swap-modal-title"
+      aria-describedby={worsePrice || !priceCheck ? "swap-price-warning" : undefined}
       use:dialogFocus={handleCancel}
       tabindex="-1"
     >
@@ -70,6 +73,22 @@
       </div>
 
       <div class="modal-body">
+        {#if worsePrice && priceCheck}
+          <div id="swap-price-warning" class="price-warning" role="alert">
+            <strong>Warning: worse price than DeFiLlama</strong>
+            <p>
+              DeFiLlama values the tokens you receive
+              {priceCheck.shortfall_bps === 0
+                ? "less than 0.01%"
+                : `${(priceCheck.shortfall_bps / 100).toFixed(2)}%`}
+              below what you pay, before gas.
+            </p>
+          </div>
+        {:else if !priceCheck}
+          <p id="swap-price-warning" class="price-unavailable">
+            DeFiLlama price check unavailable.
+          </p>
+        {/if}
         <div class="detail-row">
           <span class="detail-label">Account</span><span class="trade-address"
             >{data.quote.sender}</span
@@ -130,7 +149,14 @@
 
       <div class="modal-footer">
         <button type="button" class="btn-cancel" onclick={handleCancel}> Cancel </button>
-        <button type="button" class="btn-confirm" onclick={handleConfirm}> Confirm Swap </button>
+        <button
+          type="button"
+          class="btn-confirm"
+          class:price-override={worsePrice}
+          onclick={handleConfirm}
+        >
+          {worsePrice ? "Swap Anyway" : "Confirm Swap"}
+        </button>
       </div>
     </div>
   </div>
@@ -196,6 +222,26 @@
     flex-direction: column;
     gap: 0.75rem;
     margin-bottom: 1.25rem;
+  }
+
+  .price-warning {
+    padding: 0.75rem;
+    border: 2px solid var(--warning);
+    border-left-width: 5px;
+    background: var(--warning-bg);
+    color: var(--text);
+    font-size: 0.875rem;
+  }
+
+  .price-warning strong {
+    display: block;
+    color: var(--warning);
+    margin-bottom: 0.25rem;
+  }
+
+  .price-unavailable {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
   }
 
   .trade-row {
@@ -303,6 +349,17 @@
   .btn-confirm:hover {
     background: var(--green-hover, #005500);
     border-color: var(--green-hover, #005500);
+  }
+
+  .price-override {
+    background: var(--warning-bg);
+    border-color: var(--warning);
+    color: var(--text);
+  }
+
+  .price-override:hover {
+    background: var(--bg-hover);
+    border-color: var(--warning);
   }
 
   .btn-confirm:focus {

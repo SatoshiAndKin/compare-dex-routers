@@ -319,6 +319,11 @@ export interface components {
       approval_gas_cost_usd: string | null;
       trade_value_usd: string | null;
       net_value_usd: string | null;
+      /** @description Trade value shortfall versus DeFiLlama token prices, before gas, rounded down */
+      defillama_price_check?: {
+        worse_than_reference: boolean;
+        shortfall_bps: number;
+      } | null;
     };
     TokenListResponse: {
       /** @description Name of the token list (or "Default Tokenlists" if multiple) */

@@ -26,7 +26,7 @@ vi.mock("@spandex/core", async (original) => ({
 }));
 vi.mock("../usd-price.js", async (original) => ({
   ...(await original<typeof import("../usd-price.js")>()),
-  getNativeUsdConversion: mocks.usd,
+  getQuoteUsdPrices: mocks.usd,
 }));
 vi.mock("../config.js", async (original) => {
   const actual = await original<typeof import("../config.js")>();
@@ -94,9 +94,9 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mocks.gas.mockResolvedValue(1000000000n);
   mocks.usd.mockResolvedValue({
-    native_price_usd: "2000",
-    source: "defillama",
-    updated_at: Math.floor(Date.now() / 1000),
+    native: { price: 2000, timestamp: Math.floor(Date.now() / 1000) },
+    input: null,
+    output: null,
   });
   mocks.rate.mockResolvedValue([]);
   mocks.allowance.mockResolvedValue(0n);
@@ -657,12 +657,11 @@ describe("display-only USD conversion", () => {
       for (const conversion of [
         null,
         {
-          native_price_usd: "0.000001",
-          source: "defillama",
-          updated_at: Math.floor(Date.now() / 1000),
+          price: 0.000001,
+          timestamp: Math.floor(Date.now() / 1000),
         },
       ]) {
-        mocks.usd.mockResolvedValue(conversion);
+        mocks.usd.mockResolvedValue({ native: conversion, input: null, output: null });
         const next = (await call(query)).body;
         expect(next.recommendation).toBe(original.recommendation);
         expect(next.recommendation_basis).toBe(original.recommendation_basis);
@@ -702,9 +701,9 @@ describe("display-only USD conversion", () => {
   });
   it("rejects a conversion that became stale while quotes were loading", async () => {
     mocks.usd.mockResolvedValue({
-      native_price_usd: "2000",
-      source: "defillama",
-      updated_at: Math.floor(Date.now() / 1000) - 601,
+      native: { price: 2000, timestamp: Math.floor(Date.now() / 1000) - 601 },
+      input: null,
+      output: null,
     });
     const { body } = await call();
     expect(body.usd_conversion).toBeNull();
@@ -712,3 +711,36 @@ describe("display-only USD conversion", () => {
     expect(body.recommendation_basis).toBe("gas_adjusted");
   });
 });
+
+it.each(["exactIn", "targetOut"])(
+  "checks the actual simulated %s amounts per route",
+  async (mode) => {
+    const source = { timestamp: Math.floor(Date.now() / 1000), confidence: 0.99 };
+    mocks.usd.mockResolvedValue({
+      native: null,
+      input: { ...source, price: 1 },
+      output: { ...source, price: 2 },
+    });
+    mocks.quotes.mockResolvedValue([
+      quote("kyberswap", 4000000n, 2n * 10n ** 18n),
+      quote("curve", 5000000n, 2n * 10n ** 18n),
+    ]);
+    mocks.simulate.mockImplementation(async ({ quote }: { quote: SimulatedQuote }) =>
+      quote.provider === "curve"
+        ? { ...quote, simulation: { ...quote.simulation, outputAmount: 10n ** 18n } }
+        : quote
+    );
+    const { body } = await call({ to: TO, mode });
+    expect(QuoteResponseSchema.parse(body).quotes).toMatchObject([
+      {
+        provider: "kyberswap",
+        defillama_price_check: { worse_than_reference: false, shortfall_bps: 0 },
+      },
+      {
+        provider: "curve",
+        defillama_price_check: { worse_than_reference: true, shortfall_bps: 6000 },
+      },
+    ]);
+    expect(body.recommendation).toBe("kyberswap");
+  }
+);

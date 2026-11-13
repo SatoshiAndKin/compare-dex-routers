@@ -247,8 +247,9 @@ for (const network of networks.filter((network) => selectedChainIds.includes(net
           }
         }
         await page.getByRole("button", { name: "Execute swap" }).click();
-        await expect(page.getByRole("dialog", { name: "Confirm Swap" })).toBeVisible();
-        await page.getByRole("button", { name: "Confirm Swap", exact: true }).click();
+        const dialog = page.getByRole("dialog", { name: "Confirm Swap" });
+        await expect(dialog).toBeVisible();
+        await dialog.getByRole("button", { name: /^(Confirm Swap|Swap Anyway)$/ }).click();
         await expect(
           page.locator(".wallet-message").filter({ hasText: /^Swap confirmed/ })
         ).toBeVisible({ timeout: 30_000 });
