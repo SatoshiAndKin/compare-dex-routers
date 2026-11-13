@@ -3,8 +3,8 @@
    * AmountFields — sell/receive two-field amount input with direction toggle.
    * Ports behavior from src/client/amount-fields.ts.
    */
-  import { formStore } from "../stores/formStore.svelte.js";
-  import { comparisonStore } from "../stores/comparisonStore.svelte.js";
+  import { formStore, type TokenInfo } from "../stores/formStore.svelte.js";
+  import { comparisonStore, type Quote } from "../stores/comparisonStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
   import type { Snippet } from "svelte";
   import InfoPopover from "./InfoPopover.svelte";
@@ -19,7 +19,7 @@
   }: {
     sellToken?: Snippet;
     buyToken?: Snippet;
-    reverse?: Snippet;
+    reverse?: Snippet<[() => void]>;
     sellBalance?: Snippet;
     buyBalance?: Snippet;
     settings?: Snippet;
@@ -30,6 +30,14 @@
   // ---------------------------------------------------------------------------
 
   let isProgrammaticUpdate = $state(false);
+  let reversedAmount = $state.raw<{
+    from: TokenInfo;
+    to: TokenInfo;
+    mode: typeof formStore.mode;
+    exactAmount: string;
+    amount: string;
+    previousQuotes: Quote[];
+  } | null>(null);
 
   // ---------------------------------------------------------------------------
   // Derived
@@ -51,11 +59,33 @@
       ? active
       : null;
   });
-  const sellValue = $derived(isExactIn ? formStore.sellAmount : (quote?.input_amount ?? ""));
-  const receiveValue = $derived(isExactIn ? (quote?.output_amount ?? "") : formStore.receiveAmount);
+  const carriedAmount = $derived.by(() => {
+    const previous = reversedAmount;
+    const amount = isExactIn ? formStore.sellAmount : formStore.receiveAmount;
+    return previous &&
+      previous.from === formStore.fromToken &&
+      previous.to === formStore.toToken &&
+      previous.mode === formStore.mode &&
+      previous.exactAmount === amount &&
+      previous.previousQuotes === comparisonStore.quotes
+      ? previous.amount
+      : "";
+  });
+  const sellValue = $derived(
+    isExactIn ? formStore.sellAmount : (quote?.input_amount ?? carriedAmount)
+  );
+  const receiveValue = $derived(
+    isExactIn ? (quote?.output_amount ?? carriedAmount) : formStore.receiveAmount
+  );
   const exchangeRate = $derived(quote && formatQuoteRate(quote.output_amount, quote.input_amount));
   const estimateStatus = $derived(
-    !quote ? "" : comparisonStore.isStale ? "Previous estimate" : "Estimate"
+    quote
+      ? comparisonStore.isStale
+        ? "Previous estimate"
+        : "Estimate"
+      : carriedAmount
+        ? "Previous amount"
+        : ""
   );
 
   // ---------------------------------------------------------------------------
@@ -95,6 +125,7 @@
 
   function handleSellInput(e: Event): void {
     if (isProgrammaticUpdate) return;
+    reversedAmount = null;
     const target = e.target as HTMLInputElement;
     if (formStore.mode !== "exactIn") {
       formStore.mode = "exactIn";
@@ -104,6 +135,7 @@
 
   function handleReceiveInput(e: Event): void {
     if (isProgrammaticUpdate) return;
+    reversedAmount = null;
     const target = e.target as HTMLInputElement;
     if (formStore.mode !== "targetOut") {
       formStore.mode = "targetOut";
@@ -115,6 +147,28 @@
     if (mode === formStore.mode) return;
     if (mode === "exactIn") formStore.sellAmount = sellValue;
     else formStore.receiveAmount = receiveValue;
+    reversedAmount = null;
+    formStore.mode = mode;
+  }
+
+  function reverseTrade(): void {
+    const { fromToken, toToken } = formStore;
+    if (!fromToken || !toToken) return;
+    const mode = isExactIn ? "targetOut" : "exactIn";
+    const sell = sellValue;
+    const receive = receiveValue;
+    reversedAmount = {
+      from: toToken,
+      to: fromToken,
+      mode,
+      exactAmount: isExactIn ? sell : receive,
+      amount: isExactIn ? receive : sell,
+      previousQuotes: comparisonStore.quotes,
+    };
+    formStore.fromToken = toToken;
+    formStore.toToken = fromToken;
+    formStore.sellAmount = receive;
+    formStore.receiveAmount = sell;
     formStore.mode = mode;
   }
 </script>
@@ -168,7 +222,7 @@
       </div>
     </div>
 
-    {@render reverse?.()}
+    {@render reverse?.(reverseTrade)}
 
     <div class="amount-group" class:active={!isExactIn} class:computed={isExactIn}>
       <div class="amount-heading">
