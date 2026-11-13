@@ -42,13 +42,17 @@ async function mockCoinbase(
   });
 }
 
-async function saveFee(page: Page, fee: string) {
-  await page.getByRole("button", { name: "Open settings" }).click();
+async function saveOpenFee(page: Page, fee: string) {
   const settings = page.getByRole("dialog", { name: "Settings" });
   await settings.getByLabel("Your taker fee (%)").fill(fee);
   await settings.getByRole("button", { name: "Save fee" }).click();
   await expect(settings.getByText("Coinbase fee saved.")).toBeVisible();
   await settings.getByRole("button", { name: "Close settings" }).click();
+}
+
+async function saveFee(page: Page, fee: string) {
+  await page.getByRole("button", { name: "Open settings" }).click();
+  await saveOpenFee(page, fee);
 }
 
 test("shows a fee-adjusted Coinbase estimate without changing the selected DEX", async ({
@@ -58,9 +62,8 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await mockCoinbase(page);
   await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
-  await expect(
-    panel.getByText("Before trading fees", { exact: false }).filter({ visible: true })
-  ).toBeVisible();
+  const feeButton = panel.getByRole("button", { name: /Before trading fees|Assumed fee/ });
+  await expect(feeButton).toHaveText("Before trading fees");
   const dex = page.getByRole("region", { name: "DEX router quotes" });
   await expect(panel.getByRole("heading", { level: 3 })).toHaveText("Coinbase Advanced ⭐");
   await expect(dex.getByRole("heading", { level: 3 })).toHaveText("DEX routers");
@@ -97,8 +100,19 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(panel.getByText(/This market accepts limit orders only/)).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(panel.getByText("Mobile trading not verified")).toBeHidden();
-  await saveFee(page, "0.1");
-  await expect(panel.getByRole("status")).toContainText("Assumed fee 0.1%");
+  const feePosition = () =>
+    feeButton.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return { x: box.x, y: box.y + window.scrollY, width: box.width, height: box.height };
+    });
+  const beforeFee = await feePosition();
+  if (viewport.width >= 600) await feeButton.press("Enter");
+  else await feeButton.tap();
+  await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toBeFocused();
+  await saveOpenFee(page, "0.1");
+  await expect(feeButton).toHaveText("Assumed fee 0.1%");
+  await expect(feeButton).toBeFocused();
+  expect(await feePosition()).toEqual(beforeFee);
   await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
   await expect(page.getByText(/has the better quoted price|than the best DEX price/)).toHaveCount(
@@ -113,7 +127,7 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(panel.getByRole("button", { name: /swap|approve/i })).toHaveCount(0);
   await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
   await page.reload();
-  await expect(panel.getByRole("status")).toContainText("Assumed fee 0.1%");
+  await expect(feeButton).toHaveText("Assumed fee 0.1%");
   await expect(panel.getByRole("textbox")).toHaveCount(0);
   await expect(panel.getByRole("group", { name: "Coinbase average trade price" })).toContainText(
     "1 USDC = 0.999 USDT"
@@ -121,6 +135,11 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await page.getByRole("button", { name: "Open settings" }).click();
   await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toHaveValue("0.1");
   await page.getByRole("button", { name: "Close settings" }).click();
+  await feeButton.click();
+  await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toBeFocused();
+  await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toHaveValue("0.1");
+  await page.keyboard.press("Escape");
+  await expect(feeButton).toBeFocused();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth
   );
