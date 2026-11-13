@@ -174,21 +174,16 @@
     </div>
   </header>
 
-  <div class="wallet-row">
-    <WalletButton onConnectClick={openWalletMenu} />
-  </div>
-
   <ChainMismatchWarning />
 
   <main class="app-main">
     {#if metadataError}<p role="alert">{metadataError}. Select the token again to retry.</p>{/if}
-    <CompareForm />
+    <CompareForm>
+      {#snippet wallet()}<WalletButton onConnectClick={openWalletMenu} />{/snippet}
+    </CompareForm>
     <QuoteResults />
   </main>
-  <footer class="space-footer">
-    <span aria-hidden="true">✦</span> Powered by Spandex · Compare routes. Choose your swap.
-    <span aria-hidden="true">✦</span>
-  </footer>
+  <footer class="space-footer">Powered by Spandex</footer>
 </div>
 
 <WalletProviderMenu
@@ -204,8 +199,8 @@
 <style>
   .app-main {
     background: var(--bg-card);
-    padding: 1rem;
-    border-radius: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border-light);
   }
   .brand {
     display: flex;
@@ -219,6 +214,7 @@
     line-height: 1.15;
     font-size: clamp(1.25rem, 3vw, 1.75rem);
     color: var(--text);
+    font-family: inherit;
   }
   .space-footer {
     text-align: center;
@@ -227,9 +223,6 @@
     margin-top: 1rem;
     padding: 1rem;
     border-top: 0;
-  }
-  .space-footer span {
-    color: #ccbb44;
   }
   @media (max-width: 600px) {
     .brand {
@@ -243,7 +236,7 @@
     }
   }
   .app {
-    max-width: 840px;
+    max-width: 36rem;
     margin: 0 auto;
     padding: 0.5rem;
   }
@@ -285,16 +278,6 @@
   .github-link:focus {
     outline: 3px solid var(--accent, #0055ff);
     outline-offset: 0;
-  }
-
-  .wallet-row {
-    display: flex;
-    justify-content: center;
-    width: 100%;
-    max-width: 800px;
-    margin: 0 auto 0.5rem;
-    min-height: 2.75rem;
-    color: var(--text);
   }
 
   .settings-btn {

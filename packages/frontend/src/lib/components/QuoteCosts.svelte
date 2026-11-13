@@ -16,7 +16,6 @@
     flex-direction: column;
     gap: 0.25rem;
     font-size: 0.8125rem;
-    min-height: 5.5em;
     overflow-wrap: anywhere;
   }
 </style>

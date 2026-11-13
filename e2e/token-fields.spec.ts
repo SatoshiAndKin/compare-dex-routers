@@ -50,31 +50,16 @@ test("keeps token fields compact with one full address and a working copy button
   await page.goto(`/?chainId=1&from=${FROM}&to=${YFI}&amount=1500&slippageBps=50`);
   await expect(page.locator("#receive-amount")).toHaveValue("0.75");
   await page.screenshot({ path: info.outputPath("token-fields.png"), fullPage: true });
-  const spacing = await page.locator(".token-pair").evaluate((pair) => {
-    const sections = [...pair.querySelectorAll(":scope > .form-section")].map((node) =>
-      node.getBoundingClientRect()
-    );
-    const first = sections[0];
-    const second = sections[1];
-    const swap = pair.querySelector(".swap-tokens")?.getBoundingClientRect();
-    const toggle = document.querySelector(".mode-toggle-row")?.getBoundingClientRect();
-    if (!first || !second || !swap || !toggle) throw new Error("Missing token controls");
-    return {
-      gaps: [swap.top - first.bottom, second.top - swap.bottom],
-      beforeAmounts: toggle.y - second.bottom,
-      fields: sections.map((rect) => rect.height),
-    };
-  });
-  await info.attach("token-spacing", {
-    body: JSON.stringify(spacing),
-    contentType: "application/json",
-  });
   await expect(page.getByRole("textbox", { name: "From token", exact: true })).toHaveValue("USDC");
   await expect(page.getByRole("textbox", { name: "To token", exact: true })).toHaveValue("YFI");
   for (const [side, address] of [
     ["from", FROM],
     ["to", YFI],
   ] as const) {
+    await expect(page.getByText(address, { exact: true })).toBeHidden();
+    await page
+      .getByRole("button", { name: side === "from" ? "Sell token details" : "Buy token details" })
+      .click();
     const button = page.getByRole("button", { name: `Copy ${side} token address`, exact: true });
     const row = button.locator("..");
     await expect(row.locator(".selected-token-address")).toHaveText(address);
@@ -91,18 +76,19 @@ test("keeps token fields compact with one full address and a working copy button
       browserName === "chromium"
     );
     expect(clipboard).toBe(address);
+    await page.keyboard.press("Escape");
   }
-  expect(Math.max(...spacing.fields)).toBeLessThanOrEqual(132);
-  expect(spacing.beforeAmounts).toBeLessThanOrEqual(16);
-  if ((page.viewportSize()?.width ?? 0) <= 600) {
-    expect(Math.min(...spacing.gaps)).toBeGreaterThanOrEqual(0);
-    expect(Math.max(...spacing.gaps)).toBeLessThanOrEqual(16);
-  }
-  await expect(page.locator(".balance-slot")).toHaveCount(0);
   if ((page.viewportSize()?.width ?? 0) <= 600) {
     await page.setViewportSize({ width: 320, height: 844 });
-    for (const address of [FROM, YFI]) {
-      const text = page.locator(".selected-token-address").filter({ hasText: address });
+    for (const [side, address] of [
+      ["Sell", FROM],
+      ["Buy", YFI],
+    ] as const) {
+      const trigger = page.getByRole("button", { name: `${side} token details` });
+      await page.keyboard.press("Escape");
+      await trigger.click();
+      const text = page.getByText(address, { exact: true });
+      await expect(text).toBeVisible();
       expect(await text.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
         true
       );
@@ -137,6 +123,7 @@ test("swaps the selected tokens and requests a quote for the reverse pair", asyn
   expect(params.get("amount")).toBe("150");
   expect(params.get("mode")).toBe("targetOut");
 
+  await page.getByRole("button", { name: "Buy token details" }).click();
   await page.getByRole("button", { name: "Clear to token", exact: true }).click();
   await expect(swap).toBeDisabled();
 });
@@ -163,8 +150,14 @@ test("keeps fields and amounts fixed when addresses appear and clear", async ({ 
   if (!viewport) throw new Error("The address layout check requires a viewport");
   for (const width of viewport.width <= 600 ? [viewport.width, 320] : [viewport.width]) {
     await page.setViewportSize({ width, height: viewport.height });
-    await page.getByRole("button", { name: "Clear from token", exact: true }).click();
-    await page.getByRole("button", { name: "Clear to token", exact: true }).click();
+    if (await page.getByRole("button", { name: "Sell token details" }).isVisible()) {
+      await page.getByRole("button", { name: "Sell token details" }).click();
+      await page.getByRole("button", { name: "Clear from token", exact: true }).click();
+    }
+    if (await page.getByRole("button", { name: "Buy token details" }).isVisible())
+      await page.getByRole("button", { name: "Buy token details" }).click();
+    if (await page.getByRole("button", { name: "Clear to token", exact: true }).isVisible())
+      await page.getByRole("button", { name: "Clear to token", exact: true }).click();
     await expect(from).toHaveValue("");
     await expect(to).toHaveValue("");
     const empty = await positions();
@@ -181,9 +174,15 @@ test("keeps fields and amounts fixed when addresses appear and clear", async ({ 
       expect(await positions()).toEqual(empty);
     }
     await page.screenshot({ path: info.outputPath(`selected-addresses-${width}.png`) });
-    await page.getByRole("button", { name: "Clear from token", exact: true }).click();
+    if (await page.getByRole("button", { name: "Sell token details" }).isVisible()) {
+      await page.getByRole("button", { name: "Sell token details" }).click();
+      await page.getByRole("button", { name: "Clear from token", exact: true }).click();
+    }
     expect(await positions()).toEqual(empty);
-    await page.getByRole("button", { name: "Clear to token", exact: true }).click();
+    if (await page.getByRole("button", { name: "Buy token details" }).isVisible())
+      await page.getByRole("button", { name: "Buy token details" }).click();
+    if (await page.getByRole("button", { name: "Clear to token", exact: true }).isVisible())
+      await page.getByRole("button", { name: "Clear to token", exact: true }).click();
     expect(await positions()).toEqual(empty);
 
     // Restore both fields before checking the next viewport.

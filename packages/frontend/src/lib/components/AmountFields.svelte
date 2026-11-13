@@ -5,7 +5,24 @@
    */
   import { formStore } from "../stores/formStore.svelte.js";
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
-  import TokenSymbol from "./TokenSymbol.svelte";
+  import { formatQuoteRate } from "../quote-rates.js";
+  import type { Snippet } from "svelte";
+
+  let {
+    sellToken,
+    buyToken,
+    reverse,
+    sellBalance,
+    buyBalance,
+    settings,
+  }: {
+    sellToken?: Snippet;
+    buyToken?: Snippet;
+    reverse?: Snippet;
+    sellBalance?: Snippet;
+    buyBalance?: Snippet;
+    settings?: Snippet;
+  } = $props();
 
   // ---------------------------------------------------------------------------
   // State
@@ -35,12 +52,9 @@
   });
   const sellValue = $derived(isExactIn ? formStore.sellAmount : (quote?.input_amount ?? ""));
   const receiveValue = $derived(isExactIn ? (quote?.output_amount ?? "") : formStore.receiveAmount);
+  const exchangeRate = $derived(quote && formatQuoteRate(quote.output_amount, quote.input_amount));
   const estimateStatus = $derived(
-    !quote
-      ? "Waiting for quote"
-      : comparisonStore.isStale
-        ? "Previous estimate"
-        : "Estimated from selected route"
+    !quote ? "" : comparisonStore.isStale ? "Previous estimate" : "Estimate"
   );
 
   // ---------------------------------------------------------------------------
@@ -124,133 +138,152 @@
     </button>
   </div>
 
-  <div class={`amount-group${isExactIn ? " active" : " computed"}`}>
-    <label class="amount-label" for="sell-amount">
-      YOU SELL
-      {#if formStore.fromToken}
-        <TokenSymbol
-          chainId={formStore.chainId}
-          address={formStore.fromToken.address}
-          symbol={formStore.fromToken.symbol}
-          logoURI={formStore.fromToken.logoURI}
+  <div class="token-pair">
+    <div class="amount-group" class:active={isExactIn} class:computed={!isExactIn}>
+      <div class="amount-heading">
+        <label class="amount-label" for="sell-amount">Sell</label>
+        {@render sellBalance?.()}
+      </div>
+      <div class="amount-input-row">
+        <input
+          id="sell-amount"
+          class="amount-input"
+          type="number"
+          min="0"
+          step="any"
+          placeholder="0.0"
+          value={sellValue}
+          readonly={!isExactIn}
+          onfocus={handleSellFocus}
+          oninput={handleSellInput}
+          aria-label={sellLabel}
         />
-      {/if}
-    </label>
-    <div class="amount-input-row">
-      <input
-        id="sell-amount"
-        class="amount-input"
-        type="number"
-        min="0"
-        step="any"
-        placeholder={isExactIn ? "Enter amount" : ""}
-        value={sellValue}
-        readonly={!isExactIn}
-        onfocus={handleSellFocus}
-        oninput={handleSellInput}
-        aria-label={sellLabel}
-      />
+        {@render sellToken?.()}
+      </div>
+      <div class="amount-meta">
+        <span>{isExactIn ? "" : estimateStatus}</span>
+      </div>
     </div>
-    <span class="amount-hint">{isExactIn ? "Exact amount" : estimateStatus}</span>
-  </div>
 
-  <div class={`amount-group${!isExactIn ? " active" : " computed"}`}>
-    <label class="amount-label" for="receive-amount">
-      YOU RECEIVE
-      {#if formStore.toToken}
-        <TokenSymbol
-          chainId={formStore.chainId}
-          address={formStore.toToken.address}
-          symbol={formStore.toToken.symbol}
-          logoURI={formStore.toToken.logoURI}
+    {@render reverse?.()}
+
+    <div class="amount-group" class:active={!isExactIn} class:computed={isExactIn}>
+      <div class="amount-heading">
+        <label class="amount-label" for="receive-amount">Buy</label>
+        {@render buyBalance?.()}
+      </div>
+      <div class="amount-input-row">
+        <input
+          id="receive-amount"
+          class="amount-input"
+          type="number"
+          min="0"
+          step="any"
+          placeholder="0.0"
+          value={receiveValue}
+          readonly={isExactIn}
+          onfocus={handleReceiveFocus}
+          oninput={handleReceiveInput}
+          aria-label={receiveLabel}
         />
-      {/if}
-    </label>
-    <div class="amount-input-row">
-      <input
-        id="receive-amount"
-        class="amount-input"
-        type="number"
-        min="0"
-        step="any"
-        placeholder={!isExactIn ? "Enter amount" : ""}
-        value={receiveValue}
-        readonly={isExactIn}
-        onfocus={handleReceiveFocus}
-        oninput={handleReceiveInput}
-        aria-label={receiveLabel}
-      />
+        {@render buyToken?.()}
+      </div>
+      <div class="amount-meta"><span>{!isExactIn ? "" : estimateStatus}</span></div>
     </div>
-    <span class="amount-hint">{!isExactIn ? "Exact amount" : estimateStatus}</span>
   </div>
+  {#if settings}
+    <div class="swap-summary">
+      {@render settings()}
+      <div class="summary-row">
+        <span>Exchange rate</span><strong>
+          {#if quote && exchangeRate}1 {quote.from_symbol} ≈ {exchangeRate}
+            {quote.to_symbol}{:else}—{/if}
+        </strong>
+      </div>
+      <div class="summary-row"><span>DEX route</span><strong>{quote?.provider ?? "—"}</strong></div>
+    </div>
+  {/if}
 </div>
 
 <style>
   .amount-fields {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem 0.75rem;
+    gap: 0.5rem;
   }
-  @media (max-width: 600px) {
-    .amount-fields {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .swap-summary {
+    font-size: 0.875rem;
+  }
+  .summary-row {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0.5rem;
+    min-height: 1.375rem;
+    overflow-wrap: anywhere;
+  }
+  .summary-row span {
+    color: var(--text-muted);
+  }
+  .summary-row strong {
+    text-align: right;
+  }
+  .token-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.125rem;
   }
 
   .amount-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    display: grid;
+    grid-template-rows: auto auto 1.125rem;
     min-width: 0;
+    padding: 0.375rem 0.625rem;
+    background: var(--bg-muted);
+    border: 1px solid var(--border-light);
   }
-  .amount-hint {
-    min-height: 1.5em;
-    line-height: 1.5;
-    font-size: 0.7rem;
+  .amount-group.active {
+    border-color: var(--border);
+  }
+  .amount-meta {
+    font-size: 0.75rem;
     color: var(--text-muted);
   }
-
-  .amount-group.computed .amount-input {
-    background: var(--computed-bg, #f5f5f5);
-    border-color: var(--computed-border, #999);
-    color: var(--text-muted, #666);
-  }
-
-  .amount-group.active .amount-input {
-    background: var(--bg-input, #fff);
-    border-color: var(--border, #000);
-    color: var(--text, #000);
+  .amount-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 1.5rem;
   }
 
   .amount-label {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    min-height: 1.5em;
-    --token-icon-size: 16px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--text-muted, #666);
+    font-size: 0.875rem;
+    color: var(--text-muted);
   }
 
   .amount-input-row {
-    display: flex;
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(8rem, 38%);
     align-items: center;
+    gap: 0.375rem;
   }
 
-  .amount-input {
+  input.amount-input {
+    min-width: 0;
     width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border-light);
-    background: var(--bg-input, #fff);
-    color: var(--text, #000);
-    font-size: 1rem;
-    font-family: inherit;
-    transition:
-      background 0.1s,
-      border-color 0.1s;
+    padding: 0.25rem 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: 650 1.375rem/1.2 system-ui;
+    font-variant-numeric: tabular-nums;
+  }
+  input.amount-input[readonly] {
+    text-overflow: ellipsis;
+  }
+  @media (max-width: 600px) {
+    .amount-input-row input.amount-input {
+      font-size: 1.25rem !important;
+    }
   }
 
   .amount-input:focus {
@@ -274,26 +307,22 @@
   }
 
   .mode-toggle-row {
-    grid-column: 1 / -1;
     display: flex;
-    gap: 0;
+    gap: 0.25rem;
   }
 
   .mode-btn {
-    flex: 1;
-    padding: 0.35rem 0.75rem;
-    background: var(--bg-muted, #f0f0f0);
+    padding: 0.25rem 0.65rem;
+    background: transparent;
     border: 0;
     cursor: pointer;
     font-size: 0.85rem;
     font-weight: 600;
     font-family: inherit;
     color: var(--text, #000);
+    text-transform: none;
+    letter-spacing: normal;
     transition: background 0.1s;
-  }
-
-  .mode-btn + .mode-btn {
-    border-left: none;
   }
 
   .mode-btn.active {

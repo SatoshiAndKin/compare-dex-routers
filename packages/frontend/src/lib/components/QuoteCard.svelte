@@ -14,6 +14,7 @@
   import { walletStore } from "../stores/walletStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
   import TokenSymbol from "./TokenSymbol.svelte";
+  import InfoPopover from "./InfoPopover.svelte";
 
   interface Props {
     provider: string;
@@ -24,6 +25,7 @@
     gasPriceGwei?: string | null;
     recommendationBasis?: QuoteResponse["recommendation_basis"];
     usdConversion?: QuoteResponse["usd_conversion"];
+    rankingNote?: string;
   }
 
   let {
@@ -35,6 +37,7 @@
     gasPriceGwei = null,
     recommendationBasis = "none",
     usdConversion = null,
+    rankingNote = "",
   }: Props = $props();
 
   const providerName = $derived(quote?.provider ?? provider);
@@ -107,19 +110,30 @@
     <!-- Quote result -->
     <div class="quote-result">
       <!-- Recommendation badge -->
-      <span
-        class="recommendation-badge"
-        class:winner-badge={isRecommended}
-        class:alt-badge={!isRecommended}
-      >
-        {isRecommended
-          ? quote.simulation_status === "succeeded"
-            ? "RECOMMENDED DEX ROUTE"
-            : "Best DEX route — unverified"
-          : "SELECTED"}
-      </span>
+      <div class="route-header">
+        <div>
+          <span
+            class="recommendation-badge"
+            class:winner-badge={isRecommended}
+            class:alt-badge={!isRecommended}
+          >
+            {isRecommended
+              ? quote.simulation_status === "succeeded"
+                ? "RECOMMENDED DEX ROUTE"
+                : "Best DEX route — unverified"
+              : "SELECTED"}
+          </span>
 
-      <div class="provider-info">Via {providerName}</div>
+          <div class="provider-info">Via {providerName}</div>
+        </div>
+        <InfoPopover label="Selected route details">
+          {#if inverseRate}<span>1 {quote.to_symbol} ≈ {inverseRate} {quote.from_symbol}</span>{/if}
+          <span>Average trade price before gas.</span>
+          {#if rankingNote}<span>{rankingNote}</span>{/if}
+          <QuoteSimulation {quote} />
+          <QuoteCosts {quote} basis={recommendationBasis} />
+        </InfoPopover>
+      </div>
       <div class="quote-amounts">
         <div>
           <div class="output-label">You pay</div>
@@ -139,29 +153,15 @@
 
       {#if rate && inverseRate}
         <div class="quote-rates" role="group" aria-label="Average trade price">
-          <div class="output-label">Average trade price</div>
+          <div class="output-label">Rate</div>
           <div>1 {quote.from_symbol} ≈ {rate} {quote.to_symbol}</div>
-          <div>1 {quote.to_symbol} ≈ {inverseRate} {quote.from_symbol}</div>
-          <div class="rate-note">Based on the full quote, before gas.</div>
         </div>
       {/if}
 
-      <QuoteSimulation {quote} />
-      <!-- Gas cost -->
-      <QuoteCosts {quote} basis={recommendationBasis} />
       <!-- Expandable details -->
       <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} {usdConversion} />
 
       <div class="execution-status">
-        {#if !quote.execution && !walletStore.isConnected}
-          <div class="tx-actions">
-            <span>Connect your wallet to swap.</span>
-          </div>
-        {/if}
-
-        {#if quote.execution && walletCheck}<p class="wallet-check" role="status">
-            {walletCheck.message}
-          </p>{/if}
         <!-- Transaction actions -->
         {#if needsApproval || canSwap}
           <div class="tx-actions">
@@ -231,6 +231,10 @@
             {/if}
           </div>
         {/if}
+        {#if quote.execution}<p class="wallet-check" role="status">
+            {walletCheck?.message ?? ""}
+          </p>
+        {:else}<QuoteSimulation {quote} balanceOnly />{/if}
       </div>
     </div>
   {/if}
@@ -238,14 +242,17 @@
 
 <style>
   .quote-rates {
-    font-family: monospace;
-    font-size: 0.875rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
     overflow-wrap: anywhere;
   }
-  .rate-note {
-    color: var(--text-muted, #666);
-    font-family: inherit;
-    font-size: 0.75rem;
+  .route-header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
 
   .quote-amounts {
@@ -253,16 +260,9 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
   }
-  @media (max-width: 600px) {
-    .quote-amounts {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-  .execution-status {
-    min-height: 5rem;
-  }
   .wallet-check {
     min-height: 3em;
+    line-height: 1.5;
     font-size: 0.8125rem;
   }
 
@@ -366,17 +366,13 @@
   }
 
   .output-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-size: 0.8125rem;
     color: var(--text-muted, #666);
-    margin-top: 0.25rem;
   }
 
   .input-amount,
   .output-amount {
-    font-size: clamp(1rem, 2.5vw, 1.5rem);
+    font-size: 0.9375rem;
     overflow-wrap: anywhere;
     min-height: 2.4em;
     font-weight: 700;
@@ -410,6 +406,7 @@
   }
 
   .tx-btn {
+    flex: 1;
     padding: 0.35rem 0.9rem;
     font-size: 0.85rem;
     font-weight: 600;

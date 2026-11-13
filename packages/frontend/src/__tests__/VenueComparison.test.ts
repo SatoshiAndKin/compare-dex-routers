@@ -79,16 +79,16 @@ describe("Venue price comparison", () => {
     const link = await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
     expect(link).toHaveAttribute("href", "https://www.coinbase.com/advanced-trade/spot/ETH-USDC");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    expect(view.getByText(/Before trading fees;/)).toBeVisible();
+    expect(view.getByText("Before trading fees")).toBeVisible();
+    expect(view.getByText(/Excludes deposits, withdrawals/)).not.toBeVisible();
+    await fireEvent.click(view.getByRole("button", { name: "About the Coinbase estimate" }));
     expect(view.getByRole("region", { name: "Coinbase Advanced estimate" })).toHaveTextContent(
-      "You pay2 ETH You receive3900 USDC"
+      /Sell\s*2 ETH Buy\s*3900 USDC/
     );
     expect(view.getByRole("group", { name: "Coinbase average trade price" })).toHaveTextContent(
       "1 ETH = 1950 USDC"
     );
-    expect(view.getByRole("group", { name: "Coinbase average trade price" })).toHaveTextContent(
-      "1 USDC = 0.000512821 ETH"
-    );
+    expect(view.getByText("1 USDC = 0.000512821 ETH")).toBeVisible();
     expect(view.queryByRole("textbox")).toBeNull();
     expect(view.getByText(/Excludes deposits, withdrawals/)).toBeVisible();
     expect(view.getByRole("img", { name: "Better quoted price" })).toHaveTextContent("⭐");
@@ -109,7 +109,7 @@ describe("Venue price comparison", () => {
     });
     await fireEvent.click(settings.getByRole("button", { name: "Save fee" }));
     await fireEvent.click(settings.getByRole("button", { name: "Close settings" }));
-    expect(await view.findByText("Includes an assumed 1% fee (39 USDC).")).toBeVisible();
+    expect(await view.findByText("Assumed fee 1%")).toBeVisible();
     expect(view.getByRole("img", { name: "Better quoted price" })).toBeVisible();
     expect(
       JSON.parse(localStorage.getItem("compare-dex-preferences") ?? "{}").coinbaseTakerFeePercent
@@ -229,7 +229,7 @@ describe("Venue price comparison", () => {
       data: { status: "unavailable", reason: "Coinbase market data is unavailable." },
     });
     await fireEvent.click(view.getByRole("button", { name: "Refresh estimate" }));
-    expect(await view.findByText("Refresh failed. Showing the last estimate.")).toBeVisible();
+    expect(await view.findByText("Refresh failed · Previous estimate")).toBeVisible();
     expect(link).toBeVisible();
     expect(view.getByText("1 ETH = 1950 USDC")).toBeVisible();
     expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
@@ -284,6 +284,7 @@ describe("Venue price comparison", () => {
     await vi.advanceTimersByTimeAsync(0);
     await tick();
     expect(get).toHaveBeenCalledTimes(2);
+    await fireEvent.click(view.getByRole("button", { name: "About the Coinbase estimate" }));
     expect(view.getByText("Includes an assumed 1% fee (39 USDC).")).toBeVisible();
     expect(view.queryByText("Estimate expired.")).toBeNull();
     expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
@@ -364,7 +365,9 @@ describe("Venue price winners and mobile availability", () => {
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
-    expect(await view.findByText("Mobile trading not verified")).toBeVisible();
+    await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
+    await fireEvent.click(view.getByRole("button", { name: "About the Coinbase estimate" }));
+    expect(view.getByText("Mobile trading not verified")).toBeVisible();
     expect(
       view.getByText(/does not confirm that your account can buy YFI in the YFI-USDC market/)
     ).toBeVisible();
@@ -386,7 +389,7 @@ describe("Venue price winners and mobile availability", () => {
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
-    await view.findByText("Mobile trading not verified");
+    await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
     expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
   });
 

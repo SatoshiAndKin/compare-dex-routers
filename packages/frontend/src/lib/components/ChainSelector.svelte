@@ -259,7 +259,8 @@
   .chain-selector {
     position: relative;
     display: inline-block;
-    width: 100%;
+    width: 11rem;
+    max-width: 100%;
   }
 
   .chain-button {
@@ -268,13 +269,15 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.5rem 0.75rem;
-    background: var(--bg-input, #fff);
-    border: 2px solid var(--border, #000);
+    background: var(--bg-muted);
+    border: 1px solid var(--border-light);
     cursor: pointer;
-    font-size: 0.95rem;
+    font-size: 0.875rem;
     font-family: inherit;
     color: var(--text, #000);
     text-align: left;
+    text-transform: none;
+    letter-spacing: normal;
   }
 
   .chain-button:focus {

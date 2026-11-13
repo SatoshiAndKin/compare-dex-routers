@@ -13,6 +13,18 @@
         quote.provider === comparisonStore.recommendation && quote.simulation_status === "succeeded"
     )
   );
+  const rankingNote = $derived.by(() => {
+    const targetOut = comparisonStore.mode === "targetOut";
+    if (comparisonStore.recommendationBasis === "gas_adjusted")
+      return targetOut
+        ? "Ranked by estimated input cost including gas."
+        : "Ranked by estimated output value after gas.";
+    if (comparisonStore.recommendationBasis === "raw_amount")
+      return targetOut
+        ? "Ranking by raw input amount (lowest first). Comparable gas costs are unavailable."
+        : "Ranking by raw output amount (highest first). Comparable gas costs are unavailable.";
+    return "";
+  });
 
   function selectProvider(provider: string): void {
     if (transactionStore.busy || comparisonStore.isLoading) return;
@@ -52,6 +64,7 @@
               gasPriceGwei={comparisonStore.gasPriceGwei}
               recommendationBasis={comparisonStore.recommendationBasis}
               usdConversion={comparisonStore.usdConversion}
+              {rankingNote}
             />
           {:else}
             <div class="quote-placeholder" aria-label="Quote result">
@@ -67,22 +80,6 @@
         {#if comparisonStore.error}<div class="quote-error" role="alert">
             {comparisonStore.error}. Refresh quotes to retry.
           </div>{/if}
-        {#if comparisonStore.recommendationBasis === "gas_adjusted"}<p
-            class="reason-box"
-            role="status"
-          >
-            {comparisonStore.mode === "targetOut"
-              ? "Ranked by estimated input cost including gas."
-              : "Ranked by estimated output value after gas."}
-          </p>{/if}
-        {#if comparisonStore.recommendationBasis === "raw_amount"}
-          <p class="reason-box">
-            Ranking by raw {comparisonStore.mode === "targetOut"
-              ? "input amount (lowest first)"
-              : "output amount (highest first)"}. Gas is excluded because comparable gas costs are
-            unavailable.
-          </p>
-        {/if}
         {#if comparisonStore.recommendation && (comparisonStore.activeProvider !== comparisonStore.recommendation || comparisonStore.routeChoiceRequired)}
           <div class="route-choice">
             <span
@@ -149,19 +146,13 @@
 
 <style>
   .quote-body {
-    min-height: 22rem;
+    min-height: 9rem;
   }
   .quote-placeholder {
-    min-height: 22rem;
+    min-height: 9rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-muted);
-  }
-  .reason-box {
-    border: 0;
-    background: transparent;
-    font-size: 0.75rem;
     color: var(--text-muted);
   }
   .quote-results {
@@ -234,7 +225,6 @@
     border: 0;
     border-bottom: 1px solid var(--border-light);
   }
-  .reason-box,
   .quote-error {
     padding: 0.5rem 0;
   }

@@ -89,6 +89,8 @@ describe("TokenInput", () => {
     await waitFor(() => expect(view.getByRole("textbox")).toHaveValue("USDC"));
     expect(view.getAllByText(address, { exact: true })).toHaveLength(1);
     expect(view.getByText(address)).toHaveClass("selected-token-address");
+    expect(view.getByText(address)).not.toBeVisible();
+    await fireEvent.click(view.getByRole("button", { name: "Sell token details" }));
     expect(view.getByRole("button", { name: "Copy from token address" })).toBeVisible();
   });
 
@@ -201,7 +203,7 @@ describe("TokenInput", () => {
     expect(getByRole("button", { name: "Clear from token" })).toBeTruthy();
   });
 
-  it("shows clear button when a token is selected", () => {
+  it("shows clear button in the selected token details", async () => {
     formStore.toToken = {
       address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
       symbol: "USDT",
@@ -210,7 +212,7 @@ describe("TokenInput", () => {
     };
 
     const { getByRole } = render(TokenInput, { props: { type: "to" } });
-
+    await fireEvent.click(getByRole("button", { name: "Buy token details" }));
     expect(getByRole("button", { name: "Clear to token" })).toBeTruthy();
   });
 
@@ -511,6 +513,11 @@ describe("selected address copying", () => {
     "copies the exact %s address and shows confirmation",
     async (type) => {
       const view = render(TokenInput, { type });
+      await fireEvent.click(
+        view.getByRole("button", {
+          name: type === "from" ? "Sell token details" : "Buy token details",
+        })
+      );
       const button = view.getByRole("button", { name: `Copy ${type} token address` });
       await fireEvent.click(button);
       await waitFor(() => expect(button).toHaveTextContent("Copied"));
@@ -522,6 +529,7 @@ describe("selected address copying", () => {
   it("shows a failed-copy message, preserves the address, and permits retry", async () => {
     writeText.mockRejectedValueOnce(new DOMException("Clipboard denied", "NotAllowedError"));
     const view = render(TokenInput, { type: "from" });
+    await fireEvent.click(view.getByRole("button", { name: "Sell token details" }));
     const button = view.getByRole("button", { name: "Copy from token address" });
     await fireEvent.click(button);
     expect(await view.findByRole("alert")).toHaveTextContent(
@@ -536,6 +544,7 @@ describe("selected address copying", () => {
   });
   it("does not carry copy confirmation to a different selected token", async () => {
     const view = render(TokenInput, { type: "from" });
+    await fireEvent.click(view.getByRole("button", { name: "Sell token details" }));
     const button = view.getByRole("button", { name: "Copy from token address" });
     await fireEvent.click(button);
     await waitFor(() => expect(button).toHaveTextContent("Copied"));
