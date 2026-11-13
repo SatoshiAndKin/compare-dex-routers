@@ -36,7 +36,7 @@ describe("provider results", () => {
       store.quotes = [pending];
       store.recommendation = "0x";
       const view = render(QuoteResults);
-      expect(view.container.querySelector(".quote-card")).toHaveTextContent("You receive");
+      expect(view.container.querySelector(".quote-card")).toHaveTextContent("Quote only");
       expect(view.container.querySelector(".quote-card")).toHaveTextContent(
         "Not simulated. Insufficient USDC balance."
       );
@@ -69,7 +69,7 @@ describe("provider results", () => {
     store.recommendation = "0x";
     const view = render(QuoteResults);
     expect(view.queryAllByRole("tab")).toEqual([]);
-    expect(view.getByText("RECOMMENDED DEX ROUTE")).toBeVisible();
+    expect(view.getByText("Recommended", { exact: true })).toBeVisible();
     expect(view.container.querySelectorAll(".quote-card")).toHaveLength(1);
     expect(view.container.querySelector(".quote-card")).toHaveTextContent(
       "Simulation passed. Wallet checks required."
@@ -85,7 +85,10 @@ describe("provider results", () => {
     expect(store.selectedProvider).toBe("curve");
     expect(store.recommendation).toBe("0x");
     expect(view.getByText("Via curve")).toBeVisible();
-    expect(view.getByText("SELECTED", { exact: true })).toBeVisible();
+    expect(view.getByRole("button", { name: "Select curve" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
     expect(view.getByText("Recommended: 0x")).toBeVisible();
     await fireEvent.click(view.getByRole("button", { name: "Use recommended route" }));
     expect(store.activeQuote?.provider).toBe("0x");

@@ -25,12 +25,12 @@ for (const connected of [false, true]) {
       await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
       await expect(page.getByRole("button", { name: "Execute swap" })).toBeEnabled();
     }
-    const amount = page.locator(".output-amount");
-    await expect(amount).toHaveText("99.95 USDT");
+    const amount = page.locator("#receive-amount");
+    await expect(amount).toHaveValue("99.95");
     const providers = page.locator("details.provider-list");
     await providers.locator("summary").click();
     await page.getByRole("button", { name: "Select curve" }).click();
-    await expect(amount).toHaveText("99.98 USDT");
+    await expect(amount).toHaveValue("99.98");
     if (connected) await expect(page.getByRole("button", { name: "Execute swap" })).toBeEnabled();
     const card = page.locator(".quote-card");
     const position = () =>
@@ -50,7 +50,7 @@ for (const connected of [false, true]) {
     await expect(status).toHaveText("Refreshing quotes…");
     await expect(status.locator(".spinner")).toBeVisible();
     await requested;
-    await expect(amount).toHaveText("99.98 USDT");
+    await expect(amount).toHaveValue("99.98");
     await expect(providers).toHaveAttribute("open", "");
     await expect(page.getByRole("button", { name: "Select curve" })).toBeDisabled();
     if (connected) {
@@ -140,7 +140,10 @@ for (const mode of ["exactIn", "targetOut"] as const) {
     await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
     await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Select curve" }).click();
-    await expect(page.getByText("SELECTED", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Select curve" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
     await expect(page.getByText("Recommended: 0x", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
     await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
@@ -199,8 +202,8 @@ test("keeps unfunded provider prices visible until a funded refresh can simulate
   await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
   await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
   await expect(card).toContainText("Insufficient USDC balance.");
-  await expect(card.locator(".input-amount")).toHaveText("100 USDC");
-  await expect(card.locator(".output-amount")).toHaveText("99.95 USDT");
+  await expect(page.locator("#sell-amount")).toHaveValue("100");
+  await expect(page.locator("#receive-amount")).toHaveValue("99.95");
   await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
   await expect(card.getByText(/Estimated output value after gas/)).toHaveCount(0);
   await expect(page.locator(".quote-results")).toHaveAttribute("aria-busy", "false");
@@ -266,7 +269,7 @@ for (const funded of [false, true]) {
     await expect(page.locator(".quote-results")).toHaveAttribute("aria-busy", "false");
     expect(senders).toEqual(funded ? [null, SENDER] : [null]);
     if (!funded) {
-      await expect(card).toContainText("Best DEX route — unverified");
+      await expect(card).toContainText("Quote only");
       await expect(page.getByRole("button", { name: "Execute swap" })).toHaveCount(0);
     }
   });

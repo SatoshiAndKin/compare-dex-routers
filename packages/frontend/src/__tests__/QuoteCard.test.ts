@@ -90,19 +90,19 @@ describe("QuoteCard", () => {
         isRecommended: true,
       },
     });
-    expect(getByText("RECOMMENDED DEX ROUTE")).toBeTruthy();
+    expect(getByText("Recommended")).toBeVisible();
   });
 
-  it("shows SELECTED badge when isRecommended=false", () => {
-    const { getByText } = render(QuoteCard, {
+  it("labels a route without simulation as quote only", () => {
+    const { getByText, queryByText } = render(QuoteCard, {
       props: {
         provider: "curve",
-        quote: mockCurveQuote,
-        loading: false,
-        isRecommended: false,
+        quote: makeQuote({ execution: null, simulation_status: "not_run" }),
+        isRecommended: true,
       },
     });
-    expect(getByText("SELECTED")).toBeTruthy();
+    expect(getByText("Quote only")).toBeVisible();
+    expect(queryByText("Recommended")).toBeNull();
   });
 
   it("applies winner CSS class when isRecommended=true", () => {
@@ -133,8 +133,8 @@ describe("QuoteCard", () => {
     expect(getByRole("alert")).toBeTruthy();
   });
 
-  it("displays output amount and symbol", () => {
-    const { getByText } = render(QuoteCard, {
+  it("leaves amounts and rates in the swap form and comparison", () => {
+    const { queryByText, queryByRole } = render(QuoteCard, {
       props: {
         provider: "spandex",
         quote: mockSpandexQuote,
@@ -142,8 +142,8 @@ describe("QuoteCard", () => {
         isRecommended: false,
       },
     });
-    // Output amount should be shown
-    expect(getByText(/99\.95/)).toBeTruthy();
+    expect(queryByText(/99\.95/)).toBeNull();
+    expect(queryByRole("group", { name: "Average trade price" })).toBeNull();
   });
 
   it("shows gas cost when available", () => {
@@ -158,36 +158,13 @@ describe("QuoteCard", () => {
     expect(getByText("$4.80")).toBeTruthy();
   });
 
-  it("shows both average prices after the totals and updates them with the quote", async () => {
-    const quote = makeQuote({
-      from_symbol: "USDC",
-      to_symbol: "BAL",
-      input_amount: "1257.7",
-      output_amount: "10000",
-      mode: "targetOut",
+  it("keeps simulation and gas details available", async () => {
+    const { getByRole, getByText } = render(QuoteCard, {
+      props: { provider: "0x", quote: mockSpandexQuote },
     });
-    const { getByRole, getByText, rerender } = render(QuoteCard, {
-      props: { provider: "0x", quote },
-    });
-    const rates = getByRole("group", { name: "Average trade price" });
-    expect(rates.textContent).toContain("1 USDC ≈ 7.95102 BAL");
     await fireEvent.click(getByRole("button", { name: "Selected route details" }));
-    expect(getByText("1 BAL ≈ 0.12577 USDC")).toBeVisible();
-    expect(getByText("Average trade price before gas.")).toBeVisible();
-    const total = getByText("10000");
-    expect(total.parentElement).toHaveTextContent("10000 BAL");
-    expect(total.compareDocumentPosition(rates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    await rerender({ provider: "0x", quote: { ...quote, input_amount: "2000" } });
-    expect(rates.textContent).toContain("1 USDC ≈ 5 BAL");
-    expect(getByText("1 BAL ≈ 0.2 USDC")).toBeVisible();
-  });
-
-  it("omits the average price when the quote has a zero amount", () => {
-    const { queryByRole } = render(QuoteCard, {
-      props: { provider: "0x", quote: makeQuote({ output_amount: "0" }) },
-    });
-    expect(queryByRole("group", { name: "Average trade price" })).toBeNull();
+    expect(getByText("Simulation passed. Wallet checks required.")).toBeVisible();
+    expect(getByText("$4.80")).toBeVisible();
   });
 
   it("does not show loading state when loading=false and quote provided", () => {
