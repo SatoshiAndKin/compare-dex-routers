@@ -88,15 +88,19 @@ alive.
 ### USD display values
 
 `usd-price.ts` batches DeFiLlama USD prices for the native asset and both trade
-tokens. Requests have a two-second timeout and a 60-second cache. Native USD
-display prices have a ten-minute source-age limit. The API returns nullable
-dollar values plus `usd_conversion` provenance. The API ranks routes in native
-currency, including required wallet approvals, before it calculates USD values.
+tokens. Requests have a two-second timeout. The API caches prices for 60 seconds
+and missing prices for 30 seconds. Native USD display prices have a ten-minute
+source-age limit. The API returns nullable dollar values plus `usd_conversion`
+provenance. The API ranks routes in native currency, including required wallet
+approvals, before it calculates USD values.
 Raw rankings omit gas-adjusted USD totals.
 
 The API also compares the value paid and received before gas for each route.
-The check uses both token prices when they are at most 15 minutes old and have
-confidence of at least 0.8. The confirmation dialog uses the refreshed route.
+The check uses both token prices when they are at most 35 minutes old and have
+confidence of at least 0.8. This limit covers feeds that update about every
+30 minutes. A failed refresh can use the last price within the applicable age
+limit. The native asset and its canonical wrapper share one reference price.
+The confirmation dialog uses the refreshed route.
 A shortfall shows a warning and a **Swap Anyway** button. If either price is
 unavailable, the dialog shows that it could not check the price.
 

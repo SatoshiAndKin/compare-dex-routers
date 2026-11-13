@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_TOKENS, getNativeAsset } from "../config.js";
 
 const NOW = 1790461060000;
 const fetchMock = vi.fn();
 const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 const USDC = "0x833589fCD6eDb6E08f4c7C32d4f71b54bdA02913";
+const ETH_KEY = "coingecko:ethereum";
+const USDC_KEY = `base:${USDC.toLowerCase()}`;
+function price(usd: number, age = 0) {
+  return { price: usd, timestamp: NOW / 1000 - age, confidence: 0.99 };
+}
+
 async function getNativeUsdConversion(chain: number) {
   const { getQuoteUsdPrices, nativeUsdConversion } = await import("../usd-price.js");
   return nativeUsdConversion((await getQuoteUsdPrices(chain, NATIVE, NATIVE)).native);
@@ -76,7 +83,8 @@ describe("USD display price", () => {
       if (failure === "json") fetchMock.mockResolvedValue(new Response("not JSON"));
       if (failure === "network") fetchMock.mockRejectedValue(new Error("offline"));
       expect(await getNativeUsdConversion(1)).toBeNull();
-      fetchMock.mockResolvedValue(reply());
+      if (failure === "missing") vi.setSystemTime(NOW + 30_000);
+      fetchMock.mockImplementation(async () => reply(2000, Date.now() / 1000));
       expect((await getNativeUsdConversion(1))?.native_price_usd).toBe("2000");
     }
   );
@@ -110,6 +118,116 @@ describe("USD display price", () => {
 });
 
 describe("DeFiLlama quote price check", () => {
+  it.each([
+    [10, "optimism", ETH_KEY],
+    [137, "polygon", "coingecko:polygon-ecosystem-token"],
+  ] as const)(
+    "keeps checking the default pair between price updates on chain %s",
+    async (chain, slug, nativeKey) => {
+      const pair = DEFAULT_TOKENS[chain];
+      expect.assert(pair);
+      const { from, to } = pair;
+      const { getQuoteUsdPrices, compareDefiLlamaPrice } = await import("../usd-price.js");
+      fetchMock.mockImplementation(async () =>
+        Response.json({
+          coins: {
+            [nativeKey]: price(2000, 30 * 60 + 15),
+            [`${slug}:${from.toLowerCase()}`]: price(1),
+            [`${slug}:${to.toLowerCase()}`]: price(2000, 30 * 60 + 15),
+          },
+        })
+      );
+      const prices = await getQuoteUsdPrices(chain, from, to);
+      const amounts = { input_amount: "1000", output_amount: "0.4" };
+      expect(compareDefiLlamaPrice(amounts, prices.input, prices.output)).toEqual({
+        worse_than_reference: true,
+        shortfall_bps: 2000,
+      });
+    }
+  );
+
+  it("uses one reference for wrapping and unwrapping the canonical native token", async () => {
+    const weth = getNativeAsset(1).wrapped;
+    fetchMock.mockImplementation(async () =>
+      Response.json({
+        coins: {
+          [ETH_KEY]: price(2000),
+          [`ethereum:${weth.toLowerCase()}`]: price(1980),
+        },
+      })
+    );
+    const { getQuoteUsdPrices, compareDefiLlamaPrice } = await import("../usd-price.js");
+    for (const [from, to] of [
+      [NATIVE, weth],
+      [weth, NATIVE],
+    ] as const) {
+      const { input, output } = await getQuoteUsdPrices(1, from, to);
+      expect(input).toEqual(price(2000));
+      expect(output).toEqual(input);
+      expect(
+        compareDefiLlamaPrice({ input_amount: "1", output_amount: "1" }, input, output)
+      ).toEqual({ worse_than_reference: false, shortfall_bps: 0 });
+      expect(
+        compareDefiLlamaPrice({ input_amount: "1", output_amount: "0.99" }, input, output)
+      ).toEqual({ worse_than_reference: true, shortfall_bps: 100 });
+    }
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      `https://coins.llama.fi/prices/current/${ETH_KEY}`,
+      { signal: expect.any(AbortSignal) }
+    );
+  });
+
+  it("keeps a valid native trade price after display expiry and a failed refresh", async () => {
+    fetchMock.mockResolvedValueOnce(
+      Response.json({
+        coins: {
+          [ETH_KEY]: price(2000, 595),
+          [USDC_KEY]: price(1),
+        },
+      })
+    );
+    fetchMock.mockImplementation(async () => new Response("", { status: 503 }));
+    const { getQuoteUsdPrices, compareDefiLlamaPrice, nativeUsdConversion } =
+      await import("../usd-price.js");
+    const amounts = { input_amount: "1", output_amount: "1800" };
+    const initial = await getQuoteUsdPrices(8453, NATIVE, USDC);
+    expect(nativeUsdConversion(initial.native)).not.toBeNull();
+    for (const elapsed of [6_000, 60_000]) {
+      vi.setSystemTime(NOW + elapsed);
+      const { native, input, output } = await getQuoteUsdPrices(8453, NATIVE, USDC);
+      expect(nativeUsdConversion(native)).toBeNull();
+      expect(compareDefiLlamaPrice(amounts, input, output)).toEqual({
+        worse_than_reference: true,
+        shortfall_bps: 1000,
+      });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    vi.setSystemTime(NOW + (35 * 60 - 594) * 1000);
+    const expired = await getQuoteUsdPrices(8453, NATIVE, USDC);
+    expect(expired.input).toBeNull();
+    expect(expired.output?.price).toBe(1);
+    expect(compareDefiLlamaPrice(amounts, expired.input, expired.output)).toBeNull();
+  });
+
+  it("caches an omitted token through quote refresh and retries when the entry expires", async () => {
+    fetchMock.mockImplementation(async () => Response.json({ coins: { [ETH_KEY]: price(2000) } }));
+    const { getQuoteUsdPrices } = await import("../usd-price.js");
+    expect((await getQuoteUsdPrices(8453, NATIVE, USDC)).output).toBeNull();
+    vi.setSystemTime(NOW + 15_000);
+    expect((await getQuoteUsdPrices(8453, NATIVE, USDC)).output).toBeNull();
+    expect((await getQuoteUsdPrices(8453, USDC, NATIVE)).input).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(NOW + 30_000);
+    fetchMock.mockResolvedValueOnce(Response.json({ coins: { [USDC_KEY]: price(1) } }));
+    const prices = await getQuoteUsdPrices(8453, NATIVE, USDC);
+    expect(prices.output?.price).toBe(1);
+    expect(prices.native?.price).toBe(2000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.lastCall?.[0]).toBe(`https://coins.llama.fi/prices/current/${USDC_KEY}`);
+  });
+
   it("batches chain-address prices with the native price and reuses them for the reverse swap", async () => {
     const tokenKey = `base:${USDC.toLowerCase()}`;
     fetchMock.mockResolvedValue(
@@ -162,7 +280,7 @@ describe("DeFiLlama quote price check", () => {
     const amounts = { input_amount: "1", output_amount: "0.9" };
     for (const unavailable of [
       null,
-      { ...price, timestamp: price.timestamp - 901 },
+      { ...price, timestamp: price.timestamp - (35 * 60 + 1) },
       { ...price, confidence: 0.5 },
     ]) {
       expect(compareDefiLlamaPrice(amounts, price, unavailable)).toBeNull();
