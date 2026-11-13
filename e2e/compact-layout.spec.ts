@@ -65,7 +65,18 @@ test("keeps precise input and output together through metadata and quote loading
     } else {
       expect(second.y).toBe(first.y);
       expect(second.x).toBeGreaterThanOrEqual(first.x + first.width);
-      expect(second.x - first.x - first.width).toBeLessThanOrEqual(16);
+      if (selector === ".token-pair") {
+        const swap = await page.getByRole("button", { name: "Swap tokens" }).boundingBox();
+        if (!swap) throw new Error("The swap button must be visible");
+        expect(swap.width).toBeGreaterThanOrEqual(44);
+        expect(swap.height).toBeGreaterThanOrEqual(44);
+        expect(swap.x - first.x - first.width).toBeGreaterThanOrEqual(0);
+        expect(swap.x - first.x - first.width).toBeLessThanOrEqual(16);
+        expect(second.x - swap.x - swap.width).toBeGreaterThanOrEqual(0);
+        expect(second.x - swap.x - swap.width).toBeLessThanOrEqual(16);
+      } else {
+        expect(second.x - first.x - first.width).toBeLessThanOrEqual(16);
+      }
     }
   }
   await expect(page.locator(".input-amount")).toHaveText(`${amount} CRV`);

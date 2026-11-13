@@ -51,15 +51,17 @@ test("keeps token fields compact with one full address and a working copy button
   await expect(page.locator("#receive-amount")).toHaveValue("0.75");
   await page.screenshot({ path: info.outputPath("token-fields.png"), fullPage: true });
   const spacing = await page.locator(".token-pair").evaluate((pair) => {
-    const sections = [...pair.children].map((node) => node.getBoundingClientRect());
+    const sections = [...pair.querySelectorAll(":scope > .form-section")].map((node) =>
+      node.getBoundingClientRect()
+    );
     const first = sections[0];
     const second = sections[1];
-    const last = pair.lastElementChild?.getBoundingClientRect();
+    const swap = pair.querySelector(".swap-tokens")?.getBoundingClientRect();
     const toggle = document.querySelector(".mode-toggle-row")?.getBoundingClientRect();
-    if (!first || !second || !last || !toggle) throw new Error("Missing token fields");
+    if (!first || !second || !swap || !toggle) throw new Error("Missing token controls");
     return {
-      between: second.y - first.bottom,
-      beforeAmounts: toggle.y - last.bottom,
+      gaps: [swap.top - first.bottom, second.top - swap.bottom],
+      beforeAmounts: toggle.y - second.bottom,
       fields: sections.map((rect) => rect.height),
     };
   });
@@ -92,7 +94,10 @@ test("keeps token fields compact with one full address and a working copy button
   }
   expect(Math.max(...spacing.fields)).toBeLessThanOrEqual(132);
   expect(spacing.beforeAmounts).toBeLessThanOrEqual(16);
-  if ((page.viewportSize()?.width ?? 0) <= 600) expect(spacing.between).toBeLessThanOrEqual(16);
+  if ((page.viewportSize()?.width ?? 0) <= 600) {
+    expect(Math.min(...spacing.gaps)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...spacing.gaps)).toBeLessThanOrEqual(16);
+  }
   await expect(page.locator(".balance-slot")).toHaveCount(0);
   if ((page.viewportSize()?.width ?? 0) <= 600) {
     await page.setViewportSize({ width: 320, height: 844 });
@@ -104,6 +109,36 @@ test("keeps token fields compact with one full address and a working copy button
     }
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("swaps the selected tokens and requests a quote for the reverse pair", async ({ page }) => {
+  await fixture(page);
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=150&mode=targetOut`);
+  const from = page.getByRole("textbox", { name: "From token", exact: true });
+  const to = page.getByRole("textbox", { name: "To token", exact: true });
+  const swap = page.getByRole("button", { name: "Swap tokens", exact: true });
+  await expect(from).toHaveValue("USDC");
+  await expect(to).toHaveValue("USDT");
+  await expect(page.getByRole("button", { name: "Compare Quotes", exact: true })).toBeEnabled();
+
+  const reversedQuote = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/quote" &&
+      url.searchParams.get("from") === TO &&
+      url.searchParams.get("to") === FROM
+    );
+  });
+  await swap.click();
+  await expect(from).toHaveValue("USDT");
+  await expect(to).toHaveValue("USDC");
+  await expect(page.getByRole("spinbutton", { name: "YOU RECEIVE USDC" })).toHaveValue("150");
+  const params = new URL((await reversedQuote).url()).searchParams;
+  expect(params.get("amount")).toBe("150");
+  expect(params.get("mode")).toBe("targetOut");
+
+  await page.getByRole("button", { name: "Clear to token", exact: true }).click();
+  await expect(swap).toBeDisabled();
 });
 
 test("keeps fields and amounts fixed when addresses appear and clear", async ({ page }, info) => {
