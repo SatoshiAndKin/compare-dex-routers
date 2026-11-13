@@ -289,6 +289,13 @@
     return balanceStore[side].status === "loading" ? "Balance: Loading…" : "Balance: Unavailable";
   }
 
+  function swapTokens(): void {
+    const from = formStore.fromToken;
+    formStore.fromToken = formStore.toToken;
+    formStore.toToken = from;
+    balanceMessage = "";
+  }
+
   async function handleSubmit(event: Event): Promise<void> {
     event.preventDefault();
     clearTimer();
@@ -327,6 +334,20 @@
       {/if}
       {#if balanceMessage}<span role="status">{balanceMessage}</span>{/if}
     </div>
+
+    <button
+      type="button"
+      class="swap-tokens"
+      aria-label="Swap tokens"
+      title="Swap tokens"
+      disabled={!formStore.fromToken ||
+        !formStore.toToken ||
+        transactionStore.busy ||
+        fillingBalance}
+      onclick={swapTokens}
+    >
+      <span aria-hidden="true">↔</span>
+    </button>
 
     <div class="form-section">
       <span class="section-label">To Token</span>
@@ -367,12 +388,30 @@
 <style>
   .token-pair {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 0.75rem;
+  }
+  .swap-tokens {
+    display: grid;
+    place-items: center;
+    place-self: start center;
+    width: 44px;
+    height: 44px;
+    margin-top: 1.375rem;
+    padding: 0;
+    font-size: 1.5rem;
+    line-height: 1;
+    letter-spacing: 0;
   }
   @media (max-width: 600px) {
     .token-pair {
       grid-template-columns: minmax(0, 1fr);
+    }
+    .swap-tokens {
+      margin-top: 0;
+    }
+    .swap-tokens span {
+      transform: rotate(90deg);
     }
   }
   .chain-section {
