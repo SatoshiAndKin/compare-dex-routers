@@ -4,8 +4,14 @@ import { fixture } from "./fixtures.js";
 import { installWallet } from "./wallet.js";
 import { FROM, TO, SENDER, deferred } from "../packages/frontend/src/__tests__/quote-fixture.js";
 
-async function mockCoinbase(page: Page, afterFeeOutput = "99.9") {
+async function mockCoinbase(
+  page: Page,
+  afterFeeOutput = "99.9",
+  beforeFeeOutput = "100",
+  beforeReply?: () => Promise<unknown>
+) {
   await page.route("**/api/coinbase-estimate?**", async (route) => {
+    await beforeReply?.();
     const now = await page.evaluate(() => Date.now());
     const fee = new URL(route.request().url()).searchParams.get("takerFeePercent");
     return route.fulfill({
@@ -16,9 +22,12 @@ async function mockCoinbase(page: Page, afterFeeOutput = "99.9") {
         input_symbol: "USDC",
         output_symbol: "USDT",
         input_amount: "100",
-        output_amount: fee === null ? "100" : afterFeeOutput,
+        output_amount: fee === null ? beforeFeeOutput : afterFeeOutput,
         input_amount_raw: "100000000",
-        output_amount_raw: fee === null ? "100000000" : parseUnits(afterFeeOutput, 6).toString(),
+        output_amount_raw: parseUnits(
+          fee === null ? beforeFeeOutput : afterFeeOutput,
+          6
+        ).toString(),
         input_decimals: 6,
         output_decimals: 6,
         fee_percent: fee,
@@ -165,7 +174,11 @@ test("compares Coinbase with a working route instead of a reverted quote", async
 test("keeps DEX expiry after refreshing Coinbase during a pending approval", async ({ page }) => {
   await page.clock.install();
   await fixture(page);
-  await mockCoinbase(page);
+  const estimateRefresh = deferred<undefined>();
+  let holdEstimate = false;
+  await mockCoinbase(page, "99.9", "100", async () => {
+    if (holdEstimate) await estimateRefresh.promise;
+  });
   const release = deferred<string>();
   let waiting = false;
   let approved = false;
@@ -203,24 +216,87 @@ test("keeps DEX expiry after refreshing Coinbase during a pending approval", asy
     const dex = page.getByRole("region", { name: "DEX router quotes" });
     await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
     const before = dexRequests;
+    const refresh = panel.getByRole("button", { name: "Refresh estimate" });
+    const tradeLink = panel.getByRole("link", { name: "Open Coinbase Advanced ↗" });
     const position = () =>
-      page.locator(".quote-card").evaluate((element) => {
-        const box = element.getBoundingClientRect();
-        return { top: box.top + window.scrollY, width: box.width, height: box.height };
-      });
+      page
+        .locator(".quote-card")
+        .or(panel)
+        .or(refresh)
+        .or(tradeLink)
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const box = element.getBoundingClientRect();
+            return {
+              top: box.top + window.scrollY,
+              left: box.left,
+              width: box.width,
+              height: box.height,
+            };
+          })
+        );
     const beforeExpiry = await position();
     await page.clock.runFor(61_000);
     expect(await position()).toEqual(beforeExpiry);
-    await panel.getByRole("button", { name: "Refresh estimate" }).click();
+    holdEstimate = true;
+    await refresh.click();
+    await expect(refresh).toBeDisabled();
+    expect(await position()).toEqual(beforeExpiry);
     await expect(panel).toContainText("Includes an assumed 0.1% fee");
-    await expect(panel.getByText("Estimate expired. Refresh before comparing prices.")).toHaveCount(
-      0
-    );
-    await expect(panel).toContainText("DEX quotes expired. Refresh quotes to compare prices.");
+    estimateRefresh.resolve(undefined);
+    await expect(refresh).toBeEnabled();
+    await expect(panel).toContainText("Includes an assumed 0.1% fee");
+    await expect(panel.getByText("Estimate expired.")).toHaveCount(0);
+    await expect(panel).toContainText("DEX quotes expired.");
     await expect(page.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
     expect(dexRequests).toBe(before);
     expect(await position()).toEqual(beforeExpiry);
   } finally {
+    estimateRefresh.resolve(undefined);
     release.resolve(`0x${"1".repeat(64)}`);
+  }
+});
+
+test("counts down to the scheduled Coinbase refresh and updates the price in place", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await fixture(page);
+  await mockCoinbase(page);
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
+  const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
+  const refresh = panel.getByRole("button", { name: "Refresh estimate" });
+  const timer = panel.getByRole("timer", { name: "Coinbase auto-refresh" });
+  const rates = panel.getByRole("group", { name: "Coinbase average trade price" });
+  await expect(rates).toContainText("1 USDC = 1 USDT");
+  await expect(timer).toHaveText("15s");
+  await expect(
+    panel.locator("header").getByRole("button", { name: "Refresh estimate" })
+  ).toBeVisible();
+  await expect(refresh).toHaveText("");
+  const positions = () =>
+    Promise.all([
+      panel.boundingBox(),
+      refresh.boundingBox(),
+      panel.getByRole("link", { name: "Open Coinbase Advanced ↗" }).boundingBox(),
+      page.locator(".quote-card").boundingBox(),
+    ]);
+  const before = await positions();
+  await page.clock.runFor(6_000);
+  await expect(timer).toHaveText("9s");
+  expect(await positions()).toEqual(before);
+  const pending = deferred<undefined>();
+  try {
+    await mockCoinbase(page, "99.9", "99.999999", () => pending.promise);
+    await page.clock.runFor(9_000);
+    await expect(refresh).toBeDisabled();
+    await expect(rates).toContainText("1 USDC = 1 USDT");
+    expect(await positions()).toEqual(before);
+    pending.resolve(undefined);
+    await expect(panel).toContainText("99.999999 USDT");
+    await expect(timer).toHaveText("15s");
+    expect(await positions()).toEqual(before);
+  } finally {
+    pending.resolve(undefined);
   }
 });

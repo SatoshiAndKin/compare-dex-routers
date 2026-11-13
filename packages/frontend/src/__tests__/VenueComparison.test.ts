@@ -213,8 +213,26 @@ describe("Venue price comparison", () => {
     expect(await view.findByText("No supported direct market.")).toBeVisible();
     get.mockRejectedValueOnce(new Error("offline"));
     await fireEvent.click(view.getByRole("button", { name: "Refresh estimate" }));
-    expect(await view.findByText("Coinbase estimate unavailable. Refresh to retry.")).toBeVisible();
+    expect(await view.findByText("Coinbase estimate unavailable.")).toBeVisible();
     expect(view.queryByRole("link")).toBeNull();
+  });
+  it("keeps the last estimate visible when its refresh fails", async () => {
+    const view = render(VenueComparison, {
+      params,
+      quotes: [quote()],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
+    const link = await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
+    expect(view.getByRole("img", { name: "Better quoted price" })).toBeVisible();
+    get.mockResolvedValueOnce({
+      data: { status: "unavailable", reason: "Coinbase market data is unavailable." },
+    });
+    await fireEvent.click(view.getByRole("button", { name: "Refresh estimate" }));
+    expect(await view.findByText("Refresh failed. Showing the last estimate.")).toBeVisible();
+    expect(link).toBeVisible();
+    expect(view.getByText("1 ETH = 1950 USDC")).toBeVisible();
+    expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
   });
   it("discards old requests after a trade change and cancels on invalidation", async () => {
     const old = deferred<ReturnType<typeof reply>>();
@@ -267,14 +285,14 @@ describe("Venue price comparison", () => {
     await tick();
     expect(get).toHaveBeenCalledTimes(2);
     expect(view.getByText("Includes an assumed 1% fee (39 USDC).")).toBeVisible();
-    expect(view.queryByText("Estimate expired. Refresh before comparing prices.")).toBeNull();
+    expect(view.queryByText("Estimate expired.")).toBeNull();
     expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
-    expect(view.getByText("DEX quotes expired. Refresh quotes to compare prices.")).toBeVisible();
+    expect(view.getByText("DEX quotes expired.")).toBeVisible();
     await view.rerender({ params, quotes, stale: false, dexExpiresAt: Date.now() + 30_000 });
     await vi.advanceTimersByTimeAsync(0);
     await tick();
     expect(view.getByRole("img", { name: "Better quoted price" })).toBeVisible();
-    expect(view.queryByText("DEX quotes expired. Refresh quotes to compare prices.")).toBeNull();
+    expect(view.queryByText("DEX quotes expired.")).toBeNull();
   });
 });
 
@@ -382,9 +400,7 @@ describe("Venue price winners and mobile availability", () => {
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
-    expect(
-      await view.findByText("Estimate expired. Refresh before comparing prices.")
-    ).toBeVisible();
+    expect(await view.findByText("Estimate expired.")).toBeVisible();
     expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
   });
 });
