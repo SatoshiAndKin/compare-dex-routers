@@ -138,14 +138,14 @@
         <div>
           <div class="output-label">You pay</div>
           <div class="input-amount">
-            {quote.input_amount}
+            <span>{quote.input_amount}</span>
             <TokenSymbol chainId={quote.chainId} address={quote.from} symbol={quote.from_symbol} />
           </div>
         </div>
         <div>
           <div class="output-label">You receive</div>
           <div class="output-amount">
-            {quote.output_amount}
+            <span>{quote.output_amount}</span>
             <TokenSymbol chainId={quote.chainId} address={quote.to} symbol={quote.to_symbol} />
           </div>
         </div>
@@ -378,6 +378,11 @@
     font-weight: 700;
     font-family: monospace;
     line-height: 1.2;
+  }
+
+  .input-amount > span:first-child,
+  .output-amount > span:first-child {
+    display: block;
   }
 
   .provider-info {

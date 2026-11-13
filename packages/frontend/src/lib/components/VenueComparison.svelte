@@ -522,8 +522,8 @@
     line-height: 1.35;
     overflow-wrap: anywhere;
   }
-  .amounts strong > span {
-    margin-inline-end: 0.15em;
+  .amounts strong > span:first-child {
+    display: block;
   }
   .row-label,
   .amount-label {

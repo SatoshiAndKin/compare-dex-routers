@@ -7,6 +7,7 @@
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
   import type { Snippet } from "svelte";
+  import InfoPopover from "./InfoPopover.svelte";
 
   let {
     sellToken,
@@ -144,6 +145,9 @@
         <label class="amount-label" for="sell-amount">Sell</label>
         {@render sellBalance?.()}
       </div>
+      <div class="amount-token">
+        {@render sellToken?.()}
+      </div>
       <div class="amount-input-row">
         <input
           id="sell-amount"
@@ -158,7 +162,6 @@
           oninput={handleSellInput}
           aria-label={sellLabel}
         />
-        {@render sellToken?.()}
       </div>
       <div class="amount-meta">
         <span>{isExactIn ? "" : estimateStatus}</span>
@@ -171,6 +174,9 @@
       <div class="amount-heading">
         <label class="amount-label" for="receive-amount">Buy</label>
         {@render buyBalance?.()}
+      </div>
+      <div class="amount-token">
+        {@render buyToken?.()}
       </div>
       <div class="amount-input-row">
         <input
@@ -186,7 +192,6 @@
           oninput={handleReceiveInput}
           aria-label={receiveLabel}
         />
-        {@render buyToken?.()}
       </div>
       <div class="amount-meta"><span>{!isExactIn ? "" : estimateStatus}</span></div>
     </div>
@@ -194,11 +199,14 @@
   {#if settings}
     <div class="swap-summary">
       {@render settings()}
-      <div class="summary-row">
-        <span>Exchange rate</span><strong>
-          {#if quote && exchangeRate}1 {quote.from_symbol} ≈ {exchangeRate}
-            {quote.to_symbol}{:else}—{/if}
-        </strong>
+      <div class="summary-row exchange-rate">
+        <span>Exchange rate</span>
+        <strong>{exchangeRate ? `≈ ${exchangeRate}` : "—"}</strong>
+        {#if quote && exchangeRate}
+          <InfoPopover label="Exchange rate details">
+            <b>1 {quote.from_symbol} ≈ {exchangeRate} {quote.to_symbol}</b>
+          </InfoPopover>
+        {/if}
       </div>
       <div class="summary-row"><span>DEX route</span><strong>{quote?.provider ?? "—"}</strong></div>
     </div>
@@ -226,6 +234,12 @@
   .summary-row strong {
     text-align: right;
   }
+  .exchange-rate {
+    position: relative;
+    grid-template-columns: max-content minmax(0, 1fr) 44px;
+    align-items: center;
+    min-height: 44px;
+  }
   .token-pair {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -234,7 +248,7 @@
 
   .amount-group {
     display: grid;
-    grid-template-rows: auto auto 1.125rem;
+    grid-template-rows: auto auto auto 1.125rem;
     min-width: 0;
     padding: 0.375rem 0.625rem;
     background: var(--bg-muted);
@@ -259,12 +273,9 @@
     color: var(--text-muted);
   }
 
-  .amount-input-row {
+  .amount-token {
     position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(8rem, 38%);
-    align-items: center;
-    gap: 0.375rem;
+    min-width: 0;
   }
 
   input.amount-input {
