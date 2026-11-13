@@ -44,6 +44,15 @@ All commands run from the repo root and delegate to workspaces.
 - The browser uses `/api/quote` and the server recommendation. Keep shared quote
   schemas in `quote-response.ts` and generated clients synchronized.
 
+### UI layout
+
+- Keep controls and their click and tap targets in place during loading and
+  refreshes. Reserve space for changing content, and update values and status
+  in place. Check control positions during a delayed refresh on desktop and
+  mobile when changing a panel that updates asynchronously.
+- Put action instructions, status, and countdowns beside the control they
+  describe. Give icon-only controls an accessible name.
+
 ## Environment variables
 
 See `env.example`. Configure `RPC_URL_<chainId>` for each used chain, or `ALCHEMY_API_KEY` as the fallback. Optional: `ZEROX_API_KEY`, `RPC_URL_<chainId>`, `CURVE_ENABLED`, `METRICS_ENABLED`, `SENTRY_DSN`, `LOG_LEVEL`.

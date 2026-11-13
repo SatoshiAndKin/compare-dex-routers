@@ -3,6 +3,7 @@
   import { apiClient } from "../api.js";
   import type { components } from "../../generated/api-types.js";
   import type { CompareParams, Quote } from "../stores/comparisonStore.svelte.js";
+  import { autoRefreshStore } from "../stores/autoRefreshStore.svelte.js";
   import { preferencesStore } from "../stores/preferencesStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
   import TokenSymbol from "./TokenSymbol.svelte";
@@ -20,7 +21,9 @@
     dexExpiresAt: number;
     dex?: Snippet;
   } = $props();
-  let result = $state<components["schemas"]["CoinbaseEstimate"] | null>(null);
+  type ReadyEstimate = Extract<components["schemas"]["CoinbaseEstimate"], { status: "ready" }>;
+  let result = $state<ReadyEstimate | null>(null);
+  let lastTrade = "";
   let error = $state("");
   let loading = $state(false);
   let revision = $state(0);
@@ -28,7 +31,7 @@
   let overview = $state<HTMLDivElement | null>(null);
   let overviewHeight = $state(0);
   const dexExpired = $derived(now >= dexExpiresAt);
-  const expired = $derived(result?.status === "ready" && now >= Date.parse(result.expires_at));
+  const expired = $derived(result !== null && now >= Date.parse(result.expires_at));
   const overviewPending = $derived(stale || loading || expired || dexExpired);
 
   // Save settled geometry. A refresh must not move the wallet controls below it.
@@ -39,11 +42,9 @@
       });
   });
 
-  const rate = $derived(
-    result?.status === "ready" ? formatQuoteRate(result.output_amount, result.input_amount) : null
-  );
+  const rate = $derived(result && formatQuoteRate(result.output_amount, result.input_amount));
   const inverseRate = $derived(
-    result?.status === "ready" ? formatQuoteRate(result.input_amount, result.output_amount) : null
+    result && formatQuoteRate(result.input_amount, result.output_amount)
   );
 
   $effect(() => {
@@ -57,20 +58,27 @@
     const current = params;
     const assumedFee = preferencesStore.coinbaseTakerFeePercent;
     void revision;
-    result = null;
-    error = "";
-    loading = Boolean(current);
-    if (!current) return;
+    const query = current && {
+      chainId: current.chainId,
+      from: current.from,
+      to: current.to,
+      amount: current.amount,
+      mode: current.mode,
+    };
+    const trade = JSON.stringify(query);
+    if (trade !== lastTrade) {
+      result = null;
+      error = "";
+    }
+    lastTrade = trade;
+    loading = Boolean(query);
+    if (!query) return;
     const controller = new AbortController();
     void apiClient
       .GET("/coinbase-estimate", {
         params: {
           query: {
-            chainId: current.chainId,
-            from: current.from,
-            to: current.to,
-            amount: current.amount,
-            mode: current.mode,
+            ...query,
             ...(assumedFee === "" ? {} : { takerFeePercent: assumedFee }),
           },
         },
@@ -80,14 +88,20 @@
         if (controller.signal.aborted) return;
         if (responseError || !data)
           error = responseError?.error ?? "Coinbase estimate unavailable.";
-        else result = data;
-        now = Date.now();
+        else if (data.status === "unavailable") error = data.reason;
+        else {
+          result = data;
+          error = "";
+        }
       })
       .catch(() => {
-        if (!controller.signal.aborted) error = "Coinbase estimate unavailable. Refresh to retry.";
+        if (!controller.signal.aborted) error = "Coinbase estimate unavailable.";
       })
       .finally(() => {
-        if (!controller.signal.aborted) loading = false;
+        if (!controller.signal.aborted) {
+          now = Date.now();
+          loading = false;
+        }
       });
     return () => controller.abort();
   });
@@ -113,15 +127,7 @@
   });
 
   const winner = $derived.by(() => {
-    if (
-      !params ||
-      stale ||
-      loading ||
-      expired ||
-      dexExpired ||
-      result?.status !== "ready" ||
-      !bestDex
-    )
+    if (!params || stale || loading || error || expired || dexExpired || !result || !bestDex)
       return null;
     const targetOut = params.mode === "targetOut";
     const best = BigInt(targetOut ? bestDex.input_amount_raw : bestDex.output_amount_raw);
@@ -149,12 +155,12 @@
   <div class="amounts">
     <div>
       <span class="amount-label">You pay</span><strong
-        >{input} <TokenSymbol {chainId} address={from} symbol={inputSymbol} /></strong
+        ><span>{input}</span> <TokenSymbol {chainId} address={from} symbol={inputSymbol} /></strong
       >
     </div>
     <div>
       <span class="amount-label">You receive</span><strong
-        >{output} <TokenSymbol {chainId} address={to} symbol={outputSymbol} /></strong
+        ><span>{output}</span> <TokenSymbol {chainId} address={to} symbol={outputSymbol} /></strong
       >
     </div>
   </div>
@@ -169,8 +175,11 @@
     <div class="venue-grid">
       <section aria-label="DEX router quotes" class="venue-card">
         <header class="venue-heading">
-          <h3>
-            DEX routers {#if winner === "dex" || winner === "tie"}{@render winnerStar()}{/if}
+          <h3 class="venue-title">
+            <span>DEX routers</span>
+            <span class="winner-slot">
+              {#if winner === "dex" || winner === "tie"}{@render winnerStar()}{/if}
+            </span>
           </h3>
           <p>Swap from your wallet</p>
         </header>
@@ -219,27 +228,63 @@
       {#if params}
         <section aria-label="Coinbase Advanced estimate" class="venue-card coinbase-estimate">
           <header class="venue-heading">
-            <h3>
-              Coinbase Advanced {#if winner === "coinbase" || winner === "tie"}
-                {@render winnerStar()}
-              {/if}
-            </h3>
+            <div class="coinbase-heading-row">
+              <h3 class="venue-title">
+                <span>Coinbase Advanced</span>
+                <span class="winner-slot">
+                  {#if winner === "coinbase" || winner === "tie"}{@render winnerStar()}{/if}
+                </span>
+              </h3>
+              <div class="estimate-refresh">
+                <button
+                  type="button"
+                  class="estimate-refresh-button"
+                  aria-label="Refresh estimate"
+                  title="Refresh Coinbase estimate"
+                  aria-disabled={loading}
+                  onclick={() => {
+                    if (!loading) revision++;
+                  }}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M20 4v5h-5m5 0a8 8 0 1 0 0 6" />
+                  </svg>
+                </button>
+                <span class="estimate-countdown" role="timer" aria-label="Coinbase auto-refresh">
+                  {#if loading}…
+                  {:else if autoRefreshStore.paused}Paused
+                  {:else if autoRefreshStore.active}{autoRefreshStore.countdown}s
+                  {:else}—{/if}
+                </span>
+              </div>
+            </div>
             <p>Estimate for funds already on Coinbase</p>
           </header>
-          <div aria-live="polite" aria-busy={loading}>
-            {#if loading}<p>Loading Coinbase order book…</p>
-            {:else if error}<p>{error}</p>
-            {:else if result?.status === "unavailable"}<p>{result.reason}</p>
-            {:else if result?.status === "ready"}
-              <p class="provider-name">
-                {#if expired}
-                  Estimate expired. Refresh before comparing prices.
-                {:else if dexExpired && !stale}
-                  DEX quotes expired. Refresh quotes to compare prices.
-                {:else}
-                  Public order-book estimate · {result.product_id}
-                {/if}
-              </p>
+          <p class="provider-name" role="status">
+            {#if loading}
+              {result ? "Refreshing estimate…" : error || "Loading Coinbase order book…"}
+            {:else if error}
+              {result ? "Refresh failed. Showing the last estimate." : error}
+            {:else if expired}
+              Estimate expired.
+            {:else if result && dexExpired && !stale}
+              DEX quotes expired.
+            {:else if result}
+              Public order-book estimate · {result.product_id}
+            {/if}
+          </p>
+          <div aria-busy={loading}>
+            {#if result}
               {@render amounts(
                 result.input_amount,
                 result.input_symbol,
@@ -293,9 +338,6 @@
               >
             {/if}
           </div>
-          <button type="button" onclick={() => revision++} disabled={loading}
-            >Refresh estimate</button
-          >
           <p class="estimate-note">
             Estimate from public order-book depth. Assumes funds are already on Coinbase. Excludes
             deposits, withdrawals, network costs, and wrapping. Check asset/network support,
@@ -343,6 +385,46 @@
   .venue-heading {
     margin-bottom: 0.75rem;
   }
+  .venue-title {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+  }
+  .winner-slot {
+    flex: 0 0 1.25rem;
+  }
+  .coinbase-heading-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .coinbase-heading-row h3 {
+    margin: 0;
+  }
+  .estimate-refresh {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+  .estimate-refresh-button {
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+  }
+  .estimate-refresh-button[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: wait;
+  }
+  .estimate-countdown {
+    width: 3.125rem;
+    color: var(--text-muted);
+    font: 0.75rem monospace;
+    text-align: center;
+  }
   h3 {
     font-size: 1rem;
     margin: 0 0 0.5rem;
@@ -361,11 +443,18 @@
     gap: 0.75rem;
   }
   .amounts strong {
-    display: block;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: start;
+    align-items: center;
+    column-gap: 0.375em;
     font-size: clamp(1rem, 2.5vw, 1.5rem);
     min-height: 2.4em;
     font-family: monospace;
     line-height: 1.2;
+  }
+  .amounts strong > span {
+    min-width: 0;
   }
   .amount-label {
     display: block;
@@ -393,7 +482,6 @@
   .availability p {
     margin: 0.5rem 0;
   }
-  button,
   .trade-link {
     display: inline-block;
     padding: 0.5rem;
