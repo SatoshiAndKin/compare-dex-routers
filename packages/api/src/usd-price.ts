@@ -1,6 +1,7 @@
 import { isNativeToken } from "@spandex/core";
 import { formatUnits, type Address } from "viem";
 import { z } from "zod";
+import { getNativeAsset } from "./config.js";
 import { logger } from "./logger.js";
 import type { QuoteResult, UsdConversion } from "./quote-response.js";
 
@@ -13,9 +14,11 @@ const chains: Record<number, { slug: string; nativeAsset: string }> = {
   137: { slug: "polygon", nativeAsset: "polygon-ecosystem-token" },
   43114: { slug: "avax", nativeAsset: "avalanche-2" },
 };
-const TTL = 60_000;
+const PRICE_TTL_MS = 60_000;
+const MISSING_PRICE_TTL_MS = 30_000;
 const NATIVE_MAX_AGE = 600;
-const TRADE_MAX_AGE = 900;
+// Some contract feeds update about every 30 minutes, with slight variation.
+const TRADE_MAX_AGE = 35 * 60;
 const MAX_CACHED_PRICES = 1024;
 const MIN_TRADE_CONFIDENCE = 0.8;
 const priceSchema = z.object({
@@ -24,7 +27,7 @@ const priceSchema = z.object({
   confidence: z.number().min(0).max(1).optional(),
 });
 type Price = z.infer<typeof priceSchema>;
-const prices = new Map<string, { value: Price; fetchedAt: number }>();
+const prices = new Map<string, { value: Price | null; refreshAt: number }>();
 const pending = new Map<string, Promise<Price | null>>();
 
 // Parse decimal/scientific notation without doing monetary arithmetic in Number.
@@ -50,8 +53,8 @@ function fresh(timestamp: number, maxAge: number): boolean {
   return age >= 0 && age <= maxAge;
 }
 
-async function fetchPrices(keys: string[]): Promise<Map<string, Price>> {
-  const result = new Map<string, Price>();
+async function fetchPrices(keys: string[]): Promise<Map<string, Price | null>> {
+  const result = new Map<string, Price | null>();
   try {
     const response = await fetch(`https://coins.llama.fi/prices/current/${keys.join(",")}`, {
       signal: AbortSignal.timeout(2000),
@@ -61,12 +64,12 @@ async function fetchPrices(keys: string[]): Promise<Map<string, Price>> {
       .object({ coins: z.record(z.string(), z.unknown()) })
       .parse(await response.json());
     for (const key of keys) {
+      if (!Object.hasOwn(body.coins, key)) {
+        result.set(key, null);
+        continue;
+      }
       const price = priceSchema.safeParse(body.coins[key]);
-      if (!price.success || !fresh(price.data.timestamp, TRADE_MAX_AGE)) continue;
-      prices.delete(key);
-      prices.set(key, { value: price.data, fetchedAt: Date.now() });
-      if (prices.size > MAX_CACHED_PRICES) prices.delete(prices.keys().next().value ?? key);
-      result.set(key, price.data);
+      if (price.success && fresh(price.data.timestamp, TRADE_MAX_AGE)) result.set(key, price.data);
     }
   } catch (error) {
     logger.debug({ error, keys }, "DeFiLlama prices unavailable");
@@ -78,31 +81,42 @@ export async function getQuoteUsdPrices(chainId: number, from: string, to: strin
   const chain = chains[chainId];
   if (!chain) return { native: null, input: null, output: null };
   const nativeKey = `coingecko:${chain.nativeAsset}`;
+  const wrapped = getNativeAsset(chainId).wrapped.toLowerCase();
   const tokenKey = (address: string) =>
-    isNativeToken(address as Address) ? nativeKey : `${chain.slug}:${address.toLowerCase()}`;
+    isNativeToken(address as Address) || address.toLowerCase() === wrapped
+      ? nativeKey
+      : `${chain.slug}:${address.toLowerCase()}`;
   const inputKey = tokenKey(from);
   const outputKey = tokenKey(to);
-  const cached = new Map<string, Price>();
-  const missing = new Set<string>();
-  for (const key of new Set([nativeKey, inputKey, outputKey])) {
-    const entry = prices.get(key);
-    const maxAge = key === nativeKey ? NATIVE_MAX_AGE : TRADE_MAX_AGE;
-    if (entry && Date.now() - entry.fetchedAt < TTL && fresh(entry.value.timestamp, maxAge)) {
-      cached.set(key, entry.value);
-    } else if (!pending.has(key)) {
-      missing.add(key);
-    }
-  }
-  if (missing.size) {
-    const batch = fetchPrices([...missing]);
-    for (const key of missing) {
+  const now = Date.now();
+  const expired = [...new Set([nativeKey, inputKey, outputKey])].filter(
+    (key) => (prices.get(key)?.refreshAt ?? 0) <= now && !pending.has(key)
+  );
+  if (expired.length) {
+    const batch = fetchPrices(expired);
+    for (const key of expired) {
+      const previous = prices.get(key)?.value ?? null;
       pending.set(
         key,
-        batch.then((result) => result.get(key) ?? null).finally(() => pending.delete(key))
+        batch
+          .then((result) => {
+            const fetched = result.get(key);
+            if (fetched === undefined) return previous;
+            const value = fetched ?? previous;
+            const ttl = fetched === null ? MISSING_PRICE_TTL_MS : PRICE_TTL_MS;
+            prices.delete(key);
+            prices.set(key, { value, refreshAt: Date.now() + ttl });
+            if (prices.size > MAX_CACHED_PRICES) prices.delete(prices.keys().next().value ?? key);
+            return value;
+          })
+          .finally(() => pending.delete(key))
       );
     }
   }
-  const read = (key: string) => cached.get(key) ?? pending.get(key) ?? null;
+  const read = async (key: string) => {
+    const price = await (pending.get(key) ?? prices.get(key)?.value);
+    return price && fresh(price.timestamp, TRADE_MAX_AGE) ? price : null;
+  };
   const [native, input, output] = await Promise.all([
     read(nativeKey),
     read(inputKey),
