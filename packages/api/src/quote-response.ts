@@ -69,6 +69,14 @@ const QuoteSchema = z.object({
   approval_gas_cost_usd: nativeValue,
   trade_value_usd: nativeValue,
   net_value_usd: nativeValue,
+  defillama_price_check: z
+    .object({
+      worse_than_reference: z.boolean(),
+      shortfall_bps: z.number().int().min(0).max(10000),
+    })
+    .nullable()
+    .optional()
+    .describe("Trade value shortfall versus DeFiLlama token prices, before gas, rounded down"),
 });
 
 const ProviderFailureSchema = z.object({

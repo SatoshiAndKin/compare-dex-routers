@@ -21,7 +21,12 @@ import type { QuoteParams } from "./quote.js";
 import type { QuoteResponse, QuoteResult, ProviderFailure } from "./quote-response.js";
 import { redact, redactText } from "./redaction.js";
 import { createApprovalGasEstimator } from "./approval-gas.js";
-import { getNativeUsdConversion, nativeToUsd } from "./usd-price.js";
+import {
+  compareDefiLlamaPrice,
+  getQuoteUsdPrices,
+  nativeToUsd,
+  nativeUsdConversion,
+} from "./usd-price.js";
 
 // Used only for previews and exchange-rate estimates. Its calldata never leaves the API.
 const PREVIEW_ACCOUNT: Address = "0xEe7aE85f2Fe2239E27D9c1E23fFFe168D63b4055";
@@ -252,9 +257,9 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
         targetOut ? inputDecimals : outputDecimals
       )
     : Promise.resolve(null);
-  const [{ results, failures, account }, usdConversion, gas] = await Promise.all([
+  const [{ results, failures, account }, usdPrices, gas] = await Promise.all([
     requestQuotes(params, { inputDecimals, outputDecimals, fromSymbol, toSymbol }),
-    getNativeUsdConversion(params.chainId),
+    getQuoteUsdPrices(params.chainId, params.from, params.to),
     getGasPriceWithCache(params.chainId, getClient(params.chainId)),
   ]);
   // Failed trades have no amounts to value. Do not delay their response for a reference quote.
@@ -308,9 +313,9 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
     return left === right ? 0 : (left < right ? -1 : 1) * (targetOut ? 1 : -1);
   });
   // Display conversion never participates in ranking or transaction readiness.
-  const conversion =
-    usdConversion && Date.now() / 1000 - usdConversion.updated_at <= 600 ? usdConversion : null;
+  const conversion = nativeUsdConversion(usdPrices.native);
   for (const quote of results) {
+    quote.defillama_price_check = compareDefiLlamaPrice(quote, usdPrices.input, usdPrices.output);
     quote.gas_cost_usd = nativeToUsd(quote.gas_cost_native, conversion);
     quote.approval_gas_cost_usd = nativeToUsd(quote.approval_gas_cost_native, conversion);
     quote.trade_value_usd = nativeToUsd(quote.trade_value_native, conversion);

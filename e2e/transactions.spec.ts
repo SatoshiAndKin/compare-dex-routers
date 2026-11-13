@@ -48,6 +48,57 @@ test("approval retains its provider through refresh, then cancellation follows t
   await expect(page.getByText("Selected for approval / swap: curve")).toHaveCount(0);
 });
 
+test("a worse refreshed DeFiLlama price warns before the wallet receives the swap", async ({
+  page,
+}) => {
+  let worsePrice = false;
+  let sends = 0;
+  await fixture(page, (comparison) => {
+    for (const quote of comparison.quotes) {
+      quote.defillama_price_check = {
+        worse_than_reference: worsePrice,
+        shortfall_bps: worsePrice ? 500 : 0,
+      };
+    }
+  });
+  await installWallet(page, 1, SENDER, async (method, params) => {
+    if (method === "eth_call")
+      return (params[0] as { data: string }).data.startsWith("0x70a08231")
+        ? "0x5f5e100"
+        : `0x${"f".repeat(64)}`;
+    if (method === "eth_getBalance") return "0x8ac7230489e80000";
+    if (method === "eth_gasPrice") return "0x4a817c800";
+    if (method === "eth_estimateGas") return "0x1d4c0";
+    if (method === "eth_sendTransaction") {
+      sends++;
+      return `0x${"1".repeat(64)}`;
+    }
+    if (method === "eth_getTransactionReceipt") return { status: "0x1" };
+    throw new Error(`Unexpected wallet method: ${method}`);
+  });
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
+  await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
+  await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+  const swap = page.getByRole("button", { name: "Execute swap" });
+  await expect(swap).toBeEnabled();
+  worsePrice = true;
+  await swap.click();
+  const dialog = page.getByRole("dialog", { name: "Confirm Swap" });
+  const warning = dialog.getByRole("alert");
+  await expect(warning).toContainText("worse price than DeFiLlama");
+  await expect(warning).toContainText("5.00% below");
+  expect(sends).toBe(0);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect(sends).toBe(0);
+
+  await swap.click();
+  await expect(warning).toBeVisible();
+  await dialog.getByRole("button", { name: "Swap Anyway", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Swap confirmed ·" })).toBeVisible();
+  expect(sends).toBe(1);
+});
+
 for (const scenario of [
   "reject approval",
   "reverted swap",
