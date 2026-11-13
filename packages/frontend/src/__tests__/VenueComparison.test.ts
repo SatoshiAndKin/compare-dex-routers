@@ -120,7 +120,7 @@ describe("Venue price comparison", () => {
       stale: true,
       dexExpiresAt: Date.now() + 30_000,
     });
-    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
+    expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
   });
   it("compares input costs for a target-output buy", async () => {
     const target = {
@@ -198,7 +198,7 @@ describe("Venue price comparison", () => {
       dexExpiresAt: Date.now() + 30_000,
     });
     await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
-    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
+    expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
   });
   it("shows unsupported pairs and upstream outages without hiding DEX data", async () => {
     get.mockResolvedValueOnce({
@@ -268,7 +268,7 @@ describe("Venue price comparison", () => {
     expect(get).toHaveBeenCalledTimes(2);
     expect(view.getByText("Includes an assumed 1% fee (39 USDC).")).toBeVisible();
     expect(view.queryByText("Estimate expired. Refresh before comparing prices.")).toBeNull();
-    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
+    expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
     expect(view.getByText("DEX quotes expired. Refresh quotes to compare prices.")).toBeVisible();
     await view.rerender({ params, quotes, stale: false, dexExpiresAt: Date.now() + 30_000 });
     await vi.advanceTimersByTimeAsync(0);
@@ -317,7 +317,7 @@ describe("Venue price winners and mobile availability", () => {
     const coinbase = view.getByRole("region", { name: "Coinbase Advanced estimate" });
     expect(dex.parentElement).toBe(coinbase.parentElement);
   });
-  it("omits the star when prices tie", async () => {
+  it("marks both venue headings when prices tie", async () => {
     const response = reply("0");
     response.data.output_amount_raw = "3800000000";
     response.data.output_amount = "3800";
@@ -328,8 +328,13 @@ describe("Venue price winners and mobile availability", () => {
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
-    await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
-    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
+    expect(await view.findAllByRole("img", { name: "Tied quoted price" })).toHaveLength(2);
+    for (const venue of ["DEX routers", "Coinbase Advanced"]) {
+      const heading = view.getByRole("heading", { name: `${venue} Tied quoted price` });
+      expect(within(heading).getByRole("img", { name: "Tied quoted price" })).toHaveTextContent(
+        "⭐"
+      );
+    }
   });
   it("does not claim mobile trading support from a ready public book", async () => {
     const response = reply();
@@ -364,7 +369,7 @@ describe("Venue price winners and mobile availability", () => {
       dexExpiresAt: Date.now() + 30_000,
     });
     await view.findByText("Mobile trading not verified");
-    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
+    expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
   });
 
   it("marks expired estimates and removes their price comparison", async () => {
@@ -380,6 +385,6 @@ describe("Venue price winners and mobile availability", () => {
     expect(
       await view.findByText("Estimate expired. Refresh before comparing prices.")
     ).toBeVisible();
-    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
+    expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
   });
 });

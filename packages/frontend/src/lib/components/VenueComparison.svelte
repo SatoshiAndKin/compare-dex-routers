@@ -126,13 +126,15 @@
     const targetOut = params.mode === "targetOut";
     const best = BigInt(targetOut ? bestDex.input_amount_raw : bestDex.output_amount_raw);
     const coinbase = BigInt(targetOut ? result.input_amount_raw : result.output_amount_raw);
-    if (coinbase === best) return null;
+    if (coinbase === best) return "tie";
     return (targetOut ? coinbase < best : coinbase > best) ? "coinbase" : "dex";
   });
 </script>
 
 {#snippet winnerStar()}
-  <span role="img" aria-label="Better quoted price">⭐</span>
+  <span role="img" aria-label={winner === "tie" ? "Tied quoted price" : "Better quoted price"}
+    >⭐</span
+  >
 {/snippet}
 
 {#snippet amounts(
@@ -168,7 +170,7 @@
       <section aria-label="DEX router quotes" class="venue-card">
         <header class="venue-heading">
           <h3>
-            DEX routers {#if winner === "dex"}{@render winnerStar()}{/if}
+            DEX routers {#if winner === "dex" || winner === "tie"}{@render winnerStar()}{/if}
           </h3>
           <p>Swap from your wallet</p>
         </header>
@@ -218,7 +220,9 @@
         <section aria-label="Coinbase Advanced estimate" class="venue-card coinbase-estimate">
           <header class="venue-heading">
             <h3>
-              Coinbase Advanced {#if winner === "coinbase"}{@render winnerStar()}{/if}
+              Coinbase Advanced {#if winner === "coinbase" || winner === "tie"}
+                {@render winnerStar()}
+              {/if}
             </h3>
             <p>Estimate for funds already on Coinbase</p>
           </header>
