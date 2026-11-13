@@ -1,7 +1,9 @@
 /** State for the settings panel. Transactions use the connected wallet RPC. */
 class SettingsStore {
   isSettingsOpen = $state(false);
-  openSettings(): void {
+  focusCoinbaseFee = $state(false);
+  openSettings(section?: "coinbase-fee"): void {
+    this.focusCoinbaseFee = section === "coinbase-fee";
     this.isSettingsOpen = true;
   }
   closeSettings(): void {

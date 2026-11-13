@@ -1,5 +1,5 @@
 /** Keep keyboard focus inside an open dialog and restore its trigger on close. */
-export function dialogFocus(node: HTMLElement, close: () => void) {
+export function dialogFocus(node: HTMLElement, close: () => void, initialFocus?: string) {
   const previous = document.activeElement;
   const overflow = document.body.style.overflow;
   document.body.style.overflow = "hidden";
@@ -9,7 +9,12 @@ export function dialogFocus(node: HTMLElement, close: () => void) {
         'button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex="0"]'
       )
     ).filter((element) => !element.closest("[hidden]"));
-  (focusable()[0] ?? node).focus();
+  const elements = focusable();
+  (
+    elements.find((element) => initialFocus && element.matches(initialFocus)) ??
+    elements[0] ??
+    node
+  ).focus();
   const keydown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
       event.preventDefault();

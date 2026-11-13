@@ -5,6 +5,7 @@
   import type { CompareParams, Quote } from "../stores/comparisonStore.svelte.js";
   import { autoRefreshStore } from "../stores/autoRefreshStore.svelte.js";
   import { preferencesStore } from "../stores/preferencesStore.svelte.js";
+  import { settingsStore } from "../stores/settingsStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
   import InfoPopover from "./InfoPopover.svelte";
   import TokenSymbol from "./TokenSymbol.svelte";
@@ -290,7 +291,7 @@
                 {#if result}
                   <span>
                     {result.fee_percent === null
-                      ? "Before trading fees. Set your taker rate in Settings for an after-fee estimate."
+                      ? "This estimate excludes trading fees."
                       : `Includes an assumed ${result.fee_percent}% fee (${result.fee_amount} ${result.fee_symbol}).`}
                   </span>
                   {#if result.limit_only}
@@ -318,23 +319,37 @@
               </InfoPopover>
             </div>
           </header>
-          <p class="venue-status" role="status">
-            {#if loading}
-              {result ? "Refreshing estimate…" : error || "Loading order book…"}
-            {:else if error}
-              {result ? "Refresh failed · Previous estimate" : error}
-            {:else if expired}
-              Estimate expired.
-            {:else if result && dexExpired && !stale}
-              DEX quotes expired.
-            {:else if result}
-              {result.fee_percent === null
-                ? "Before trading fees"
-                : `Assumed fee ${result.fee_percent}%`}
-              {#if result.limit_only}
-                · Limit only{/if}
+          <div class="coinbase-status" class:has-estimate={result !== null}>
+            {#if result}
+              <button
+                class="coinbase-fee"
+                type="button"
+                aria-haspopup="dialog"
+                title="Edit Coinbase taker fee"
+                onclick={(event) => {
+                  event.currentTarget.focus();
+                  settingsStore.openSettings("coinbase-fee");
+                }}
+              >
+                {result.fee_percent === null
+                  ? "Before trading fees"
+                  : `Assumed fee ${result.fee_percent}%`}
+              </button>
             {/if}
-          </p>
+            <span role="status">
+              {#if loading}
+                {result ? "Refreshing estimate…" : error || "Loading order book…"}
+              {:else if error}
+                {result ? "Refresh failed · Previous estimate" : error}
+              {:else if expired}
+                Estimate expired.
+              {:else if result && dexExpired && !stale}
+                DEX quotes expired.
+              {:else if result?.limit_only}
+                Limit only
+              {/if}
+            </span>
+          </div>
           <div aria-busy={loading}>
             {#if result}
               {@render amounts(
@@ -389,6 +404,33 @@
     font-size: 0.75rem;
     min-height: 2.25rem;
     overflow-wrap: anywhere;
+  }
+  .coinbase-status {
+    display: grid;
+    align-items: center;
+    min-height: 44px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .coinbase-status.has-estimate {
+    grid-template-columns: 8rem minmax(0, 1fr);
+    gap: 0.375rem;
+  }
+  .coinbase-fee {
+    width: 100%;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-transform: none;
+    letter-spacing: normal;
+    text-decoration: underline;
+    text-align: start;
+  }
+  .coinbase-fee:hover {
+    background: var(--bg-hover);
   }
   .venue-grid {
     display: grid;

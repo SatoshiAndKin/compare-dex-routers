@@ -88,6 +88,15 @@
     settingsStore.closeSettings();
   }
 
+  function focusSettings(node: HTMLElement) {
+    const { destroy } = dialogFocus(
+      node,
+      handleClose,
+      settingsStore.focusCoinbaseFee ? "#coinbase-taker-fee" : undefined
+    );
+    return { destroy };
+  }
+
   function handleBackdropClick(e: MouseEvent): void {
     if (e.target === e.currentTarget) handleClose();
   }
@@ -159,7 +168,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-modal-title"
-      use:dialogFocus={handleClose}
+      use:focusSettings
       tabindex="-1"
     >
       <div class="modal-header">
