@@ -219,7 +219,7 @@
   </button>
 
   {#if isOpen}
-    <div class="chain-dropdown" role="listbox">
+    <div class="chain-dropdown" role="listbox" aria-label="Supported chains">
       <div class="chain-search-wrapper">
         <input
           class="chain-search-input"
@@ -236,7 +236,7 @@
       {#if visibleChains.length === 0}
         <div class="chain-item-empty">No chains match</div>
       {:else}
-        {#each visibleChains as chain, i}
+        {#each visibleChains as chain, i (chain.id)}
           {@const isCurrentSelection = chain.id === String(formStore.chainId) && !searchQuery}
           <div
             class={`chain-item${isCurrentSelection ? " current-selection" : ""}${activeIdx === i ? " active" : ""}`}
@@ -336,8 +336,14 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
+    min-height: 44px;
+    border-bottom: 1px solid var(--border-light);
     cursor: pointer;
     font-size: 0.95rem;
+  }
+
+  .chain-item:last-child {
+    border-bottom: none;
   }
 
   .chain-item:hover,

@@ -4,6 +4,29 @@ import { FROM, TO, SENDER } from "../packages/frontend/src/__tests__/quote-fixtu
 import { fixture } from "./fixtures.js";
 import { installWallet } from "./wallet.js";
 
+test("opens the chain dropdown and selects Base and Arbitrum", async ({ page, hasTouch }) => {
+  await fixture(page);
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100`);
+  const chain = page.getByRole("button", { name: /^(Ethereum|Base|Arbitrum) \(\d+\)$/ });
+  const dropdown = page.getByRole("listbox", { name: "Supported chains" });
+  const compare = page.getByRole("button", { name: "Compare Quotes", exact: true });
+  await expect(compare).toBeEnabled();
+
+  for (const network of ["Base (8453)", "Arbitrum (42161)"]) {
+    const position = await compare.boundingBox();
+    if (hasTouch) await chain.tap();
+    else await chain.click();
+    await expect(dropdown.getByRole("option")).toHaveCount(7);
+    await expect(dropdown.getByRole("textbox", { name: "Search chains" })).toBeVisible();
+    expect(await compare.boundingBox()).toEqual(position);
+    const option = dropdown.getByRole("option", { name: network, exact: true });
+    if (hasTouch) await option.tap();
+    else await option.click();
+    await expect(chain).toHaveAccessibleName(network);
+    await expect(dropdown).toBeHidden();
+  }
+});
+
 for (const theme of ["light", "dark"] as const) {
   test(`retro trade form and settings work in ${theme} mode`, async ({ page }, info) => {
     await fixture(page);
