@@ -123,7 +123,24 @@
 
       <div class="execution-status">
         <!-- Transaction actions -->
-        {#if needsApproval || canSwap}
+        {#if !walletStore.isConnected}
+          <div class="tx-actions">
+            <button
+              type="button"
+              class="tx-btn"
+              aria-label={walletStore.isConnecting
+                ? "Connecting wallet for selected route"
+                : "Connect wallet for selected route"}
+              disabled={walletStore.isConnecting}
+              onclick={(event) => {
+                event.currentTarget.focus();
+                walletStore.requestMenu();
+              }}
+            >
+              {walletStore.isConnecting ? "Connecting…" : "Connect wallet"}
+            </button>
+          </div>
+        {:else if needsApproval || canSwap}
           <div class="tx-actions">
             {#if needsApproval}
               <button
@@ -139,9 +156,7 @@
                   ? "Already approved"
                   : approvePending
                     ? "Approving..."
-                    : walletStore.isConnected
-                      ? "Approve token spending"
-                      : "Connect wallet to approve"}
+                    : "Approve token spending"}
                 onclick={handleApprove}
               >
                 {#if approveConfirmed}
@@ -163,11 +178,7 @@
                   walletCheck?.status !== "ready" ||
                   (needsApproval && !approveConfirmed) ||
                   swapPending}
-                aria-label={swapPending
-                  ? "Swap in progress..."
-                  : walletStore.isConnected
-                    ? "Execute swap"
-                    : "Connect wallet to swap"}
+                aria-label={swapPending ? "Swap in progress..." : "Execute swap"}
                 onclick={handleSwap}
               >
                 {#if swapPending}
@@ -191,7 +202,7 @@
             {/if}
           </div>
         {/if}
-        {#if quote.execution}<p class="wallet-check" role="status">
+        {#if walletStore.isConnected && quote.execution}<p class="wallet-check" role="status">
             {walletCheck?.message ?? ""}
           </p>
         {:else}<QuoteSimulation {quote} balanceOnly />{/if}
@@ -319,6 +330,10 @@
   }
 
   /* Transaction action area */
+  .execution-status {
+    min-height: calc(44px + 0.5rem);
+  }
+
   .tx-actions {
     display: flex;
     align-items: center;
@@ -331,6 +346,7 @@
 
   .tx-btn {
     flex: 1;
+    min-height: 44px;
     padding: 0.35rem 0.9rem;
     font-size: 0.85rem;
     font-weight: 600;

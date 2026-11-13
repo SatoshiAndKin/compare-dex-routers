@@ -27,6 +27,20 @@ for (const connected of [false, true]) {
     }
     const amount = page.locator("#receive-amount");
     await expect(amount).toHaveValue("99.95");
+    if (!connected) {
+      const route = page.getByRole("region", { name: "Selected DEX route" });
+      const connect = route.getByRole("button", { name: "Connect wallet for selected route" });
+      await route.getByRole("button", { name: "Selected route details" }).click();
+      await expect(route.locator(".quote-card .quote-costs")).toContainText(
+        "Estimated gas cost (excluded from ranking): Connect wallet"
+      );
+      await page.keyboard.press("Escape");
+      await connect.click();
+      const picker = page.getByRole("dialog", { name: "Select wallet provider" });
+      await expect(picker).toBeVisible();
+      await picker.getByRole("button", { name: "Close wallet menu" }).click();
+      await expect(connect).toBeFocused();
+    }
     const providers = page.locator("details.provider-list");
     await providers.locator("summary").click();
     await page.getByRole("button", { name: "Select curve" }).click();
