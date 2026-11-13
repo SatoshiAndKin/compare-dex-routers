@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { parseUnits } from "viem";
 import { fixture } from "./fixtures.js";
-import { FROM, TO } from "../packages/frontend/src/__tests__/quote-fixture.js";
+import { deferred, FROM, TO } from "../packages/frontend/src/__tests__/quote-fixture.js";
 
 const YFI = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e";
 
@@ -97,36 +98,79 @@ test("keeps token fields compact with one full address and a working copy button
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test("swaps the selected tokens and requests a quote for the reverse pair", async ({ page }) => {
-  await fixture(page);
-  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=150&mode=targetOut`);
-  const from = page.getByRole("textbox", { name: "From token", exact: true });
-  const to = page.getByRole("textbox", { name: "To token", exact: true });
-  const swap = page.getByRole("button", { name: "Swap tokens", exact: true });
-  await expect(from).toHaveValue("USDC");
-  await expect(to).toHaveValue("USDT");
-  await expect(page.getByRole("button", { name: "Compare Quotes", exact: true })).toBeEnabled();
+for (const mode of ["exactIn", "targetOut"] as const) {
+  test(`swaps tokens and the displayed ${mode} amounts while the reverse quote loads`, async ({
+    page,
+  }) => {
+    const sellAmount = mode === "exactIn" ? "150" : "150.25";
+    const buyAmount = mode === "exactIn" ? "149.75" : "150";
+    const reverseQuote = deferred<undefined>();
+    await fixture(page, (comparison) => {
+      for (const quote of comparison.quotes) {
+        if (quote.from === FROM) {
+          quote.input_amount = sellAmount;
+          quote.output_amount = buyAmount;
+        } else {
+          quote.input_amount = mode === "exactIn" ? "150.5" : buyAmount;
+          quote.output_amount = mode === "targetOut" ? "150.75" : sellAmount;
+        }
+        quote.input_amount_raw = parseUnits(quote.input_amount, 6).toString();
+        quote.output_amount_raw = parseUnits(quote.output_amount, 6).toString();
+      }
+    });
+    await page.route("**/api/quote?**", async (route) => {
+      if (new URL(route.request().url()).searchParams.get("from") === TO)
+        await reverseQuote.promise;
+      await route.fallback();
+    });
+    await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=150&mode=${mode}`);
+    const from = page.getByRole("textbox", { name: "From token", exact: true });
+    const to = page.getByRole("textbox", { name: "To token", exact: true });
+    const swap = page.getByRole("button", { name: "Swap tokens", exact: true });
+    await expect(from).toHaveValue("USDC");
+    await expect(to).toHaveValue("USDT");
+    const sell = page.locator("#sell-amount");
+    const buy = page.locator("#receive-amount");
+    await expect(sell).toHaveValue(sellAmount);
+    await expect(buy).toHaveValue(buyAmount);
+    const compare = page.getByRole("button", { name: "Compare Quotes", exact: true });
+    const position = () =>
+      Promise.all([swap.boundingBox(), page.locator(".submit-btn").boundingBox()]);
+    const before = await position();
 
-  const reversedQuote = page.waitForRequest((request) => {
-    const url = new URL(request.url());
-    return (
-      url.pathname === "/api/quote" &&
-      url.searchParams.get("from") === TO &&
-      url.searchParams.get("to") === FROM
-    );
+    const reversedQuote = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return (
+        url.pathname === "/api/quote" &&
+        url.searchParams.get("from") === TO &&
+        url.searchParams.get("to") === FROM
+      );
+    });
+    try {
+      await swap.click();
+      await expect(from).toHaveValue("USDT");
+      await expect(to).toHaveValue("USDC");
+      await expect(sell).toHaveValue(buyAmount);
+      await expect(buy).toHaveValue(sellAmount);
+      await expect(page.getByText("Previous amount", { exact: true })).toBeVisible();
+      expect(await position()).toEqual(before);
+      const params = new URL((await reversedQuote).url()).searchParams;
+      expect(params.get("amount")).toBe("150");
+      expect(params.get("mode")).toBe(mode === "exactIn" ? "targetOut" : "exactIn");
+    } finally {
+      reverseQuote.resolve(undefined);
+    }
+    await expect(sell).toHaveValue(mode === "exactIn" ? "150.5" : buyAmount);
+    await expect(buy).toHaveValue(mode === "targetOut" ? "150.75" : sellAmount);
+    await expect(page.getByText("Previous amount", { exact: true })).toHaveCount(0);
+    await expect(compare).toBeEnabled();
+    expect(await position()).toEqual(before);
+
+    await page.getByRole("button", { name: "Buy token details" }).click();
+    await page.getByRole("button", { name: "Clear to token", exact: true }).click();
+    await expect(swap).toBeDisabled();
   });
-  await swap.click();
-  await expect(from).toHaveValue("USDT");
-  await expect(to).toHaveValue("USDC");
-  await expect(page.getByRole("spinbutton", { name: "YOU RECEIVE USDC" })).toHaveValue("150");
-  const params = new URL((await reversedQuote).url()).searchParams;
-  expect(params.get("amount")).toBe("150");
-  expect(params.get("mode")).toBe("targetOut");
-
-  await page.getByRole("button", { name: "Buy token details" }).click();
-  await page.getByRole("button", { name: "Clear to token", exact: true }).click();
-  await expect(swap).toBeDisabled();
-});
+}
 
 test("keeps fields and amounts fixed when addresses appear and clear", async ({ page }, info) => {
   await fixture(page);

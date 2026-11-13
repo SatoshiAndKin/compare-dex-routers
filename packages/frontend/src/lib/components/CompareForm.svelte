@@ -291,13 +291,6 @@
     return balanceStore[side].status === "loading" ? "Balance loading…" : "Balance unavailable";
   }
 
-  function swapTokens(): void {
-    const from = formStore.fromToken;
-    formStore.fromToken = formStore.toToken;
-    formStore.toToken = from;
-    balanceMessage = "";
-  }
-
   async function handleSubmit(event: Event): Promise<void> {
     event.preventDefault();
     clearTimer();
@@ -316,7 +309,7 @@
     {#snippet sellToken()}<TokenInput type="from" />{/snippet}
     {#snippet buyToken()}<TokenInput type="to" />{/snippet}
     {#snippet settings()}<SlippagePresets />{/snippet}
-    {#snippet reverse()}
+    {#snippet reverse(reverseTrade)}
       <button
         type="button"
         class="swap-tokens"
@@ -326,7 +319,10 @@
           !formStore.toToken ||
           transactionStore.busy ||
           fillingBalance}
-        onclick={swapTokens}
+        onclick={() => {
+          reverseTrade();
+          balanceMessage = "";
+        }}
       >
         <span aria-hidden="true">⇅</span>
       </button>

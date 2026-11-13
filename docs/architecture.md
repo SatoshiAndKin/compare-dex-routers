@@ -272,7 +272,10 @@ Native assets come from `/config` independently of token lists. Native balances 
 
 Each swap panel puts the amount below its token picker. The token info control
 opens the full address and Copy button. Copy failures keep the address selectable
-and permit a retry. The form keeps 44-pixel touch targets. The summary shows
+and permit a retry. The switch moves each displayed amount with its token and
+changes the quote mode to keep the original entered amount exact. The form labels
+the other amount as previous until a quote for the reversed trade replaces it.
+The form keeps 44-pixel touch targets. The summary shows
 slippage, the exchange rate, and the selected DEX route. The exchange rate info
 control shows the full rate with both token symbols.
 
