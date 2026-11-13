@@ -19,7 +19,7 @@ describe("USD display", () => {
     "keeps the %s comparison row when USD becomes unavailable",
     (mode) => {
       const quote = makeQuote({ mode, net_value_usd: null, gas_cost_usd: null });
-      expect(quoteCostFields(quote, "gas_adjusted")).toEqual([
+      expect(quoteCostFields(quote, "gas_adjusted", true)).toEqual([
         ["Estimated gas cost", "USD unavailable"],
         ["Required approval gas cost", "None needed"],
         [
@@ -31,4 +31,17 @@ describe("USD display", () => {
       ]);
     }
   );
+  it("prompts for a wallet on preview-only gas rows while disconnected", () => {
+    const quote = makeQuote({
+      sender: null,
+      simulation_status: "not_run",
+      gas_cost_native: null,
+      approval_gas_used: null,
+      approval_gas_cost_native: null,
+    });
+    const costs = (connected: boolean) =>
+      quoteCostFields(quote, "raw_amount", connected).map(([, value]) => value);
+    expect(costs(false)).toEqual(["Connect wallet", "Connect wallet"]);
+    expect(costs(true)).toEqual(["Unavailable", "Unavailable"]);
+  });
 });

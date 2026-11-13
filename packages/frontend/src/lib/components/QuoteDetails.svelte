@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Quote, QuoteResponse } from "../stores/comparisonStore.svelte.js";
   import { quoteCostFields } from "../quote-costs.js";
+  import { walletStore } from "../stores/walletStore.svelte.js";
   interface Props {
     quote: Quote;
     gasPriceGwei?: string | null;
@@ -35,7 +36,7 @@
           ? null
           : `${gasPriceGwei ?? quote.gas_price_gwei} gwei`,
       ],
-      ...quoteCostFields(quote, recommendationBasis),
+      ...quoteCostFields(quote, recommendationBasis, walletStore.isConnected),
       [
         "Gas cost in native currency",
         quote.gas_cost_native === null ? null : `${quote.gas_cost_native} ${quote.native_currency}`,

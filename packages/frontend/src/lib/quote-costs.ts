@@ -18,19 +18,24 @@ export function formatUsd(value: string | null | undefined): string {
 
 export function quoteCostFields(
   quote: Quote,
-  basis: QuoteResponse["recommendation_basis"]
+  basis: QuoteResponse["recommendation_basis"],
+  walletConnected: boolean
 ): [string, string][] {
+  const missingGasCost =
+    !walletConnected && quote.sender === null && quote.simulation_status === "not_run"
+      ? "Connect wallet"
+      : "Unavailable";
   const fields: [string, string][] = [
     [
       basis === "raw_amount" ? "Estimated gas cost (excluded from ranking)" : "Estimated gas cost",
-      quote.gas_cost_native === null ? "Unavailable" : formatUsd(quote.gas_cost_usd),
+      quote.gas_cost_native === null ? missingGasCost : formatUsd(quote.gas_cost_usd),
     ],
     [
       "Required approval gas cost",
       quote.approval_gas_used === "0"
         ? "None needed"
         : quote.approval_gas_cost_native == null
-          ? "Unavailable"
+          ? missingGasCost
           : `${formatUsd(quote.approval_gas_cost_usd)}${quote.gas_cost_native === null ? "" : " (included above)"}`,
     ],
   ];

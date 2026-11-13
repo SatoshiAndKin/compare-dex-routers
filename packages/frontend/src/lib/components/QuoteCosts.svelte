@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { Quote, QuoteResponse } from "../stores/comparisonStore.svelte.js";
   import { quoteCostFields } from "../quote-costs.js";
+  import { walletStore } from "../stores/walletStore.svelte.js";
   let { quote, basis }: { quote: Quote; basis: QuoteResponse["recommendation_basis"] } = $props();
 </script>
 
 <span class="quote-costs">
-  {#each quoteCostFields(quote, basis) as [label, value] (label)}
+  {#each quoteCostFields(quote, basis, walletStore.isConnected) as [label, value] (label)}
     <span>{label}: <strong>{value}</strong></span>
   {/each}
 </span>
