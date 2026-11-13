@@ -1,6 +1,5 @@
 <script lang="ts">
   import { untrack, type Snippet } from "svelte";
-  import { formatUnits } from "viem";
   import { apiClient } from "../api.js";
   import type { components } from "../../generated/api-types.js";
   import type { CompareParams, Quote } from "../stores/comparisonStore.svelte.js";
@@ -113,7 +112,7 @@
     }, null);
   });
 
-  const comparison = $derived.by(() => {
+  const winner = $derived.by(() => {
     if (
       !params ||
       stale ||
@@ -127,24 +126,14 @@
     const targetOut = params.mode === "targetOut";
     const best = BigInt(targetOut ? bestDex.input_amount_raw : bestDex.output_amount_raw);
     const coinbase = BigInt(targetOut ? result.input_amount_raw : result.output_amount_raw);
-    const delta = coinbase - best;
-    const magnitude = delta < 0n ? -delta : delta;
-    const winner =
-      delta === 0n ? "tie" : (targetOut ? delta < 0n : delta > 0n) ? "coinbase" : "dex";
-    const feeNote = result.fee_percent === null ? " before Coinbase fees" : "";
-    return {
-      winner,
-      headline:
-        winner === "tie"
-          ? `Same quoted price${feeNote}`
-          : `${winner === "coinbase" ? "Coinbase" : "DEX"} has the better quoted price${feeNote}`,
-      difference:
-        delta === 0n
-          ? "Same quoted amount as the best DEX price before gas and transfers."
-          : `${formatUnits(magnitude, targetOut ? result.input_decimals : result.output_decimals)} ${targetOut ? result.input_symbol : result.output_symbol} ${delta > 0n ? "more" : "less"} ${targetOut ? "input required" : "output"} than the best DEX price before gas and transfers.`,
-    };
+    if (coinbase === best) return null;
+    return (targetOut ? coinbase < best : coinbase > best) ? "coinbase" : "dex";
   });
 </script>
+
+{#snippet winnerStar()}
+  <span role="img" aria-label="Better quoted price">⭐</span>
+{/snippet}
 
 {#snippet amounts(
   input: string,
@@ -174,41 +163,13 @@
   bind:this={overview}
   style:min-height={overviewPending ? `${overviewHeight}px` : undefined}
 >
-  {#if comparison && result?.status === "ready"}
-    <div class="price-comparison" role="status" aria-label="Venue price comparison">
-      <strong>{comparison.headline}</strong>
-      <p class="difference">{comparison.difference}</p>
-      <p>
-        {result.fee_percent === null
-          ? "Coinbase trading fees are not included. Set your taker fee in Settings to compare after fees."
-          : `Includes an assumed ${result.fee_percent}% Coinbase taker fee.`}
-        Gas and transfer costs are excluded. This compares prices, not trade availability.
-      </p>
-    </div>
-  {/if}
   {#if params || dex}
     <div class="venue-grid">
-      <section
-        aria-label="DEX router quotes"
-        class="venue-card"
-        class:better-price={comparison?.winner === "dex"}
-      >
+      <section aria-label="DEX router quotes" class="venue-card">
         <header class="venue-heading">
-          <h3>DEX routers</h3>
-          {#if comparison}
-            <span class="price-badge" class:better={comparison.winner === "dex"}>
-              {comparison.winner === "tie"
-                ? "Same quoted price"
-                : comparison.winner === "dex"
-                  ? "Better quoted price"
-                  : params?.mode === "targetOut"
-                    ? "More input required"
-                    : "Less output"}
-              {result?.status === "ready" && result.fee_percent === null
-                ? " · before Coinbase fees"
-                : ""}
-            </span>
-          {/if}
+          <h3>
+            DEX routers {#if winner === "dex"}{@render winnerStar()}{/if}
+          </h3>
           <p>Swap from your wallet</p>
         </header>
         {#if bestDex}
@@ -254,27 +215,11 @@
         {/if}
       </section>
       {#if params}
-        <section
-          aria-label="Coinbase Advanced estimate"
-          class="venue-card coinbase-estimate"
-          class:better-price={comparison?.winner === "coinbase"}
-        >
+        <section aria-label="Coinbase Advanced estimate" class="venue-card coinbase-estimate">
           <header class="venue-heading">
-            <h3>Coinbase Advanced</h3>
-            {#if comparison}
-              <span class="price-badge" class:better={comparison.winner === "coinbase"}>
-                {comparison.winner === "tie"
-                  ? "Same quoted price"
-                  : comparison.winner === "coinbase"
-                    ? "Better quoted price"
-                    : params?.mode === "targetOut"
-                      ? "More input required"
-                      : "Less output"}
-                {result?.status === "ready" && result.fee_percent === null
-                  ? " · before Coinbase fees"
-                  : ""}
-              </span>
-            {/if}
+            <h3>
+              Coinbase Advanced {#if winner === "coinbase"}{@render winnerStar()}{/if}
+            </h3>
             <p>Estimate for funds already on Coinbase</p>
           </header>
           <div aria-live="polite" aria-busy={loading}>
@@ -282,7 +227,15 @@
             {:else if error}<p>{error}</p>
             {:else if result?.status === "unavailable"}<p>{result.reason}</p>
             {:else if result?.status === "ready"}
-              <p class="provider-name">Public order-book estimate · {result.product_id}</p>
+              <p class="provider-name">
+                {#if expired}
+                  Estimate expired. Refresh before comparing prices.
+                {:else if dexExpired && !stale}
+                  DEX quotes expired. Refresh quotes to compare prices.
+                {:else}
+                  Public order-book estimate · {result.product_id}
+                {/if}
+              </p>
               {@render amounts(
                 result.input_amount,
                 result.input_symbol,
@@ -323,10 +276,6 @@
               {#if result.limit_only}<p>
                   This market accepts limit orders only. The estimate assumes a limit price that
                   takes available order-book liquidity.
-                </p>{/if}
-              {#if expired}<p>Estimate expired. Refresh before comparing prices.</p>{/if}
-              {#if dexExpired && !stale}<p>
-                  DEX quotes expired. Refresh quotes to compare prices.
                 </p>{/if}
               <p>
                 {result.product_id} · Order book:
@@ -372,7 +321,7 @@
   .provider-name {
     color: var(--text-muted);
     font-size: 0.75rem;
-    min-height: 2.5em;
+    min-height: 3em;
   }
   .venue-grid {
     display: grid;
@@ -386,9 +335,6 @@
     padding: 1rem;
     background: var(--bg-card);
     overflow-wrap: anywhere;
-  }
-  .venue-card.better-price {
-    box-shadow: inset 0 4px 0 var(--text);
   }
   .venue-heading {
     margin-bottom: 0.75rem;
@@ -404,30 +350,6 @@
   .venue-heading p {
     color: var(--text-muted);
     margin: 0.5rem 0 0;
-  }
-  .price-badge {
-    display: inline-block;
-    font-size: 0.75rem;
-    border: 1px solid var(--border-light);
-    padding: 0.25rem 0.5rem;
-  }
-  .price-badge.better {
-    font-weight: 700;
-    border-color: var(--text);
-    background: var(--text);
-    color: var(--bg-card);
-  }
-  .price-comparison {
-    padding: 0.75rem 0;
-  }
-  .price-comparison > strong {
-    font-size: 1.125rem;
-  }
-  .price-comparison p {
-    margin: 0.35rem 0;
-  }
-  .difference {
-    font-weight: 700;
   }
   .amounts {
     display: grid;
@@ -485,9 +407,6 @@
   @media (min-width: 760px) {
     .venue-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .venue-heading {
-      min-height: 6rem;
     }
   }
   @media (max-width: 600px) {

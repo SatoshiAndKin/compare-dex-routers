@@ -91,12 +91,10 @@ describe("Venue price comparison", () => {
     );
     expect(view.queryByRole("textbox")).toBeNull();
     expect(view.getByText(/Excludes deposits, withdrawals/)).toBeVisible();
-    expect(
-      view.getByText("Coinbase has the better quoted price before Coinbase fees")
-    ).toBeVisible();
+    expect(view.getByRole("img", { name: "Better quoted price" })).toHaveTextContent("⭐");
     expect(view.queryByRole("button", { name: /swap|approve/i })).toBeNull();
   });
-  it("applies and saves a fee and compares amounts without transfer-cost claims", async () => {
+  it("applies and saves a fee and clears the star when quotes become stale", async () => {
     const view = render(VenueComparison, {
       params,
       quotes: [quote()],
@@ -111,10 +109,8 @@ describe("Venue price comparison", () => {
     });
     await fireEvent.click(settings.getByRole("button", { name: "Save fee" }));
     await fireEvent.click(settings.getByRole("button", { name: "Close settings" }));
-    expect(
-      await view.findByText("61 USDC more output than the best DEX price before gas and transfers.")
-    ).toBeVisible();
-    expect(view.getByText("Includes an assumed 1% fee (39 USDC).")).toBeVisible();
+    expect(await view.findByText("Includes an assumed 1% fee (39 USDC).")).toBeVisible();
+    expect(view.getByRole("img", { name: "Better quoted price" })).toBeVisible();
     expect(
       JSON.parse(localStorage.getItem("compare-dex-preferences") ?? "{}").coinbaseTakerFeePercent
     ).toBe("1");
@@ -124,7 +120,7 @@ describe("Venue price comparison", () => {
       stale: true,
       dexExpiresAt: Date.now() + 30_000,
     });
-    expect(view.queryByText(/than the best DEX/)).toBeNull();
+    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
   });
   it("compares input costs for a target-output buy", async () => {
     const target = {
@@ -152,11 +148,8 @@ describe("Venue price comparison", () => {
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
-    expect(
-      await view.findByText(
-        "43 USDC more input required than the best DEX price before gas and transfers."
-      )
-    ).toBeVisible();
+    const dex = view.getByRole("region", { name: "DEX router quotes" });
+    expect(await within(dex).findByRole("img", { name: "Better quoted price" })).toBeVisible();
     expect(view.getByRole("group", { name: "Coinbase average trade price" })).toHaveTextContent(
       "1 ETH = 4343 USDC"
     );
@@ -190,11 +183,10 @@ describe("Venue price comparison", () => {
         stale: false,
         dexExpiresAt: Date.now() + 30_000,
       });
-      const expected =
-        mode === "exactIn"
-          ? "61 USDC more output than the best DEX price before gas and transfers."
-          : "0.1 ETH less input required than the best DEX price before gas and transfers.";
-      expect(await view.findByText(expected)).toBeVisible();
+      const coinbase = view.getByRole("region", { name: "Coinbase Advanced estimate" });
+      expect(
+        await within(coinbase).findByRole("img", { name: "Better quoted price" })
+      ).toBeVisible();
     }
   );
   it("does not compare Coinbase with a set containing only failed simulations", async () => {
@@ -206,7 +198,7 @@ describe("Venue price comparison", () => {
       dexExpiresAt: Date.now() + 30_000,
     });
     await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
-    expect(view.queryByText(/than the best DEX/)).toBeNull();
+    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
   });
   it("shows unsupported pairs and upstream outages without hiding DEX data", async () => {
     get.mockResolvedValueOnce({
@@ -268,9 +260,7 @@ describe("Venue price comparison", () => {
     const view = render(VenueComparison, { params, quotes, stale: false, dexExpiresAt });
     await vi.advanceTimersByTimeAsync(0);
     await tick();
-    expect(
-      view.getByText("61 USDC more output than the best DEX price before gas and transfers.")
-    ).toBeVisible();
+    expect(view.getByRole("img", { name: "Better quoted price" })).toBeVisible();
     await vi.advanceTimersByTimeAsync(61_000);
     await fireEvent.click(view.getByRole("button", { name: "Refresh estimate" }));
     await vi.advanceTimersByTimeAsync(0);
@@ -278,63 +268,56 @@ describe("Venue price comparison", () => {
     expect(get).toHaveBeenCalledTimes(2);
     expect(view.getByText("Includes an assumed 1% fee (39 USDC).")).toBeVisible();
     expect(view.queryByText("Estimate expired. Refresh before comparing prices.")).toBeNull();
-    expect(view.queryByText(/than the best DEX/)).toBeNull();
+    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
     expect(view.getByText("DEX quotes expired. Refresh quotes to compare prices.")).toBeVisible();
     await view.rerender({ params, quotes, stale: false, dexExpiresAt: Date.now() + 30_000 });
     await vi.advanceTimersByTimeAsync(0);
     await tick();
-    expect(
-      view.getByText("61 USDC more output than the best DEX price before gas and transfers.")
-    ).toBeVisible();
+    expect(view.getByRole("img", { name: "Better quoted price" })).toBeVisible();
     expect(view.queryByText("DEX quotes expired. Refresh quotes to compare prices.")).toBeNull();
   });
 });
 
 describe("Venue price winners and mobile availability", () => {
   it.each([
-    ["exactIn", "4000000000", "Coinbase", "coinbase"],
-    ["exactIn", "3700000000", "DEX", "dex"],
-    ["targetOut", "1900000000000000000", "Coinbase", "coinbase"],
-    ["targetOut", "2100000000000000000", "DEX", "dex"],
-  ] as const)(
-    "labels the better %s price when %s is quoted",
-    async (mode, amount, venue, winner) => {
-      const response = reply("0");
-      if (mode === "exactIn") {
-        response.data.output_amount_raw = amount;
-        response.data.output_amount = formatUnits(BigInt(amount), 6);
-      } else {
-        response.data.input_amount_raw = amount;
-        response.data.input_amount = formatUnits(BigInt(amount), 18);
-      }
-      get.mockResolvedValueOnce(response);
-      const trade = { ...params, mode };
-      const view = render(VenueComparison, {
-        params: trade,
-        quotes: [
-          makeQuote({
-            ...quote(),
-            ...trade,
-            input_amount_raw: "2000000000000000000",
-            output_amount_raw: "3800000000",
-          }),
-        ],
-        stale: false,
-        dexExpiresAt: Date.now() + 30_000,
-      });
-      expect(await view.findByText(`${venue} has the better quoted price`)).toBeVisible();
-      const dex = view.getByRole("region", { name: "DEX router quotes" });
-      const coinbase = view.getByRole("region", { name: "Coinbase Advanced estimate" });
-      expect(
-        within(winner === "dex" ? dex : coinbase).getByText("Better quoted price")
-      ).toBeVisible();
-      expect(
-        within(winner === "dex" ? coinbase : dex).queryByText("Better quoted price")
-      ).toBeNull();
-      expect(dex.parentElement).toBe(coinbase.parentElement);
+    ["exactIn", "4000000000", "Coinbase Advanced"],
+    ["exactIn", "3700000000", "DEX routers"],
+    ["targetOut", "1900000000000000000", "Coinbase Advanced"],
+    ["targetOut", "2100000000000000000", "DEX routers"],
+  ] as const)("marks the better %s price when Coinbase quotes %s", async (mode, amount, venue) => {
+    const response = reply("0");
+    if (mode === "exactIn") {
+      response.data.output_amount_raw = amount;
+      response.data.output_amount = formatUnits(BigInt(amount), 6);
+    } else {
+      response.data.input_amount_raw = amount;
+      response.data.input_amount = formatUnits(BigInt(amount), 18);
     }
-  );
-  it("shows a tie without declaring a winner", async () => {
+    get.mockResolvedValueOnce(response);
+    const trade = { ...params, mode };
+    const view = render(VenueComparison, {
+      params: trade,
+      quotes: [
+        makeQuote({
+          ...quote(),
+          ...trade,
+          input_amount_raw: "2000000000000000000",
+          output_amount_raw: "3800000000",
+        }),
+      ],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
+    const star = await view.findByRole("img", { name: "Better quoted price" });
+    expect(star).toHaveTextContent("⭐");
+    expect(view.getByRole("heading", { name: `${venue} Better quoted price` })).toContainElement(
+      star
+    );
+    const dex = view.getByRole("region", { name: "DEX router quotes" });
+    const coinbase = view.getByRole("region", { name: "Coinbase Advanced estimate" });
+    expect(dex.parentElement).toBe(coinbase.parentElement);
+  });
+  it("omits the star when prices tie", async () => {
     const response = reply("0");
     response.data.output_amount_raw = "3800000000";
     response.data.output_amount = "3800";
@@ -345,9 +328,8 @@ describe("Venue price winners and mobile availability", () => {
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
-    const comparison = await view.findByRole("status", { name: "Venue price comparison" });
-    expect(comparison).toHaveTextContent("Same quoted price");
-    expect(view.queryByText("Better quoted price")).toBeNull();
+    await view.findByRole("link", { name: "Open Coinbase Advanced ↗" });
+    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
   });
   it("does not claim mobile trading support from a ready public book", async () => {
     const response = reply();
@@ -382,8 +364,7 @@ describe("Venue price winners and mobile availability", () => {
       dexExpiresAt: Date.now() + 30_000,
     });
     await view.findByText("Mobile trading not verified");
-    expect(view.queryByRole("status", { name: "Venue price comparison" })).toBeNull();
-    expect(view.queryByText("Better quoted price")).toBeNull();
+    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
   });
 
   it("marks expired estimates and removes their price comparison", async () => {
@@ -399,6 +380,6 @@ describe("Venue price winners and mobile availability", () => {
     expect(
       await view.findByText("Estimate expired. Refresh before comparing prices.")
     ).toBeVisible();
-    expect(view.queryByText(/than the best DEX/)).toBeNull();
+    expect(view.queryByRole("img", { name: "Better quoted price" })).toBeNull();
   });
 });

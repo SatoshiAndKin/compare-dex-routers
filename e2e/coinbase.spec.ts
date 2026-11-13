@@ -51,12 +51,10 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
   await expect(panel.getByText(/Before trading fees;/)).toBeVisible();
   const dex = page.getByRole("region", { name: "DEX router quotes" });
-  await expect(panel.getByRole("heading", { level: 3 })).toHaveText("Coinbase Advanced");
+  await expect(panel.getByRole("heading", { level: 3 })).toHaveText("Coinbase Advanced ⭐");
   await expect(dex.getByRole("heading", { level: 3 })).toHaveText("DEX routers");
   await expect(panel).toContainText("Mobile trading not verified");
-  await expect(page.getByRole("status", { name: "Venue price comparison" })).toContainText(
-    "Coinbase has the better quoted price before Coinbase fees"
-  );
+  await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   const boxes = await page.locator(".venue-card").evaluateAll((cards) =>
     cards.map((card) => {
       const rect = card.getBoundingClientRect();
@@ -83,14 +81,11 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(panel).toContainText("This market accepts limit orders only.");
   await saveFee(page, "0.1");
   await expect(panel).toContainText("Includes an assumed 0.1% fee");
-  await expect(page.getByRole("status", { name: "Venue price comparison" })).toContainText(
-    "0.08 USDT less output than the best DEX price before gas and transfers."
+  await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
+  await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
+  await expect(page.getByText(/has the better quoted price|than the best DEX price/)).toHaveCount(
+    0
   );
-  await expect(page.getByRole("status", { name: "Venue price comparison" })).toContainText(
-    "DEX has the better quoted price"
-  );
-  await expect(dex.getByText("Better quoted price", { exact: true })).toBeVisible();
-  await expect(panel.getByText("Better quoted price", { exact: true })).toHaveCount(0);
   const link = panel.getByRole("link", { name: "Open Coinbase Advanced ↗" });
   await expect(link).toHaveAttribute(
     "href",
@@ -120,16 +115,13 @@ test("highlights Coinbase when its fee-adjusted quote beats every DEX price", as
   await mockCoinbase(page, "101");
   await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
   await saveFee(page, "0.1");
-  const summary = page.getByRole("status", { name: "Venue price comparison" });
-  await expect(summary).toContainText("Coinbase has the better quoted price");
-  await expect(summary).toContainText("1.02 USDT more output than the best DEX price");
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
-  await expect(panel.getByText("Better quoted price", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   await expect(panel).toContainText("Mobile trading not verified");
   await expect(
     page
       .getByRole("region", { name: "DEX router quotes" })
-      .getByText("Better quoted price", { exact: true })
+      .getByRole("img", { name: "Better quoted price" })
   ).toHaveCount(0);
   await page.screenshot({
     path: test.info().outputPath("venue-coinbase-better.png"),
@@ -150,7 +142,7 @@ test("compares Coinbase with a working route instead of a reverted quote", async
         execution: null,
       });
   });
-  await mockCoinbase(page);
+  await mockCoinbase(page, "101");
   await installWallet(page, 1, SENDER, async (method, args) => {
     if (method === "eth_call")
       return (args[0] as { data: string }).data.startsWith("0x70a08231")
@@ -165,9 +157,8 @@ test("compares Coinbase with a working route instead of a reverted quote", async
   await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
   await expect(page.getByRole("button", { name: "Execute swap" })).toBeEnabled();
   await saveFee(page, "0.1");
-  await expect(page.getByRole("status", { name: "Venue price comparison" })).toContainText(
-    "0.08 USDT less output than the best DEX price before gas and transfers."
-  );
+  const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
+  await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
 });
 
@@ -209,9 +200,8 @@ test("keeps DEX expiry after refreshing Coinbase during a pending approval", asy
     await saveFee(page, "0.1");
     await page.getByRole("button", { name: "Approve token spending" }).click();
     await expect.poll(() => waiting).toBe(true);
-    await expect(page.getByRole("status", { name: "Venue price comparison" })).toContainText(
-      "0.08 USDT less output than the best DEX price before gas and transfers."
-    );
+    const dex = page.getByRole("region", { name: "DEX router quotes" });
+    await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
     const before = dexRequests;
     const position = () =>
       page.locator(".quote-card").evaluate((element) => {
@@ -227,7 +217,7 @@ test("keeps DEX expiry after refreshing Coinbase during a pending approval", asy
       0
     );
     await expect(panel).toContainText("DEX quotes expired. Refresh quotes to compare prices.");
-    await expect(page.getByRole("status", { name: "Venue price comparison" })).toHaveCount(0);
+    await expect(page.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
     expect(dexRequests).toBe(before);
     expect(await position()).toEqual(beforeExpiry);
   } finally {
