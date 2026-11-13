@@ -281,16 +281,19 @@ control shows the full rate with both token symbols.
 `VenueComparison.svelte` displays DEX routers and Coinbase Advanced as equal
 boxed sections. It compares the best matching, non-failed DEX quoted amount with
 the Coinbase depth estimate. Exact-input trades prefer more output. Target-output
-trades prefer less input. A star appears beside the winning venue. Both venues
-get a star when their prices tie. The selected DEX route can differ from the best
-price before gas because of gas costs or a manual route choice. Both price boxes
-use the same amount display.
+trades prefer less input. A star appears beside the winning venue. The worse
+quote shows the percentage less received or more paid relative to the better
+quote. Both venues get a star when their prices tie. The selected DEX route can
+differ from the best price before gas because of gas costs or a manual route
+choice. Both price boxes use the same amount display.
 The selected DEX route and its wallet controls follow below the comparison.
+Its quoted amounts and rate remain visible in the swap form.
 The server recommendation continues to select only DEX routes.
 
 The comparison excludes gas and transfers. It uses the user's assumed Coinbase
 taker fee when set. The Coinbase card states whether the estimate includes this fee.
-Stale, expired, loading, mismatched, or failed quotes cannot produce a price winner.
+Stale, expired, loading, mismatched, or failed quotes cannot produce a price winner
+or percentage difference.
 
 The API rejects disabled and view-only Coinbase markets, including public
 `is_disabled` and `view_only` flags. The Coinbase info popover explains that

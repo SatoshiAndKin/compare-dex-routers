@@ -69,6 +69,7 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(dex.getByRole("heading", { level: 3 })).toHaveText("DEX routers");
   await expect(panel.getByText("Mobile trading not verified")).toBeHidden();
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
+  await expect(dex.getByText("0.02% less received", { exact: true })).toBeVisible();
   const boxes = await page.locator(".venue-card").evaluateAll((cards) =>
     cards.map((card) => {
       const rect = card.getBoundingClientRect();
@@ -115,9 +116,8 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   expect(await feePosition()).toEqual(beforeFee);
   await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
-  await expect(page.getByText(/has the better quoted price|than the best DEX price/)).toHaveCount(
-    0
-  );
+  await expect(panel.getByText("0.08% less received", { exact: true })).toBeVisible();
+  await expect(dex.getByText(/less received/)).toHaveCount(0);
   const link = panel.getByRole("link", { name: "Open Coinbase Advanced ↗" });
   await expect(link).toHaveAttribute(
     "href",

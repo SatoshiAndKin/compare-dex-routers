@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack, type Snippet } from "svelte";
+  import { formatUnits } from "viem";
   import { apiClient } from "../api.js";
   import type { components } from "../../generated/api-types.js";
   import type { CompareParams, Quote } from "../stores/comparisonStore.svelte.js";
@@ -128,20 +129,31 @@
     }, null);
   });
 
-  const winner = $derived.by(() => {
+  const comparison = $derived.by(() => {
     if (!params || stale || loading || error || expired || dexExpired || !result || !bestDex)
       return null;
     const targetOut = params.mode === "targetOut";
-    const best = BigInt(targetOut ? bestDex.input_amount_raw : bestDex.output_amount_raw);
+    const dex = BigInt(targetOut ? bestDex.input_amount_raw : bestDex.output_amount_raw);
     const coinbase = BigInt(targetOut ? result.input_amount_raw : result.output_amount_raw);
-    if (coinbase === best) return "tie";
-    return (targetOut ? coinbase < best : coinbase > best) ? "coinbase" : "dex";
+    if (dex <= 0n || coinbase <= 0n) return null;
+    if (coinbase === dex) return { winner: "tie", difference: "" };
+    const coinbaseWins = targetOut ? coinbase < dex : coinbase > dex;
+    const best = coinbaseWins ? coinbase : dex;
+    const worse = coinbaseWins ? dex : coinbase;
+    const deviation = targetOut ? worse - best : best - worse;
+    const basisPoints = (deviation * 10_000n + best / 2n) / best;
+    const percent = basisPoints === 0n ? "<0.01%" : `${formatUnits(basisPoints, 2)}%`;
+    return {
+      winner: coinbaseWins ? "coinbase" : "dex",
+      difference: `${percent} ${targetOut ? "more paid" : "less received"}`,
+    };
   });
 </script>
 
 {#snippet winnerStar()}
-  <span role="img" aria-label={winner === "tie" ? "Tied quoted price" : "Better quoted price"}
-    >⭐</span
+  <span
+    role="img"
+    aria-label={comparison?.winner === "tie" ? "Tied quoted price" : "Better quoted price"}>⭐</span
   >
 {/snippet}
 
@@ -152,16 +164,33 @@
   outputSymbol: string,
   chainId: number,
   from: string,
-  to: string
+  to: string,
+  venue: "dex" | "coinbase"
 )}
+  {@const difference =
+    comparison && comparison.winner !== "tie" && comparison.winner !== venue
+      ? comparison.difference
+      : ""}
   <div class="amounts">
     <div>
-      <span class="amount-label">Sell</span><strong
+      <div>
+        <span class="amount-label">Sell</span>
+        {#if params?.mode === "targetOut"}<div class="price-difference">
+            {difference}
+          </div>{/if}
+      </div>
+      <strong
         ><span>{input}</span> <TokenSymbol {chainId} address={from} symbol={inputSymbol} /></strong
       >
     </div>
     <div>
-      <span class="amount-label">Buy</span><strong
+      <div>
+        <span class="amount-label">Buy</span>
+        {#if params?.mode === "exactIn"}<div class="price-difference">
+            {difference}
+          </div>{/if}
+      </div>
+      <strong
         ><span>{output}</span> <TokenSymbol {chainId} address={to} symbol={outputSymbol} /></strong
       >
     </div>
@@ -180,7 +209,7 @@
           <h3 class="venue-title">
             <span>DEX routers</span>
             <span class="winner-slot">
-              {#if winner === "dex" || winner === "tie"}{@render winnerStar()}{/if}
+              {#if comparison?.winner === "dex" || comparison?.winner === "tie"}{@render winnerStar()}{/if}
             </span>
           </h3>
           <InfoPopover label="About DEX prices">
@@ -208,7 +237,8 @@
             bestDex.to_symbol,
             bestDex.chainId,
             bestDex.from,
-            bestDex.to
+            bestDex.to,
+            "dex"
           )}
           <div role="group" aria-label="DEX average trade price" class="quote-rates">
             <span class="row-label">Rate</span>
@@ -235,7 +265,7 @@
               <h3 class="venue-title">
                 <span>Coinbase Advanced</span>
                 <span class="winner-slot">
-                  {#if winner === "coinbase" || winner === "tie"}{@render winnerStar()}{/if}
+                  {#if comparison?.winner === "coinbase" || comparison?.winner === "tie"}{@render winnerStar()}{/if}
                 </span>
               </h3>
               <div class="estimate-refresh">
@@ -359,7 +389,8 @@
                 result.output_symbol,
                 params.chainId,
                 params.from,
-                params.to
+                params.to,
+                "coinbase"
               )}
               {#if rate}
                 <div role="group" aria-label="Coinbase average trade price" class="quote-rates">
@@ -521,6 +552,17 @@
     font-variant-numeric: tabular-nums;
     line-height: 1.35;
     overflow-wrap: anywhere;
+  }
+  .amounts > div {
+    grid-template-columns: min(47%, 8rem) minmax(0, 1fr);
+    align-items: start;
+  }
+  .price-difference {
+    font-size: 0.75rem;
+    line-height: 1;
+    min-height: 2em;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
   }
   .amounts strong > span:first-child {
     display: block;

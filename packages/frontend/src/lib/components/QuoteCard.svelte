@@ -12,8 +12,6 @@
   import TransactionLink from "./TransactionLink.svelte";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
-  import { formatQuoteRate } from "../quote-rates.js";
-  import TokenSymbol from "./TokenSymbol.svelte";
   import InfoPopover from "./InfoPopover.svelte";
 
   interface Props {
@@ -41,10 +39,6 @@
   }: Props = $props();
 
   const providerName = $derived(quote?.provider ?? provider);
-  const rate = $derived(quote ? formatQuoteRate(quote.output_amount, quote.input_amount) : null);
-  const inverseRate = $derived(
-    quote ? formatQuoteRate(quote.input_amount, quote.output_amount) : null
-  );
 
   // ---------------------------------------------------------------------------
   // Transaction state
@@ -109,55 +103,21 @@
   {:else if quote}
     <!-- Quote result -->
     <div class="quote-result">
-      <!-- Recommendation badge -->
       <div class="route-header">
-        <div>
-          <span
-            class="recommendation-badge"
-            class:winner-badge={isRecommended}
-            class:alt-badge={!isRecommended}
-          >
-            {isRecommended
-              ? quote.simulation_status === "succeeded"
-                ? "RECOMMENDED DEX ROUTE"
-                : "Best DEX route — unverified"
-              : "SELECTED"}
-          </span>
-
-          <div class="provider-info">Via {providerName}</div>
+        <div class="route-info">
+          <strong>Via {providerName}</strong>
+          {#if quote.simulation_status !== "succeeded"}
+            <span class="route-status">Quote only</span>
+          {:else if isRecommended}
+            <span class="route-status recommended">Recommended</span>
+          {/if}
         </div>
         <InfoPopover label="Selected route details">
-          {#if inverseRate}<span>1 {quote.to_symbol} ≈ {inverseRate} {quote.from_symbol}</span>{/if}
-          <span>Average trade price before gas.</span>
           {#if rankingNote}<span>{rankingNote}</span>{/if}
           <QuoteSimulation {quote} />
           <QuoteCosts {quote} basis={recommendationBasis} />
         </InfoPopover>
       </div>
-      <div class="quote-amounts">
-        <div>
-          <div class="output-label">You pay</div>
-          <div class="input-amount">
-            <span>{quote.input_amount}</span>
-            <TokenSymbol chainId={quote.chainId} address={quote.from} symbol={quote.from_symbol} />
-          </div>
-        </div>
-        <div>
-          <div class="output-label">You receive</div>
-          <div class="output-amount">
-            <span>{quote.output_amount}</span>
-            <TokenSymbol chainId={quote.chainId} address={quote.to} symbol={quote.to_symbol} />
-          </div>
-        </div>
-      </div>
-
-      {#if rate && inverseRate}
-        <div class="quote-rates" role="group" aria-label="Average trade price">
-          <div class="output-label">Rate</div>
-          <div>1 {quote.from_symbol} ≈ {rate} {quote.to_symbol}</div>
-        </div>
-      {/if}
-
       <!-- Expandable details -->
       <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} {usdConversion} />
 
@@ -241,13 +201,6 @@
 </div>
 
 <style>
-  .quote-rates {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    overflow-wrap: anywhere;
-  }
   .route-header {
     position: relative;
     display: flex;
@@ -255,10 +208,12 @@
     justify-content: space-between;
   }
 
-  .quote-amounts {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
+  .route-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.375rem;
+    font-size: 0.875rem;
   }
   .wallet-check {
     min-height: 3em;
@@ -346,49 +301,13 @@
     gap: 0.4rem;
   }
 
-  .recommendation-badge {
-    display: inline-block;
-    padding: 0;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .winner-badge {
-    background: transparent;
-    color: var(--success-text);
-  }
-
-  .alt-badge {
-    background: transparent;
-    color: var(--text-muted, #666);
-  }
-
-  .output-label {
-    font-size: 0.8125rem;
-    color: var(--text-muted, #666);
-  }
-
-  .input-amount,
-  .output-amount {
-    font-size: 0.9375rem;
-    overflow-wrap: anywhere;
-    min-height: 2.4em;
-    font-weight: 700;
-    font-family: monospace;
-    line-height: 1.2;
-  }
-
-  .input-amount > span:first-child,
-  .output-amount > span:first-child {
-    display: block;
-  }
-
-  .provider-info {
+  .route-status {
     font-size: 0.75rem;
-    color: var(--text-muted, #666);
-    margin-top: 0.125rem;
+    color: var(--text-muted);
+  }
+
+  .route-status.recommended {
+    color: var(--success-text);
   }
 
   .provider-label {

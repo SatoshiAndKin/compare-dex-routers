@@ -104,23 +104,24 @@ test("keeps precise input and output together through metadata and quote loading
   await expect(
     page.getByRole("spinbutton", { name: "Custom slippage in basis points" })
   ).toBeHidden();
-  for (const [selector, value, symbol] of [
-    [".input-amount", amount, sellSymbol],
-    [".output-amount", output, buySymbol],
-  ]) {
-    const total = page.locator(selector);
+  const dex = page.getByRole("region", { name: "DEX router quotes" });
+  for (const [index, value, symbol] of [
+    [0, amount, sellSymbol],
+    [1, output, buySymbol],
+  ] as const) {
+    const total = dex.locator(".amounts strong").nth(index);
     await expect(total).toHaveText(`${value} ${symbol}`);
     const valueBox = await total.getByText(value, { exact: true }).boundingBox();
     const symbolBox = await total.getByText(symbol, { exact: true }).boundingBox();
     if (!valueBox || !symbolBox) throw new Error("Missing quote amount or symbol");
     expect(symbolBox.y).toBeGreaterThanOrEqual(valueBox.y + valueBox.height);
   }
-  const rates = page.getByRole("group", { name: "Average trade price", exact: true });
-  await expect(rates).toContainText(`1 ${sellSymbol} ≈ 0.349453 ${buySymbol}`);
-  await page.getByRole("button", { name: "Selected route details" }).click();
-  await expect(page.getByText(`1 ${buySymbol} ≈ 2.86161 ${sellSymbol}`)).toBeVisible();
-  await page.keyboard.press("Escape");
-  const totalsBox = await page.locator(".quote-amounts").boundingBox();
+  const rates = dex.getByRole("group", { name: "DEX average trade price" });
+  await expect(rates).toContainText(`1 ${sellSymbol} = 0.349453 ${buySymbol}`);
+  const route = page.getByRole("region", { name: "Selected DEX route" });
+  await expect(route.getByText(output, { exact: true })).toHaveCount(0);
+  await expect(route.getByRole("group", { name: /trade price/ })).toHaveCount(0);
+  const totalsBox = await dex.locator(".amounts").boundingBox();
   const ratesBox = await rates.boundingBox();
   if (!totalsBox || !ratesBox) throw new Error("Quote totals and rates must be visible");
   expect(ratesBox.y).toBeGreaterThanOrEqual(totalsBox.y + totalsBox.height);

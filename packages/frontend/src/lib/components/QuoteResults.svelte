@@ -110,7 +110,7 @@
           >
           {#each [true, false] as verified}
             {#if comparisonStore.quotes.some((quote) => (quote.simulation_status === "succeeded") === verified)}
-              <p>{verified ? "Simulated wallet routes" : "Unverified prices"}</p>
+              <p>{verified ? "Simulated routes" : "Quotes without simulation"}</p>
             {/if}
             {#each comparisonStore.quotes.filter((quote) => (quote.simulation_status === "succeeded") === verified) as quote (quote.provider)}
               <button
@@ -123,7 +123,7 @@
                 {quote.provider}{quote.provider === comparisonStore.recommendation
                   ? quote.simulation_status === "succeeded"
                     ? " — Recommended"
-                    : " — Best quoted price — unverified"
+                    : " — Best quoted price"
                   : ""}{quote.provider === comparisonStore.activeProvider ? " — Selected" : ""}: {quote.input_amount}
                 {quote.from_symbol} → {quote.output_amount}
                 {quote.to_symbol}

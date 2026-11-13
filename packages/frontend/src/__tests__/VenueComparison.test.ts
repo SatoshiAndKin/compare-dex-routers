@@ -121,6 +121,7 @@ describe("Venue price comparison", () => {
       dexExpiresAt: Date.now() + 30_000,
     });
     expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
+    expect(view.queryByText("% less received", { exact: false })).toBeNull();
   });
   it("compares input costs for a target-output buy", async () => {
     const target = {
@@ -299,43 +300,50 @@ describe("Venue price comparison", () => {
 
 describe("Venue price winners and mobile availability", () => {
   it.each([
-    ["exactIn", "4000000000", "Coinbase Advanced"],
-    ["exactIn", "3700000000", "DEX routers"],
-    ["targetOut", "1900000000000000000", "Coinbase Advanced"],
-    ["targetOut", "2100000000000000000", "DEX routers"],
-  ] as const)("marks the better %s price when Coinbase quotes %s", async (mode, amount, venue) => {
-    const response = reply("0");
-    if (mode === "exactIn") {
-      response.data.output_amount_raw = amount;
-      response.data.output_amount = formatUnits(BigInt(amount), 6);
-    } else {
-      response.data.input_amount_raw = amount;
-      response.data.input_amount = formatUnits(BigInt(amount), 18);
+    ["exactIn", "4000000000", "Coinbase Advanced", "5% less received"],
+    ["exactIn", "3700000000", "DEX routers", "2.63% less received"],
+    ["exactIn", "3799999999", "DEX routers", "<0.01% less received"],
+    ["targetOut", "1900000000000000000", "Coinbase Advanced", "5.26% more paid"],
+    ["targetOut", "2100000000000000000", "DEX routers", "5% more paid"],
+  ] as const)(
+    "marks the better %s price when Coinbase quotes %s",
+    async (mode, amount, venue, difference) => {
+      const response = reply("0");
+      if (mode === "exactIn") {
+        response.data.output_amount_raw = amount;
+        response.data.output_amount = formatUnits(BigInt(amount), 6);
+      } else {
+        response.data.input_amount_raw = amount;
+        response.data.input_amount = formatUnits(BigInt(amount), 18);
+      }
+      get.mockResolvedValueOnce(response);
+      const trade = { ...params, mode };
+      const view = render(VenueComparison, {
+        params: trade,
+        quotes: [
+          makeQuote({
+            ...quote(),
+            ...trade,
+            input_amount_raw: "2000000000000000000",
+            output_amount_raw: "3800000000",
+          }),
+        ],
+        stale: false,
+        dexExpiresAt: Date.now() + 30_000,
+      });
+      const star = await view.findByRole("img", { name: "Better quoted price" });
+      expect(star).toHaveTextContent("⭐");
+      expect(view.getByRole("heading", { name: `${venue} Better quoted price` })).toContainElement(
+        star
+      );
+      const dex = view.getByRole("region", { name: "DEX router quotes" });
+      const coinbase = view.getByRole("region", { name: "Coinbase Advanced estimate" });
+      expect(dex.parentElement).toBe(coinbase.parentElement);
+      const [better, worse] = venue === "DEX routers" ? [dex, coinbase] : [coinbase, dex];
+      expect(within(worse).getByText(difference)).toBeVisible();
+      expect(within(better).queryByText(difference)).toBeNull();
     }
-    get.mockResolvedValueOnce(response);
-    const trade = { ...params, mode };
-    const view = render(VenueComparison, {
-      params: trade,
-      quotes: [
-        makeQuote({
-          ...quote(),
-          ...trade,
-          input_amount_raw: "2000000000000000000",
-          output_amount_raw: "3800000000",
-        }),
-      ],
-      stale: false,
-      dexExpiresAt: Date.now() + 30_000,
-    });
-    const star = await view.findByRole("img", { name: "Better quoted price" });
-    expect(star).toHaveTextContent("⭐");
-    expect(view.getByRole("heading", { name: `${venue} Better quoted price` })).toContainElement(
-      star
-    );
-    const dex = view.getByRole("region", { name: "DEX router quotes" });
-    const coinbase = view.getByRole("region", { name: "Coinbase Advanced estimate" });
-    expect(dex.parentElement).toBe(coinbase.parentElement);
-  });
+  );
   it("marks both venue headings when prices tie", async () => {
     const response = reply("0");
     response.data.output_amount_raw = "3800000000";
@@ -348,6 +356,7 @@ describe("Venue price winners and mobile availability", () => {
       dexExpiresAt: Date.now() + 30_000,
     });
     expect(await view.findAllByRole("img", { name: "Tied quoted price" })).toHaveLength(2);
+    expect(view.queryByText("% less received", { exact: false })).toBeNull();
     for (const venue of ["DEX routers", "Coinbase Advanced"]) {
       const heading = view.getByRole("heading", { name: `${venue} Tied quoted price` });
       expect(within(heading).getByRole("img", { name: "Tied quoted price" })).toHaveTextContent(
