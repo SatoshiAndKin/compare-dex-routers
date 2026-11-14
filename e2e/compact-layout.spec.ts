@@ -48,7 +48,7 @@ test("keeps precise input and output together through metadata and quote loading
   const positions = () =>
     page
       .locator(
-        ".amount-fields, .trade-options button, .swap-tokens, .swap-summary, .swap-actions button"
+        ".amount-fields, .trade-options button, .amount-group, .swap-tokens, .swap-summary, .swap-actions button"
       )
       .evaluateAll((elements) =>
         elements.map((element) => {
@@ -69,9 +69,14 @@ test("keeps precise input and output together through metadata and quote loading
   if (!sellBox || !buyBox || !swapBox) throw new Error("Missing swap panel");
   expect(sellBox.x).toBe(buyBox.x);
   expect(sellBox.width).toBe(buyBox.width);
-  expect(swapBox.y - sellBox.y - sellBox.height).toBeLessThanOrEqual(4);
-  expect(buyBox.y - swapBox.y - swapBox.height).toBeLessThanOrEqual(4);
+  expect(buyBox.y - sellBox.y - sellBox.height).toBeLessThanOrEqual(4);
+  expect(swapBox.y).toBeGreaterThanOrEqual(buyBox.y + buyBox.height);
   expect(swapBox.width).toBeGreaterThanOrEqual(44);
+  expect(swapBox.height).toBeGreaterThanOrEqual(44);
+  expect(sellBox.height).toBe(90);
+  expect(buyBox.height).toBe(90);
+  expect(swapBox.y - buyBox.y - buyBox.height).toBeLessThanOrEqual(4);
+  expect((await page.locator(".swap-summary").boundingBox())?.height).toBe(44);
   for (const [panel, side, symbol] of [
     [sellPanel, "From", sellSymbol],
     [buyPanel, "To", buySymbol],
@@ -81,6 +86,8 @@ test("keeps precise input and output together through metadata and quote loading
     if (!value || !token) throw new Error("Missing amount or token picker");
     expect(value.y).toBeGreaterThanOrEqual(token.y + token.height);
     expect(value.width).toBeGreaterThan(token.width);
+    expect(value.height).toBeGreaterThanOrEqual(44);
+    expect(token.height).toBeGreaterThanOrEqual(44);
     const label = panel.locator(".selected-symbol");
     await expect(label).toHaveText(symbol);
     expect(await label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
@@ -89,17 +96,18 @@ test("keeps precise input and output together through metadata and quote loading
   }
   const connect = page.getByRole("button", { name: "Connect wallet", exact: true });
   await expect(connect).toBeInViewport({ ratio: 1 });
+  expect(await connect.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+    true
+  );
   const chainText = page.locator(".chain-button-text");
   expect(await chainText.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
     true
   );
-  await page.getByRole("button", { name: "Exchange rate details" }).click();
-  await expect(page.locator(".exchange-rate")).toContainText(
-    `1 ${sellSymbol} ≈ 0.349453 ${buySymbol}`,
-    { useInnerText: true }
-  );
+  const rate = page.getByRole("group", { name: "Exchange rate", exact: true });
+  await expect(rate).toBeVisible();
+  await expect(rate).toHaveText(`1 ${sellSymbol} ≈ 0.349453 ${buySymbol}`);
+  await expect(rate.getByRole("button")).toHaveCount(0);
   expect(await positions()).toEqual(before);
-  await page.keyboard.press("Escape");
   const slippage = page.getByRole("button", { name: "Edit slippage" });
   await slippage.focus();
   await page.keyboard.press("Enter");

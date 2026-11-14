@@ -77,61 +77,61 @@
 </script>
 
 <div class="slippage-presets">
-  <span class="slippage-label">Slippage</span>
   <div class="slippage-value">
+    <span class="slippage-label">Slippage</span>
     <strong>{(formStore.slippageBps / 100).toFixed(2)}%</strong>
-    <InfoPopover label="Edit slippage" hover={false}>
-      {#snippet icon()}<span class="settings-icon" aria-hidden="true">⚙</span>{/snippet}
-      <strong>Slippage tolerance</strong>
-      <span>{formStore.slippageBps} bps · Maximum price movement before the swap fails.</span>
-      <div class="slippage-controls">
-        <div class="slippage-buttons">
-          {#each PRESETS as bps}
-            <button
-              class={`slippage-btn${activePreset === bps ? " active" : ""}`}
-              type="button"
-              data-bps={bps}
-              onclick={() => handlePresetClick(bps)}
-              aria-pressed={activePreset === bps}
-            >
-              {bps / 100}%
-            </button>
-          {/each}
-        </div>
-        <div class="slippage-custom">
-          <input
-            class={`slippage-custom-input${isCustomActive ? " active" : ""}${slippageError ? " error" : ""}`}
-            type="number"
-            min="1"
-            max={MAX_SLIPPAGE_BPS}
-            step="1"
-            placeholder="bps"
-            value={customValue}
-            oninput={handleCustomInput}
-            aria-label="Custom slippage in basis points"
-          />
-          <span class="slippage-bps-label">bps</span>
+  </div>
+  <InfoPopover label="Edit slippage" hover={false}>
+    {#snippet icon()}<span class="settings-icon" aria-hidden="true">⚙</span>{/snippet}
+    <strong>Slippage tolerance</strong>
+    <span>{formStore.slippageBps} bps · Maximum price movement before the swap fails.</span>
+    <div class="slippage-controls">
+      <div class="slippage-buttons">
+        {#each PRESETS as bps}
+          <button
+            class={`slippage-btn${activePreset === bps ? " active" : ""}`}
+            type="button"
+            data-bps={bps}
+            onclick={() => handlePresetClick(bps)}
+            aria-pressed={activePreset === bps}
+          >
+            {bps / 100}%
+          </button>
+        {/each}
+      </div>
+      <div class="slippage-custom">
+        <input
+          class={`slippage-custom-input${isCustomActive ? " active" : ""}${slippageError ? " error" : ""}`}
+          type="number"
+          min="1"
+          max={MAX_SLIPPAGE_BPS}
+          step="1"
+          placeholder="bps"
+          value={customValue}
+          oninput={handleCustomInput}
+          aria-label="Custom slippage in basis points"
+        />
+        <span class="slippage-bps-label">bps</span>
+      </div>
+    </div>
+    {#if slippageError}
+      <div class="slippage-error" role="alert">{slippageError}</div>
+    {/if}
+    {#if pendingHighSlippage !== null}
+      <div class="slippage-warning" role="alert">
+        <span
+          >{pendingHighSlippage} bps ({(pendingHighSlippage / 100).toFixed(1)}%) is very high. Are
+          you sure?</span
+        >
+        <div class="slippage-warning-actions">
+          <button type="button" class="confirm-btn" onclick={confirmHighSlippage}
+            >Yes, use it</button
+          >
+          <button type="button" class="cancel-btn" onclick={cancelHighSlippage}>Cancel</button>
         </div>
       </div>
-      {#if slippageError}
-        <div class="slippage-error" role="alert">{slippageError}</div>
-      {/if}
-      {#if pendingHighSlippage !== null}
-        <div class="slippage-warning" role="alert">
-          <span
-            >{pendingHighSlippage} bps ({(pendingHighSlippage / 100).toFixed(1)}%) is very high. Are
-            you sure?</span
-          >
-          <div class="slippage-warning-actions">
-            <button type="button" class="confirm-btn" onclick={confirmHighSlippage}
-              >Yes, use it</button
-            >
-            <button type="button" class="cancel-btn" onclick={cancelHighSlippage}>Cancel</button>
-          </div>
-        </div>
-      {/if}
-    </InfoPopover>
-  </div>
+    {/if}
+  </InfoPopover>
 </div>
 
 <style>
@@ -146,8 +146,8 @@
     color: var(--text-muted, #666);
   }
   .slippage-value {
-    display: flex;
-    align-items: center;
+    display: grid;
+    line-height: 1.3;
     font-variant-numeric: tabular-nums;
   }
   .settings-icon {

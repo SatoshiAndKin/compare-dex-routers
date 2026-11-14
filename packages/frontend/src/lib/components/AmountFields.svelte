@@ -7,7 +7,6 @@
   import { comparisonStore, type Quote } from "../stores/comparisonStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
   import type { Snippet } from "svelte";
-  import InfoPopover from "./InfoPopover.svelte";
 
   let {
     chain,
@@ -80,6 +79,9 @@
     isExactIn ? (quote?.output_amount ?? carriedAmount) : formStore.receiveAmount
   );
   const exchangeRate = $derived(quote && formatQuoteRate(quote.output_amount, quote.input_amount));
+  const rateLabel = $derived(
+    quote && exchangeRate ? `1 ${quote.from_symbol} ≈ ${exchangeRate} ${quote.to_symbol}` : null
+  );
   const estimateStatus = $derived(
     quote
       ? comparisonStore.isStale
@@ -203,11 +205,11 @@
       <div class="amount-heading">
         <label class="amount-label" for="sell-amount">Sell</label>
         {#if !isExactIn && estimateStatus}<span class="amount-meta">{estimateStatus}</span>{/if}
-        {@render sellBalance?.()}
       </div>
       <div class="amount-token">
         {@render sellToken?.()}
       </div>
+      {@render sellBalance?.()}
       <div class="amount-input-row">
         <input
           id="sell-amount"
@@ -225,17 +227,15 @@
       </div>
     </div>
 
-    {@render reverse?.(reverseTrade)}
-
     <div class="amount-group" class:active={!isExactIn} class:computed={isExactIn}>
       <div class="amount-heading">
         <label class="amount-label" for="receive-amount">Buy</label>
         {#if isExactIn && estimateStatus}<span class="amount-meta">{estimateStatus}</span>{/if}
-        {@render buyBalance?.()}
       </div>
       <div class="amount-token">
         {@render buyToken?.()}
       </div>
+      {@render buyBalance?.()}
       <div class="amount-input-row">
         <input
           id="receive-amount"
@@ -253,21 +253,15 @@
       </div>
     </div>
   </div>
-  {#if settings}
+  {#if reverse || settings}
     <div class="swap-summary">
-      {@render settings()}
-      <div class="summary-row exchange-rate">
-        <span>Rate</span>
-        <strong>{exchangeRate ? `≈ ${exchangeRate}` : "—"}</strong>
-        {#if quote && exchangeRate}
-          <InfoPopover label="Exchange rate details">
-            <b>1 {quote.from_symbol} ≈ {exchangeRate} {quote.to_symbol}</b>
-          </InfoPopover>
-        {/if}
-      </div>
-      <div class="summary-row summary-route">
-        <span>DEX route</span><strong>{quote?.provider ?? "—"}</strong>
-      </div>
+      {@render reverse?.(reverseTrade)}
+      {#if settings}
+        {@render settings()}
+        <div class="exchange-rate" role="group" aria-label="Exchange rate">
+          <strong title={rateLabel ?? undefined}>{rateLabel ?? "Rate —"}</strong>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -287,48 +281,23 @@
   .swap-summary {
     position: relative;
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    column-gap: 0.75rem;
-    font-size: 0.875rem;
-  }
-  .summary-route {
-    grid-column: 1 / -1;
-  }
-  .summary-row {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: 0.5rem;
-    min-height: 1.375rem;
-    overflow-wrap: anywhere;
-  }
-  .summary-row span {
-    color: var(--text-muted);
-  }
-  .summary-row strong {
-    text-align: right;
+    grid-template-columns: auto max-content minmax(0, 1fr);
+    column-gap: 0.375rem;
+    font-size: 0.75rem;
   }
   .exchange-rate {
-    grid-template-columns: minmax(0, 1fr) 44px;
-    grid-template-rows: 1fr 1fr;
-    gap: 0 0.125rem;
+    display: grid;
     align-items: center;
     min-height: 44px;
-  }
-  .exchange-rate > span {
-    align-self: end;
-    font-size: 0.75rem;
-    line-height: 1.25;
+    line-height: 1.3;
   }
   .exchange-rate strong {
-    align-self: start;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
-    text-align: start;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .exchange-rate > :global(.info-control) {
-    grid-column: 2;
-    grid-row: 1 / -1;
+    overflow-wrap: anywhere;
   }
   .token-pair {
     display: grid;
@@ -337,9 +306,11 @@
   }
 
   .amount-group {
+    position: relative;
     display: grid;
+    grid-template-columns: 3rem minmax(0, 1fr);
     min-width: 0;
-    padding: 0.125rem 0.625rem;
+    padding-inline: 0.625rem;
     background: var(--bg-muted);
     border: 1px solid var(--border-light);
   }
@@ -347,36 +318,41 @@
     border-color: var(--border);
   }
   .amount-meta {
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
+    line-height: 1.1;
     color: var(--text-muted);
   }
   .amount-heading {
     display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    min-height: 1.5rem;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 44px;
   }
-  .amount-heading > :global(.balance-display) {
+  .amount-group > :global(.balance-display) {
+    grid-column: 1 / -1;
+    justify-self: end;
     min-width: 0;
-    margin-inline-start: auto;
     overflow-wrap: anywhere;
   }
 
   .amount-label {
     font-size: 0.875rem;
+    line-height: 1.25;
     color: var(--text-muted);
     margin: 0;
   }
 
   .amount-token {
-    position: relative;
     min-width: 0;
+  }
+  .amount-input-row {
+    grid-column: 1 / -1;
   }
 
   input.amount-input {
     min-width: 0;
     width: 100%;
-    padding: 0.25rem 0;
+    padding: 0;
     border: 0;
     background: transparent;
     color: var(--text);

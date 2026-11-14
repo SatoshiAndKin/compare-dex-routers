@@ -411,13 +411,14 @@
     font-size: 0.875rem;
     font-weight: 600;
     font-family: inherit;
+    line-height: 1.2;
     text-transform: none;
     letter-spacing: normal;
     transition: background 0.1s;
   }
   .swap-actions {
     display: grid;
-    grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.375rem;
     align-items: start;
   }
