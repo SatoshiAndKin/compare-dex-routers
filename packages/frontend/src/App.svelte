@@ -183,7 +183,6 @@
     </CompareForm>
     <QuoteResults />
   </main>
-  <footer class="space-footer">Powered by Spandex</footer>
 </div>
 
 <WalletProviderMenu
@@ -215,13 +214,6 @@
     font-size: clamp(1.25rem, 3vw, 1.75rem);
     color: var(--text);
     font-family: inherit;
-  }
-  .space-footer {
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    padding: 0.5rem;
-    border-top: 0;
   }
   @media (max-width: 600px) {
     .brand {
