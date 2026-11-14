@@ -150,22 +150,20 @@
   function reverseTrade(): void {
     const { fromToken, toToken } = formStore;
     if (!fromToken || !toToken) return;
-    const mode = isExactIn ? "targetOut" : "exactIn";
     const sell = sellValue;
     const receive = receiveValue;
     reversedAmount = {
       from: toToken,
       to: fromToken,
-      mode,
-      exactAmount: isExactIn ? sell : receive,
-      amount: isExactIn ? receive : sell,
+      mode: formStore.mode,
+      exactAmount: isExactIn ? receive : sell,
+      amount: isExactIn ? sell : receive,
       previousQuotes: comparisonStore.quotes,
     };
     formStore.fromToken = toToken;
     formStore.toToken = fromToken;
     formStore.sellAmount = receive;
     formStore.receiveAmount = sell;
-    formStore.mode = mode;
   }
 </script>
 
