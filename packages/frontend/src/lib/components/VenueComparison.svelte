@@ -430,7 +430,7 @@
     display: flow-root;
   }
   .selected-dex-route {
-    margin-top: 0.875rem;
+    margin-top: 0.5rem;
     scroll-margin-top: 1rem;
   }
   .venue-status {
@@ -475,7 +475,7 @@
   .venue-card {
     min-width: 0;
     border: 1px solid var(--border-light);
-    padding: 0.375rem 0.625rem 0.25rem;
+    padding: 0.125rem 0.625rem;
     background: var(--bg-muted);
     overflow-wrap: anywhere;
   }

@@ -199,7 +199,7 @@
 <style>
   .app-main {
     background: var(--bg-card);
-    padding: 0.75rem;
+    padding: 0.375rem 0.75rem;
     border: 1px solid var(--border-light);
   }
   .brand {
@@ -220,16 +220,12 @@
     text-align: center;
     color: var(--text-muted);
     font-size: 0.75rem;
-    margin-top: 1rem;
-    padding: 1rem;
+    padding: 0.5rem;
     border-top: 0;
   }
   @media (max-width: 600px) {
     .brand {
       gap: 0.5rem;
-    }
-    .app {
-      padding: 0.5rem;
     }
     .header-actions {
       margin-left: auto;
@@ -238,14 +234,14 @@
   .app {
     max-width: 36rem;
     margin: 0 auto;
-    padding: 0.5rem;
+    padding-inline: 0.5rem;
   }
 
   .app-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
     gap: 0.5rem;
     flex-wrap: wrap;
   }

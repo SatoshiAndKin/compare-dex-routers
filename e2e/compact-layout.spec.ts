@@ -46,12 +46,16 @@ test("keeps precise input and output together through metadata and quote loading
   const receive = page.locator("#receive-amount");
   await expect(sell).toHaveValue(amount);
   const positions = () =>
-    page.locator(".amount-fields, .swap-tokens, .swap-actions button").evaluateAll((elements) =>
-      elements.map((element) => {
-        const rect = element.getBoundingClientRect();
-        return [rect.left, rect.top + window.scrollY, rect.width, rect.height];
-      })
-    );
+    page
+      .locator(
+        ".amount-fields, .trade-options button, .swap-tokens, .swap-summary, .swap-actions button"
+      )
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return [rect.left, rect.top + window.scrollY, rect.width, rect.height];
+        })
+      );
   const before = await positions();
   metadata.resolve(true);
   await expect(receive).toHaveValue(output);
@@ -84,7 +88,11 @@ test("keeps precise input and output together through metadata and quote loading
     );
   }
   const connect = page.getByRole("button", { name: "Connect wallet", exact: true });
-  await expect(connect).toBeVisible();
+  await expect(connect).toBeInViewport({ ratio: 1 });
+  const chainText = page.locator(".chain-button-text");
+  expect(await chainText.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+    true
+  );
   await page.getByRole("button", { name: "Exchange rate details" }).click();
   await expect(page.locator(".exchange-rate")).toContainText(
     `1 ${sellSymbol} ≈ 0.349453 ${buySymbol}`,

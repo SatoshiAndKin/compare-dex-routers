@@ -136,11 +136,10 @@
 
 <style>
   .slippage-presets {
-    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    font-size: 0.875rem;
+    gap: 0.375rem;
+    font-size: 0.75rem;
   }
 
   .slippage-label {
