@@ -270,13 +270,13 @@ The space theme uses local SVG/CSS assets and the existing light/dark preference
 
 Native assets come from `/config` independently of token lists. Native balances use `eth_getBalance` and need no approvals. Raw integer balances and decimals drive exact sell-balance entry. Native entry first obtains a route estimate, reserves gas with the 20% margin and fresh network fees, and fails closed when fees are unavailable. Balance response sequences discard outdated reads.
 
-Each swap panel puts the amount below its token picker. The token info control
+Each swap panel puts the full-width amount below its label and token picker. The token info control
 opens the full address and Copy button. Copy failures keep the address selectable
 and permit a retry. The switch moves each displayed amount with its token and
 changes the quote mode to keep the original entered amount exact. The form labels
 the other amount as previous until a quote for the reversed trade replaces it.
-The form keeps 44-pixel touch targets. The summary shows
-slippage, the exchange rate, and the selected DEX route. The exchange rate info
+The form keeps 44-pixel touch targets. The row below the amounts groups the
+direction switch, slippage, and the exchange rate. The exchange rate info
 control shows the full rate with both token symbols.
 
 ### DEX and Coinbase price comparison

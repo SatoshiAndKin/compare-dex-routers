@@ -57,6 +57,7 @@ test("keeps token fields compact with one full address and a working copy button
     ["from", FROM],
     ["to", YFI],
   ] as const) {
+    if (browserName === "chromium") await page.mouse.move(0, 0);
     await expect(page.getByText(address, { exact: true })).toBeHidden();
     await page
       .getByRole("button", { name: side === "from" ? "Sell token details" : "Buy token details" })

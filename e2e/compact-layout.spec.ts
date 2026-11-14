@@ -69,9 +69,12 @@ test("keeps precise input and output together through metadata and quote loading
   if (!sellBox || !buyBox || !swapBox) throw new Error("Missing swap panel");
   expect(sellBox.x).toBe(buyBox.x);
   expect(sellBox.width).toBe(buyBox.width);
-  expect(swapBox.y - sellBox.y - sellBox.height).toBeLessThanOrEqual(4);
-  expect(buyBox.y - swapBox.y - swapBox.height).toBeLessThanOrEqual(4);
+  expect(buyBox.y - sellBox.y - sellBox.height).toBeLessThanOrEqual(4);
+  expect(swapBox.y).toBeGreaterThanOrEqual(buyBox.y + buyBox.height);
   expect(swapBox.width).toBeGreaterThanOrEqual(44);
+  expect(swapBox.height).toBeGreaterThanOrEqual(44);
+  expect(sellBox.height).toBeLessThanOrEqual(96);
+  expect(buyBox.height).toBeLessThanOrEqual(96);
   for (const [panel, side, symbol] of [
     [sellPanel, "From", sellSymbol],
     [buyPanel, "To", buySymbol],
