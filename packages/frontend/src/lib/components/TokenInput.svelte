@@ -10,6 +10,7 @@
   import { tokenListStore } from "../stores/tokenListStore.svelte.js";
   import UnrecognizedTokenModal from "./UnrecognizedTokenModal.svelte";
   import InfoPopover from "./InfoPopover.svelte";
+  import DisclosureChevron from "./DisclosureChevron.svelte";
   import { onMount } from "svelte";
 
   // ---------------------------------------------------------------------------
@@ -370,7 +371,7 @@
         <span class="selected-symbol" aria-hidden="true">{inputValue}</span>
       {/if}
     </div>
-    <span class="picker-chevron" aria-hidden="true">⌄</span>
+    <DisclosureChevron open={dropdownVisible && matches.length > 0} />
   </div>
 
   {#snippet clearButton()}
@@ -620,9 +621,7 @@
     font-family: inherit;
     min-width: 0;
   }
-  .picker-chevron {
-    flex: none;
-    pointer-events: none;
+  .token-input-field > :global(.disclosure-chevron) {
     color: var(--text-muted);
   }
 

@@ -1398,6 +1398,21 @@ button:focus {
 }
 
 /* Secondary Details - Collapsible */
+.disclosure-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 44px;
+  list-style: none;
+  cursor: pointer;
+}
+.disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure-summary:focus-visible {
+  outline: 2px solid var(--accent);
+}
 .details-toggle {
   width: auto;
   text-align: left;
@@ -1413,13 +1428,6 @@ button:focus {
 }
 .details-toggle:hover {
   background: var(--bg-hover);
-}
-.details-toggle::after {
-  content: none;
-  font-family: monospace;
-}
-.details-toggle.open::after {
-  content: none;
 }
 .details-content {
   display: none;

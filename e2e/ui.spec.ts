@@ -4,6 +4,60 @@ import { FROM, TO, SENDER } from "../packages/frontend/src/__tests__/quote-fixtu
 import { fixture } from "./fixtures.js";
 import { installWallet } from "./wallet.js";
 
+test("uses one trailing chevron for pickers and disclosures", async ({ page }) => {
+  await fixture(page, (comparison) => {
+    comparison.failures.push({
+      provider: "velora",
+      stage: "quote",
+      error: { name: "Error", message: "Test quote unavailable", code: "UNAVAILABLE" },
+    });
+  });
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100`);
+  const assertChevron = async (trigger: ReturnType<typeof page.locator>, open: boolean) => {
+    const icon = trigger.locator(".disclosure-chevron");
+    await expect(icon).toHaveCount(1);
+    await expect(icon.locator("path")).toHaveAttribute("d", "m4 6 4 4 4-4");
+    await expect(icon).toHaveCSS("transform", open ? "matrix(-1, 0, 0, -1, 0, 0)" : "none");
+    const bounds = await trigger.boundingBox();
+    const arrow = await icon.boundingBox();
+    if (!bounds || !arrow) throw new Error("Missing disclosure control");
+    expect(bounds.x + bounds.width - (arrow.x + arrow.width)).toBeLessThanOrEqual(16);
+  };
+
+  const routeDetails = page.getByRole("button", { name: "Details", exact: true });
+  const providers = page.locator(".provider-list > summary");
+  const failure = page.locator(".provider-failure > summary");
+  await expect(providers).toHaveCSS("list-style-type", "none");
+  const chain = page.locator(".chain-button");
+  await assertChevron(chain, false);
+  await chain.press("Enter");
+  await expect(chain).toHaveAttribute("aria-expanded", "true");
+  await assertChevron(chain, true);
+  await page.keyboard.press("Escape");
+  await assertChevron(chain, false);
+
+  for (const disclosure of [routeDetails, providers, failure]) {
+    await assertChevron(disclosure, false);
+    await disclosure.press("Enter");
+    await assertChevron(disclosure, true);
+    if (disclosure !== providers) {
+      await disclosure.press("Enter");
+      await assertChevron(disclosure, false);
+    }
+  }
+  await providers.press("Enter");
+  await assertChevron(providers, false);
+
+  const token = page.getByRole("textbox", { name: "From token" });
+  const tokenPicker = page.locator(".token-input-field").filter({ has: token });
+  await assertChevron(tokenPicker, false);
+  await token.fill("eth");
+  await expect(page.getByRole("option").first()).toBeVisible();
+  await assertChevron(tokenPicker, true);
+  await token.press("Escape");
+  await assertChevron(tokenPicker, false);
+});
+
 test("opens the chain dropdown and selects Base and Arbitrum", async ({ page, hasTouch }) => {
   await fixture(page);
   await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100`);

@@ -8,6 +8,7 @@
   import QuoteSimulation from "./QuoteSimulation.svelte";
   import QuoteCosts from "./QuoteCosts.svelte";
   import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
+  import DisclosureChevron from "./DisclosureChevron.svelte";
 
   const recommendedVerified = $derived(
     comparisonStore.quotes.some(
@@ -118,10 +119,13 @@
           </div>
         {/if}
         <details class="provider-list">
-          <summary
-            >Provider results and failures ({comparisonStore.quotes.length +
-              comparisonStore.failures.length})</summary
-          >
+          <summary class="disclosure-summary">
+            <span
+              >Provider results and failures ({comparisonStore.quotes.length +
+                comparisonStore.failures.length})</span
+            >
+            <DisclosureChevron />
+          </summary>
           {#each [true, false] as verified}
             {#if comparisonStore.quotes.some((quote) => (quote.simulation_status === "succeeded") === verified)}
               <p>{verified ? "Simulated routes" : "Quotes without simulation"}</p>
@@ -148,7 +152,10 @@
           {/each}
           {#each comparisonStore.failures as failure (failure.provider)}
             <details class="provider-failure">
-              <summary>{failure.provider} — {failure.stage} failed</summary>
+              <summary class="disclosure-summary">
+                <span>{failure.provider} — {failure.stage} failed</span>
+                <DisclosureChevron />
+              </summary>
               <p>{failure.error.message}</p>
             </details>
           {/each}

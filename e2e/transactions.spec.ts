@@ -289,7 +289,11 @@ test("transaction links follow saved explorer preferences and retain the submitt
   const hash = `0x${"a".repeat(64)}`;
   await expect(link).toHaveAttribute("href", `https://eth.blockscout.com/tx/${hash}`);
   await expect(link).toHaveAttribute("target", "_blank");
-  await status.getByText("Transaction details").click();
+  const summary = status.locator("summary").filter({ hasText: "Transaction details" });
+  const chevron = summary.locator(".disclosure-chevron");
+  await expect(chevron).toHaveCSS("transform", "none");
+  await summary.click();
+  await expect(chevron).toHaveCSS("transform", "matrix(-1, 0, 0, -1, 0, 0)");
   await expect(status.getByText(hash, { exact: true })).toBeVisible();
   await page.evaluate(() =>
     (
