@@ -16,7 +16,11 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@spandex/core", async (original) => ({
   ...(await original<typeof import("@spandex/core")>()),
-  prepareQuotes: async (args: { swap: SwapParams; mapFn: (quote: Quote) => Promise<unknown> }) =>
+  prepareQuotes: async (args: {
+    config: { aggregators: Array<{ name: () => string }> };
+    swap: SwapParams;
+    mapFn: (quote: Quote) => Promise<unknown>;
+  }) =>
     (
       (await (args.swap.swapperAccount === PREVIEW && args.swap.outputToken === WETH
         ? mocks.rate(args)
@@ -121,6 +125,72 @@ afterEach(async () => {
 });
 
 describe("unified quote contract", () => {
+  it("uses the 0x indicative endpoint for wallet-free comparisons and ETH valuation", async () => {
+    vi.stubEnv("ZEROX_API_KEY", "test-0x-price-key");
+    vi.resetModules();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            liquidityAvailable: true,
+            sellAmount: "1000000",
+            buyAmount: "2000000000000000000",
+            route: {
+              tokens: [{ address: FROM, symbol: "TOKEN" }],
+              fills: [{ from: FROM, to: TO, source: "Test pool", proportionBps: "10000" }],
+            },
+          })
+        )
+    );
+    const { quoteRoutes } = await import("../quotes.js");
+    const result = await quoteRoutes({
+      chainId: 1,
+      from: FROM,
+      to: TO,
+      amount: "1",
+      slippageBps: 50,
+      mode: "exactIn",
+    });
+    const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
+    expect(urls.map((url) => url.pathname)).toEqual(Array(2).fill("/swap/allowance-holder/price"));
+    expect(urls.map((url) => url.searchParams.get("buyToken"))).toEqual([WETH, TO]);
+    expect(
+      urls.every((url) => !url.searchParams.has("taker") && !url.searchParams.has("recipient"))
+    ).toBe(true);
+    expect(
+      mocks.quotes.mock.calls[0]?.[0].config.aggregators.map((provider: { name(): string }) =>
+        provider.name()
+      )
+    ).not.toContain("0x");
+    expect(QuoteResponseSchema.parse(result).quotes[0]).toMatchObject({
+      provider: "0x",
+      output_amount: "2",
+      simulation_status: "not_run",
+      execution: null,
+      route: { edges: [{ key: "Test pool", value: 10000 }] },
+    });
+    expect(mocks.simulate).not.toHaveBeenCalled();
+
+    // The reference price is now cached. Wallet routes go through Spandex.
+    fetchMock.mockClear();
+    await quoteRoutes({
+      chainId: 1,
+      from: FROM,
+      to: TO,
+      amount: "1",
+      slippageBps: 50,
+      sender: SENDER,
+      mode: "exactIn",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      mocks.quotes.mock.calls[1]?.[0].config.aggregators.map((provider: { name(): string }) =>
+        provider.name()
+      )
+    ).toContain("0x");
+    expect(mocks.simulate).toHaveBeenCalled();
+  });
+
   it("returns unsimulated provider prices without calldata when disconnected", async () => {
     const { response, body } = await call({ sender: "", to: TO });
     expect(response.status).toBe(200);
