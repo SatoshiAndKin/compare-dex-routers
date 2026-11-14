@@ -9,6 +9,7 @@ import { walletStore } from "../lib/stores/walletStore.svelte.js";
 
 function resetWalletStore(): void {
   walletStore.address = null;
+  walletStore.ensName = null;
   walletStore.chainId = null;
   walletStore.provider = null;
   walletStore.walletInfo = null;
@@ -63,15 +64,18 @@ describe("WalletButton", () => {
   // Connected state
   // ---------------------------------------------------------------------------
 
-  it("shows wallet name and full address when connected", () => {
-    walletStore.address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-    walletStore.walletInfo = { uuid: "metamask", name: "MetaMask", icon: "" };
+  it("shows the full address even when wallet identity details are available", () => {
+    const address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+    walletStore.address = address;
+    walletStore.ensName = "wallet.eth";
+    walletStore.walletInfo = { uuid: "metamask", name: "MetaMask", icon: "/wallet.svg" };
 
-    const { getByText } = render(WalletButton);
+    const { getByRole, queryByText, queryByRole } = render(WalletButton);
 
-    // Full address — never truncated
-    expect(getByText("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")).toBeTruthy();
-    expect(getByText("MetaMask")).toBeTruthy();
+    expect(getByRole("status", { name: "Connected wallet address" })).toHaveTextContent(address);
+    expect(queryByText("MetaMask")).toBeNull();
+    expect(queryByText("wallet.eth")).toBeNull();
+    expect(queryByRole("img")).toBeNull();
   });
 
   it("shows full 0x address (never truncated)", () => {
@@ -86,11 +90,13 @@ describe("WalletButton", () => {
     expect(addressEl.textContent).toHaveLength(42);
   });
 
-  it("shows Disconnect button when connected", () => {
+  it("shows an × button with a Disconnect tooltip when connected", () => {
     walletStore.address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
     const { getByRole } = render(WalletButton);
-    expect(getByRole("button", { name: "Disconnect" })).toBeTruthy();
+    const disconnectButton = getByRole("button", { name: "Disconnect" });
+    expect(disconnectButton).toHaveTextContent("×");
+    expect(disconnectButton).toHaveAttribute("title", "Disconnect");
   });
 
   it("does not show Connect Wallet button when connected", () => {
