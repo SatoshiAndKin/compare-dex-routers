@@ -13,10 +13,11 @@ See [private access](TAILSCALE.md) for a health check.
 ## Coinbase Advanced estimates
 
 The comparison page shows a separate Coinbase Advanced estimate from public
-order-book depth. No Coinbase account or API key is required. Enter your taker fee
-percentage under the Settings gear; the browser saves the assumption locally. An
-empty rate shows a price before fees. Coinbase One Basic provides no Advanced fee
-rebate. The estimate never supplies wallet execution data or changes DEX rankings.
+order-book depth. No Coinbase account or API key is required. The browser assumes
+a [0.90% U.S. entry-tier taker fee](https://www.coinbase.com/blog/were-lowering-fees-for-many-active-traders-on-coinbase-advanced)
+by default. Enter your own fee under the Settings gear to save it locally, or save
+an empty rate to see prices before fees. Coinbase One Basic provides no Advanced
+fee rebate. The estimate never supplies wallet execution data or changes DEX rankings.
 
 Assets and direct spot markets come from Coinbase's public currency/network and
 Advanced Trade catalogs, refreshed every five minutes. This covers listed assets

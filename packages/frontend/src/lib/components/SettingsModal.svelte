@@ -16,7 +16,10 @@
    */
   import { settingsStore } from "../stores/settingsStore.svelte.js";
   import { tokenListStore } from "../stores/tokenListStore.svelte.js";
-  import { preferencesStore } from "../stores/preferencesStore.svelte.js";
+  import {
+    DEFAULT_COINBASE_TAKER_FEE_PERCENT,
+    preferencesStore,
+  } from "../stores/preferencesStore.svelte.js";
   import { formStore } from "../stores/formStore.svelte.js";
   import { configStore } from "../stores/configStore.svelte.js";
 
@@ -189,8 +192,9 @@
           <h3 class="settings-section-title">Coinbase Advanced</h3>
           <label for="coinbase-taker-fee">Your taker fee (%)</label>
           <p id="coinbase-fee-note" class="refresh-note">
-            Use your Coinbase Advanced taker rate for this market. Coinbase One Basic does not
-            reduce this fee. Leave empty for a price before fees.
+            The default is {DEFAULT_COINBASE_TAKER_FEE_PERCENT}% (U.S. entry tier). Enter your taker
+            rate for this market, or leave empty to see prices before fees. Coinbase One Basic does
+            not reduce this fee.
           </p>
           <div class="add-list-row">
             <input
