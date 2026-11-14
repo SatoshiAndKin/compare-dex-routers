@@ -14,6 +14,7 @@ import { explorerBase } from "../explorers.js";
 import type { TokenInfo } from "./formStore.svelte.js";
 
 const PREFERENCES_KEY = "compare-dex-preferences";
+export const DEFAULT_COINBASE_TAKER_FEE_PERCENT = "0.9";
 
 export interface ChainPreferences {
   fromToken?: { address: string; symbol: string; decimals: number; logoURI?: string };
@@ -82,7 +83,7 @@ class PreferencesStore {
     const fee = loadPreferences()?.coinbaseTakerFeePercent;
     return typeof fee === "string" && (fee === "" || /^\d{1,2}(?:\.\d{1,4})?$/.test(fee))
       ? fee
-      : "";
+      : DEFAULT_COINBASE_TAKER_FEE_PERCENT;
   }
 
   setCoinbaseTakerFeePercent(value: string): string | null {

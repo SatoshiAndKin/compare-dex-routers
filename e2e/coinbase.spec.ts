@@ -6,14 +6,14 @@ import { FROM, TO, SENDER, deferred } from "../packages/frontend/src/__tests__/q
 
 async function mockCoinbase(
   page: Page,
-  afterFeeOutput = "99.9",
-  beforeFeeOutput = "100",
+  afterFeeOutput?: string,
   beforeReply?: () => Promise<unknown>
 ) {
   await page.route("**/api/coinbase-estimate?**", async (route) => {
     await beforeReply?.();
     const now = await page.evaluate(() => Date.now());
     const fee = new URL(route.request().url()).searchParams.get("takerFeePercent");
+    const output = fee === null ? "100" : (afterFeeOutput ?? String(100 - Number(fee)));
     return route.fulfill({
       json: {
         status: "ready",
@@ -22,16 +22,13 @@ async function mockCoinbase(
         input_symbol: "USDC",
         output_symbol: "USDT",
         input_amount: "100",
-        output_amount: fee === null ? beforeFeeOutput : afterFeeOutput,
+        output_amount: output,
         input_amount_raw: "100000000",
-        output_amount_raw: parseUnits(
-          fee === null ? beforeFeeOutput : afterFeeOutput,
-          6
-        ).toString(),
+        output_amount_raw: parseUnits(output, 6).toString(),
         input_decimals: 6,
         output_decimals: 6,
         fee_percent: fee,
-        fee_amount: fee === null ? null : "0.1",
+        fee_amount: fee,
         fee_symbol: "USDC",
         as_of: new Date(now).toISOString(),
         expires_at: new Date(now + 30000).toISOString(),
@@ -63,13 +60,12 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
   const feeButton = panel.getByRole("button", { name: /Before trading fees|Assumed fee/ });
-  await expect(feeButton).toHaveText("Before trading fees");
+  await expect(feeButton).toHaveText("Assumed fee 0.9%");
   const dex = page.getByRole("region", { name: "DEX router quotes" });
-  await expect(panel.getByRole("heading", { level: 3 })).toHaveText("Coinbase Advanced ⭐");
-  await expect(dex.getByRole("heading", { level: 3 })).toHaveText("DEX routers");
+  await expect(panel.getByRole("heading", { level: 3 })).toHaveText("Coinbase Advanced");
+  await expect(dex.getByRole("heading", { level: 3 })).toHaveText("DEX routers ⭐");
   await expect(panel.getByText("Mobile trading not verified")).toBeHidden();
-  await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
-  await expect(dex.getByText("0.02% less received", { exact: true })).toBeVisible();
+  await expect(panel.getByText("0.88% less received", { exact: true })).toBeVisible();
   const boxes = await page.locator(".venue-card").evaluateAll((cards) =>
     cards.map((card) => {
       const rect = card.getBoundingClientRect();
@@ -109,7 +105,9 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   const beforeFee = await feePosition();
   if (viewport.width >= 600) await feeButton.press("Enter");
   else await feeButton.tap();
-  await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toBeFocused();
+  const feeInput = page.getByRole("dialog").getByLabel("Your taker fee (%)");
+  await expect(feeInput).toBeFocused();
+  await expect(feeInput).toHaveValue("0.9");
   await saveOpenFee(page, "0.1");
   await expect(feeButton).toHaveText("Assumed fee 0.1%");
   await expect(feeButton).toBeFocused();
@@ -204,7 +202,7 @@ test("keeps DEX expiry after refreshing Coinbase during a pending approval", asy
   await fixture(page);
   const estimateRefresh = deferred<undefined>();
   let holdEstimate = false;
-  await mockCoinbase(page, "99.9", "100", async () => {
+  await mockCoinbase(page, "99.9", async () => {
     if (holdEstimate) await estimateRefresh.promise;
   });
   const release = deferred<string>();
@@ -296,7 +294,7 @@ test("counts down to the scheduled Coinbase refresh and updates the price in pla
   const refresh = panel.getByRole("button", { name: "Refresh estimate" });
   const timer = panel.getByRole("timer", { name: "Coinbase auto-refresh" });
   const rates = panel.getByRole("group", { name: "Coinbase average trade price" });
-  await expect(rates).toContainText("1 USDC = 1 USDT");
+  await expect(rates).toContainText("1 USDC = 0.991 USDT");
   await expect(timer).toHaveText("15s");
   await expect(
     panel.locator("header").getByRole("button", { name: "Refresh estimate" })
@@ -315,13 +313,13 @@ test("counts down to the scheduled Coinbase refresh and updates the price in pla
   expect(await positions()).toEqual(before);
   const pending = deferred<undefined>();
   try {
-    await mockCoinbase(page, "99.9", "99.999999", () => pending.promise);
+    await mockCoinbase(page, "99.099999", () => pending.promise);
     await page.clock.runFor(9_000);
     await expect(refresh).toBeDisabled();
-    await expect(rates).toContainText("1 USDC = 1 USDT");
+    await expect(rates).toContainText("1 USDC = 0.991 USDT");
     expect(await positions()).toEqual(before);
     pending.resolve(undefined);
-    await expect(panel).toContainText("99.999999 USDT");
+    await expect(panel).toContainText("99.099999 USDT");
     await expect(timer).toHaveText("15s");
     expect(await positions()).toEqual(before);
   } finally {

@@ -293,8 +293,9 @@ The selected DEX route and its wallet controls follow below the comparison.
 Its quoted amounts and rate remain visible in the swap form.
 The server recommendation continues to select only DEX routes.
 
-The comparison excludes gas and transfers. It uses the user's assumed Coinbase
-taker fee when set. The Coinbase card states whether the estimate includes this fee.
+The comparison excludes gas and transfers. The browser sends the default Coinbase
+taker fee unless the user saves a different rate. An explicitly empty rate omits
+the fee. The Coinbase card states whether the estimate includes a fee.
 Stale, expired, loading, mismatched, or failed quotes cannot produce a price winner
 or percentage difference.
 

@@ -19,6 +19,8 @@ const params: CompareParams = {
   slippageBps: 50,
 };
 function reply(fee: string | null = null) {
+  const feeRaw = (3900000000n * BigInt(Math.round(Number(fee) * 10_000))) / 1_000_000n;
+  const outputRaw = 3900000000n - feeRaw;
   return {
     data: {
       status: "ready",
@@ -27,13 +29,13 @@ function reply(fee: string | null = null) {
       input_symbol: "ETH",
       output_symbol: "USDC",
       input_amount: "2",
-      output_amount: fee === null ? "3900" : "3861",
+      output_amount: formatUnits(outputRaw, 6),
       input_amount_raw: "2000000000000000000",
-      output_amount_raw: fee === null ? "3900000000" : "3861000000",
+      output_amount_raw: outputRaw.toString(),
       input_decimals: 18,
       output_decimals: 6,
       fee_percent: fee,
-      fee_amount: fee === null ? null : "39",
+      fee_amount: fee === null ? null : formatUnits(feeRaw, 6),
       fee_symbol: "USDC",
       as_of: new Date().toISOString(),
       expires_at: new Date(Date.now() + 30000).toISOString(),
@@ -69,7 +71,11 @@ afterEach(() => {
 });
 
 describe("Venue price comparison", () => {
-  it("shows a before-fee estimate and an external link without wallet actions", async () => {
+  it("shows a before-fee estimate and an external link without wallet actions when the fee is cleared", async () => {
+    localStorage.setItem(
+      "compare-dex-preferences",
+      JSON.stringify({ chains: {}, coinbaseTakerFeePercent: "" })
+    );
     const view = render(VenueComparison, {
       params,
       quotes: [quote()],
@@ -232,7 +238,7 @@ describe("Venue price comparison", () => {
     await fireEvent.click(view.getByRole("button", { name: "Refresh estimate" }));
     expect(await view.findByText("Refresh failed · Previous estimate")).toBeVisible();
     expect(link).toBeVisible();
-    expect(view.getByText("1 ETH = 1950 USDC")).toBeVisible();
+    expect(view.getByText("1 ETH = 1932.45 USDC")).toBeVisible();
     expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
   });
   it("discards old requests after a trade change and cancels on invalidation", async () => {
