@@ -1,6 +1,8 @@
 <script lang="ts">
   import { comparisonStore } from "../stores/comparisonStore.svelte.js";
   import { transactionStore } from "../stores/transactionStore.svelte.js";
+  import { autoRefreshStore } from "../stores/autoRefreshStore.svelte.js";
+  import { formStore } from "../stores/formStore.svelte.js";
   import VenueComparison from "./VenueComparison.svelte";
   import QuoteCard from "./QuoteCard.svelte";
   import QuoteSimulation from "./QuoteSimulation.svelte";
@@ -41,15 +43,25 @@
       stale={comparisonStore.isStale || comparisonStore.isLoading || Boolean(comparisonStore.error)}
       dexExpiresAt={comparisonStore.expiresAt}
     >
+      {#snippet dexRefresh()}
+        <AutoRefreshIndicator
+          label="Refresh DEX quotes"
+          timerLabel="DEX auto-refresh"
+          loading={comparisonStore.isLoading}
+          disabled={!formStore.canSubmit || transactionStore.busy}
+          form="compare-form"
+        />
+      {/snippet}
       {#snippet dexStatus()}
         <div class="quote-status" role="status" aria-label="Quote loading status">
           {#if comparisonStore.isLoading}
-            <span class="spinner" aria-hidden="true"></span>
-            {comparisonStore.quotes.length ? "Refreshing quotes…" : "Loading provider prices…"}
+            {comparisonStore.quotes.length ? "Refreshing…" : "Loading provider prices…"}
           {:else if comparisonStore.isStale && !comparisonStore.error}
             Previous quote. Enter a valid trade to refresh.
-          {:else}
-            <AutoRefreshIndicator />
+          {:else if autoRefreshStore.errorMessage}
+            <span class="refresh-error">{autoRefreshStore.errorMessage}</span>
+          {:else if autoRefreshStore.paused}
+            Waiting for transaction.
           {/if}
         </div>
       {/snippet}
@@ -171,24 +183,9 @@
     gap: 0.5rem;
     font-size: 0.75rem;
   }
-  .spinner {
-    width: 1rem;
-    height: 1rem;
-    flex-shrink: 0;
-    border: 2px solid var(--border-light, #e0e0e0);
-    border-top-color: var(--text);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .spinner {
-      animation: none;
-    }
+  .refresh-error {
+    color: var(--red, #cc0000);
+    font-weight: 600;
   }
 
   .provider-list {

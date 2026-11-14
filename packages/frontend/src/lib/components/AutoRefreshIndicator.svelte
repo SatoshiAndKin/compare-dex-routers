@@ -1,61 +1,84 @@
 <script lang="ts">
-  /**
-   * AutoRefreshIndicator — shows countdown timer status for auto-refresh.
-   * Displays:
-   *   - "Refreshing in Ns" when active and counting down
-   *   - "Refreshing..." when a refresh fetch is in-flight
-   *   - "Auto-refresh paused" when paused (e.g. during a transaction)
-   *   - Nothing when inactive
-   */
   import { autoRefreshStore } from "../stores/autoRefreshStore.svelte.js";
+
+  let {
+    label,
+    timerLabel,
+    loading,
+    disabled = false,
+    form,
+    onRefresh,
+  }: {
+    label: string;
+    timerLabel: string;
+    loading: boolean;
+    disabled?: boolean;
+    form?: string;
+    onRefresh?: () => void;
+  } = $props();
 </script>
 
-{#if autoRefreshStore.active}
-  <div class="refresh-indicator" role="status" aria-live="polite">
-    <span class="refresh-countdown">
-      {#if autoRefreshStore.inFlight}
-        Refreshing...
-      {:else if autoRefreshStore.paused}
-        Auto-refresh paused
-      {:else}
-        Refreshing in {autoRefreshStore.countdown}s
-      {/if}
-    </span>
-    {#if autoRefreshStore.errorMessage}
-      <span class="refresh-status error">{autoRefreshStore.errorMessage}</span>
-    {:else if autoRefreshStore.paused}
-      <span class="refresh-status">Waiting for transaction.</span>
-    {/if}
-  </div>
-{/if}
+<div class="refresh-control">
+  <button
+    type={form ? "submit" : "button"}
+    {form}
+    aria-label={label}
+    title={label}
+    aria-disabled={loading || disabled}
+    onclick={(event) => {
+      if (loading || disabled) event.preventDefault();
+      else onRefresh?.();
+    }}
+  >
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 4v5h-5m5 0a8 8 0 1 0 0 6" />
+    </svg>
+  </button>
+  <span class="refresh-countdown" role="timer" aria-label={timerLabel}>
+    {#if loading}…
+    {:else if autoRefreshStore.paused}Paused
+    {:else if autoRefreshStore.active}{autoRefreshStore.countdown}s
+    {:else}—{/if}
+  </span>
+</div>
 
 <style>
-  .refresh-indicator {
-    font-size: 0.625rem;
-    color: var(--text-muted, #666);
-    padding: 0.25rem 0;
+  .refresh-control {
+    display: flex;
+    flex: none;
+    align-items: center;
+    color: var(--text-muted);
+  }
+  button {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
     border: 0;
     background: transparent;
-    margin: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
+    color: inherit;
   }
-
+  button:hover {
+    background: var(--bg-hover);
+  }
+  button[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: default;
+  }
   .refresh-countdown {
-    font-family: monospace;
-  }
-
-  .refresh-status {
-    font-style: italic;
-    color: var(--text-muted, #666);
-    font-size: 0.625rem;
-  }
-
-  .refresh-status.error {
-    color: var(--red, #cc0000);
-    font-weight: 600;
-    font-style: normal;
+    width: 2.5rem;
+    font: 0.6875rem monospace;
+    text-align: center;
   }
 </style>

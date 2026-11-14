@@ -240,6 +240,9 @@ test("keeps DEX expiry after refreshing Coinbase during a pending approval", asy
     await page.getByRole("button", { name: "Approve token spending" }).click();
     await expect.poll(() => waiting).toBe(true);
     const dex = page.getByRole("region", { name: "DEX router quotes" });
+    await expect(dex.getByRole("button", { name: "Refresh DEX quotes" })).toBeDisabled();
+    await expect(dex.getByRole("timer", { name: "DEX auto-refresh" })).toHaveText("Paused");
+    await expect(panel.getByRole("timer", { name: "Coinbase auto-refresh" })).toHaveText("Paused");
     await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
     const before = dexRequests;
     const refresh = panel.getByRole("button", { name: "Refresh estimate" });
@@ -268,7 +271,7 @@ test("keeps DEX expiry after refreshing Coinbase during a pending approval", asy
     await refresh.click();
     await expect(refresh).toBeDisabled();
     expect(await position()).toEqual(beforeExpiry);
-    await expect(panel.getByRole("status")).toContainText("Refreshing estimate");
+    await expect(panel.getByRole("status")).toHaveText("Refreshing…");
     await expect(tradeLink).toBeVisible();
     estimateRefresh.resolve(undefined);
     await expect(refresh).toBeEnabled();
@@ -293,9 +296,17 @@ test("counts down to the scheduled Coinbase refresh and updates the price in pla
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
   const refresh = panel.getByRole("button", { name: "Refresh estimate" });
   const timer = panel.getByRole("timer", { name: "Coinbase auto-refresh" });
+  const dex = page.getByRole("region", { name: "DEX router quotes" });
+  const dexRefresh = dex.locator("header").getByRole("button", { name: "Refresh DEX quotes" });
+  const dexTimer = dex.getByRole("timer", { name: "DEX auto-refresh" });
   const rates = panel.getByRole("group", { name: "Coinbase average trade price" });
   await expect(rates).toContainText("1 USDC = 0.991 USDT");
   await expect(timer).toHaveText("15s");
+  await expect(dexTimer).toHaveText("15s");
+  const refreshIcon = refresh.locator("svg path");
+  const iconPath = await refreshIcon.getAttribute("d");
+  expect(iconPath).toBeTruthy();
+  await expect(dexRefresh.locator("svg path")).toHaveAttribute("d", iconPath ?? "");
   await expect(
     panel.locator("header").getByRole("button", { name: "Refresh estimate" })
   ).toBeVisible();
@@ -304,18 +315,23 @@ test("counts down to the scheduled Coinbase refresh and updates the price in pla
     Promise.all([
       panel.boundingBox(),
       refresh.boundingBox(),
+      dexRefresh.boundingBox(),
+      dexTimer.boundingBox(),
+      timer.boundingBox(),
       panel.getByRole("link", { name: "Open Coinbase Advanced ↗" }).boundingBox(),
       page.locator(".quote-card").boundingBox(),
     ]);
   const before = await positions();
   await page.clock.runFor(6_000);
   await expect(timer).toHaveText("9s");
+  await expect(dexTimer).toHaveText("9s");
   expect(await positions()).toEqual(before);
   const pending = deferred<undefined>();
   try {
     await mockCoinbase(page, "99.099999", () => pending.promise);
     await page.clock.runFor(9_000);
     await expect(refresh).toBeDisabled();
+    await expect(timer).toHaveText("…");
     await expect(rates).toContainText("1 USDC = 0.991 USDT");
     expect(await positions()).toEqual(before);
     pending.resolve(undefined);

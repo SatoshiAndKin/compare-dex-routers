@@ -149,6 +149,7 @@ test("keeps precise input and output together through metadata and quote loading
   const dexControls = () =>
     dex
       .getByRole("button", { name: "About DEX prices" })
+      .or(dex.getByRole("button", { name: "Refresh DEX quotes" }))
       .or(dex.getByRole("link", { name: "Review DEX route ↓" }))
       .evaluateAll((elements) =>
         elements.map((element) => {
@@ -157,15 +158,20 @@ test("keeps precise input and output together through metadata and quote loading
         })
       );
   const controlsBeforeRefresh = await dexControls();
-  expect(controlsBeforeRefresh).toHaveLength(2);
+  expect(controlsBeforeRefresh).toHaveLength(3);
+  const refresh = dex.getByRole("button", { name: "Refresh DEX quotes" });
   const status = dex.getByRole("status", { name: "Quote loading status" });
-  await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
-  await expect(status).toHaveText("Refreshing quotes…");
+  const timer = dex.getByRole("timer", { name: "DEX auto-refresh" });
+  await refresh.click();
+  await expect(status).toHaveText("Refreshing…");
+  await expect(refresh).toBeDisabled();
+  await expect(timer).toHaveText("…");
   await expect(receive).toHaveValue(output);
   expect(await positions()).toEqual(before);
   expect(await dexControls()).toEqual(controlsBeforeRefresh);
   next.resolve(true);
-  await expect(status).toContainText("Refreshing in");
+  await expect(timer).toHaveText(/^\d+s$/);
+  await expect(refresh).toBeEnabled();
   expect(await dexControls()).toEqual(controlsBeforeRefresh);
   await expect(page.getByRole("button", { name: "Compare Quotes", exact: true })).toBeEnabled();
   await page.locator("details.provider-list summary").click();

@@ -64,8 +64,9 @@ for (const connected of [false, true]) {
     await page.locator("#sell-amount").fill("200");
     const dex = page.getByRole("region", { name: "DEX router quotes" });
     const status = dex.getByRole("status", { name: "Quote loading status" });
-    await expect(status).toHaveText("Refreshing quotes…");
-    await expect(status.locator(".spinner")).toBeVisible();
+    await expect(status).toHaveText("Refreshing…");
+    const timer = dex.getByRole("timer", { name: "DEX auto-refresh" });
+    await expect(timer).toHaveText("…");
     await requested;
     await expect(amount).toHaveValue("99.98");
     await expect(providers).toHaveAttribute("open", "");
@@ -78,8 +79,7 @@ for (const connected of [false, true]) {
     }
     expect(await position()).toEqual(before);
     release.resolve(true);
-    await expect(status.locator(".spinner")).toHaveCount(0);
-    await expect(status).toContainText("Refreshing in");
+    await expect(timer).toHaveText(/^\d+s$/);
     await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Select curve" })).toContainText("200 USDC");
     await expect(providers).toHaveAttribute("open", "");
@@ -240,7 +240,7 @@ test("keeps unfunded provider prices visible until a funded refresh can simulate
   funded = true;
   await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
   await expect(page.getByRole("status", { name: "Quote loading status" })).toHaveText(
-    "Refreshing quotes…"
+    "Refreshing…"
   );
   expect(await position()).toEqual(before);
   await expect(card).toContainText("Not simulated.");

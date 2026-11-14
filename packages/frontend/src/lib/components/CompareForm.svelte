@@ -299,7 +299,7 @@
   }
 </script>
 
-<form class="compare-form" aria-label="Swap" onsubmit={handleSubmit} novalidate>
+<form id="compare-form" class="compare-form" aria-label="Swap" onsubmit={handleSubmit} novalidate>
   <AmountFields>
     {#snippet chain()}<ChainSelector />{/snippet}
     {#snippet sellToken()}<TokenInput type="from" />{/snippet}

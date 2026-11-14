@@ -4,10 +4,10 @@
   import { apiClient } from "../api.js";
   import type { components } from "../../generated/api-types.js";
   import type { CompareParams, Quote } from "../stores/comparisonStore.svelte.js";
-  import { autoRefreshStore } from "../stores/autoRefreshStore.svelte.js";
   import { preferencesStore } from "../stores/preferencesStore.svelte.js";
   import { settingsStore } from "../stores/settingsStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
+  import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
   import InfoPopover from "./InfoPopover.svelte";
   import TokenSymbol from "./TokenSymbol.svelte";
 
@@ -16,6 +16,7 @@
     quotes,
     stale,
     dexExpiresAt,
+    dexRefresh,
     dexStatus,
     dex,
   }: {
@@ -23,6 +24,7 @@
     quotes: Quote[];
     stale: boolean;
     dexExpiresAt: number;
+    dexRefresh?: Snippet;
     dexStatus?: Snippet;
     dex?: Snippet;
   } = $props();
@@ -214,6 +216,7 @@
               {#if comparison?.winner === "dex" || comparison?.winner === "tie"}{@render winnerStar()}{/if}
             </span>
           </h3>
+          {@render dexRefresh?.()}
           <InfoPopover label="About DEX prices">
             <strong>Best DEX price before gas</strong>
             <span
@@ -264,93 +267,64 @@
       {#if params}
         <section aria-label="Coinbase Advanced estimate" class="venue-card coinbase-estimate">
           <header class="venue-heading">
-            <div class="coinbase-heading-row">
-              <h3 class="venue-title">
-                <span>Coinbase Advanced</span>
-                <span class="winner-slot">
-                  {#if comparison?.winner === "coinbase" || comparison?.winner === "tie"}{@render winnerStar()}{/if}
-                </span>
-              </h3>
-              <div class="estimate-refresh">
-                <button
-                  type="button"
-                  class="estimate-refresh-button"
-                  aria-label="Refresh estimate"
-                  title="Refresh Coinbase estimate"
-                  aria-disabled={loading}
-                  onclick={() => {
-                    if (!loading) revision++;
-                  }}
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M20 4v5h-5m5 0a8 8 0 1 0 0 6" />
-                  </svg>
-                </button>
-                <span class="estimate-countdown" role="timer" aria-label="Coinbase auto-refresh">
-                  {#if loading}…
-                  {:else if autoRefreshStore.paused}Paused
-                  {:else if autoRefreshStore.active}{autoRefreshStore.countdown}s
-                  {:else}—{/if}
-                </span>
-              </div>
-              <InfoPopover label="About the Coinbase estimate">
-                <strong>Mobile trading not verified</strong>
-                <span>
-                  Coinbase Advanced is part of the Coinbase iPhone and Android app.
-                  {#if result}
-                    This order book does not confirm that your account can {result.side === "BUY"
-                      ? "buy"
-                      : "sell"}
-                    {result.side === "BUY" ? result.output_symbol : result.input_symbol} in the {result.product_id}
-                    market.
-                  {/if}
-                  Check availability in your app before moving funds.
-                </span>
-                <a
-                  href="https://help.coinbase.com/en/pro/managing-my-account/account-information/transitioning-to-advanced-trade"
-                  target="_blank"
-                  rel="noopener noreferrer">About Advanced in the Coinbase app ↗</a
-                >
+            <h3 class="venue-title">
+              <span>Coinbase Advanced</span>
+              <span class="winner-slot">
+                {#if comparison?.winner === "coinbase" || comparison?.winner === "tie"}{@render winnerStar()}{/if}
+              </span>
+            </h3>
+            <AutoRefreshIndicator
+              label="Refresh estimate"
+              timerLabel="Coinbase auto-refresh"
+              {loading}
+              onRefresh={() => revision++}
+            />
+            <InfoPopover label="About the Coinbase estimate">
+              <strong>Mobile trading not verified</strong>
+              <span>
+                Coinbase Advanced is part of the Coinbase iPhone and Android app.
                 {#if result}
-                  <span>
-                    {result.fee_percent === null
-                      ? "This estimate excludes trading fees."
-                      : `Includes an assumed ${result.fee_percent}% fee (${result.fee_amount} ${result.fee_symbol}).`}
-                  </span>
-                  {#if result.limit_only}
-                    <span
-                      >This market accepts limit orders only. The estimate assumes a limit price
-                      that takes available liquidity.</span
-                    >
-                  {/if}
+                  This order book does not confirm that your account can {result.side === "BUY"
+                    ? "buy"
+                    : "sell"}
+                  {result.side === "BUY" ? result.output_symbol : result.input_symbol} in the {result.product_id}
+                  market.
+                {/if}
+                Check availability in your app before moving funds.
+              </span>
+              <a
+                href="https://help.coinbase.com/en/pro/managing-my-account/account-information/transitioning-to-advanced-trade"
+                target="_blank"
+                rel="noopener noreferrer">About Advanced in the Coinbase app ↗</a
+              >
+              {#if result}
+                <span>
+                  {result.fee_percent === null
+                    ? "This estimate excludes trading fees."
+                    : `Includes an assumed ${result.fee_percent}% fee (${result.fee_amount} ${result.fee_symbol}).`}
+                </span>
+                {#if result.limit_only}
                   <span
-                    >{result.product_id} · Order book
-                    <time datetime={result.as_of}
-                      >{new Date(result.as_of).toLocaleTimeString()}</time
-                    ></span
+                    >This market accepts limit orders only. The estimate assumes a limit price that
+                    takes available liquidity.</span
                   >
-                  {#if rate && inverseRate}<span
-                      >{params.mode === "targetOut"
-                        ? `1 ${result.input_symbol} = ${rate} ${result.output_symbol}`
-                        : `1 ${result.output_symbol} = ${inverseRate} ${result.input_symbol}`}</span
-                    >{/if}
                 {/if}
                 <span
-                  >Assumes funds are already on Coinbase. Excludes deposits, withdrawals, network
-                  costs, and wrapping.</span
+                  >{result.product_id} · Order book
+                  <time datetime={result.as_of}>{new Date(result.as_of).toLocaleTimeString()}</time
+                  ></span
                 >
-              </InfoPopover>
-            </div>
+                {#if rate && inverseRate}<span
+                    >{params.mode === "targetOut"
+                      ? `1 ${result.input_symbol} = ${rate} ${result.output_symbol}`
+                      : `1 ${result.output_symbol} = ${inverseRate} ${result.input_symbol}`}</span
+                  >{/if}
+              {/if}
+              <span
+                >Assumes funds are already on Coinbase. Excludes deposits, withdrawals, network
+                costs, and wrapping.</span
+              >
+            </InfoPopover>
           </header>
           <div class="coinbase-status" class:has-estimate={result !== null}>
             {#if result}
@@ -371,7 +345,7 @@
             {/if}
             <span role="status">
               {#if loading}
-                {result ? "Refreshing estimate…" : error || "Loading order book…"}
+                {result ? "Refreshing…" : error || "Loading order book…"}
               {:else if error}
                 {result ? "Refresh failed · Previous estimate" : error}
               {:else if expired}
@@ -479,16 +453,12 @@
     background: var(--bg-muted);
     overflow-wrap: anywhere;
   }
-  .venue-heading,
-  .coinbase-heading-row {
+  .venue-heading {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
     min-height: 44px;
-  }
-  .coinbase-heading-row {
-    width: 100%;
   }
   .venue-title {
     display: flex;
@@ -504,37 +474,8 @@
     flex: 0 0 1.125rem;
     height: 1em;
   }
-  .coinbase-heading-row .venue-title > :first-child {
+  .venue-title > :first-child {
     min-width: 0;
-  }
-  .estimate-refresh {
-    display: flex;
-    flex: none;
-    align-items: center;
-    margin-left: auto;
-  }
-  .estimate-refresh-button {
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: var(--text-muted);
-  }
-  .estimate-refresh-button:hover {
-    background: var(--bg-hover);
-  }
-  .estimate-refresh-button[aria-disabled="true"] {
-    opacity: 0.5;
-    cursor: wait;
-  }
-  .estimate-countdown {
-    width: 2.25rem;
-    color: var(--text-muted);
-    font: 0.6875rem monospace;
-    text-align: center;
   }
   h3 {
     font-size: 0.9375rem;
