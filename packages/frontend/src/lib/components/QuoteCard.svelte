@@ -121,92 +121,76 @@
       <!-- Expandable details -->
       <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} {usdConversion} />
 
-      <div class="execution-status">
-        <!-- Transaction actions -->
-        {#if !walletStore.isConnected}
-          <div class="tx-actions">
-            <button
-              type="button"
-              class="tx-btn"
-              aria-label={walletStore.isConnecting
-                ? "Connecting wallet for selected route"
-                : "Connect wallet for selected route"}
-              disabled={walletStore.isConnecting}
-              onclick={(event) => {
-                event.currentTarget.focus();
-                walletStore.requestMenu();
-              }}
-            >
-              {walletStore.isConnecting ? "Connecting…" : "Connect wallet"}
-            </button>
-          </div>
-        {:else if needsApproval || canSwap}
-          <div class="tx-actions">
-            {#if needsApproval}
-              <button
-                type="button"
-                class="tx-btn approve-btn"
-                class:confirmed={approveConfirmed}
-                disabled={transactionStore.busy ||
-                  !validContext ||
-                  walletCheck?.status !== "approval" ||
-                  approvePending ||
-                  approveConfirmed}
-                aria-label={approveConfirmed
-                  ? "Already approved"
-                  : approvePending
-                    ? "Approving..."
-                    : "Approve token spending"}
-                onclick={handleApprove}
-              >
-                {#if approveConfirmed}
-                  Approved ✓
-                {:else if approvePending}
-                  Approving...
-                {:else}
-                  Approve
-                {/if}
-              </button>
-            {/if}
+      {#if walletStore.isConnected}
+        <div class="execution-status">
+          {#if needsApproval || canSwap}
+            <div class="tx-actions">
+              {#if needsApproval}
+                <button
+                  type="button"
+                  class="tx-btn approve-btn"
+                  class:confirmed={approveConfirmed}
+                  disabled={transactionStore.busy ||
+                    !validContext ||
+                    walletCheck?.status !== "approval" ||
+                    approvePending ||
+                    approveConfirmed}
+                  aria-label={approveConfirmed
+                    ? "Already approved"
+                    : approvePending
+                      ? "Approving..."
+                      : "Approve token spending"}
+                  onclick={handleApprove}
+                >
+                  {#if approveConfirmed}
+                    Approved ✓
+                  {:else if approvePending}
+                    Approving...
+                  {:else}
+                    Approve
+                  {/if}
+                </button>
+              {/if}
 
-            {#if canSwap}
-              <button
-                type="button"
-                class="tx-btn swap-btn"
-                disabled={transactionStore.busy ||
-                  !validContext ||
-                  walletCheck?.status !== "ready" ||
-                  (needsApproval && !approveConfirmed) ||
-                  swapPending}
-                aria-label={swapPending ? "Swap in progress..." : "Execute swap"}
-                onclick={handleSwap}
-              >
-                {#if swapPending}
-                  Swapping...
-                {:else}
-                  Swap
-                {/if}
-              </button>
-            {/if}
+              {#if canSwap}
+                <button
+                  type="button"
+                  class="tx-btn swap-btn"
+                  disabled={transactionStore.busy ||
+                    !validContext ||
+                    walletCheck?.status !== "ready" ||
+                    (needsApproval && !approveConfirmed) ||
+                    swapPending}
+                  aria-label={swapPending ? "Swap in progress..." : "Execute swap"}
+                  onclick={handleSwap}
+                >
+                  {#if swapPending}
+                    Swapping...
+                  {:else}
+                    Swap
+                  {/if}
+                </button>
+              {/if}
 
-            <!-- Transaction status indicator -->
-            {#if approveStatus === "failed"}
-              <span class="tx-status error" role="alert">Approve failed</span>
-            {:else if swapStatus === "confirmed"}
-              <div class="tx-status success" role="status">
-                Swap confirmed ✓
-                {#if swapTransaction}<TransactionLink transaction={swapTransaction} />{/if}
-              </div>
-            {:else if swapStatus === "failed"}
-              <span class="tx-status error" role="alert">Swap failed</span>
-            {/if}
-          </div>
-        {/if}
-        {#if walletStore.isConnected && quote.execution}<p class="wallet-check" role="status">
-            {walletCheck?.message ?? ""}
-          </p>
-        {:else}<QuoteSimulation {quote} balanceOnly />{/if}
-      </div>
+              <!-- Transaction status indicator -->
+              {#if approveStatus === "failed"}
+                <span class="tx-status error" role="alert">Approve failed</span>
+              {:else if swapStatus === "confirmed"}
+                <div class="tx-status success" role="status">
+                  Swap confirmed ✓
+                  {#if swapTransaction}<TransactionLink transaction={swapTransaction} />{/if}
+                </div>
+              {:else if swapStatus === "failed"}
+                <span class="tx-status error" role="alert">Swap failed</span>
+              {/if}
+            </div>
+          {/if}
+          {#if quote.execution}<p class="wallet-check" role="status">
+              {walletCheck?.message ?? ""}
+            </p>
+          {:else}<QuoteSimulation {quote} balanceOnly />{/if}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

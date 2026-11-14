@@ -42,7 +42,10 @@
     <button
       type="button"
       class="connect-btn"
-      onclick={onConnectClick}
+      onclick={(event) => {
+        event.currentTarget.focus();
+        onConnectClick?.();
+      }}
       disabled={walletStore.isConnecting}
       aria-label={walletStore.isConnecting ? "Connecting wallet..." : "Connect wallet"}
     >
