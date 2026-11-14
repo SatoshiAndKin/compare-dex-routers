@@ -18,7 +18,13 @@
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { canQuoteWallet } from "../quote-preview.js";
   import { exactAmount, isNativeToken } from "../native.js";
-  import { gasMargin, transactionFees, hex, readBalance } from "../wallet-rpc.js";
+  import {
+    gasMargin,
+    transactionFees,
+    hex,
+    parseWalletChainId,
+    readBalance,
+  } from "../wallet-rpc.js";
   import ChainSelector from "./ChainSelector.svelte";
   import TokenInput from "./TokenInput.svelte";
   import AmountFields from "./AmountFields.svelte";
@@ -217,8 +223,7 @@
           provider.request({ method: "eth_accounts" }),
         ]);
         if (
-          typeof chain !== "string" ||
-          Number(BigInt(chain)) !== chainId ||
+          parseWalletChainId(chain) !== chainId ||
           !Array.isArray(accounts) ||
           accounts[0]?.toLowerCase() !== account.toLowerCase()
         )

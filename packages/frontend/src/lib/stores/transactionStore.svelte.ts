@@ -4,6 +4,7 @@ import {
   gasMargin,
   transactionFees,
   hex,
+  parseWalletChainId,
   type WalletTransaction,
 } from "../wallet-rpc.js";
 import { NATIVE_TOKEN, isNativeToken } from "../native.js";
@@ -117,8 +118,7 @@ class TransactionStore {
       (requireFresh && !comparisonStore.isFresh(quote)) ||
       !this.matches(quote) ||
       walletStore.provider !== provider ||
-      typeof chain !== "string" ||
-      Number(BigInt(chain)) !== quote.chainId ||
+      parseWalletChainId(chain) !== quote.chainId ||
       !Array.isArray(accounts) ||
       typeof accounts[0] !== "string" ||
       accounts[0].toLowerCase() !== quote.sender?.toLowerCase()

@@ -5,6 +5,7 @@
  */
 
 import type { TransactionReference } from "../explorers.js";
+import { parseWalletChainId } from "../wallet-rpc.js";
 
 // ---------------------------------------------------------------------------
 // EIP-6963 / EIP-1193 types (defined locally — no cross-package import)
@@ -231,9 +232,8 @@ class WalletStore {
       }
 
       // Get current chain ID from provider
-      const chainIdHex = (await provider.request({ method: "eth_chainId" })) as string;
-      const chainId = parseInt(chainIdHex, 16);
-      if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("Invalid wallet chain");
+      const chainId = parseWalletChainId(await provider.request({ method: "eth_chainId" }));
+      if (chainId === null) throw new Error("Invalid wallet chain");
       if (
         sequence !== this.connectionSequence ||
         (silent && (this.isConnected || this.isConnecting))
@@ -264,8 +264,7 @@ class WalletStore {
 
       // Set up chainChanged listener
       this._chainChangedHandler = (...args: unknown[]) => {
-        const newChainId = args[0] as string;
-        this.chainId = parseInt(String(newChainId), 16);
+        this.chainId = parseWalletChainId(args[0]);
       };
 
       if (provider.on) {
@@ -304,8 +303,7 @@ class WalletStore {
       if (!this.provider) return;
 
       // Get current chain - ENS only works on mainnet
-      const chainIdHex = (await this.provider.request({ method: "eth_chainId" })) as string;
-      const chainId = parseInt(chainIdHex, 16);
+      const chainId = parseWalletChainId(await this.provider.request({ method: "eth_chainId" }));
       if (chainId !== 1) return;
 
       // Call the ENS universal resolver's reverse() function
