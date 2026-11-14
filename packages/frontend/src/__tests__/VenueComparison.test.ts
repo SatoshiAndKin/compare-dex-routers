@@ -236,7 +236,7 @@ describe("Venue price comparison", () => {
       data: { status: "unavailable", reason: "Coinbase market data is unavailable." },
     });
     await fireEvent.click(view.getByRole("button", { name: "Refresh estimate" }));
-    expect(await view.findByText("Refresh failed · Previous estimate")).toBeVisible();
+    expect(await view.findByText("Refresh failed", { exact: true })).toBeVisible();
     expect(link).toBeVisible();
     expect(view.getByText("1 ETH = 1932.45 USDC")).toBeVisible();
     expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();

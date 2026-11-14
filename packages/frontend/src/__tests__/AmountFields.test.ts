@@ -37,12 +37,13 @@ describe("AmountFields", () => {
       const receive = view.getByLabelText("YOU RECEIVE USDT") as HTMLInputElement;
       expect(sell.value).toBe(quote.input_amount);
       expect(receive.value).toBe(quote.output_amount);
+      expect(view.queryByText("Estimate")).toBeNull();
       comparisonStore.isLoading = true;
       comparisonStore.isStale = true;
       await tick();
       expect(sell.value).toBe(quote.input_amount);
       expect(receive.value).toBe(quote.output_amount);
-      expect(view.getByText("Previous estimate")).toBeVisible();
+      expect(view.queryByText("Previous estimate")).toBeNull();
       comparisonStore.isLoading = false;
       comparisonStore.isStale = false;
       comparisonStore.quotes = [
@@ -71,7 +72,6 @@ describe("AmountFields", () => {
     comparisonStore.recommendation = "0x";
     const view = render(AmountFields);
     expect((view.getByLabelText("YOU RECEIVE USDC") as HTMLInputElement).value).toBe("");
-    expect(view.queryByText("Estimate")).toBeNull();
   });
 
   it("renders sell and receive inputs", () => {

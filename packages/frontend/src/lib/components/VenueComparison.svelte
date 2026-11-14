@@ -347,7 +347,7 @@
               {#if loading}
                 {result ? "Refreshing…" : error || "Loading order book…"}
               {:else if error}
-                {result ? "Refresh failed · Previous estimate" : error}
+                {result ? "Refresh failed" : error}
               {:else if expired}
                 Estimate expired.
               {:else if result && dexExpired && !stale}
