@@ -35,22 +35,24 @@
 
 {#if comparisonStore.hasResults}
   <div class="quote-results" aria-busy={comparisonStore.isLoading}>
-    <div class="quote-status" role="status" aria-label="Quote loading status">
-      {#if comparisonStore.isLoading}
-        <span class="spinner" aria-hidden="true"></span>
-        {comparisonStore.quotes.length ? "Refreshing quotes…" : "Loading provider prices…"}
-      {:else if comparisonStore.isStale && !comparisonStore.error}
-        Previous quote. Enter a valid trade to refresh.
-      {:else}
-        <AutoRefreshIndicator />
-      {/if}
-    </div>
     <VenueComparison
       params={comparisonStore.params}
       quotes={comparisonStore.quotes}
       stale={comparisonStore.isStale || comparisonStore.isLoading || Boolean(comparisonStore.error)}
       dexExpiresAt={comparisonStore.expiresAt}
     >
+      {#snippet dexStatus()}
+        <div class="quote-status" role="status" aria-label="Quote loading status">
+          {#if comparisonStore.isLoading}
+            <span class="spinner" aria-hidden="true"></span>
+            {comparisonStore.quotes.length ? "Refreshing quotes…" : "Loading provider prices…"}
+          {:else if comparisonStore.isStale && !comparisonStore.error}
+            Previous quote. Enter a valid trade to refresh.
+          {:else}
+            <AutoRefreshIndicator />
+          {/if}
+        </div>
+      {/snippet}
       {#snippet dex()}
         <div class="quote-body">
           {#if comparisonStore.activeQuote}
@@ -162,7 +164,8 @@
   }
 
   .quote-status {
-    min-height: 2rem;
+    min-height: 44px;
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     gap: 0.5rem;

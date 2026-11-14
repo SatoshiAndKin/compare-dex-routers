@@ -16,12 +16,14 @@
     quotes,
     stale,
     dexExpiresAt,
+    dexStatus,
     dex,
   }: {
     params: CompareParams | null;
     quotes: Quote[];
     stale: boolean;
     dexExpiresAt: number;
+    dexStatus?: Snippet;
     dex?: Snippet;
   } = $props();
   type ReadyEstimate = Extract<components["schemas"]["CoinbaseEstimate"], { status: "ready" }>;
@@ -229,6 +231,7 @@
             {/if}
           </InfoPopover>
         </header>
+        {@render dexStatus?.()}
         {#if bestDex}
           {@render amounts(
             bestDex.input_amount,

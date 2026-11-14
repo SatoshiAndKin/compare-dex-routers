@@ -60,7 +60,8 @@ for (const connected of [false, true]) {
     });
     const requested = page.waitForRequest((request) => request.url().includes("/api/quote?"));
     await page.locator("#sell-amount").fill("200");
-    const status = page.getByRole("status", { name: "Quote loading status" });
+    const dex = page.getByRole("region", { name: "DEX router quotes" });
+    const status = dex.getByRole("status", { name: "Quote loading status" });
     await expect(status).toHaveText("Refreshing quotes…");
     await expect(status.locator(".spinner")).toBeVisible();
     await requested;

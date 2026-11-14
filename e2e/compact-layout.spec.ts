@@ -130,13 +130,27 @@ test("keeps precise input and output together through metadata and quote loading
     await next.promise;
     await route.fallback();
   });
+  const dexControls = () =>
+    dex
+      .getByRole("button", { name: "About DEX prices" })
+      .or(dex.getByRole("link", { name: "Review DEX route ↓" }))
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return [rect.left, rect.top + window.scrollY, rect.width, rect.height];
+        })
+      );
+  const controlsBeforeRefresh = await dexControls();
+  expect(controlsBeforeRefresh).toHaveLength(2);
+  const status = dex.getByRole("status", { name: "Quote loading status" });
   await page.getByRole("button", { name: "Compare Quotes", exact: true }).click();
-  await expect(page.getByRole("status", { name: "Quote loading status" })).toContainText(
-    "Refreshing quotes"
-  );
+  await expect(status).toHaveText("Refreshing quotes…");
   await expect(receive).toHaveValue(output);
   expect(await positions()).toEqual(before);
+  expect(await dexControls()).toEqual(controlsBeforeRefresh);
   next.resolve(true);
+  await expect(status).toContainText("Refreshing in");
+  expect(await dexControls()).toEqual(controlsBeforeRefresh);
   await expect(page.getByRole("button", { name: "Compare Quotes", exact: true })).toBeEnabled();
   await page.locator("details.provider-list summary").click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
