@@ -162,6 +162,12 @@ Interactive web UI.
 
 Copy `env.example` to `.env` and fill in your keys.
 
+To show **WalletConnect** in **Connect Wallet**, set `WALLETCONNECT_PROJECT_ID`
+on the API server to this app's [Reown project ID](https://dashboard.reown.com/).
+If the project uses an origin allowlist, add the URL where users open the app.
+For the Tank deployment, set the variable in the protected API environment
+before deploying. The browser receives the project ID from `/api/config`.
+
 | Variable          | Required    | Description                                     |
 | ----------------- | ----------- | ----------------------------------------------- |
 | `ALCHEMY_API_KEY` | conditional | Required only for chains without `RPC_URL_<id>` |
