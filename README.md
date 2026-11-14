@@ -2,7 +2,8 @@
 
 # compare-dex-routers
 
-Compare all [Spandex](https://www.spandex.exchange/) providers, including Curve, in one ranked list and execute a selected route through your wallet.
+Compare DEX quotes in one ranked list and execute a selected route through your wallet.
+The [Spandex](https://www.spandex.exchange/) SDK supplies quotes from providers including Curve.
 
 Production: https://compare-dex-routers.shorthair-fir.ts.net/ (Tailscale required).
 The API base URL is `https://compare-dex-routers.shorthair-fir.ts.net/api`.
