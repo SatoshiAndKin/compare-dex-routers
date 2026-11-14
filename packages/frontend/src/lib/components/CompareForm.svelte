@@ -299,13 +299,9 @@
   }
 </script>
 
-<form class="compare-form" onsubmit={handleSubmit} novalidate>
-  <div class="chain-section">
-    <h2>Swap</h2>
-    <ChainSelector />
-  </div>
-
+<form class="compare-form" aria-label="Swap" onsubmit={handleSubmit} novalidate>
   <AmountFields>
+    {#snippet chain()}<ChainSelector />{/snippet}
     {#snippet sellToken()}<TokenInput type="from" />{/snippet}
     {#snippet buyToken()}<TokenInput type="to" />{/snippet}
     {#snippet settings()}<SlippagePresets />{/snippet}
@@ -386,15 +382,6 @@
   .swap-tokens:hover:not(:disabled) {
     color: var(--text);
     background: var(--bg-hover);
-  }
-  .chain-section {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-  .chain-section h2 {
-    font-size: 1.125rem;
   }
   button.balance-display {
     border: 0;

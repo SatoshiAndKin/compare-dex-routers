@@ -10,6 +10,7 @@
   import InfoPopover from "./InfoPopover.svelte";
 
   let {
+    chain,
     sellToken,
     buyToken,
     reverse,
@@ -17,6 +18,7 @@
     buyBalance,
     settings,
   }: {
+    chain?: Snippet;
     sellToken?: Snippet;
     buyToken?: Snippet;
     reverse?: Snippet<[() => void]>;
@@ -174,29 +176,33 @@
 </script>
 
 <div class="amount-fields">
-  <div class="mode-toggle-row">
-    <button
-      class={`mode-btn${isExactIn ? " active" : ""}`}
-      type="button"
-      onclick={() => setMode("exactIn")}
-      aria-pressed={isExactIn}
-    >
-      Exact Input
-    </button>
-    <button
-      class={`mode-btn${!isExactIn ? " active" : ""}`}
-      type="button"
-      onclick={() => setMode("targetOut")}
-      aria-pressed={!isExactIn}
-    >
-      Exact Output
-    </button>
+  <div class="trade-options">
+    <div class="mode-toggle-row">
+      <button
+        class={`mode-btn${isExactIn ? " active" : ""}`}
+        type="button"
+        onclick={() => setMode("exactIn")}
+        aria-pressed={isExactIn}
+      >
+        Exact Input
+      </button>
+      <button
+        class={`mode-btn${!isExactIn ? " active" : ""}`}
+        type="button"
+        onclick={() => setMode("targetOut")}
+        aria-pressed={!isExactIn}
+      >
+        Exact Output
+      </button>
+    </div>
+    {@render chain?.()}
   </div>
 
   <div class="token-pair">
     <div class="amount-group" class:active={isExactIn} class:computed={!isExactIn}>
       <div class="amount-heading">
         <label class="amount-label" for="sell-amount">Sell</label>
+        {#if !isExactIn && estimateStatus}<span class="amount-meta">{estimateStatus}</span>{/if}
         {@render sellBalance?.()}
       </div>
       <div class="amount-token">
@@ -217,9 +223,6 @@
           aria-label={sellLabel}
         />
       </div>
-      <div class="amount-meta">
-        <span>{isExactIn ? "" : estimateStatus}</span>
-      </div>
     </div>
 
     {@render reverse?.(reverseTrade)}
@@ -227,6 +230,7 @@
     <div class="amount-group" class:active={!isExactIn} class:computed={isExactIn}>
       <div class="amount-heading">
         <label class="amount-label" for="receive-amount">Buy</label>
+        {#if isExactIn && estimateStatus}<span class="amount-meta">{estimateStatus}</span>{/if}
         {@render buyBalance?.()}
       </div>
       <div class="amount-token">
@@ -247,14 +251,13 @@
           aria-label={receiveLabel}
         />
       </div>
-      <div class="amount-meta"><span>{!isExactIn ? "" : estimateStatus}</span></div>
     </div>
   </div>
   {#if settings}
     <div class="swap-summary">
       {@render settings()}
       <div class="summary-row exchange-rate">
-        <span>Exchange rate</span>
+        <span>Rate</span>
         <strong>{exchangeRate ? `≈ ${exchangeRate}` : "—"}</strong>
         {#if quote && exchangeRate}
           <InfoPopover label="Exchange rate details">
@@ -262,7 +265,9 @@
           </InfoPopover>
         {/if}
       </div>
-      <div class="summary-row"><span>DEX route</span><strong>{quote?.provider ?? "—"}</strong></div>
+      <div class="summary-row summary-route">
+        <span>DEX route</span><strong>{quote?.provider ?? "—"}</strong>
+      </div>
     </div>
   {/if}
 </div>
@@ -270,10 +275,24 @@
 <style>
   .amount-fields {
     display: grid;
-    gap: 0.5rem;
+    gap: 0.25rem;
+  }
+  .trade-options {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 11rem);
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.25rem;
   }
   .swap-summary {
+    position: relative;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 0.75rem;
     font-size: 0.875rem;
+  }
+  .summary-route {
+    grid-column: 1 / -1;
   }
   .summary-row {
     display: grid;
@@ -289,10 +308,27 @@
     text-align: right;
   }
   .exchange-rate {
-    position: relative;
-    grid-template-columns: max-content minmax(0, 1fr) 44px;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-rows: 1fr 1fr;
+    gap: 0 0.125rem;
     align-items: center;
     min-height: 44px;
+  }
+  .exchange-rate > span {
+    align-self: end;
+    font-size: 0.75rem;
+    line-height: 1.25;
+  }
+  .exchange-rate strong {
+    align-self: start;
+    overflow: hidden;
+    text-align: start;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .exchange-rate > :global(.info-control) {
+    grid-column: 2;
+    grid-row: 1 / -1;
   }
   .token-pair {
     display: grid;
@@ -302,9 +338,8 @@
 
   .amount-group {
     display: grid;
-    grid-template-rows: auto auto auto 1.125rem;
     min-width: 0;
-    padding: 0.375rem 0.625rem;
+    padding: 0.125rem 0.625rem;
     background: var(--bg-muted);
     border: 1px solid var(--border-light);
   }
@@ -318,13 +353,19 @@
   .amount-heading {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 0.375rem;
     min-height: 1.5rem;
+  }
+  .amount-heading > :global(.balance-display) {
+    min-width: 0;
+    margin-inline-start: auto;
+    overflow-wrap: anywhere;
   }
 
   .amount-label {
     font-size: 0.875rem;
     color: var(--text-muted);
+    margin: 0;
   }
 
   .amount-token {
@@ -377,7 +418,7 @@
   }
 
   .mode-btn {
-    padding: 0.25rem 0.65rem;
+    padding: 0.25rem 0.375rem;
     background: transparent;
     border: 0;
     cursor: pointer;
@@ -405,5 +446,10 @@
     outline-offset: 1px;
     z-index: 1;
     position: relative;
+  }
+  @media (max-width: 374px) {
+    .trade-options {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 </style>

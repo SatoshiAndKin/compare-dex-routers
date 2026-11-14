@@ -147,11 +147,11 @@
 {/if}
 
 <style>
-  .quote-body {
-    min-height: 9rem;
+  .quote-body,
+  .quote-placeholder {
+    min-height: 7rem;
   }
   .quote-placeholder {
-    min-height: 9rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -164,12 +164,11 @@
   }
 
   .quote-status {
-    min-height: 44px;
+    min-height: 2.25rem;
     color: var(--text-muted);
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.25rem 0;
     font-size: 0.75rem;
   }
   .spinner {
