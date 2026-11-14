@@ -4,6 +4,7 @@ import SettingsModal from "../lib/components/SettingsModal.svelte";
 import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
 import { tokenListStore } from "../lib/stores/tokenListStore.svelte.js";
 import { formStore } from "../lib/stores/formStore.svelte.js";
+import { loadPreferences } from "../lib/stores/preferencesStore.svelte.js";
 
 // ---------------------------------------------------------------------------
 // Mock API client (tokenListStore uses it)
@@ -80,6 +81,33 @@ describe("SettingsModal", () => {
       settingsStore.openSettings();
       expect(await view.findByLabelText("Your taker fee (%)")).toHaveValue(fee);
     }
+  });
+
+  it("saves the DeFiLlama threshold beside existing browser preferences", async () => {
+    const saved = { chains: { 1: { slippageBps: 75 } }, coinbaseTakerFeePercent: "0.6" };
+    localStorage.setItem("compare-dex-preferences", JSON.stringify(saved));
+    settingsStore.openSettings();
+    const view = render(SettingsModal);
+    const label = "DeFiLlama warning threshold (%)";
+    const input = view.getByLabelText(label);
+    const save = view.getByRole("button", { name: "Save threshold" });
+    expect(input).toHaveValue("0.50");
+
+    for (const invalid of ["", "-1", "100.01", "0.005"]) {
+      await fireEvent.input(input, { target: { value: invalid } });
+      await fireEvent.click(save);
+      expect(view.getByRole("alert")).toHaveTextContent("Enter 0 to 100 percent");
+      expect(loadPreferences()).toEqual(saved);
+    }
+
+    await fireEvent.input(input, { target: { value: ".75" } });
+    await fireEvent.click(save);
+    expect(view.getByText("Warning threshold saved.")).toBeVisible();
+    expect(loadPreferences()).toEqual({ ...saved, defillamaWarningBps: 75 });
+    await fireEvent.click(view.getByRole("button", { name: "Close settings" }));
+    formStore.chainId = 8453;
+    settingsStore.openSettings();
+    expect(await view.findByLabelText(label)).toHaveValue("0.75");
   });
 
   // -------------------------------------------------------------------------

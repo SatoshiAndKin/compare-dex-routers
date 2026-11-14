@@ -1,5 +1,5 @@
 /**
- * Preferences store — persists per-chain token selections and slippage to localStorage.
+ * Preferences store — persists browser settings and per-chain trade choices to localStorage.
  * Ported from src/client/url-sync.ts for Svelte 5.
  *
  * Storage key: 'compare-dex-preferences'
@@ -14,6 +14,7 @@ import { explorerBase } from "../explorers.js";
 import type { TokenInfo } from "./formStore.svelte.js";
 
 const PREFERENCES_KEY = "compare-dex-preferences";
+const DEFAULT_DEFILLAMA_WARNING_BPS = 50;
 export const DEFAULT_COINBASE_TAKER_FEE_PERCENT = "0.9";
 
 export interface ChainPreferences {
@@ -25,6 +26,7 @@ export interface ChainPreferences {
 
 export interface Preferences {
   coinbaseTakerFeePercent?: string;
+  defillamaWarningBps?: number;
   chains: Record<number, ChainPreferences>;
 }
 
@@ -54,14 +56,14 @@ export function loadPreferences(): Preferences | null {
 }
 
 /**
- * Save preferences to localStorage.
- * Silently ignores errors (storage quota, private browsing, etc.)
+ * Returns whether the browser saved the preferences.
  */
-export function savePreferences(prefs: Preferences): void {
+export function savePreferences(prefs: Preferences): boolean {
   try {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs));
+    return true;
   } catch {
-    // Ignore storage errors
+    return false;
   }
 }
 
@@ -77,6 +79,28 @@ export function getChainPreferences(chainId: number): ChainPreferences | null {
 class PreferencesStore {
   private explorerRevision = $state(0);
   private coinbaseRevision = $state(0);
+  private defillamaRevision = $state(0);
+
+  get defillamaWarningBps(): number {
+    void this.defillamaRevision;
+    const bps = loadPreferences()?.defillamaWarningBps;
+    return typeof bps === "number" && Number.isInteger(bps) && bps >= 0 && bps <= 10_000
+      ? bps
+      : DEFAULT_DEFILLAMA_WARNING_BPS;
+  }
+
+  setDefillamaWarningPercent(value: string): string | null {
+    const text = value.trim();
+    const percent = Number(text);
+    if (!/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(text) || percent > 100)
+      return "Enter 0 to 100 percent, with at most two decimal places.";
+    const prefs = loadPreferences() ?? { chains: {} };
+    const defillamaWarningBps = Math.round(percent * 100);
+    if (!savePreferences({ ...prefs, defillamaWarningBps }))
+      return "This browser could not save the warning threshold.";
+    this.defillamaRevision++;
+    return null;
+  }
 
   get coinbaseTakerFeePercent(): string {
     void this.coinbaseRevision;

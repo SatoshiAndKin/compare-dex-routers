@@ -101,9 +101,11 @@ confidence of at least 0.8. This limit covers feeds that update about every
 30 minutes. A failed refresh can use the last price within the applicable age
 limit. The native asset and its canonical wrapper share one reference price.
 The confirmation dialog uses the refreshed route.
-A shortfall of 0.5% or more before gas shows a warning and a **Swap Anyway**
-button. If either price is unavailable, the dialog shows that it could not
-check the price.
+A shortfall at or above the threshold shows a warning and a **Swap Anyway**
+button. The threshold defaults to 0.50% before gas. Users can change it in
+Settings, and the browser saves it across chains. A threshold of 0% warns on
+any shortfall. If either price is unavailable, the dialog shows that it could
+not check the price.
 
 ## Frontend (`packages/frontend`)
 

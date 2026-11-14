@@ -3,6 +3,7 @@ import { render, fireEvent } from "@testing-library/svelte";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import SwapConfirmationModal from "../lib/components/SwapConfirmationModal.svelte";
 import { transactionStore } from "../lib/stores/transactionStore.svelte.js";
+import { preferencesStore } from "../lib/stores/preferencesStore.svelte.js";
 
 // ---------------------------------------------------------------------------
 // Mock data
@@ -28,6 +29,7 @@ function resetTransactionStore(): void {
 describe("SwapConfirmationModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     resetTransactionStore();
   });
 
@@ -257,6 +259,20 @@ describe("SwapConfirmationModal", () => {
       expect(queryByRole("alert")).toBeNull();
       expect(getByRole("button", { name: "Confirm Swap" })).toBeVisible();
     }
+  });
+
+  it("reports a shortfall under one basis point when the threshold is zero", () => {
+    expect(preferencesStore.setDefillamaWarningPercent("0")).toBeNull();
+    transactionStore.swapConfirmation = {
+      routerName: "spandex",
+      quote: {
+        ...mockSpandexQuote,
+        defillama_price_check: { worse_than_reference: true, shortfall_bps: 0 },
+      },
+    };
+    const { getByRole } = render(SwapConfirmationModal);
+    expect(getByRole("alert")).toHaveTextContent("less than 0.01% below");
+    expect(getByRole("button", { name: "Swap Anyway" })).toBeVisible();
   });
 
   // ---------------------------------------------------------------------------

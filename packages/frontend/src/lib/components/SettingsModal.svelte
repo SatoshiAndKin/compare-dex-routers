@@ -26,18 +26,29 @@
   let coinbaseFee = $state("");
   let coinbaseFeeError = $state("");
   let coinbaseFeeSaved = $state(false);
+  let defillamaThreshold = $state("");
+  let defillamaThresholdError = $state("");
+  let defillamaThresholdSaved = $state(false);
 
   $effect(() => {
     if (settingsStore.isSettingsOpen) {
       coinbaseFee = untrack(() => preferencesStore.coinbaseTakerFeePercent);
       coinbaseFeeError = "";
       coinbaseFeeSaved = false;
+      defillamaThreshold = untrack(() => (preferencesStore.defillamaWarningBps / 100).toFixed(2));
+      defillamaThresholdError = "";
+      defillamaThresholdSaved = false;
     }
   });
 
   function saveCoinbaseFee(): void {
     coinbaseFeeError = preferencesStore.setCoinbaseTakerFeePercent(coinbaseFee) ?? "";
     coinbaseFeeSaved = !coinbaseFeeError;
+  }
+
+  function saveDefillamaThreshold(): void {
+    defillamaThresholdError = preferencesStore.setDefillamaWarningPercent(defillamaThreshold) ?? "";
+    defillamaThresholdSaved = !defillamaThresholdError;
   }
 
   let explorerUrl = $state("");
@@ -182,6 +193,39 @@
       </div>
 
       <div class="modal-body">
+        <form
+          class="settings-section"
+          onsubmit={(event) => {
+            event.preventDefault();
+            saveDefillamaThreshold();
+          }}
+        >
+          <label class="settings-section-title" for="defillama-warning-threshold"
+            >DeFiLlama warning threshold (%)</label
+          >
+          <p id="defillama-threshold-note" class="refresh-note">
+            Minimum shortfall before gas that triggers a swap warning. Use 0 to warn on any
+            shortfall.
+          </p>
+          <div class="add-list-row">
+            <input
+              id="defillama-warning-threshold"
+              class="add-list-input"
+              type="text"
+              inputmode="decimal"
+              bind:value={defillamaThreshold}
+              aria-describedby="defillama-threshold-note"
+              aria-invalid={defillamaThresholdError ? "true" : undefined}
+              oninput={() => {
+                defillamaThresholdError = "";
+                defillamaThresholdSaved = false;
+              }}
+            />
+            <button type="submit" class="add-list-btn">Save threshold</button>
+          </div>
+          {#if defillamaThresholdError}<p role="alert">{defillamaThresholdError}</p>{/if}
+          {#if defillamaThresholdSaved}<p role="status">Warning threshold saved.</p>{/if}
+        </form>
         <form
           class="settings-section"
           onsubmit={(event) => {
