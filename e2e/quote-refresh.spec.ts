@@ -29,7 +29,9 @@ for (const connected of [false, true]) {
     await expect(amount).toHaveValue("99.95");
     if (!connected) {
       const route = page.getByRole("region", { name: "Selected DEX route" });
-      const connect = route.getByRole("button", { name: "Connect wallet for selected route" });
+      const connect = page.getByRole("button", { name: /^Connect wallet\b/i });
+      await expect(connect).toHaveCount(1);
+      await expect(route.getByRole("button", { name: /^Connect wallet\b/i })).toHaveCount(0);
       await route.getByRole("button", { name: "Selected route details" }).click();
       await expect(route.locator(".quote-card .quote-costs")).toContainText(
         "Estimated gas cost (excluded from ranking): Connect wallet"
