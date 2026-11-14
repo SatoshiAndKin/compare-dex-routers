@@ -48,7 +48,7 @@ describe("provider results", () => {
       await tick();
       expect(view.container.querySelector(".quote-card")).toHaveTextContent("Not simulated.");
       expect(view.getByRole("status", { name: "Quote loading status" })).toHaveTextContent(
-        "Refreshing quotes"
+        "Refreshing…"
       );
       expect(view.queryByRole("button", { name: "Execute swap" })).toBeNull();
       store.quotes = [makeQuote({ mode })];
