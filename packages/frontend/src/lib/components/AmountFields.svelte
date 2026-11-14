@@ -7,7 +7,6 @@
   import { comparisonStore, type Quote } from "../stores/comparisonStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
   import type { Snippet } from "svelte";
-  import InfoPopover from "./InfoPopover.svelte";
 
   let {
     chain,
@@ -80,6 +79,9 @@
     isExactIn ? (quote?.output_amount ?? carriedAmount) : formStore.receiveAmount
   );
   const exchangeRate = $derived(quote && formatQuoteRate(quote.output_amount, quote.input_amount));
+  const rateLabel = $derived(
+    quote && exchangeRate ? `1 ${quote.from_symbol} ≈ ${exchangeRate} ${quote.to_symbol}` : null
+  );
   const estimateStatus = $derived(
     quote
       ? comparisonStore.isStale
@@ -256,16 +258,8 @@
       {@render reverse?.(reverseTrade)}
       {#if settings}
         {@render settings()}
-        <div class="exchange-rate">
-          <span class="rate-value">
-            <span>Rate</span>
-            <strong>{exchangeRate ? `≈ ${exchangeRate}` : "—"}</strong>
-          </span>
-          {#if quote && exchangeRate}
-            <InfoPopover label="Exchange rate details">
-              <b>1 {quote.from_symbol} ≈ {exchangeRate} {quote.to_symbol}</b>
-            </InfoPopover>
-          {/if}
+        <div class="exchange-rate" role="group" aria-label="Exchange rate">
+          <strong title={rateLabel ?? undefined}>{rateLabel ?? "Rate —"}</strong>
         </div>
       {/if}
     </div>
@@ -293,20 +287,17 @@
   }
   .exchange-rate {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 44px;
     align-items: center;
     min-height: 44px;
-  }
-  .rate-value {
-    display: grid;
-    color: var(--text-muted);
     line-height: 1.3;
   }
-  .rate-value strong {
+  .exchange-rate strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
-    color: var(--text);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
   .token-pair {
     display: grid;

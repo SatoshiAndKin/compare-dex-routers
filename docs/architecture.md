@@ -276,8 +276,7 @@ and permit a retry. The switch moves each displayed amount with its token and
 changes the quote mode to keep the original entered amount exact. The form labels
 the other amount as previous until a quote for the reversed trade replaces it.
 The form keeps 44-pixel touch targets. The row below the amounts groups the
-direction switch, slippage, and the exchange rate. The exchange rate info
-control shows the full rate with both token symbols.
+direction switch, slippage, and the exchange rate with both token symbols.
 
 ### DEX and Coinbase price comparison
 

@@ -103,13 +103,11 @@ test("keeps precise input and output together through metadata and quote loading
   expect(await chainText.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
     true
   );
-  await page.getByRole("button", { name: "Exchange rate details" }).click();
-  await expect(page.locator(".exchange-rate")).toContainText(
-    `1 ${sellSymbol} ≈ 0.349453 ${buySymbol}`,
-    { useInnerText: true }
-  );
+  const rate = page.getByRole("group", { name: "Exchange rate", exact: true });
+  await expect(rate).toBeVisible();
+  await expect(rate).toHaveText(`1 ${sellSymbol} ≈ 0.349453 ${buySymbol}`);
+  await expect(rate.getByRole("button")).toHaveCount(0);
   expect(await positions()).toEqual(before);
-  await page.keyboard.press("Escape");
   const slippage = page.getByRole("button", { name: "Edit slippage" });
   await slippage.focus();
   await page.keyboard.press("Enter");
