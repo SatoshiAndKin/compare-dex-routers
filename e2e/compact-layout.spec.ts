@@ -127,10 +127,9 @@ test("keeps precise input and output together through metadata and quote loading
   ] as const) {
     const total = dex.locator(".amounts strong").nth(index);
     await expect(total).toHaveText(`${value} ${symbol}`);
-    const valueBox = await total.getByText(value, { exact: true }).boundingBox();
-    const symbolBox = await total.getByText(symbol, { exact: true }).boundingBox();
-    if (!valueBox || !symbolBox) throw new Error("Missing quote amount or symbol");
-    expect(symbolBox.y).toBeGreaterThanOrEqual(valueBox.y + valueBox.height);
+    expect(await total.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true
+    );
   }
   const rates = dex.getByRole("group", { name: "DEX average trade price" });
   await expect(rates).toContainText(`1 ${sellSymbol} = 0.349453 ${buySymbol}`);

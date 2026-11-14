@@ -176,11 +176,7 @@
   }
 
   .quote-status {
-    min-height: 2.25rem;
     color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
     font-size: 0.75rem;
   }
   .refresh-error {

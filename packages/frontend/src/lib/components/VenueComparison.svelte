@@ -177,26 +177,18 @@
       : ""}
   <div class="amounts">
     <div>
-      <div>
-        <span class="amount-label">Sell</span>
-        {#if params?.mode === "targetOut"}<div class="price-difference">
-            {difference}
-          </div>{/if}
-      </div>
+      <span class="amount-label">Sell</span>
       <strong
         ><span>{input}</span> <TokenSymbol {chainId} address={from} symbol={inputSymbol} /></strong
       >
+      {#if params?.mode === "targetOut"}<div class="price-difference">{difference}</div>{/if}
     </div>
     <div>
-      <div>
-        <span class="amount-label">Buy</span>
-        {#if params?.mode === "exactIn"}<div class="price-difference">
-            {difference}
-          </div>{/if}
-      </div>
+      <span class="amount-label">Buy</span>
       <strong
         ><span>{output}</span> <TokenSymbol {chainId} address={to} symbol={outputSymbol} /></strong
       >
+      {#if params?.mode === "exactIn"}<div class="price-difference">{difference}</div>{/if}
     </div>
   </div>
 {/snippet}
@@ -234,7 +226,6 @@
             {/if}
           </InfoPopover>
         </header>
-        {@render dexStatus?.()}
         {#if bestDex}
           {@render amounts(
             bestDex.input_amount,
@@ -259,10 +250,14 @@
           <div class="venue-row">
             <span class="row-label">Best price</span><span>{bestDex.provider}</span>
           </div>
-          {#if dex}<a class="trade-link" href="#selected-dex-route">Review DEX route ↓</a>{/if}
         {:else}
           <p class="venue-status">{stale ? "Previous DEX quotes" : "No matching DEX price"}</p>
         {/if}
+        <div class="dex-actions">
+          {#if bestDex && dex}<a class="trade-link" href="#selected-dex-route">Review DEX route ↓</a
+            >{/if}
+          {@render dexStatus?.()}
+        </div>
       </section>
       {#if params}
         <section aria-label="Coinbase Advanced estimate" class="venue-card coinbase-estimate">
@@ -326,37 +321,6 @@
               >
             </InfoPopover>
           </header>
-          <div class="coinbase-status" class:has-estimate={result !== null}>
-            {#if result}
-              <button
-                class="coinbase-fee"
-                type="button"
-                aria-haspopup="dialog"
-                title="Edit Coinbase taker fee"
-                onclick={(event) => {
-                  event.currentTarget.focus();
-                  settingsStore.openSettings("coinbase-fee");
-                }}
-              >
-                {result.fee_percent === null
-                  ? "Before trading fees"
-                  : `Assumed fee ${result.fee_percent}%`}
-              </button>
-            {/if}
-            <span role="status">
-              {#if loading}
-                {result ? "Refreshing…" : error || "Loading order book…"}
-              {:else if error}
-                {result ? "Refresh failed" : error}
-              {:else if expired}
-                Estimate expired.
-              {:else if result && dexExpired && !stale}
-                DEX quotes expired.
-              {:else if result?.limit_only}
-                Limit only
-              {/if}
-            </span>
-          </div>
           <div aria-busy={loading}>
             {#if result}
               {@render amounts(
@@ -379,14 +343,45 @@
                   >
                 </div>
               {/if}
+            {/if}
+          </div>
+          <div class="coinbase-status" role="status">
+            {#if loading}
+              {result ? "Refreshing…" : error || "Loading order book…"}
+            {:else if error}
+              {result ? "Refresh failed" : error}
+            {:else if expired}
+              Estimate expired.
+            {:else if result && dexExpired && !stale}
+              DEX quotes expired.
+            {:else if result?.limit_only}
+              Limit only
+            {/if}
+          </div>
+          {#if result}
+            <div class="coinbase-actions">
               <a
                 class="trade-link"
                 href={result.trade_url}
                 target="_blank"
                 rel="noopener noreferrer">Open Coinbase Advanced ↗</a
               >
-            {/if}
-          </div>
+              <button
+                class="coinbase-fee"
+                type="button"
+                aria-haspopup="dialog"
+                title="Edit Coinbase taker fee"
+                onclick={(event) => {
+                  event.currentTarget.focus();
+                  settingsStore.openSettings("coinbase-fee");
+                }}
+              >
+                {result.fee_percent === null
+                  ? "Before trading fees"
+                  : `Assumed fee ${result.fee_percent}%`}
+              </button>
+            </div>
+          {/if}
         </section>
       {/if}
     </div>
@@ -409,19 +404,24 @@
   .venue-status {
     color: var(--text-muted);
     font-size: 0.75rem;
-    min-height: 2.25rem;
     overflow-wrap: anywhere;
   }
   .coinbase-status {
-    display: grid;
-    align-items: center;
-    min-height: 44px;
+    min-height: 1.5em;
     color: var(--text-muted);
     font-size: 0.75rem;
   }
-  .coinbase-status.has-estimate {
-    grid-template-columns: 8rem minmax(0, 1fr);
-    gap: 0.375rem;
+  .dex-actions,
+  .coinbase-actions {
+    display: grid;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .dex-actions:has(.trade-link) {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .coinbase-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 7.5rem);
   }
   .coinbase-fee {
     width: 100%;
@@ -430,11 +430,11 @@
     border: 0;
     background: transparent;
     color: var(--text);
-    font: inherit;
+    font: 0.75rem/1.25 system-ui;
     text-transform: none;
     letter-spacing: normal;
     text-decoration: underline;
-    text-align: start;
+    text-align: end;
   }
   .coinbase-fee:hover {
     background: var(--bg-hover);
@@ -496,19 +496,16 @@
     line-height: 1.35;
     overflow-wrap: anywhere;
   }
-  .amounts > div {
-    grid-template-columns: min(47%, 8rem) minmax(0, 1fr);
-    align-items: start;
-  }
   .price-difference {
+    grid-column: 1 / -1;
     font-size: 0.75rem;
-    line-height: 1;
-    min-height: 2em;
+    min-height: 1.5em;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
   }
-  .amounts strong > span:first-child {
-    display: block;
+  .amounts > div {
+    column-gap: 0.5rem;
+    row-gap: 0;
   }
   .row-label,
   .amount-label {

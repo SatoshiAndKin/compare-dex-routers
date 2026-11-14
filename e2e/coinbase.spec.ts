@@ -89,6 +89,22 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   if (!viewport || !dexBox || !coinbaseBox) throw new Error("Missing comparison layout");
   if (viewport.width >= 600) expect(dexBox.y).toBe(coinbaseBox.y);
   else expect(coinbaseBox.y).toBeGreaterThan(dexBox.y);
+  for (const venue of [dex, panel]) {
+    const gap = await venue.locator(".amounts").evaluate((amounts) => {
+      const heading = amounts.closest("section")?.querySelector("header");
+      if (!heading) throw new Error("Missing venue heading");
+      return amounts.getBoundingClientRect().top - heading.getBoundingClientRect().bottom;
+    });
+    expect(gap).toBeLessThanOrEqual(4);
+    for (const amount of await venue.locator(".amounts strong").all()) {
+      const sameLine = await amount.evaluate((element) => {
+        const value = element.firstElementChild?.getBoundingClientRect();
+        const symbol = element.querySelector(".symbol-text")?.getBoundingClientRect();
+        return value && symbol && symbol.left >= value.right && symbol.top < value.bottom;
+      });
+      expect(sameLine).toBe(true);
+    }
+  }
   await expect(panel.getByRole("status")).toContainText("Limit only");
   const info = panel.getByRole("button", { name: "About the Coinbase estimate" });
   if (viewport.width >= 600) await info.hover();
