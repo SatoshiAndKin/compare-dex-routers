@@ -82,15 +82,7 @@
   const rateLabel = $derived(
     quote && exchangeRate ? `1 ${quote.from_symbol} ≈ ${exchangeRate} ${quote.to_symbol}` : null
   );
-  const estimateStatus = $derived(
-    quote
-      ? comparisonStore.isStale
-        ? "Previous estimate"
-        : "Estimate"
-      : carriedAmount
-        ? "Previous amount"
-        : ""
-  );
+  const showPreviousAmount = $derived(!quote && Boolean(carriedAmount));
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -204,7 +196,7 @@
     <div class="amount-group" class:active={isExactIn} class:computed={!isExactIn}>
       <div class="amount-heading">
         <label class="amount-label" for="sell-amount">Sell</label>
-        {#if !isExactIn && estimateStatus}<span class="amount-meta">{estimateStatus}</span>{/if}
+        {#if !isExactIn && showPreviousAmount}<span class="amount-meta">Previous amount</span>{/if}
       </div>
       <div class="amount-token">
         {@render sellToken?.()}
@@ -230,7 +222,7 @@
     <div class="amount-group" class:active={!isExactIn} class:computed={isExactIn}>
       <div class="amount-heading">
         <label class="amount-label" for="receive-amount">Buy</label>
-        {#if isExactIn && estimateStatus}<span class="amount-meta">{estimateStatus}</span>{/if}
+        {#if isExactIn && showPreviousAmount}<span class="amount-meta">Previous amount</span>{/if}
       </div>
       <div class="amount-token">
         {@render buyToken?.()}
