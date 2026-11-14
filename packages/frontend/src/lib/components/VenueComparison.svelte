@@ -394,7 +394,6 @@
 </div>
 {#if dex}
   <section id="selected-dex-route" class="selected-dex-route" aria-label="Selected DEX route">
-    <h3>Selected DEX route</h3>
     {@render dex()}
   </section>
 {/if}

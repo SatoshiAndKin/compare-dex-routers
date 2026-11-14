@@ -135,6 +135,8 @@ test("keeps precise input and output together through metadata and quote loading
   const rates = dex.getByRole("group", { name: "DEX average trade price" });
   await expect(rates).toContainText(`1 ${sellSymbol} = 0.349453 ${buySymbol}`);
   const route = page.getByRole("region", { name: "Selected DEX route" });
+  await expect(route).toBeVisible();
+  await expect(route.getByRole("heading", { name: "Selected DEX route" })).toHaveCount(0);
   await expect(route.getByText(output, { exact: true })).toHaveCount(0);
   await expect(route.getByRole("group", { name: /trade price/ })).toHaveCount(0);
   const totalsBox = await dex.locator(".amounts").boundingBox();
