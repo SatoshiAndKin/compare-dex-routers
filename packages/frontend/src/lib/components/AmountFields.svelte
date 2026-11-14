@@ -319,7 +319,7 @@
     display: grid;
     grid-template-columns: 3rem minmax(0, 1fr);
     min-width: 0;
-    padding: 0.125rem 0.625rem;
+    padding-inline: 0.625rem;
     background: var(--bg-muted);
     border: 1px solid var(--border-light);
   }
@@ -361,7 +361,7 @@
   input.amount-input {
     min-width: 0;
     width: 100%;
-    padding: 0.25rem 0;
+    padding: 0;
     border: 0;
     background: transparent;
     color: var(--text);
@@ -435,9 +435,6 @@
   @media (max-width: 374px) {
     .trade-options {
       grid-template-columns: minmax(0, 1fr);
-    }
-    .amount-token :global(.selected-symbol) {
-      font-size: 0.875rem;
     }
   }
 </style>

@@ -592,8 +592,13 @@
     min-width: 0;
   }
   .selected-symbol {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     align-self: center;
     padding-inline-start: 0.25rem;
+    overflow: hidden;
     overflow-wrap: anywhere;
     pointer-events: none;
     font-weight: 650;

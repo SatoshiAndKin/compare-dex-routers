@@ -128,7 +128,7 @@
   .connect-btn {
     width: 100%;
     height: 44px;
-    padding: 0 0.9rem;
+    padding: 0 0.25rem;
     font-size: 0.9rem;
     font-weight: 600;
     font-family: inherit;
