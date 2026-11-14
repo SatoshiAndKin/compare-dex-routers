@@ -11,13 +11,34 @@
 </script>
 
 {#if walletStore.address}
+  {@const profile = walletStore.ensProfile}
   <div class="wallet-connected">
-    <span
-      class="connected-address"
-      role="status"
-      aria-label="Connected wallet address"
-      title={walletStore.ensName ?? "Connected wallet address"}>{walletStore.address}</span
-    >
+    <div class="wallet-identity">
+      {#if profile}
+        <div class="ens-profile">
+          {#if profile.avatar}
+            {#key profile.avatar}
+              <img
+                class="ens-avatar"
+                src={profile.avatar}
+                alt=""
+                width="20"
+                height="20"
+                referrerpolicy="no-referrer"
+                onerror={(event) => event.currentTarget.setAttribute("hidden", "")}
+              />
+            {/key}
+          {/if}
+          <span class="ens-name">{profile.name}</span>
+        </div>
+      {/if}
+      <span
+        class="connected-address"
+        role="status"
+        aria-label="Connected wallet address"
+        title="Connected wallet address">{walletStore.address}</span
+      >
+    </div>
     <button
       type="button"
       class="disconnect-btn"
@@ -60,11 +81,31 @@
     min-width: 0;
   }
 
+  .wallet-identity {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .ens-profile {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .ens-avatar {
+    flex: none;
+    object-fit: cover;
+    border-radius: 50%;
+  }
+
   .connected-address {
+    display: block;
     font-family: monospace;
     font-size: 0.75rem;
     line-height: 1.2;
-    overflow-wrap: anywhere;
     color: var(--text-muted, #666);
   }
 
@@ -101,6 +142,7 @@
   }
 
   .disconnect-btn {
+    align-self: flex-start;
     flex: 0 0 2rem;
     min-height: 44px;
     padding: 0;

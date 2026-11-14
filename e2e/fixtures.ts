@@ -1,4 +1,5 @@
 import { parseUnits } from "viem";
+import { mainnet } from "viem/chains";
 import type { Page } from "@playwright/test";
 import { FROM, TO, makeComparison } from "../packages/frontend/src/__tests__/quote-fixture.js";
 export async function fixture(
@@ -16,6 +17,10 @@ export async function fixture(
       decimals: 18,
     },
   ];
+  await page.route(mainnet.rpcUrls.default.http[0], async (route) => {
+    const { id } = route.request().postDataJSON();
+    await route.fulfill({ json: { jsonrpc: "2.0", id, result: "0x" } });
+  });
   await page.route("**/api/config", (route) =>
     route.fulfill({
       json: {

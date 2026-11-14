@@ -5,6 +5,7 @@
  */
 
 import type { TransactionReference } from "../explorers.js";
+import { lookupEnsAvatar, lookupEnsName } from "../ens-profile.js";
 import { parseWalletChainId } from "../wallet-rpc.js";
 
 // ---------------------------------------------------------------------------
@@ -65,14 +66,6 @@ const WALLETCONNECT_ICON =
 // Helpers
 // ---------------------------------------------------------------------------
 
-function decodeHexString(hex: string): string {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
-  }
-  return new TextDecoder().decode(bytes);
-}
-
 function getChainIdHex(chainId: number): string {
   const mapped = CHAIN_ID_HEX_MAP[String(chainId)];
   if (mapped) return mapped;
@@ -87,8 +80,7 @@ function getChainIdHex(chainId: number): string {
 class WalletStore {
   /** Full 0x wallet address — NEVER truncated */
   address = $state<string | null>(null);
-  /** Resolved ENS name for the connected address (null if none) */
-  ensName = $state<string | null>(null);
+  ensProfile = $state<{ name: string; avatar: string | null } | null>(null);
   /** Current chain ID from connected wallet */
   chainId = $state<number | null>(null);
   /** Connected EIP-1193 provider */
@@ -108,6 +100,7 @@ class WalletStore {
   walletMenuRequested = $state(false);
 
   private connectionSequence = 0;
+  private ensLookup = 0;
   private preferredWallet: string | null = null;
 
   private rememberWallet(value: string): void {
@@ -252,13 +245,12 @@ class WalletStore {
 
       // Set up accountsChanged listener
       this._accountsChangedHandler = (...args: unknown[]) => {
-        const updatedAccounts = args[0] as string[];
-        if (!Array.isArray(updatedAccounts) || updatedAccounts.length === 0) {
+        const account = Array.isArray(args[0]) ? args[0][0] : null;
+        if (typeof account !== "string" || !account) {
           this.disconnect(false);
-        } else {
-          this.address = updatedAccounts[0] ?? null;
-          this.ensName = null;
-          if (this.address) void this._resolveEns(this.address);
+        } else if (account !== this.address) {
+          this.address = account;
+          void this.resolveEnsProfile(account);
         }
       };
 
@@ -274,8 +266,7 @@ class WalletStore {
 
       this.setMessage("");
 
-      // Resolve ENS name in background
-      void this._resolveEns(account);
+      void this.resolveEnsProfile(account);
     } catch (err: unknown) {
       if (silent || sequence !== this.connectionSequence) return;
       const code =
@@ -291,70 +282,17 @@ class WalletStore {
     }
   }
 
-  /**
-   * Resolve reverse ENS for an address using the API's token-metadata endpoint
-   * or a direct provider call. Uses eth_call to the ENS reverse registrar.
-   */
-  private async _resolveEns(address: string): Promise<void> {
-    this.ensName = null;
+  private async resolveEnsProfile(address: string): Promise<void> {
+    const lookup = ++this.ensLookup;
+    this.ensProfile = null;
     try {
-      // Use the connected provider to call the ENS reverse resolver
-      // Only works on Ethereum mainnet (chainId 1)
-      if (!this.provider) return;
-
-      // Get current chain - ENS only works on mainnet
-      const chainId = parseWalletChainId(await this.provider.request({ method: "eth_chainId" }));
-      if (chainId !== 1) return;
-
-      // Call the ENS universal resolver's reverse() function
-      // Address: 0x74E20Bd2A1fE0cdbe45b9A1d89cb7e0a45b36376 (ENS universal resolver on mainnet)
-      // ENS Reverse Records contract on mainnet: getNames(address[]) returns string[]
-      const REVERSE_RECORDS = "0x3671aE578E63FdF66ad4F3E12CC0c0d71Ac7510C";
-
-      // ABI encode: getNames(address[]) where we pass [address]
-      // selector: 0x55ea6c47
-      const paddedAddr = address.toLowerCase().slice(2).padStart(64, "0");
-      const calldata =
-        "0x55ea6c47" +
-        "0000000000000000000000000000000000000000000000000000000000000020" +
-        "0000000000000000000000000000000000000000000000000000000000000001" +
-        paddedAddr;
-
-      const result = (await this.provider.request({
-        method: "eth_call",
-        params: [{ to: REVERSE_RECORDS, data: calldata }, "latest"],
-      })) as string;
-
-      if (result && result !== "0x" && result.length > 130) {
-        // Decode the result - it's an array of strings
-        // Skip the first 64 chars (offset to array), next 64 chars (array length)
-        // Then offset to first string, string length, string data
-        const hex = result.slice(2);
-        // Find the string data
-        // Structure: offset_to_array(32) -> array_len(32) -> offset_to_str1(32) -> str_len(32) -> str_data
-        // The outer ABI: bytes offset (0x20) to dynamic array
-        // array: length (1), then offset to element 0
-        // element 0: length, then UTF-8 bytes
-
-        // Parse step by step
-        const outerOffset = parseInt(hex.slice(0, 64), 16) * 2;
-        const arrayLen = parseInt(hex.slice(outerOffset, outerOffset + 64), 16);
-        if (arrayLen === 0) return;
-
-        const stringsStart = outerOffset + 64;
-        const firstStrOffset = parseInt(hex.slice(stringsStart, stringsStart + 64), 16) * 2;
-        const strDataStart = stringsStart + firstStrOffset;
-        const strLen = parseInt(hex.slice(strDataStart, strDataStart + 64), 16);
-        if (strLen === 0) return;
-
-        const strHex = hex.slice(strDataStart + 64, strDataStart + 64 + strLen * 2);
-        const name = decodeHexString(strHex);
-        if (name && name.includes(".")) {
-          this.ensName = name;
-        }
-      }
+      const name = await lookupEnsName(address);
+      if (!name || lookup !== this.ensLookup) return;
+      this.ensProfile = { name, avatar: null };
+      const avatar = await lookupEnsAvatar(name);
+      if (avatar && lookup === this.ensLookup) this.ensProfile = { name, avatar };
     } catch {
-      // ENS resolution is best-effort, don't show errors
+      // A missing profile or image does not affect wallet connectivity.
     }
   }
 
@@ -455,7 +393,8 @@ class WalletStore {
     if (explicit) this.rememberWallet("disconnected");
     this.removeProviderListeners();
     this.address = null;
-    this.ensName = null;
+    this.ensLookup++;
+    this.ensProfile = null;
     this.chainId = null;
     this.provider = null;
     this.walletInfo = null;

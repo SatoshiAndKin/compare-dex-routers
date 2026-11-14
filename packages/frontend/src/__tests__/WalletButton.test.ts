@@ -1,4 +1,4 @@
-import { render } from "@testing-library/svelte";
+import { fireEvent, render } from "@testing-library/svelte";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import WalletButton from "../lib/components/WalletButton.svelte";
 import { walletStore } from "../lib/stores/walletStore.svelte.js";
@@ -9,7 +9,7 @@ import { walletStore } from "../lib/stores/walletStore.svelte.js";
 
 function resetWalletStore(): void {
   walletStore.address = null;
-  walletStore.ensName = null;
+  walletStore.ensProfile = null;
   walletStore.chainId = null;
   walletStore.provider = null;
   walletStore.walletInfo = null;
@@ -52,7 +52,6 @@ describe("WalletButton", () => {
   });
 
   it("calls onConnectClick when connect button clicked", async () => {
-    const { fireEvent } = await import("@testing-library/svelte");
     const onConnectClick = vi.fn();
     const { getByRole: getBtn } = render(WalletButton, { props: { onConnectClick } });
     const btn = getBtn("button", { name: /connect wallet/i });
@@ -64,18 +63,23 @@ describe("WalletButton", () => {
   // Connected state
   // ---------------------------------------------------------------------------
 
-  it("shows the full address even when wallet identity details are available", () => {
+  it("shows ENS name and avatar alongside the full address", async () => {
     const address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
     walletStore.address = address;
-    walletStore.ensName = "wallet.eth";
+    const avatar = "https://example.test/avatar.png";
+    walletStore.ensProfile = { name: "wallet.eth", avatar };
     walletStore.walletInfo = { uuid: "metamask", name: "MetaMask", icon: "/wallet.svg" };
 
-    const { getByRole, queryByText, queryByRole } = render(WalletButton);
+    const { getByRole, getByText, queryByText, container } = render(WalletButton);
 
     expect(getByRole("status", { name: "Connected wallet address" })).toHaveTextContent(address);
+    expect(getByText("wallet.eth")).toBeVisible();
     expect(queryByText("MetaMask")).toBeNull();
-    expect(queryByText("wallet.eth")).toBeNull();
-    expect(queryByRole("img")).toBeNull();
+    const image = container.querySelector("img")!;
+    expect(image).toHaveAttribute("src", avatar);
+    await fireEvent.error(image);
+    expect(image).not.toBeVisible();
+    expect(getByText("wallet.eth")).toBeVisible();
   });
 
   it("shows full 0x address (never truncated)", () => {
@@ -112,7 +116,6 @@ describe("WalletButton", () => {
     walletStore.address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
     const disconnectSpy = vi.spyOn(walletStore, "disconnect");
 
-    const { fireEvent } = await import("@testing-library/svelte");
     const { getByRole: getBtn } = render(WalletButton);
     const btn = getBtn("button", { name: "Disconnect" });
     await fireEvent.click(btn);

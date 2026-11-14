@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { lookupEnsAvatar, lookupEnsName } from "../lib/ens-profile.js";
 import {
   walletStore,
   type EIP6963ProviderDetail,
   type EIP1193Provider,
 } from "../lib/stores/walletStore.svelte.js";
+import { deferred, SENDER } from "./quote-fixture.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -133,6 +135,29 @@ describe("walletStore", () => {
     await walletStore.connect(detail);
 
     expect(walletStore.chainId).toBe(1); // 0x1 → 1
+  });
+
+  it("keeps an old ENS avatar from replacing the active account's profile", async () => {
+    const lateAvatar = deferred<string | null>();
+    vi.mocked(lookupEnsName)
+      .mockResolvedValueOnce("previous.eth")
+      .mockResolvedValueOnce("current.eth");
+    vi.mocked(lookupEnsAvatar).mockReturnValueOnce(lateAvatar.promise);
+    const detail = makeProviderDetail();
+    await walletStore.connect(detail);
+    await vi.waitFor(() => expect(walletStore.ensProfile?.name).toBe("previous.eth"));
+
+    const on = detail.provider.on as ReturnType<typeof vi.fn>;
+    const changeAccount = on.mock.calls.find(([event]) => event === "accountsChanged")?.[1];
+    changeAccount([SENDER]);
+    await vi.waitFor(() => expect(walletStore.ensProfile?.name).toBe("current.eth"));
+    lateAvatar.resolve("https://example.test/previous.png");
+    await lateAvatar.promise;
+
+    expect(walletStore.address).toBe(SENDER);
+    expect(walletStore.ensProfile).toEqual({ name: "current.eth", avatar: null });
+    walletStore.disconnect();
+    expect(walletStore.ensProfile).toBeNull();
   });
 
   it("connect sets provider and walletInfo", async () => {
