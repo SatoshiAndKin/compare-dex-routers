@@ -1,6 +1,6 @@
 import type { EIP1193Provider } from "./walletStore.svelte.js";
 import { exactAmount, canonicalToken } from "../native.js";
-import { quantity, readBalance } from "../wallet-rpc.js";
+import { parseWalletChainId, readBalance } from "../wallet-rpc.js";
 
 export interface TokenRef {
   address: string;
@@ -142,12 +142,10 @@ class BalanceStore {
       this.to = initial(toToken);
     }
     try {
-      const actualChain = quantity(
-        await provider.request({ method: "eth_chainId" }),
-        "Wallet network"
-      );
+      const actualChain = parseWalletChainId(await provider.request({ method: "eth_chainId" }));
+      if (actualChain === null) throw new Error("Invalid wallet chain");
       if (sequence !== this.sequence) return;
-      if (actualChain !== BigInt(chainId)) {
+      if (actualChain !== chainId) {
         this.from = { ...this.from, status: "wrong_network" };
         this.to = { ...this.to, status: "wrong_network" };
         return;
@@ -160,12 +158,10 @@ class BalanceStore {
           ? fetchTokenBalance(provider, toToken.address, account, toToken.decimals, chainId)
           : null,
       ]);
-      const checkedChain = quantity(
-        await provider.request({ method: "eth_chainId" }),
-        "Wallet network"
-      );
+      const checkedChain = parseWalletChainId(await provider.request({ method: "eth_chainId" }));
+      if (checkedChain === null) throw new Error("Invalid wallet chain");
       if (sequence !== this.sequence) return;
-      if (checkedChain !== BigInt(chainId)) {
+      if (checkedChain !== chainId) {
         this.clearCache();
         this.from = { ...this.from, status: "wrong_network", raw: null };
         this.to = { ...this.to, status: "wrong_network", raw: null };

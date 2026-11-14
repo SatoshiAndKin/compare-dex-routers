@@ -6,6 +6,7 @@ import { configStore } from "../lib/stores/configStore.svelte.js";
 import { tokenListStore } from "../lib/stores/tokenListStore.svelte.js";
 import { tokensStore } from "../lib/stores/tokensStore.svelte.js";
 import { walletStore } from "../lib/stores/walletStore.svelte.js";
+import { NATIVE_TOKEN } from "../lib/native.js";
 import { deferred, FROM, SENDER, TO, makeComparison } from "./quote-fixture.js";
 const get = vi.hoisted(() => vi.fn());
 const initWalletConnect = vi.hoisted(() => vi.fn());
@@ -48,8 +49,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("App startup", () => {
-  it("connects through WalletConnect when the server publishes a project ID", async () => {
+  it.each([1, 8453])("shows WalletConnect ETH balance on chain %i", async (chainId) => {
     const projectId = "00000000000000000000000000000001";
+    formStore.chainId = chainId;
+    formStore.fromToken = { address: NATIVE_TOKEN, symbol: "ETH", decimals: 18, chainId };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
@@ -64,7 +67,8 @@ describe("App startup", () => {
       removeListener: vi.fn(),
       request: vi.fn(async ({ method }: { method: string }) => {
         if (method === "eth_requestAccounts") return [SENDER];
-        if (method === "eth_chainId") return "0x1";
+        if (method === "eth_chainId") return chainId;
+        if (method === "eth_getBalance") return "0x14d1120d7b160000";
         return "0x";
       }),
     });
@@ -81,6 +85,10 @@ describe("App startup", () => {
     );
     expect(connect).toHaveBeenCalledOnce();
     expect(walletStore.walletInfo?.name).toBe("WalletConnect");
+    expect(walletStore.chainId).toBe(chainId);
+    const balance = view.getByRole("button", { name: "From token balance" });
+    await waitFor(() => expect(balance.textContent).toMatch(/Balance: 1\.5\s+ETH/));
+    expect(balance).toBeEnabled();
     expect(view.queryByRole("dialog", { name: "Select wallet provider" })).toBeNull();
   });
 

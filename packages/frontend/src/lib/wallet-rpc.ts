@@ -13,6 +13,15 @@ export function quantity(value: unknown, label: string): bigint {
     throw new Error(`${label} is unavailable`);
   return BigInt(value);
 }
+
+/** WalletConnect v2 can return a number for eth_chainId. Injected wallets return hex. */
+export function parseWalletChainId(value: unknown): number | null {
+  const chainId = typeof value === "string" && /^0x[0-9a-f]+$/i.test(value) ? Number(value) : value;
+  return typeof chainId === "number" && Number.isSafeInteger(chainId) && chainId > 0
+    ? chainId
+    : null;
+}
+
 export const hex = (value: bigint | number | string) => `0x${BigInt(value).toString(16)}`;
 export const gasMargin = (gas: bigint) => (gas * 6n + 4n) / 5n;
 
