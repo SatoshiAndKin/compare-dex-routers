@@ -100,11 +100,11 @@ test("keeps token fields compact with one full address and a working copy button
 });
 
 for (const mode of ["exactIn", "targetOut"] as const) {
-  test(`swaps tokens and the displayed ${mode} amounts while the reverse quote loads`, async ({
-    page,
-  }) => {
+  test(`swaps tokens and amounts while keeping ${mode}`, async ({ page }) => {
     const sellAmount = mode === "exactIn" ? "150" : "150.25";
     const buyAmount = mode === "exactIn" ? "149.75" : "150";
+    const reverseSell = mode === "exactIn" ? buyAmount : "150.5";
+    const reverseBuy = mode === "targetOut" ? sellAmount : "150.75";
     const reverseQuote = deferred<undefined>();
     await fixture(page, (comparison) => {
       for (const quote of comparison.quotes) {
@@ -112,8 +112,8 @@ for (const mode of ["exactIn", "targetOut"] as const) {
           quote.input_amount = sellAmount;
           quote.output_amount = buyAmount;
         } else {
-          quote.input_amount = mode === "exactIn" ? "150.5" : buyAmount;
-          quote.output_amount = mode === "targetOut" ? "150.75" : sellAmount;
+          quote.input_amount = reverseSell;
+          quote.output_amount = reverseBuy;
         }
         quote.input_amount_raw = parseUnits(quote.input_amount, 6).toString();
         quote.output_amount_raw = parseUnits(quote.output_amount, 6).toString();
@@ -132,6 +132,10 @@ for (const mode of ["exactIn", "targetOut"] as const) {
     await expect(to).toHaveValue("USDT");
     const sell = page.locator("#sell-amount");
     const buy = page.locator("#receive-amount");
+    const selectedMode = page.getByRole("button", {
+      name: mode === "exactIn" ? "Exact Input" : "Exact Output",
+      exact: true,
+    });
     await expect(sell).toHaveValue(sellAmount);
     await expect(buy).toHaveValue(buyAmount);
     const compare = page.getByRole("button", { name: "Compare Quotes", exact: true });
@@ -153,16 +157,18 @@ for (const mode of ["exactIn", "targetOut"] as const) {
       await expect(to).toHaveValue("USDC");
       await expect(sell).toHaveValue(buyAmount);
       await expect(buy).toHaveValue(sellAmount);
+      await expect(selectedMode).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByText("Previous amount", { exact: true })).toBeVisible();
       expect(await position()).toEqual(before);
       const params = new URL((await reversedQuote).url()).searchParams;
-      expect(params.get("amount")).toBe("150");
-      expect(params.get("mode")).toBe(mode === "exactIn" ? "targetOut" : "exactIn");
+      expect(params.get("amount")).toBe(mode === "exactIn" ? buyAmount : sellAmount);
+      expect(params.get("mode")).toBe(mode);
     } finally {
       reverseQuote.resolve(undefined);
     }
-    await expect(sell).toHaveValue(mode === "exactIn" ? "150.5" : buyAmount);
-    await expect(buy).toHaveValue(mode === "targetOut" ? "150.75" : sellAmount);
+    await expect(sell).toHaveValue(reverseSell);
+    await expect(buy).toHaveValue(reverseBuy);
+    await expect(selectedMode).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText("Previous amount", { exact: true })).toHaveCount(0);
     await expect(compare).toBeEnabled();
     expect(await position()).toEqual(before);
