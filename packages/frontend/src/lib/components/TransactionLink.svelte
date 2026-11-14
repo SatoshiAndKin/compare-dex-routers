@@ -1,6 +1,7 @@
 <script lang="ts">
   import { transactionExplorer, type TransactionReference } from "../explorers.js";
   import { preferencesStore } from "../stores/preferencesStore.svelte.js";
+  import DisclosureChevron from "./DisclosureChevron.svelte";
   let { transaction }: { transaction: TransactionReference } = $props();
   const explorer = $derived(
     transactionExplorer(transaction, preferencesStore.getExplorerUrl(transaction.chainId))
@@ -11,7 +12,10 @@
   <a href={explorer.url} target="_blank" rel="noopener noreferrer">View on {explorer.name} ↗</a>
 {/if}
 <details>
-  <summary>Transaction details</summary>
+  <summary class="disclosure-summary">
+    <span>Transaction details</span>
+    <DisclosureChevron />
+  </summary>
   <span>Chain ID: {transaction.chainId}</span>
   <code>{transaction.hash}</code>
 </details>
@@ -23,9 +27,6 @@
   }
   details {
     font-size: 0.75rem;
-  }
-  summary {
-    cursor: pointer;
   }
   code {
     display: block;

@@ -2,6 +2,7 @@
   import type { Quote, QuoteResponse } from "../stores/comparisonStore.svelte.js";
   import { quoteCostFields } from "../quote-costs.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
+  import DisclosureChevron from "./DisclosureChevron.svelte";
   interface Props {
     quote: Quote;
     gasPriceGwei?: string | null;
@@ -73,11 +74,13 @@
     type="button"
     class="details-toggle"
     class:open
+    aria-expanded={open}
     onclick={() => {
       open = !open;
     }}
   >
-    Details {open ? "▲" : "▼"}
+    Details
+    <DisclosureChevron {open} />
   </button>
   {#if open}
     <div class="details-content">
@@ -115,7 +118,9 @@
   }
 
   .details-toggle {
-    display: inline-flex;
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
     align-items: center;
     gap: 0.25rem;
     padding: 0.25rem 0;

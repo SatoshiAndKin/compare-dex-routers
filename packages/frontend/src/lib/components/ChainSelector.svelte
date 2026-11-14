@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DisclosureChevron from "./DisclosureChevron.svelte";
   /**
    * ChainSelector — searchable chain dropdown with keyboard navigation.
    * Ports behavior from src/client/chain-selector.ts.
@@ -215,7 +216,7 @@
     onkeydown={handleKeydown}
   >
     <span class="chain-button-text">{currentChainDisplay}</span>
-    <span class="chain-button-arrow" aria-hidden="true">{isOpen ? "▲" : "▼"}</span>
+    <DisclosureChevron open={isOpen} />
   </button>
 
   {#if isOpen}
@@ -268,6 +269,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 0.5rem;
     padding: 0.5rem 0.75rem;
     background: var(--bg-muted);
     border: 1px solid var(--border-light);
@@ -290,12 +292,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .chain-button-arrow {
-    margin-left: 0.5rem;
-    font-size: 0.75rem;
-    flex-shrink: 0;
   }
 
   .chain-dropdown {
