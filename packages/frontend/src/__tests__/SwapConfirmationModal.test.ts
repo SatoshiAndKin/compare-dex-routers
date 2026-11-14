@@ -235,6 +235,30 @@ describe("SwapConfirmationModal", () => {
     expect(transactionStore.swapConfirmation).toBeNull();
   });
 
+  it.each([
+    [5, false],
+    [49, false],
+    [50, true],
+    [51, true],
+  ])("warns for a %i bps DeFiLlama shortfall only at or above the threshold", (bps, warns) => {
+    transactionStore.swapConfirmation = {
+      routerName: "spandex",
+      quote: {
+        ...mockSpandexQuote,
+        defillama_price_check: { worse_than_reference: true, shortfall_bps: bps },
+      },
+    };
+
+    const { getByRole, queryByRole } = render(SwapConfirmationModal);
+    if (warns) {
+      expect(getByRole("alert")).toHaveTextContent(`${(bps / 100).toFixed(2)}% below`);
+      expect(getByRole("button", { name: "Swap Anyway" })).toBeVisible();
+    } else {
+      expect(queryByRole("alert")).toBeNull();
+      expect(getByRole("button", { name: "Confirm Swap" })).toBeVisible();
+    }
+  });
+
   // ---------------------------------------------------------------------------
   // targetOut mode display
   // ---------------------------------------------------------------------------

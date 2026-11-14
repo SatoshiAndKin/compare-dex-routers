@@ -57,7 +57,7 @@ test("a worse refreshed DeFiLlama price warns before the wallet receives the swa
     for (const quote of comparison.quotes) {
       quote.defillama_price_check = {
         worse_than_reference: worsePrice,
-        shortfall_bps: worsePrice ? 500 : 0,
+        shortfall_bps: worsePrice ? 50 : 0,
       };
     }
   });
@@ -86,7 +86,7 @@ test("a worse refreshed DeFiLlama price warns before the wallet receives the swa
   const dialog = page.getByRole("dialog", { name: "Confirm Swap" });
   const warning = dialog.getByRole("alert");
   await expect(warning).toContainText("worse price than DeFiLlama");
-  await expect(warning).toContainText("5.00% below");
+  await expect(warning).toContainText("0.50% below");
   expect(sends).toBe(0);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toBeHidden();

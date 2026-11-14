@@ -15,10 +15,15 @@
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import type { Quote } from "../stores/comparisonStore.svelte.js";
 
+  const MIN_PRICE_WARNING_BPS = 50;
   const data = $derived(transactionStore.swapConfirmation);
   const isOpen = $derived(data !== null);
   const priceCheck = $derived(data?.quote.defillama_price_check);
-  const worsePrice = $derived(priceCheck?.worse_than_reference === true);
+  const priceWarning = $derived(
+    priceCheck?.worse_than_reference && priceCheck.shortfall_bps >= MIN_PRICE_WARNING_BPS
+      ? priceCheck
+      : null
+  );
 
   function getQuoteDetails(quote: Quote) {
     const isTargetOut = quote.mode === "targetOut";
@@ -61,7 +66,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="swap-modal-title"
-      aria-describedby={worsePrice || !priceCheck ? "swap-price-warning" : undefined}
+      aria-describedby={priceWarning || !priceCheck ? "swap-price-warning" : undefined}
       use:dialogFocus={handleCancel}
       tabindex="-1"
     >
@@ -73,15 +78,12 @@
       </div>
 
       <div class="modal-body">
-        {#if worsePrice && priceCheck}
+        {#if priceWarning}
           <div id="swap-price-warning" class="price-warning" role="alert">
             <strong>Warning: worse price than DeFiLlama</strong>
             <p>
               DeFiLlama values the tokens you receive
-              {priceCheck.shortfall_bps === 0
-                ? "less than 0.01%"
-                : `${(priceCheck.shortfall_bps / 100).toFixed(2)}%`}
-              below what you pay, before gas.
+              {(priceWarning.shortfall_bps / 100).toFixed(2)}% below what you pay, before gas.
             </p>
           </div>
         {:else if !priceCheck}
@@ -152,10 +154,10 @@
         <button
           type="button"
           class="btn-confirm"
-          class:price-override={worsePrice}
+          class:price-override={priceWarning !== null}
           onclick={handleConfirm}
         >
-          {worsePrice ? "Swap Anyway" : "Confirm Swap"}
+          {priceWarning ? "Swap Anyway" : "Confirm Swap"}
         </button>
       </div>
     </div>
