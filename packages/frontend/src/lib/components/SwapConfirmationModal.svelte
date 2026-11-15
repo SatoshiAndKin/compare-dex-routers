@@ -13,14 +13,15 @@
    * - Cancel / backdrop click triggers transactionStore.cancelSwap()
    */
   import { transactionStore } from "../stores/transactionStore.svelte.js";
+  import { preferencesStore } from "../stores/preferencesStore.svelte.js";
   import type { Quote } from "../stores/comparisonStore.svelte.js";
 
-  const MIN_PRICE_WARNING_BPS = 50;
   const data = $derived(transactionStore.swapConfirmation);
   const isOpen = $derived(data !== null);
   const priceCheck = $derived(data?.quote.defillama_price_check);
   const priceWarning = $derived(
-    priceCheck?.worse_than_reference && priceCheck.shortfall_bps >= MIN_PRICE_WARNING_BPS
+    priceCheck?.worse_than_reference &&
+      priceCheck.shortfall_bps >= preferencesStore.defillamaWarningBps
       ? priceCheck
       : null
   );
@@ -83,7 +84,10 @@
             <strong>Warning: worse price than DeFiLlama</strong>
             <p>
               DeFiLlama values the tokens you receive
-              {(priceWarning.shortfall_bps / 100).toFixed(2)}% below what you pay, before gas.
+              {priceWarning.shortfall_bps === 0
+                ? "less than 0.01%"
+                : `${(priceWarning.shortfall_bps / 100).toFixed(2)}%`}
+              below what you pay, before gas.
             </p>
           </div>
         {:else if !priceCheck}

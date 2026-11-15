@@ -51,13 +51,13 @@ test("approval retains its provider through refresh, then cancellation follows t
 test("a worse refreshed DeFiLlama price warns before the wallet receives the swap", async ({
   page,
 }) => {
-  let worsePrice = false;
+  let shortfallBps = 0;
   let sends = 0;
   await fixture(page, (comparison) => {
     for (const quote of comparison.quotes) {
       quote.defillama_price_check = {
-        worse_than_reference: worsePrice,
-        shortfall_bps: worsePrice ? 50 : 0,
+        worse_than_reference: shortfallBps > 0,
+        shortfall_bps: shortfallBps,
       };
     }
   });
@@ -81,7 +81,7 @@ test("a worse refreshed DeFiLlama price warns before the wallet receives the swa
   await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
   const swap = page.getByRole("button", { name: "Execute swap" });
   await expect(swap).toBeEnabled();
-  worsePrice = true;
+  shortfallBps = 50;
   await swap.click();
   const dialog = page.getByRole("dialog", { name: "Confirm Swap" });
   const warning = dialog.getByRole("alert");
@@ -92,8 +92,24 @@ test("a worse refreshed DeFiLlama price warns before the wallet receives the swa
   await expect(dialog).toBeHidden();
   expect(sends).toBe(0);
 
+  await page.getByRole("button", { name: "Open settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  const threshold = settings.getByLabel("DeFiLlama warning threshold (%)");
+  await expect(threshold).toHaveValue("0.50");
+  await threshold.fill("0.75");
+  await settings.getByRole("button", { name: "Save threshold" }).click();
+  await expect(settings.getByText("Warning threshold saved.")).toBeVisible();
+  await settings.getByRole("button", { name: "Close settings" }).click();
+  await page.reload();
+  await expect(swap).toBeEnabled();
   await swap.click();
-  await expect(warning).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Confirm Swap", exact: true })).toBeVisible();
+  await expect(warning).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  shortfallBps = 75;
+  await swap.click();
+  await expect(warning).toContainText("0.75% below");
   await dialog.getByRole("button", { name: "Swap Anyway", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Swap confirmed ·" })).toBeVisible();
   expect(sends).toBe(1);
