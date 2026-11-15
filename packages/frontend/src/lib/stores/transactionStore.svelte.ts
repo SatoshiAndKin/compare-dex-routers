@@ -82,8 +82,18 @@ class TransactionStore {
 
   matches(quote: Quote): boolean {
     return Boolean(
-      quote.simulation_status === "succeeded" &&
-      quote.execution &&
+      quote.simulation_status === "succeeded" && quote.execution && this.activeWallet(quote)
+    );
+  }
+
+  canSetUp(quote: Quote): boolean {
+    return Boolean(
+      quote.wallet_setup && comparisonStore.isFresh(quote) && this.activeWallet(quote)
+    );
+  }
+
+  private activeWallet(quote: Quote): boolean {
+    return Boolean(
       !comparisonStore.routeChoiceRequired &&
       quote.provider === comparisonStore.activeProvider &&
       quote.sender &&
@@ -104,11 +114,13 @@ class TransactionStore {
   private async assertContext(
     quote: Quote,
     provider: EIP1193Provider,
-    requireFresh = false
+    requireFresh = false,
+    setup = false
   ): Promise<void> {
+    const matches = () => (setup ? this.canSetUp(quote) : this.matches(quote));
     if (requireFresh && !comparisonStore.isFresh(quote))
       throw new Error("Quote expired. Refresh and review it again.");
-    if (!this.matches(quote) || walletStore.provider !== provider)
+    if (!matches() || walletStore.provider !== provider)
       throw new Error("Wallet or quote changed. Refresh quotes.");
     const [chain, accounts] = await Promise.all([
       provider.request({ method: "eth_chainId" }),
@@ -116,7 +128,7 @@ class TransactionStore {
     ]);
     if (
       (requireFresh && !comparisonStore.isFresh(quote)) ||
-      !this.matches(quote) ||
+      !matches() ||
       walletStore.provider !== provider ||
       parseWalletChainId(chain) !== quote.chainId ||
       !Array.isArray(accounts) ||
@@ -201,10 +213,15 @@ class TransactionStore {
     resolve?.(confirmed);
   }
 
-  private async receipt(provider: EIP1193Provider, hash: string, quote: Quote): Promise<void> {
+  private async receipt(
+    provider: EIP1193Provider,
+    hash: string,
+    quote: Quote,
+    setup = false
+  ): Promise<void> {
     const deadline = Date.now() + 120_000;
     while (Date.now() < deadline) {
-      await this.assertContext(quote, provider);
+      if (!setup) await this.assertContext(quote, provider);
       const receipt = (await provider.request({
         method: "eth_getTransactionReceipt",
         params: [hash],
@@ -361,7 +378,7 @@ class TransactionStore {
         chainId: hex(quote.chainId),
         to: approval.token,
         value: "0x0",
-        data: `0x095ea7b3${approval.spender.slice(2).toLowerCase().padStart(64, "0")}${MAX_UINT256}`,
+        data: `0x095ea7b3${approval.spender.slice(2).toLowerCase().padStart(64, "0")}${quote.execution?.wallet_simulation ? BigInt(quote.input_amount_raw).toString(16).padStart(64, "0") : MAX_UINT256}`,
       };
       await this.requireTokenBalance(quote, provider);
       const gas = gasMargin(
@@ -405,6 +422,47 @@ class TransactionStore {
     }
   }
 
+  async setUpExecutor(quote: Quote): Promise<void> {
+    const provider = walletStore.provider;
+    const setup = quote.wallet_setup;
+    if (!provider || !setup || !this.canSetUp(quote) || !this.start()) return;
+    try {
+      await this.assertContext(quote, provider, true, true);
+      const tx = { ...setup, from: sender(quote), chainId: hex(quote.chainId), value: "0x0" };
+      const gas = gasMargin(
+        quantity(
+          await provider.request({ method: "eth_estimateGas", params: [tx] }),
+          "Executor setup gas estimate"
+        )
+      );
+      await this.assertContext(quote, provider, true, true);
+      const hash = await provider.request({
+        method: "eth_sendTransaction",
+        params: [{ ...tx, gas: hex(gas) }],
+      });
+      if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
+      const reference = { chainId: quote.chainId, hash };
+      walletStore.setMessage("Wallet executor setup submitted", false, reference);
+      await this.receipt(provider, hash, quote, true);
+      walletStore.setMessage(
+        "Wallet executor ready. Refresh quotes before approving tokens.",
+        false,
+        reference
+      );
+    } catch (error) {
+      walletStore.setMessage(
+        rejected(error)
+          ? "Wallet executor setup canceled"
+          : error instanceof Error
+            ? error.message
+            : "Wallet executor setup failed",
+        true
+      );
+    } finally {
+      this.finish();
+    }
+  }
+
   async swap(routerName: string, quote: Quote): Promise<void> {
     const provider = walletStore.provider;
     if (!walletStore.isConnected || !provider) {
@@ -440,11 +498,16 @@ class TransactionStore {
       if (estimate <= 0n)
         throw new Error("Wallet returned an invalid gas estimate. Refresh quotes.");
       const simulated = BigInt(quote.gas_used ?? "0");
-      const gas = gasMargin(estimate > simulated ? estimate : simulated);
+      const walletSimulation = execution.wallet_simulation;
+      const gas = walletSimulation
+        ? BigInt(walletSimulation.gas)
+        : gasMargin(estimate > simulated ? estimate : simulated);
+      if (gas < estimate) throw new Error("Gas requirements changed. Review a fresh quote.");
       const fees = await transactionFees(provider, transaction, gas, true);
+      const gasPrice = walletSimulation ? BigInt(walletSimulation.gas_price) : fees.gasPrice;
       if (
         (await readBalance(provider, sender(quote), NATIVE_TOKEN)) <
-        BigInt(execution.value) + fees.reserve
+        BigInt(execution.value) + (walletSimulation ? gas * gasPrice : fees.reserve)
       )
         throw new Error("Insufficient gas balance for this swap.");
       // Fee and gas reads can take time. Recheck spendability and identity immediately before sending.
@@ -454,11 +517,17 @@ class TransactionStore {
         (await this.readAllowance(quote, provider)) < BigInt(quote.input_amount_raw)
       )
         throw new Error("Approval required. Token allowance changed.");
+      if (walletSimulation) {
+        const fresh = await this.refreshQuote(quote, provider);
+        if (quoteKey(fresh) !== quoteKey(quote))
+          throw new Error("The simulated trade changed. Review the updated quote before signing.");
+        quote = fresh;
+      }
       await this.assertContext(quote, provider, true);
       this.swapStatus[key] = "pending";
       const hash = await provider.request({
         method: "eth_sendTransaction",
-        params: [{ ...transaction, gas: hex(gas), gasPrice: hex(fees.gasPrice) }],
+        params: [{ ...transaction, gas: hex(gas), gasPrice: hex(gasPrice) }],
       });
       if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
       const reference = { chainId: quote.chainId, hash };

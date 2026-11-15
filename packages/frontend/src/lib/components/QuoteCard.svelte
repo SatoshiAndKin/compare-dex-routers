@@ -82,6 +82,10 @@
     if (!quote) return;
     void transactionStore.swap(routerName, quote);
   }
+
+  function handleSetUp(): void {
+    if (quote) void transactionStore.setUpExecutor(quote);
+  }
 </script>
 
 <div
@@ -131,6 +135,16 @@
 
       {#if walletStore.isConnected}
         <div class="execution-status">
+          {#if quote.wallet_setup}
+            <div class="tx-actions">
+              <button
+                type="button"
+                class="tx-btn"
+                disabled={transactionStore.busy || !transactionStore.canSetUp(quote)}
+                onclick={handleSetUp}>Set up wallet executor</button
+              >
+            </div>
+          {/if}
           {#if needsApproval || canSwap}
             <div class="tx-actions">
               {#if needsApproval}

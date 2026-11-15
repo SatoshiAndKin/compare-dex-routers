@@ -290,7 +290,16 @@ export interface components {
           token: string;
           spender: string;
         } | null;
+        wallet_simulation?: {
+          effects: string;
+          gas: string;
+          gas_price: string;
+        };
       } | null;
+      wallet_setup?: {
+        to: string;
+        data: string;
+      };
       route: {
         nodes: {
           address: string;

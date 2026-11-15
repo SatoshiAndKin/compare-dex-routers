@@ -22,6 +22,7 @@ import type { QuoteResponse, QuoteResult, ProviderFailure } from "./quote-respon
 import { redact, redactText } from "./redaction.js";
 import { createApprovalGasEstimator } from "./approval-gas.js";
 import { fetchZeroXPrice, type ZeroXPrice } from "./zero-x-price.js";
+import { fetchFlashprofitsPrices, type FlashprofitsPrice } from "./flashprofits.js";
 import {
   compareDefiLlamaPrice,
   getQuoteUsdPrices,
@@ -40,9 +41,16 @@ const rates = new Map<string, { nativeRaw: bigint; tokenRaw: bigint; timestamp: 
 const RATE_TTL_MS = 60_000;
 
 type IndicativePrice = Awaited<ReturnType<typeof fetchZeroXPrice>>;
-type ProviderQuote = Quote | IndicativePrice;
+type ProviderQuote =
+  Quote | IndicativePrice | Awaited<ReturnType<typeof fetchFlashprofitsPrices>>[number];
+type QuoteSimulation =
+  | Pick<
+      Extract<SimulationResult, { success: true }>,
+      "success" | "outputAmount" | "gasUsed" | "approvalGasUsed"
+    >
+  | Extract<SimulationResult, { success: false }>;
 type PricedQuote = ProviderQuote & {
-  simulation: SimulationResult | null;
+  simulation: QuoteSimulation | null;
   simulationReason: string | null;
   preview: boolean;
 };
@@ -75,9 +83,15 @@ async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
   const minimumOutput = swap.mode === "targetOut" ? swap.outputAmount : 1n;
   const preview = !params.sender;
   const simulationReason = preview ? "Preview quote; wallet simulation not run." : null;
+  const deadline = config.options.deadlineMs ?? 10_000;
+  const flashprofitsUrl = process.env.FLASHPROFITS_BASE_URL;
+  const flashprofits =
+    flashprofitsUrl && swap.chainId === 1
+      ? fetchFlashprofitsPrices(flashprofitsUrl, swap, deadline, preview ? undefined : client)
+      : null;
   const indicativePrice =
     preview && zeroXApiKey && swap.mode === "exactIn"
-      ? fetchZeroXPrice(zeroXApiKey, swap, config.options.deadlineMs ?? 10_000)
+      ? fetchZeroXPrice(zeroXApiKey, swap, deadline)
       : null;
   const tradeConfig = preview ? previewConfig : config;
   const quotes = tradeConfig.aggregators.length
@@ -119,6 +133,19 @@ async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
     : [];
   if (indicativePrice)
     quotes.push({ ...(await indicativePrice), simulation: null, simulationReason, preview: true });
+  if (flashprofits) {
+    for (const quote of await flashprofits) {
+      const walletSimulation = quote.success ? quote.walletSimulation : undefined;
+      quotes.push({
+        ...quote,
+        preview,
+        simulation: walletSimulation ? { success: true, ...walletSimulation } : null,
+        simulationReason: walletSimulation
+          ? null
+          : (simulationReason ?? "Wallet simulation is unavailable for this quote."),
+      });
+    }
+  }
   const approvalGas = createApprovalGasEstimator(
     client,
     swap.inputToken,
@@ -127,7 +154,7 @@ async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
   );
   const results = await Promise.all(
     quotes
-      .filter((quote): quote is PricedQuote & (SuccessfulQuote | ZeroXPrice) =>
+      .filter((quote): quote is PricedQuote & (SuccessfulQuote | ZeroXPrice | FlashprofitsPrice) =>
         usable(quote, minimumOutput)
       )
       .map(async (quote): Promise<QuoteResult> => ({
@@ -161,14 +188,17 @@ async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
             ? redactText(quote.simulation.error.message)
             : quote.simulationReason,
         execution:
-          params.sender && !quote.preview && "txData" in quote && quote.simulation?.success
-            ? {
-                to: quote.txData.to,
-                data: quote.txData.data,
-                value: (quote.txData.value ?? 0n).toString(),
-                approval: isNativeToken(swap.inputToken) ? null : (quote.approval ?? null),
-              }
-            : null,
+          "walletExecution" in quote
+            ? (quote.walletExecution ?? null)
+            : params.sender && !quote.preview && "txData" in quote && quote.simulation?.success
+              ? {
+                  to: quote.txData.to,
+                  data: quote.txData.data,
+                  value: (quote.txData.value ?? 0n).toString(),
+                  approval: isNativeToken(swap.inputToken) ? null : (quote.approval ?? null),
+                }
+              : null,
+        ...("wallet_setup" in quote && { wallet_setup: quote.wallet_setup }),
         route: quote.route ?? null,
         gas_used:
           quote.simulation?.success && quote.simulation.gasUsed && quote.simulation.gasUsed > 0n
@@ -176,9 +206,11 @@ async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
             : null,
         gas_price_gwei: null,
         approval_gas_used:
-          quote.preview || !("txData" in quote)
-            ? null
-            : ((await approvalGas(quote))?.toString() ?? null),
+          "walletExecution" in quote && quote.simulation?.success
+            ? (quote.simulation.approvalGasUsed?.toString() ?? null)
+            : quote.preview || !("txData" in quote)
+              ? null
+              : ((await approvalGas(quote))?.toString() ?? null),
         approval_gas_cost_native: null,
         native_currency: getNativeAsset(params.chainId).symbol,
         gas_cost_native: null,

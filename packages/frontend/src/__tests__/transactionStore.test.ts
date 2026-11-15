@@ -221,6 +221,54 @@ describe("quote-bound wallet actions", () => {
     expect(comparisonStore.workflowProvider).toBeNull();
     expect(walletStore.messageTransaction).toEqual({ chainId: 1, hash: HASH });
   });
+  it.each([false, true])(
+    "rechecks Flashprofits effects before signing (changed: %s)",
+    async (changed) => {
+      allowance = 100000000n;
+      const execution = makeQuote().execution!;
+      const quote = current({
+        execution: {
+          ...execution,
+          wallet_simulation: { effects: "first", gas: "144000", gas_price: "10000000000" },
+        },
+      });
+      const reply = get.getMockImplementation()!;
+      get.mockImplementationOnce(reply);
+      get.mockImplementationOnce(async () => ({
+        data: makeComparison({
+          quotes: [
+            {
+              ...quote,
+              execution: {
+                ...execution,
+                wallet_simulation: {
+                  effects: changed ? "changed" : "first",
+                  gas: "144000",
+                  gas_price: "10000000000",
+                },
+              },
+            },
+          ],
+          recommendation: quote.provider,
+        }),
+        response: new Response(),
+      }));
+      const pending = transactions.swap("spandex", quote);
+      await confirmation();
+      expect(get).toHaveBeenCalledTimes(1);
+      transactions.confirmSwap();
+      await pending;
+      expect(get).toHaveBeenCalledTimes(2);
+      if (changed) {
+        expect(sent()).toHaveLength(0);
+        expect(walletStore.message).toContain("simulated trade changed");
+      } else {
+        expect(sent()[0]?.[0].params).toEqual([
+          expect.objectContaining({ gas: "0x23280", gasPrice: "0x2540be400" }),
+        ]);
+      }
+    }
+  );
   it.each([
     [100000n, "120001", 144002n],
     [200001n, "120000", 240002n],
