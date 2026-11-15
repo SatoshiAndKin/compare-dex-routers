@@ -1,3 +1,4 @@
+import { keccak256, type Hex } from "viem";
 import {
   readBalance,
   quantity,
@@ -25,6 +26,25 @@ interface Allowance {
   status: TxStatus;
 }
 const MAX_UINT256 = "f".repeat(64);
+
+async function factoryIsReady(
+  provider: EIP1193Provider,
+  factory: NonNullable<NonNullable<Quote["wallet_setup"]>["factory"]>,
+  chainId: number
+): Promise<boolean> {
+  const code = await provider.request({
+    method: "eth_getCode",
+    params: [factory.address, "latest"],
+  });
+  if (parseWalletChainId(await provider.request({ method: "eth_chainId" })) !== chainId)
+    throw new Error("Wallet network changed. Switch back to check the factory.");
+  if (code === "0x") return false;
+  if (typeof code !== "string" || !/^0x(?:[0-9a-f]{2})+$/i.test(code))
+    throw new Error("Wallet could not check the Flashprofits factory code.");
+  if (keccak256(code as Hex) !== factory.code_hash.toLowerCase())
+    throw new Error("Unexpected code at the Flashprofits factory address.");
+  return true;
+}
 
 function rejected(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -422,41 +442,70 @@ class TransactionStore {
     }
   }
 
-  async setUpExecutor(quote: Quote): Promise<void> {
+  async setUpWallet(quote: Quote): Promise<void> {
     const provider = walletStore.provider;
     const setup = quote.wallet_setup;
     if (!provider || !setup || !this.canSetUp(quote) || !this.start()) return;
+    const { factory } = setup;
+    const action = factory ? "Flashprofits factory deployment" : "Wallet executor setup";
+    const next = factory
+      ? "Flashprofits factory ready. Refresh quotes to set up your wallet executor."
+      : "Wallet executor ready. Refresh quotes before approving tokens.";
+    let reference: TransactionReference | undefined;
     try {
       await this.assertContext(quote, provider, true, true);
-      const tx = { ...setup, from: sender(quote), chainId: hex(quote.chainId), value: "0x0" };
+      if (factory && (await factoryIsReady(provider, factory, quote.chainId))) {
+        await this.assertContext(quote, provider, true, true);
+        walletStore.setMessage(next);
+        return;
+      }
+      const tx = {
+        to: setup.to,
+        data: setup.data,
+        from: sender(quote),
+        chainId: hex(quote.chainId),
+        value: "0x0",
+      };
       const gas = gasMargin(
         quantity(
           await provider.request({ method: "eth_estimateGas", params: [tx] }),
-          "Executor setup gas estimate"
+          `${action} gas estimate`
         )
       );
+      if (factory && (await factoryIsReady(provider, factory, quote.chainId))) {
+        await this.assertContext(quote, provider, true, true);
+        walletStore.setMessage(next);
+        return;
+      }
       await this.assertContext(quote, provider, true, true);
       const hash = await provider.request({
         method: "eth_sendTransaction",
         params: [{ ...tx, gas: hex(gas) }],
       });
       if (typeof hash !== "string") throw new Error("Wallet returned no transaction hash");
-      const reference = { chainId: quote.chainId, hash };
-      walletStore.setMessage("Wallet executor setup submitted", false, reference);
+      reference = { chainId: quote.chainId, hash };
+      walletStore.setMessage(`${action} submitted`, false, reference);
       await this.receipt(provider, hash, quote, true);
-      walletStore.setMessage(
-        "Wallet executor ready. Refresh quotes before approving tokens.",
-        false,
-        reference
-      );
+      if (factory && !(await factoryIsReady(provider, factory, quote.chainId)))
+        throw new Error("Flashprofits factory code is unavailable after confirmation.");
+      walletStore.setMessage(next, false, reference);
     } catch (error) {
+      // Another wallet may deploy the same factory between our checks and confirmation.
+      if (factory && !rejected(error)) {
+        const ready = await factoryIsReady(provider, factory, quote.chainId).catch(() => false);
+        if (ready) {
+          walletStore.setMessage(next, false, reference);
+          return;
+        }
+      }
       walletStore.setMessage(
         rejected(error)
-          ? "Wallet executor setup canceled"
+          ? `${action} canceled`
           : error instanceof Error
             ? error.message
-            : "Wallet executor setup failed",
-        true
+            : `${action} failed`,
+        true,
+        reference
       );
     } finally {
       this.finish();

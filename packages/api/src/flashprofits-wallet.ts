@@ -11,9 +11,10 @@ import {
   type PublicClient,
 } from "viem";
 import { isNativeToken, type SwapParams } from "@spandex/core";
+import { walletFactory } from "./flashprofits-wallet-factory.generated.js";
 
 // Mainnet deployment identities from Flashprofits contracts/flashprofits-7702/deployments.toml.
-const amountFlow = "0x80b1a4bb5cb52941081d2fd02a7c1db6f156165b";
+const amountFlow = walletFactory.interpreter;
 const amountFlowHash = "0x953fa3e7abf9f2eee5d7ea2d3b4200570deb995a04684553449817614af7369e";
 const flashAccount = "0xe0c3dcf7ea00847400b63b39008b00005900f08f";
 const flashAccountHash = "0x903c0ba125e59e49743f477134f4a8b3b37a8600de342a35ac6680cfa7258aaf";
@@ -35,7 +36,13 @@ const amountFlowAbi = parseAbi(["function execute(bytes plan) payable returns (u
 
 export type WalletBinding =
   | { kind: "delegation" | "executor"; account: Address }
-  | { kind: "setup"; account: Address; to: Address; data: Hex };
+  | { kind: "setup"; to: Address; data: Hex }
+  | {
+      kind: "deployFactory";
+      to: Address;
+      data: Hex;
+      factory: { address: Address; code_hash: Hex };
+    };
 
 export async function flashprofitsWallet(
   client: PublicClient,
@@ -54,10 +61,30 @@ export async function flashprofitsWallet(
 
   const factoryAddress = process.env.FLASHPROFITS_WALLET_FACTORY;
   const factoryCodeHash = process.env.FLASHPROFITS_WALLET_FACTORY_CODE_HASH?.toLowerCase();
-  if (!factoryAddress || !isAddress(factoryAddress) || !factoryCodeHash) return null;
-  const factory = getAddress(factoryAddress);
+  const override = Boolean(factoryAddress || factoryCodeHash);
+  if (override && (!factoryAddress || !isAddress(factoryAddress) || !factoryCodeHash)) return null;
+  const factory = factoryAddress ? getAddress(factoryAddress) : walletFactory.address;
   const factoryCode = await client.getCode({ address: factory });
-  if (!factoryCode || keccak256(factoryCode) !== factoryCodeHash) return null;
+  if (!factoryCode) {
+    if (override) return null;
+    const deployerCode = await client.getCode({ address: walletFactory.deployer });
+    if (!deployerCode || keccak256(deployerCode) !== walletFactory.deployerCodeHash) return null;
+    return {
+      kind: "deployFactory",
+      to: walletFactory.deployer,
+      data: walletFactory.deploymentData,
+      factory: { address: walletFactory.address, code_hash: walletFactory.codeHash },
+    };
+  }
+  if (keccak256(factoryCode) !== (factoryCodeHash ?? walletFactory.codeHash)) return null;
+  return walletExecutor(client, factory, wallet);
+}
+
+async function walletExecutor(
+  client: PublicClient,
+  factory: Address,
+  wallet: Address
+): Promise<WalletBinding | null> {
   const [interpreter, account] = await Promise.all([
     client.readContract({ address: factory, abi: factoryAbi, functionName: "interpreter" }),
     client.readContract({
@@ -72,7 +99,6 @@ export async function flashprofitsWallet(
   if (!executorCode || executorCode === "0x")
     return {
       kind: "setup",
-      account,
       to: factory,
       data: encodeFunctionData({ abi: factoryAbi, functionName: "create" }),
     };
@@ -89,7 +115,7 @@ export async function flashprofitsWallet(
 }
 
 export function flashprofitsTransaction(
-  wallet: Exclude<WalletBinding, { kind: "setup" }>,
+  wallet: Extract<WalletBinding, { kind: "delegation" | "executor" }>,
   swap: SwapParams,
   inputAmount: bigint,
   nativeExecutionCost: bigint,

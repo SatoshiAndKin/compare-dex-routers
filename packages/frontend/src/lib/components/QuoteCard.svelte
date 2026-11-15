@@ -84,7 +84,7 @@
   }
 
   function handleSetUp(): void {
-    if (quote) void transactionStore.setUpExecutor(quote);
+    if (quote) void transactionStore.setUpWallet(quote);
   }
 </script>
 
@@ -141,8 +141,13 @@
                 type="button"
                 class="tx-btn"
                 disabled={transactionStore.busy || !transactionStore.canSetUp(quote)}
-                onclick={handleSetUp}>Set up wallet executor</button
+                onclick={handleSetUp}
               >
+                {quote.wallet_setup.factory ? "Deploy shared factory" : "Set up wallet executor"}
+              </button>
+              {#if quote.wallet_setup.factory}
+                <small>One-time deployment. Your wallet pays gas.</small>
+              {/if}
             </div>
           {/if}
           {#if needsApproval || canSwap}

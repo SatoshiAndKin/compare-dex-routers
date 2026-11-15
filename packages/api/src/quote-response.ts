@@ -43,7 +43,11 @@ const QuoteSchema = z.object({
     })
     .nullable(),
   wallet_setup: z
-    .object({ to: address, data: z.string().regex(/^0x(?:[a-fA-F0-9]{2})*$/) })
+    .object({
+      to: address,
+      data: z.string().regex(/^0x(?:[a-fA-F0-9]{2})*$/),
+      factory: z.object({ address, code_hash: z.string().regex(/^0x[a-fA-F0-9]{64}$/) }).optional(),
+    })
     .optional(),
   route: z
     .object({

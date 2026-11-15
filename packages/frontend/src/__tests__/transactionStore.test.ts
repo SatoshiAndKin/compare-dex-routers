@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { keccak256 } from "viem";
 import { transactionStore as transactions } from "../lib/stores/transactionStore.svelte.js";
 import { comparisonStore } from "../lib/stores/comparisonStore.svelte.js";
 import { walletStore } from "../lib/stores/walletStore.svelte.js";
@@ -88,6 +89,62 @@ afterEach(() => {
 });
 
 describe("quote-bound wallet actions", () => {
+  it.each([
+    "missing",
+    "already deployed",
+    "deployed during estimation",
+    "unexpected code",
+  ] as const)("handles a factory that is %s before signing", async (state) => {
+    const code = "0xabcd";
+    const setup = {
+      to: ROUTER,
+      data: "0x9876",
+      factory: { address: TO, code_hash: keccak256(code) },
+    };
+    current({ execution: null, simulation_status: "not_run", wallet_setup: setup });
+    await comparisonStore.compare({
+      chainId: 1,
+      from: FROM,
+      to: TO,
+      amount: "100",
+      slippageBps: 50,
+      mode: "exactIn",
+      sender: SENDER,
+    });
+    const base = request.getMockImplementation()!;
+    let factoryCode =
+      state === "unexpected code" ? "0xffff" : state === "already deployed" ? code : "0x";
+    request.mockImplementation((args) => {
+      if (args.method === "eth_getCode") return Promise.resolve(factoryCode);
+      if (args.method === "eth_estimateGas" && state === "deployed during estimation") {
+        factoryCode = code;
+        return Promise.reject(new Error("CREATE2 address already in use"));
+      }
+      if (args.method === "eth_getTransactionReceipt") factoryCode = code;
+      return base(args);
+    });
+    await transactions.setUpWallet(comparisonStore.quotes[0]!);
+    expect(sent().map(([args]) => args.params)).toEqual(
+      state === "missing"
+        ? [
+            [
+              {
+                from: SENDER,
+                chainId: "0x1",
+                to: ROUTER,
+                data: "0x9876",
+                value: "0x0",
+                gas: "0x23280",
+              },
+            ],
+          ]
+        : []
+    );
+    expect(walletStore.message).toContain(
+      state === "unexpected code" ? "Unexpected code" : "factory ready"
+    );
+  });
+
   it.each(["approve", "swap"] as const)(
     "%s asks for a connection without saving a transaction",
     async (action) => {

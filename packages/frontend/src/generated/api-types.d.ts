@@ -299,6 +299,10 @@ export interface components {
       wallet_setup?: {
         to: string;
         data: string;
+        factory?: {
+          address: string;
+          code_hash: string;
+        };
       };
       route: {
         nodes: {
