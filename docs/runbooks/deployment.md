@@ -42,9 +42,20 @@ Set `FLASHPROFITS_BASE_URL` on the API to enable Flashprofits Electric and
 Direct for Ethereum. Production uses the private ClusterIP hostname. Verify
 Flashprofits `/ready`, a quote from the CDR API pod, and both provider results
 through CDR `/api/quote` before rollout acceptance. Unset the URL to disable
-both providers. For ordinary wallets, set `FLASHPROFITS_WALLET_FACTORY` and
-`FLASHPROFITS_WALLET_FACTORY_CODE_HASH` after verifying the deployment. Prices
-can be ranked while wallet execution is unavailable.
+both providers. After the verified Ethereum interpreter is live, an ordinary
+wallet can deploy the shared factory from a Flashprofits quote if the factory
+address is empty. The first wallet pays the deployment gas. Later wallets only
+need to create their own executors. The API checks the factory's deployed bytecode
+before offering executor setup. Set both `FLASHPROFITS_WALLET_FACTORY` and
+`FLASHPROFITS_WALLET_FACTORY_CODE_HASH` to override the default with an existing
+verified deployment. Prices can be ranked while wallet execution is unavailable.
+
+When updating the default factory, run `forge build src --no-cache` with
+Flashprofits' pinned toolchain. From the CDR checkout, run
+`pnpm run generate:flashprofits-factory` with the
+`WalletAmountFlowFactory.json` artifact path and the interpreter address as
+arguments. Verify the generated address and runtime hash with Ethereum
+`eth_call` before publishing the update.
 
 The production URL is `https://compare-dex-routers.shorthair-fir.ts.net/`, with
 the API under `/api` on the same origin. Connect to Tailscale before checking it.

@@ -111,6 +111,11 @@ async function price(
   };
   if (wallet?.kind === "setup")
     return { ...quote, wallet_setup: { to: wallet.to, data: wallet.data } };
+  if (wallet?.kind === "deployFactory")
+    return {
+      ...quote,
+      wallet_setup: { to: wallet.to, data: wallet.data, factory: wallet.factory },
+    };
   const plan = result.route.execution;
   if (!wallet || !plan || !client || plan.account.toLowerCase() !== wallet.account.toLowerCase())
     return quote;
@@ -182,7 +187,8 @@ export async function fetchFlashprofitsPrices(
     url.searchParams.set("outputToken", swap.outputToken);
     if (swap.mode === "targetOut") url.searchParams.set("outputAmount", String(swap.outputAmount));
     else url.searchParams.set("inputAmount", String(swap.inputAmount));
-    if (wallet && wallet.kind !== "setup") url.searchParams.set("executionAccount", wallet.account);
+    if (wallet?.kind === "delegation" || wallet?.kind === "executor")
+      url.searchParams.set("executionAccount", wallet.account);
     const response = await fetch(url, {
       headers: { accept: "application/json" },
       redirect: "error",
