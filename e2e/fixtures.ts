@@ -4,7 +4,7 @@ import type { Page } from "@playwright/test";
 import { FROM, TO, makeComparison } from "../packages/frontend/src/__tests__/quote-fixture.js";
 export async function fixture(
   page: Page,
-  transform?: (comparison: ReturnType<typeof makeComparison>) => void
+  transform?: (comparison: ReturnType<typeof makeComparison>) => void | Promise<void>
 ) {
   const tokens = [
     { chainId: 1, address: FROM, name: "USD Coin", symbol: "USDC", decimals: 6 },
@@ -55,7 +55,7 @@ export async function fixture(
   await page.route("**/api/coinbase-estimate?**", (route) =>
     route.fulfill({ json: { status: "unavailable", reason: "No supported direct market." } })
   );
-  await page.route("**/api/quote?**", (route) => {
+  await page.route("**/api/quote?**", async (route) => {
     const comparison = makeComparison();
     const params = new URL(route.request().url()).searchParams;
     for (const quote of comparison.quotes) {
@@ -90,7 +90,7 @@ export async function fixture(
         }
       }
     }
-    transform?.(comparison);
+    await transform?.(comparison);
     return route.fulfill({ json: comparison });
   });
 }

@@ -38,6 +38,14 @@ container restarts. The existing shutdown handler drains requests, closes connec
 and flushes telemetry within the 45-second pod termination period. nginx uses SIGQUIT.
 Kubernetes readiness replaces Docker health checks for production routing.
 
+Set `FLASHPROFITS_BASE_URL` on the API to enable Flashprofits Electric and
+Direct for Ethereum. Production uses the private ClusterIP hostname. Verify
+Flashprofits `/ready`, a quote from the CDR API pod, and both provider results
+through CDR `/api/quote` before rollout acceptance. Unset the URL to disable
+both providers. For ordinary wallets, set `FLASHPROFITS_WALLET_FACTORY` and
+`FLASHPROFITS_WALLET_FACTORY_CODE_HASH` after verifying the deployment. Prices
+can be ranked while wallet execution is unavailable.
+
 The production URL is `https://compare-dex-routers.shorthair-fir.ts.net/`, with
 the API under `/api` on the same origin. Connect to Tailscale before checking it.
 The former `https://ski-nuc-3.shorthair-fir.ts.net:8443/` URL is retired.

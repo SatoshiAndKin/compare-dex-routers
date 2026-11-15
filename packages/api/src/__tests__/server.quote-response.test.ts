@@ -125,6 +125,66 @@ afterEach(async () => {
 });
 
 describe("unified quote contract", () => {
+  it("ranks both Flashprofits routes from one private request during preview", async () => {
+    const base = "http://flashprofits.flashprofits.svc.cluster.local:3000";
+    vi.stubEnv("FLASHPROFITS_BASE_URL", base);
+    const remote = vi.fn((url: URL) => {
+      expect(url.searchParams.toString()).toBe(
+        `inputToken=${FROM}&outputToken=${TO}&inputAmount=1000000`
+      );
+      const quoted = (outputAmount: string, source: string) => ({
+        status: "quoted",
+        route: {
+          inputAmount: "1000000",
+          outputAmount,
+          nodes: [{ token: FROM }, { token: TO }],
+          legs: [{ inputToken: FROM, outputToken: TO, inputAmount: "1000000", source }],
+        },
+      });
+      return Response.json({
+        blockNumber: 100,
+        blockHash: `0x${"a".repeat(64)}`,
+        direct: quoted("1100000000000000000", "direct pool"),
+        electric: quoted("1200000000000000000", "split pool"),
+      });
+    });
+    const original = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      String(input).startsWith(`${base}/api/v2/swap-quote?`)
+        ? Promise.resolve(remote(new URL(String(input))))
+        : original(input, init)
+    );
+    const { body } = await call({ sender: "", to: TO });
+    const result = QuoteResponseSchema.parse(body);
+    expect(remote).toHaveBeenCalledTimes(1);
+    expect(result.quotes.slice(0, 2).map(({ provider }) => provider)).toEqual([
+      "Flashprofits Electric",
+      "Flashprofits Direct",
+    ]);
+    expect(result.quotes[0]).toMatchObject({
+      execution: null,
+      route: { edges: [{ source: FROM, target: TO, key: "split pool" }] },
+    });
+  });
+
+  it("keeps other DEX results when the private Flashprofits endpoint is unavailable", async () => {
+    const base = "http://flashprofits.flashprofits.svc.cluster.local:3000";
+    vi.stubEnv("FLASHPROFITS_BASE_URL", base);
+    const original = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      String(input).startsWith(`${base}/api/v2/swap-quote?`)
+        ? Promise.resolve(new Response(null, { status: 503 }))
+        : original(input, init)
+    );
+    const { body } = await call({ to: TO });
+    const result = QuoteResponseSchema.parse(body);
+    expect(result.quotes.map(({ provider }) => provider)).toContain("kyberswap");
+    expect(result.failures.map(({ provider }) => provider)).toEqual([
+      "Flashprofits Electric",
+      "Flashprofits Direct",
+    ]);
+  });
+
   it("uses the 0x indicative endpoint for wallet-free comparisons and ETH valuation", async () => {
     vi.stubEnv("ZEROX_API_KEY", "test-0x-price-key");
     vi.resetModules();

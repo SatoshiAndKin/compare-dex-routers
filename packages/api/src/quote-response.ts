@@ -37,8 +37,14 @@ const QuoteSchema = z.object({
       data: z.string().regex(/^0x(?:[a-fA-F0-9]{2})*$/),
       value: quantity,
       approval: z.object({ token: address, spender: address }).nullable(),
+      wallet_simulation: z
+        .object({ effects: z.string(), gas: quantity, gas_price: quantity })
+        .optional(),
     })
     .nullable(),
+  wallet_setup: z
+    .object({ to: address, data: z.string().regex(/^0x(?:[a-fA-F0-9]{2})*$/) })
+    .optional(),
   route: z
     .object({
       nodes: z.array(z.object({ address, symbol: z.string().optional() })),

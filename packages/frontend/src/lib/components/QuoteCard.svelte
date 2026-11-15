@@ -24,6 +24,7 @@
     recommendationBasis?: QuoteResponse["recommendation_basis"];
     usdConversion?: QuoteResponse["usd_conversion"];
     rankingNote?: string;
+    routeDetailsOpen?: boolean;
   }
 
   let {
@@ -36,6 +37,7 @@
     recommendationBasis = "none",
     usdConversion = null,
     rankingNote = "",
+    routeDetailsOpen = $bindable(false),
   }: Props = $props();
 
   const providerName = $derived(quote?.provider ?? provider);
@@ -80,6 +82,10 @@
     if (!quote) return;
     void transactionStore.swap(routerName, quote);
   }
+
+  function handleSetUp(): void {
+    if (quote) void transactionStore.setUpExecutor(quote);
+  }
 </script>
 
 <div
@@ -119,10 +125,26 @@
         </InfoPopover>
       </div>
       <!-- Expandable details -->
-      <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} {usdConversion} />
+      <QuoteDetails
+        {quote}
+        {gasPriceGwei}
+        {recommendationBasis}
+        {usdConversion}
+        bind:open={routeDetailsOpen}
+      />
 
       {#if walletStore.isConnected}
         <div class="execution-status">
+          {#if quote.wallet_setup}
+            <div class="tx-actions">
+              <button
+                type="button"
+                class="tx-btn"
+                disabled={transactionStore.busy || !transactionStore.canSetUp(quote)}
+                onclick={handleSetUp}>Set up wallet executor</button
+              >
+            </div>
+          {/if}
           {#if needsApproval || canSwap}
             <div class="tx-actions">
               {#if needsApproval}

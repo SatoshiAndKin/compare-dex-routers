@@ -10,6 +10,8 @@
   import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
   import DisclosureChevron from "./DisclosureChevron.svelte";
 
+  let routeDetailsOpen = $state(false);
+
   const recommendedVerified = $derived(
     comparisonStore.quotes.some(
       (quote) =>
@@ -43,6 +45,7 @@
       quotes={comparisonStore.quotes}
       stale={comparisonStore.isStale || comparisonStore.isLoading || Boolean(comparisonStore.error)}
       dexExpiresAt={comparisonStore.expiresAt}
+      onReviewDex={() => (routeDetailsOpen = true)}
     >
       {#snippet dexRefresh()}
         <AutoRefreshIndicator
@@ -80,6 +83,7 @@
               recommendationBasis={comparisonStore.recommendationBasis}
               usdConversion={comparisonStore.usdConversion}
               {rankingNote}
+              bind:routeDetailsOpen
             />
           {:else}
             <div class="quote-placeholder" aria-label="Quote result">

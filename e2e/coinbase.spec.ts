@@ -4,6 +4,36 @@ import { fixture } from "./fixtures.js";
 import { installWallet } from "./wallet.js";
 import { FROM, TO, SENDER, deferred } from "../packages/frontend/src/__tests__/quote-fixture.js";
 
+test("reviews the selected DEX route during a delayed refresh", async ({ page, isMobile }) => {
+  const refresh = deferred<undefined>();
+  let hold = false;
+  await fixture(page, async () => {
+    if (hold) await refresh.promise;
+  });
+  await mockCoinbase(page);
+  try {
+    await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
+    const link = page.getByRole("link", { name: /Review DEX route/ });
+    const selected = page.getByRole("region", { name: "Selected DEX route" });
+    const details = selected.getByRole("button", { name: "Details", exact: true });
+    await expect(details).toHaveAttribute("aria-expanded", "false");
+    hold = true;
+    await page.getByRole("button", { name: "Refresh DEX quotes" }).click();
+    await expect(page.getByRole("button", { name: "Refresh DEX quotes" })).toBeDisabled();
+    if (isMobile) await link.tap();
+    else await link.press("Enter");
+    await expect(selected).toBeFocused();
+    await expect(details).toHaveAttribute("aria-expanded", "true");
+    await expect(selected).toBeInViewport();
+    await expect(selected.getByText("Via 0x", { exact: true })).toBeVisible();
+    refresh.resolve(undefined);
+    await expect(page.getByRole("button", { name: "Refresh DEX quotes" })).toBeEnabled();
+    await expect(details).toHaveAttribute("aria-expanded", "true");
+  } finally {
+    refresh.resolve(undefined);
+  }
+});
+
 async function mockCoinbase(
   page: Page,
   afterFeeOutput?: string,
