@@ -24,6 +24,7 @@
     recommendationBasis?: QuoteResponse["recommendation_basis"];
     usdConversion?: QuoteResponse["usd_conversion"];
     rankingNote?: string;
+    routeDetailsOpen?: boolean;
   }
 
   let {
@@ -36,6 +37,7 @@
     recommendationBasis = "none",
     usdConversion = null,
     rankingNote = "",
+    routeDetailsOpen = $bindable(false),
   }: Props = $props();
 
   const providerName = $derived(quote?.provider ?? provider);
@@ -119,7 +121,13 @@
         </InfoPopover>
       </div>
       <!-- Expandable details -->
-      <QuoteDetails {quote} {gasPriceGwei} {recommendationBasis} {usdConversion} />
+      <QuoteDetails
+        {quote}
+        {gasPriceGwei}
+        {recommendationBasis}
+        {usdConversion}
+        bind:open={routeDetailsOpen}
+      />
 
       {#if walletStore.isConnected}
         <div class="execution-status">

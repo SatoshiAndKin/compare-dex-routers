@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack, type Snippet } from "svelte";
+  import { tick, untrack, type Snippet } from "svelte";
   import { formatUnits } from "viem";
   import { apiClient } from "../api.js";
   import type { components } from "../../generated/api-types.js";
@@ -19,6 +19,7 @@
     dexRefresh,
     dexStatus,
     dex,
+    onReviewDex,
   }: {
     params: CompareParams | null;
     quotes: Quote[];
@@ -27,6 +28,7 @@
     dexRefresh?: Snippet;
     dexStatus?: Snippet;
     dex?: Snippet;
+    onReviewDex?: () => void;
   } = $props();
   type ReadyEstimate = Extract<components["schemas"]["CoinbaseEstimate"], { status: "ready" }>;
   let result = $state<ReadyEstimate | null>(null);
@@ -37,9 +39,18 @@
   let now = $state(Date.now());
   let overview = $state<HTMLDivElement | null>(null);
   let overviewHeight = $state(0);
+  let selectedRoute = $state<HTMLElement | null>(null);
   const dexExpired = $derived(now >= dexExpiresAt);
   const expired = $derived(result !== null && now >= Date.parse(result.expires_at));
   const overviewPending = $derived(stale || loading || expired || dexExpired);
+
+  async function reviewDex(event: MouseEvent): Promise<void> {
+    event.preventDefault();
+    onReviewDex?.();
+    await tick();
+    selectedRoute?.focus({ preventScroll: true });
+    selectedRoute?.scrollIntoView({ block: "start" });
+  }
 
   // Save settled geometry. A refresh must not move the wallet controls below it.
   $effect(() => {
@@ -254,7 +265,8 @@
           <p class="venue-status">{stale ? "Previous DEX quotes" : "No matching DEX price"}</p>
         {/if}
         <div class="dex-actions">
-          {#if bestDex && dex}<a class="trade-link" href="#selected-dex-route">Review DEX route ↓</a
+          {#if bestDex && dex}<a class="trade-link" href="#selected-dex-route" onclick={reviewDex}
+              >Review DEX route ↓</a
             >{/if}
           {@render dexStatus?.()}
         </div>
@@ -388,7 +400,13 @@
   {/if}
 </div>
 {#if dex}
-  <section id="selected-dex-route" class="selected-dex-route" aria-label="Selected DEX route">
+  <section
+    id="selected-dex-route"
+    class="selected-dex-route"
+    aria-label="Selected DEX route"
+    tabindex="-1"
+    bind:this={selectedRoute}
+  >
     {@render dex()}
   </section>
 {/if}

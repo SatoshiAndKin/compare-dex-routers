@@ -8,14 +8,15 @@
     gasPriceGwei?: string | null;
     recommendationBasis?: QuoteResponse["recommendation_basis"];
     usdConversion?: QuoteResponse["usd_conversion"];
+    open?: boolean;
   }
   let {
     quote,
     gasPriceGwei = null,
     recommendationBasis = "none",
     usdConversion = null,
+    open = $bindable(false),
   }: Props = $props();
-  let open = $state(false);
   const fields = $derived(
     [
       ["From", `${quote.from_symbol} ${quote.from}`],
