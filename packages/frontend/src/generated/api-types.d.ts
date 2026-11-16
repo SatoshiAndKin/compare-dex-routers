@@ -343,6 +343,14 @@ export interface components {
           value: number;
         }[];
       } | null;
+      blocked_tokens?: {
+        chainId: number;
+        address: string;
+        blockSource: string;
+        blockReason: string;
+        /** Format: uri */
+        blockSourceUrl: string;
+      }[];
       /** @description Swap execution gas units, excluding approvals */
       gas_used: string | null;
       /** @description Remaining approval gas units; zero when unnecessary, null when unknown */
@@ -371,10 +379,6 @@ export interface components {
       requestId: string;
       block: {
         chainId: number;
-        /**
-         * @description EVM address (0x-prefixed, 40 hex chars)
-         * @example 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
-         */
         address: string;
         blockSource: string;
         blockReason: string;
@@ -614,6 +618,8 @@ export interface operations {
         sender?: string;
         /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */
         mode?: "exactIn" | "targetOut";
+        /** @description Set false to include listed tokens and return warnings for affected quotes. */
+        tokenSafetyFilter?: boolean;
       };
       header?: never;
       path?: never;
@@ -670,7 +676,10 @@ export interface operations {
   };
   getTokenlist: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Set false to include listed tokens and return warnings for affected quotes. */
+        tokenSafetyFilter?: boolean;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -777,6 +786,8 @@ export interface operations {
   getTokenMetadata: {
     parameters: {
       query: {
+        /** @description Set false to include listed tokens and return warnings for affected quotes. */
+        tokenSafetyFilter?: boolean;
         /** @description Chain ID (1, 8453, 42161, 10, 137, 56, 43114) */
         chainId?: number | null;
         /** @description Token contract address */

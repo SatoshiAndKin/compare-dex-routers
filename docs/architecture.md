@@ -119,8 +119,11 @@ and address.
 
 The API filters the default lists and returns HTTP 403 with the provenance
 when an input or output token is blocked. Both selectors also filter custom and
-saved tokens. Entering a blocked address shows the reason and a link to the
-source. If the API has never received a valid snapshot, the public mirror
+saved tokens, and quote ranking excludes provider routes with a listed token
+in the disclosed hop data. Providers can omit hop data. Entering a blocked
+address shows the reason and a link to the source. Turn off **Filter blocked
+tokens and routes** in Settings to allow adding the token and to receive a
+warning with its provenance at swap confirmation. If the API has never received a valid snapshot, the public mirror
 returns HTTP 503 and regular token and quote requests continue.
 
 ## Frontend (`packages/frontend`)

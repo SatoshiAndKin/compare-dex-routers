@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BlockDetailsSchema } from "./blocked-tokenlist.js";
 import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
 
 extendZodWithOpenApi(z);
@@ -63,6 +64,7 @@ const QuoteSchema = z.object({
       ),
     })
     .nullable(),
+  blocked_tokens: z.array(BlockDetailsSchema).optional(),
   gas_used: quantity.nullable().describe("Swap execution gas units, excluding approvals"),
   approval_gas_used: quantity
     .nullable()

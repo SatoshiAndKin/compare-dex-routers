@@ -21,6 +21,7 @@ import type { QuoteParams } from "./quote.js";
 import type { QuoteResponse, QuoteResult, ProviderFailure } from "./quote-response.js";
 import { redact, redactText } from "./redaction.js";
 import { createApprovalGasEstimator } from "./approval-gas.js";
+import type { BlockedTokenlistSnapshot, BlockDetails } from "./blocked-tokenlist.js";
 import { fetchZeroXPrice, type ZeroXPrice } from "./zero-x-price.js";
 import { fetchFlashprofitsPrices, type FlashprofitsPrice } from "./flashprofits.js";
 import {
@@ -66,7 +67,12 @@ type TokenMetadata = {
   toSymbol: string;
 };
 
-async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
+async function requestQuotes(
+  params: QuoteParams,
+  metadata: TokenMetadata,
+  blocklist: BlockedTokenlistSnapshot | undefined,
+  tokenSafetyFilter: boolean
+) {
   const { inputDecimals, outputDecimals, fromSymbol, toSymbol } = metadata;
   const common = {
     chainId: params.chainId,
@@ -146,6 +152,33 @@ async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
       });
     }
   }
+  const routeBlocks = new Map<PricedQuote, BlockDetails[]>();
+  const failures: ProviderFailure[] = [];
+  for (const quote of quotes) {
+    if (!blocklist || !quote.success) continue;
+    const blocks = blocklist.findAll(params.chainId, [
+      params.from,
+      params.to,
+      ...(quote.route?.nodes.map((node) => node.address) ?? []),
+      ...(quote.route?.edges.flatMap((edge) => [edge.source, edge.target]) ?? []),
+    ]);
+    const first = blocks[0];
+    if (!first) continue;
+    routeBlocks.set(quote, blocks);
+    if (tokenSafetyFilter) {
+      failures.push({
+        provider: quote.provider,
+        stage: "quote",
+        error: {
+          name: "BlockedToken",
+          message: "Route includes a token blocked by " + first.blockSource + ".",
+          code: "TOKEN_BLOCKED",
+          cause: null,
+          details: blocks,
+        },
+      });
+    }
+  }
   const approvalGas = createApprovalGasEstimator(
     client,
     swap.inputToken,
@@ -154,8 +187,9 @@ async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
   );
   const results = await Promise.all(
     quotes
-      .filter((quote): quote is PricedQuote & (SuccessfulQuote | ZeroXPrice | FlashprofitsPrice) =>
-        usable(quote, minimumOutput)
+      .filter(
+        (quote): quote is PricedQuote & (SuccessfulQuote | ZeroXPrice | FlashprofitsPrice) =>
+          usable(quote, minimumOutput) && !(tokenSafetyFilter && routeBlocks.has(quote))
       )
       .map(async (quote): Promise<QuoteResult> => ({
         chainId: params.chainId,
@@ -200,6 +234,7 @@ async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
               : null,
         ...("wallet_setup" in quote && { wallet_setup: quote.wallet_setup }),
         route: quote.route ?? null,
+        ...(routeBlocks.has(quote) ? { blocked_tokens: routeBlocks.get(quote) } : {}),
         gas_used:
           quote.simulation?.success && quote.simulation.gasUsed && quote.simulation.gasUsed > 0n
             ? quote.simulation.gasUsed.toString()
@@ -222,9 +257,8 @@ async function requestQuotes(params: QuoteParams, metadata: TokenMetadata) {
         net_value_usd: null,
       }))
   );
-  const failures: ProviderFailure[] = [];
   for (const quote of quotes) {
-    if (usable(quote, minimumOutput)) continue;
+    if (usable(quote, minimumOutput) || (tokenSafetyFilter && routeBlocks.has(quote))) continue;
     const error = quote.success ? new Error("Output is below the requested amount") : quote.error;
     const diagnostic =
       error && typeof error === "object" ? (error as unknown as Record<string, unknown>) : {};
@@ -296,7 +330,11 @@ async function nativeRate(chainId: number, token: string, decimals: number) {
   }
 }
 
-export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
+export async function quoteRoutes(
+  params: QuoteParams,
+  blocklist?: BlockedTokenlistSnapshot,
+  tokenSafetyFilter = true
+): Promise<QuoteResponse> {
   const [inputDecimals, outputDecimals, fromSymbol, toSymbol] = await Promise.all([
     getTokenDecimals(params.chainId, params.from),
     getTokenDecimals(params.chainId, params.to),
@@ -314,7 +352,12 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
       )
     : Promise.resolve(null);
   const [{ results, failures, account }, usdPrices, gas] = await Promise.all([
-    requestQuotes(params, { inputDecimals, outputDecimals, fromSymbol, toSymbol }),
+    requestQuotes(
+      params,
+      { inputDecimals, outputDecimals, fromSymbol, toSymbol },
+      blocklist,
+      tokenSafetyFilter
+    ),
     getQuoteUsdPrices(params.chainId, params.from, params.to),
     getGasPriceWithCache(params.chainId, getClient(params.chainId)),
   ]);

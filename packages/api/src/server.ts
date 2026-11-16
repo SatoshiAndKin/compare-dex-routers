@@ -3,7 +3,7 @@ import "./sentry.js";
 import http from "node:http";
 import { existsSync } from "node:fs";
 import { TokenlistFiles } from "./tokenlists.js";
-import { blockDetails, loadBlockedTokenlist } from "./blocked-tokenlist.js";
+import { loadBlockedTokenlist, type BlockDetails } from "./blocked-tokenlist.js";
 import { createManagedServer } from "./shutdown.js";
 import { docsAssets, docsAssetUrl } from "./docs-assets.js";
 import { pathToFileURL } from "node:url";
@@ -53,26 +53,19 @@ function sendError(res: http.ServerResponse, status: number, message: string) {
   });
 }
 
-async function rejectBlockedTokens(
+function rejectBlockedToken(
   res: http.ServerResponse,
   requestId: string,
-  chainId: number,
-  addresses: string[]
-): Promise<boolean> {
-  const list = await loadBlockedTokenlist();
-  for (const address of addresses) {
-    const token = list?.find(chainId, address);
-    if (!token) continue;
-    const block = blockDetails(token);
-    sendJson(res, 403, {
-      code: "TOKEN_BLOCKED",
-      error: "Token blocked by " + block.blockSource + ". " + block.blockReason,
-      block,
-      requestId,
-    });
-    return true;
-  }
-  return false;
+  block: BlockDetails | undefined
+): boolean {
+  if (!block) return false;
+  sendJson(res, 403, {
+    code: "TOKEN_BLOCKED",
+    error: "Token blocked by " + block.blockSource + ". " + block.blockReason,
+    block,
+    requestId,
+  });
+  return true;
 }
 
 export async function handleRequest(
@@ -227,6 +220,8 @@ window.onload = function() {
     return;
   }
 
+  const tokenSafetyFilter = url.searchParams.get("tokenSafetyFilter") !== "false";
+
   if (url.pathname === "/blocked-tokenlist.json" && req.method === "GET") {
     const blocked = await loadBlockedTokenlist();
     if (!blocked) {
@@ -244,7 +239,10 @@ window.onload = function() {
 
   if (url.pathname === "/tokenlist" && req.method === "GET") {
     try {
-      const [lists, blocked] = await Promise.all([tokenlistFiles.load(), loadBlockedTokenlist()]);
+      const [lists, blocked] = await Promise.all([
+        tokenlistFiles.load(),
+        tokenSafetyFilter ? loadBlockedTokenlist() : undefined,
+      ]);
       const defaultTokenlists = lists.map((list) => ({
         ...list,
         tokens: list.tokens.filter((token) => !blocked?.find(token.chainId, token.address)),
@@ -296,7 +294,10 @@ window.onload = function() {
       return;
     }
 
-    if (await rejectBlockedTokens(res, requestId, chainId, [addressParam])) return;
+    if (tokenSafetyFilter) {
+      const blocked = await loadBlockedTokenlist();
+      if (rejectBlockedToken(res, requestId, blocked?.findAll(chainId, [addressParam])[0])) return;
+    }
 
     try {
       const [name, symbol, decimals] = await Promise.all([
@@ -348,11 +349,16 @@ window.onload = function() {
     }
 
     const { chainId, from, to, amount, mode } = parsed.data;
-    if (await rejectBlockedTokens(res, requestId, chainId, [from, to])) return;
+    const blocked = await loadBlockedTokenlist();
+    if (
+      tokenSafetyFilter &&
+      rejectBlockedToken(res, requestId, blocked?.findAll(chainId, [from, to])[0])
+    )
+      return;
 
     const startTime = Date.now();
     try {
-      const result = await quoteRoutes(parsed.data);
+      const result = await quoteRoutes(parsed.data, blocked, tokenSafetyFilter);
       const duration = Date.now() - startTime;
       logger.info(
         `Quote: chain=${chainId} ${from} -> ${to}, amount=${amount}, mode=${mode}, recommendation=${result.recommendation}, ${duration}ms`

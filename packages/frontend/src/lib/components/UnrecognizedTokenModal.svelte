@@ -4,6 +4,7 @@
    * in any token list. Fetches ERC-20 metadata, lets the user save to local tokens.
    */
   import { tokenListStore, type Token } from "../stores/tokenListStore.svelte.js";
+  import { preferencesStore } from "../stores/preferencesStore.svelte.js";
   import { apiClient } from "../api.js";
 
   // ---------------------------------------------------------------------------
@@ -43,7 +44,7 @@
   async function fetchMetadata(address: string, chainId: number): Promise<void> {
     try {
       const { data, error } = await apiClient.GET("/token-metadata", {
-        params: { query: { chainId, address } },
+        params: { query: { chainId, address, ...preferencesStore.tokenSafetyQuery } },
       });
 
       if (error || !data) {

@@ -219,6 +219,8 @@ describe("server integration", () => {
         tokens: [otherChain],
         tokenlists: [{ tokens: [otherChain] }],
       });
+      const choicesWithoutFilter = await request(baseUrl + "/tokenlist?tokenSafetyFilter=false");
+      expect(JSON.parse(choicesWithoutFilter.body).tokens).toEqual([token, otherChain]);
       expect(blocked.status).toBe(403);
       expect(JSON.parse(blocked.body)).toMatchObject({
         code: "TOKEN_BLOCKED",

@@ -51,7 +51,16 @@ export const BlockedTokenlistSchema = z.looseObject({
 
 type BlockedToken = z.infer<typeof BlockedTokenSchema>;
 
-export function blockDetails(token: BlockedToken) {
+export const BlockDetailsSchema = z.object({
+  chainId: z.number().int(),
+  address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  blockSource: z.string(),
+  blockReason: z.string(),
+  blockSourceUrl: HttpsUrlSchema,
+});
+export type BlockDetails = z.infer<typeof BlockDetailsSchema>;
+
+function blockDetails(token: BlockedToken): BlockDetails {
   return {
     chainId: token.chainId,
     address: token.address,
@@ -63,7 +72,7 @@ export function blockDetails(token: BlockedToken) {
 
 const tokenKey = (chainId: number, address: string) => chainId + ":" + address.toLowerCase();
 
-class BlockedTokenlistSnapshot {
+export class BlockedTokenlistSnapshot {
   private readonly index = new Map<string, BlockedToken>();
 
   constructor(readonly list: z.infer<typeof BlockedTokenlistSchema>) {
@@ -76,6 +85,17 @@ class BlockedTokenlistSnapshot {
 
   find(chainId: number, address: string) {
     return this.index.get(tokenKey(chainId, address));
+  }
+
+  findAll(chainId: number, addresses: Iterable<string>): BlockDetails[] {
+    const matches = new Map<string, BlockDetails>();
+    for (const address of addresses) {
+      const key = address.toLowerCase();
+      if (matches.has(key)) continue;
+      const token = this.find(chainId, key);
+      if (token) matches.set(key, blockDetails(token));
+    }
+    return [...matches.values()];
   }
 }
 

@@ -9,6 +9,7 @@ import { configStore } from "./configStore.svelte.js";
 import { canonicalToken, isNativeToken } from "../native.js";
 import { apiClient } from "../api.js";
 import type { TokenInfo } from "./formStore.svelte.js";
+import { preferencesStore } from "./preferencesStore.svelte.js";
 import { tokenListStore } from "./tokenListStore.svelte.js";
 
 class TokensStore {
@@ -29,7 +30,7 @@ class TokensStore {
       (token) =>
         token.chainId === chainId &&
         !isNativeToken(token.address) &&
-        !tokenListStore.findBlockedToken(chainId, token.address)
+        !tokenListStore.blocksToken(chainId, token.address)
     );
     const native = configStore.nativeAssets[String(chainId)];
     return native ? [{ ...native, name: `${native.name} — Native` }, ...tokens] : tokens;
@@ -60,7 +61,7 @@ class TokensStore {
 
   private async loadMetadata(chainId: number, address: string): Promise<TokenInfo> {
     const { data, error } = await apiClient.GET("/token-metadata", {
-      params: { query: { chainId, address } },
+      params: { query: { chainId, address, ...preferencesStore.tokenSafetyQuery } },
     });
     if (
       error ||
@@ -81,7 +82,9 @@ class TokensStore {
     this.isLoading = true;
     this.error = null;
     try {
-      const { data, error } = await apiClient.GET("/tokenlist");
+      const { data, error } = await apiClient.GET("/tokenlist", {
+        params: { query: preferencesStore.tokenSafetyQuery },
+      });
       if (error) {
         this.error = "Failed to load token list";
         return;

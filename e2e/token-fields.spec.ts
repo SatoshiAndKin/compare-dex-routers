@@ -159,6 +159,27 @@ test("filters blocked tokens from both selectors and explains a pasted address",
     await field.fill("");
   }
   expect(blockedMetadataRequests).toBe(0);
+  await page.getByRole("button", { name: "Open settings" }).click();
+  const filter = page.getByRole("checkbox", { name: "Filter blocked tokens and routes" });
+  await expect(filter).toBeChecked();
+  await filter.uncheck();
+  await page.getByRole("button", { name: "Close settings" }).click();
+  const from = page.getByRole("combobox", { name: "From token", exact: true });
+  await from.fill("SAITAMA");
+  await page.getByRole("option", { name: /SAITAMA/ }).click();
+  await expect(from).toHaveValue("SAITAMA");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Token blocked by Flashprofits." })
+  ).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: "Open settings" }).click();
+  await expect(filter).not.toBeChecked();
+  await filter.check();
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await from.fill(address);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Token blocked by Flashprofits." })
+  ).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 

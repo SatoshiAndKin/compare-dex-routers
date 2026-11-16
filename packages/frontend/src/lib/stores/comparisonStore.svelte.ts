@@ -1,5 +1,6 @@
 import type { components } from "../../generated/api-types.js";
 import { canQuoteWallet, mergePreview } from "../quote-preview.js";
+import { preferencesStore } from "./preferencesStore.svelte.js";
 import { apiClient } from "../api.js";
 
 export type Quote = components["schemas"]["Quote"];
@@ -18,7 +19,10 @@ export async function requestQuotes(
   params: CompareParams,
   signal?: AbortSignal
 ): Promise<QuoteResponse> {
-  const { data, error } = await apiClient.GET("/quote", { params: { query: params }, signal });
+  const { data, error } = await apiClient.GET("/quote", {
+    params: { query: { ...params, ...preferencesStore.tokenSafetyQuery } },
+    signal,
+  });
   if (error || !data) throw new Error(error?.error ?? "Quote request failed");
   return data;
 }

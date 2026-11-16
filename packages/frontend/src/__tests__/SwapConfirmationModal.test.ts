@@ -261,6 +261,33 @@ describe("SwapConfirmationModal", () => {
     }
   });
 
+  it("shows provenance and requires Swap Anyway for a route using a blocked token", () => {
+    const address = "0xce3f08e664693ca792cace4af1364d5e220827b2";
+    transactionStore.swapConfirmation = {
+      routerName: "spandex",
+      quote: {
+        ...mockSpandexQuote,
+        blocked_tokens: [
+          {
+            chainId: 1,
+            address,
+            blockSource: "Flashprofits",
+            blockReason: "This SAITAMA contract migrated.",
+            blockSourceUrl: "https://example.org/migration",
+          },
+        ],
+      },
+    };
+    const { getByRole } = render(SwapConfirmationModal);
+    expect(getByRole("alert")).toHaveTextContent(address);
+    expect(getByRole("alert")).toHaveTextContent("This SAITAMA contract migrated.");
+    expect(getByRole("link", { name: "Flashprofits" })).toHaveAttribute(
+      "href",
+      "https://example.org/migration"
+    );
+    expect(getByRole("button", { name: "Swap Anyway" })).toBeVisible();
+  });
+
   it("reports a shortfall under one basis point when the threshold is zero", () => {
     expect(preferencesStore.setDefillamaWarningPercent("0")).toBeNull();
     transactionStore.swapConfirmation = {

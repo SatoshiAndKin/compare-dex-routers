@@ -54,7 +54,7 @@
     copyResult?.address === currentToken?.address && copyResult?.status === "failed"
   );
   let showClearButton = $derived(inputValue.trim().length > 0 || currentToken !== null);
-  const block = $derived(tokenListStore.findBlockedToken(formStore.chainId, inputValue.trim()));
+  const block = $derived(tokenListStore.blocksToken(formStore.chainId, inputValue.trim()));
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -123,7 +123,7 @@
 
   /** Select a token and update store, swapping sides when the new selection duplicates the opposite side */
   function selectToken(token: TokenInfo): void {
-    if (tokenListStore.findBlockedToken(formStore.chainId, token.address)) {
+    if (tokenListStore.blocksToken(formStore.chainId, token.address)) {
       inputValue = token.address;
       hideDropdown();
       return;
@@ -268,7 +268,7 @@
     const chainId = formStore.chainId;
     await tokenListStore.refreshBlockedTokens();
     if (formStore.chainId !== chainId || inputValue.trim() !== trimmed) return;
-    if (tokenListStore.findBlockedToken(chainId, trimmed)) {
+    if (tokenListStore.blocksToken(chainId, trimmed)) {
       hideDropdown();
       return;
     }
@@ -310,7 +310,7 @@
   // Sync input value when store token changes externally
   $effect(() => {
     const token = type === "from" ? formStore.fromToken : formStore.toToken;
-    if (token && tokenListStore.findBlockedToken(formStore.chainId, token.address)) {
+    if (token && tokenListStore.blocksToken(formStore.chainId, token.address)) {
       inputValue = token.address;
       pendingCurrentSideToken = null;
       if (type === "from") formStore.fromToken = null;
