@@ -124,47 +124,76 @@
     return () => controller.abort();
   });
 
-  const bestDex = $derived.by(() => {
-    if (!params) return null;
-    const current = quotes.filter(
-      (q) =>
-        q.simulation_status !== "failed" &&
-        q.chainId === params.chainId &&
-        q.from.toLowerCase() === params.from.toLowerCase() &&
-        q.to.toLowerCase() === params.to.toLowerCase() &&
-        q.mode === params.mode &&
-        q.amount === params.amount
-    );
-    return current.reduce<Quote | null>((best, quote) => {
-      if (!best) return quote;
-      const targetOut = params.mode === "targetOut";
-      const amount = BigInt(targetOut ? quote.input_amount_raw : quote.output_amount_raw);
-      const previous = BigInt(targetOut ? best.input_amount_raw : best.output_amount_raw);
-      return (targetOut ? amount < previous : amount > previous) ? quote : best;
-    }, null);
-  });
+  const targetOut = $derived(params?.mode === "targetOut");
+  const amountField = $derived(targetOut ? "input_amount_raw" : "output_amount_raw");
 
-  function formatPriceDifference(deviation: bigint, baseline: bigint): string {
+  function comparePrices(left: bigint, right: bigint): number {
+    if (left === right) return 0;
+    return (targetOut ? left < right : left > right) ? -1 : 1;
+  }
+
+  const rankedDex = $derived.by(() => {
+    const trade = params;
+    if (!trade) return [];
+    return quotes
+      .filter(
+        (quote) =>
+          quote.simulation_status !== "failed" &&
+          quote.chainId === trade.chainId &&
+          quote.from.toLowerCase() === trade.from.toLowerCase() &&
+          quote.to.toLowerCase() === trade.to.toLowerCase() &&
+          quote.mode === trade.mode &&
+          quote.amount === trade.amount
+      )
+      .map((quote) => ({ quote, amount: BigInt(quote[amountField]), provider: quote.provider }))
+      .filter(({ amount }) => amount > 0n)
+      .sort((left, right) => comparePrices(left.amount, right.amount));
+  });
+  const bestDex = $derived(rankedDex[0]?.quote ?? null);
+
+  function formatPriceDifference(amount: bigint, baseline: bigint): string {
+    const deviation = amount > baseline ? amount - baseline : baseline - amount;
     const basisPoints = (deviation * 10_000n + baseline / 2n) / baseline;
     return basisPoints === 0n ? "<0.01%" : `${formatUnits(basisPoints, 2)}%`;
   }
 
   const comparison = $derived.by(() => {
-    if (!params || stale || loading || error || expired || dexExpired || !result || !bestDex)
-      return null;
-    const targetOut = params.mode === "targetOut";
-    const dex = BigInt(targetOut ? bestDex.input_amount_raw : bestDex.output_amount_raw);
-    const coinbase = BigInt(targetOut ? result.input_amount_raw : result.output_amount_raw);
-    if (dex <= 0n || coinbase <= 0n) return null;
-    if (coinbase === dex) return { winner: "tie", differences: { dex: "", coinbase: "" } };
-    const coinbaseWins = targetOut ? coinbase < dex : coinbase > dex;
-    const best = coinbaseWins ? coinbase : dex;
-    const worse = coinbaseWins ? dex : coinbase;
-    const deviation = targetOut ? worse - best : best - worse;
-    const shortfall = `${formatPriceDifference(deviation, best)} ${targetOut ? "more paid" : "less received"}`;
-    if (coinbaseWins) return { winner: "coinbase", differences: { dex: shortfall, coinbase: "" } };
-    const lead = `${formatPriceDifference(deviation, worse)} ${targetOut ? "less paid" : "more received"}`;
-    return { winner: "dex", differences: { dex: lead, coinbase: shortfall } };
+    const [dex, nextDex] = rankedDex;
+    if (stale || loading || dexExpired || !dex) return null;
+
+    const coinbaseAmount = result && !error && !expired ? BigInt(result[amountField]) : 0n;
+    const coinbase = coinbaseAmount > 0n ? { amount: coinbaseAmount, provider: "Coinbase" } : null;
+    const shortfall = targetOut ? "more paid" : "less received";
+    if (coinbase) {
+      const order = comparePrices(coinbase.amount, dex.amount);
+      if (order === 0) return { winner: "tie", differences: { dex: "", coinbase: "" } };
+      if (order < 0)
+        return {
+          winner: "coinbase",
+          differences: {
+            dex: `${formatPriceDifference(dex.amount, coinbase.amount)} ${shortfall}`,
+            coinbase: "",
+          },
+        };
+    }
+
+    const runnerUp =
+      !coinbase || (nextDex && comparePrices(nextDex.amount, coinbase.amount) <= 0)
+        ? nextDex
+        : coinbase;
+    const lead =
+      runnerUp && runnerUp.amount !== dex.amount
+        ? `${formatPriceDifference(dex.amount, runnerUp.amount)} ${targetOut ? "less paid" : "more received"} vs ${runnerUp.provider}`
+        : "";
+    return {
+      winner: coinbase ? "dex" : null,
+      differences: {
+        dex: lead,
+        coinbase: coinbase
+          ? `${formatPriceDifference(coinbase.amount, dex.amount)} ${shortfall}`
+          : "",
+      },
+    };
   });
 </script>
 
