@@ -96,6 +96,7 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(dex.getByRole("heading", { level: 3 })).toHaveText("DEX routers ⭐");
   await expect(panel.getByText("Mobile trading not verified")).toBeHidden();
   await expect(panel.getByText("0.88% less received", { exact: true })).toBeVisible();
+  await expect(dex.getByText("0.89% more received", { exact: true })).toBeVisible();
   const boxes = await page.locator(".venue-card").evaluateAll((cards) =>
     cards.map((card) => {
       const rect = card.getBoundingClientRect();
@@ -161,6 +162,7 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
   await expect(panel.getByText("0.08% less received", { exact: true })).toBeVisible();
+  await expect(dex.getByText("0.08% more received", { exact: true })).toBeVisible();
   await expect(dex.getByText(/less received/)).toHaveCount(0);
   const link = panel.getByRole("link", { name: "Open Coinbase Advanced ↗" });
   await expect(link).toHaveAttribute(
@@ -345,8 +347,10 @@ test("counts down to the scheduled Coinbase refresh and updates the price in pla
   const dex = page.getByRole("region", { name: "DEX router quotes" });
   const dexRefresh = dex.locator("header").getByRole("button", { name: "Refresh DEX quotes" });
   const dexTimer = dex.getByRole("timer", { name: "DEX auto-refresh" });
+  const dexLead = dex.getByText("0.89% more received", { exact: true });
   const rates = panel.getByRole("group", { name: "Coinbase average trade price" });
   await expect(rates).toContainText("1 USDC = 0.991 USDT");
+  await expect(dexLead).toBeVisible();
   await expect(timer).toHaveText("15s");
   await expect(dexTimer).toHaveText("15s");
   const refreshIcon = refresh.locator("svg path");
@@ -378,11 +382,13 @@ test("counts down to the scheduled Coinbase refresh and updates the price in pla
     await page.clock.runFor(9_000);
     await expect(refresh).toBeDisabled();
     await expect(timer).toHaveText("…");
+    await expect(dexLead).toHaveCount(0);
     await expect(rates).toContainText("1 USDC = 0.991 USDT");
     expect(await positions()).toEqual(before);
     pending.resolve(undefined);
     await expect(panel).toContainText("99.099999 USDT");
     await expect(timer).toHaveText("15s");
+    await expect(dexLead).toBeVisible();
     expect(await positions()).toEqual(before);
   } finally {
     pending.resolve(undefined);

@@ -288,9 +288,10 @@ boxed sections. It compares the best matching, non-failed DEX quoted amount with
 the Coinbase depth estimate. Exact-input trades prefer more output. Target-output
 trades prefer less input. A star appears beside the winning venue. The worse
 quote shows the percentage less received or more paid relative to the better
-quote. Both venues get a star when their prices tie. The selected DEX route can
-differ from the best price before gas because of gas costs or a manual route
-choice. Both price boxes use the same amount display.
+quote. When DEX wins, its card shows the percentage more received or less paid
+relative to Coinbase. Both venues get a star when their prices tie. The selected
+DEX route can differ from the best price before gas because of gas costs or a
+manual route choice. Both price boxes use the same amount display.
 The selected DEX route and its wallet controls follow below the comparison.
 Its quoted amounts and rate remain visible in the swap form.
 The server recommendation continues to select only DEX routes.
