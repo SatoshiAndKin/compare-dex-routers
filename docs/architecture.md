@@ -284,22 +284,23 @@ direction switch, slippage, and the exchange rate with both token symbols.
 ### DEX and Coinbase price comparison
 
 `VenueComparison.svelte` displays DEX routers and Coinbase Advanced as equal
-boxed sections. It compares the best matching, non-failed DEX quoted amount with
-the Coinbase depth estimate. Exact-input trades prefer more output. Target-output
-trades prefer less input. A star appears beside the winning venue. The worse
-quote shows the percentage less received or more paid relative to the better
-quote. When the best DEX price leads, its card names the runner-up and shows
-the percentage more received or less paid relative to that quote. The runner-up
-can be another DEX route or Coinbase. Both venues get a star when their prices
-tie. The selected DEX route can differ from the best price before gas because of
-gas costs or a manual route choice. Both price boxes use the same amount display.
+boxed sections. It compares matching, non-failed DEX routes with the Coinbase
+depth estimate. Exact-input trades rank by output value less estimated gas.
+Target-output trades rank by input cost plus estimated gas. DEX gas includes
+required approvals. The API supplies the same native conversion rate it uses
+for its recommendation. The cards can compare quotes without complete gas
+estimates at their quoted amounts and identify a potential winner. A DEX lead
+names the next-best route, which can be another DEX or Coinbase. A margin
+versus a runner-up with missing gas is provisional. Both venues get a star
+when their prices tie.
 The selected DEX route and its wallet controls follow below the comparison.
 Its quoted amounts and rate remain visible in the swap form.
 The server recommendation continues to select only DEX routes.
 
-The comparison excludes gas and transfers. The browser sends the default Coinbase
-taker fee unless the user saves a different rate. An explicitly empty rate omits
-the fee. The Coinbase card states whether the estimate includes a fee.
+The Coinbase estimate assumes the funds are on the exchange and excludes
+transfer costs. The browser sends the default Coinbase taker fee unless the user
+saves a different rate. An explicitly empty rate omits the fee. The Coinbase card
+states whether the estimate includes a fee.
 Stale, expired, loading, mismatched, or failed quotes cannot produce a price winner
 or percentage difference.
 

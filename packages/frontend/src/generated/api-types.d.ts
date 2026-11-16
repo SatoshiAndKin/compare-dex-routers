@@ -246,6 +246,12 @@ export interface components {
       recommendation_reason: string;
       /** @enum {string} */
       recommendation_basis: "gas_adjusted" | "raw_amount" | "none";
+      /** @description Native valuation of one output token (exact input) or one input token (target output), available when at least one route has comparable gas */
+      gas_adjusted_rate?: {
+        native_raw_per_token: string;
+        native_decimals: number;
+        token_decimals: number;
+      };
       /** @enum {string} */
       simulation_basis: "wallet_balance";
       simulation_account: string;

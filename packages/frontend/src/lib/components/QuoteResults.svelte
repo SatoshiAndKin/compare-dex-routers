@@ -43,6 +43,7 @@
     <VenueComparison
       params={comparisonStore.params}
       quotes={comparisonStore.quotes}
+      gasAdjustedRate={comparisonStore.gasAdjustedRate}
       stale={comparisonStore.isStale || comparisonStore.isLoading || Boolean(comparisonStore.error)}
       dexExpiresAt={comparisonStore.expiresAt}
       onReviewDex={() => (routeDetailsOpen = true)}

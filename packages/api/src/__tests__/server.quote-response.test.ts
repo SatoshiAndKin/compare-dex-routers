@@ -388,6 +388,11 @@ describe("unified quote contract", () => {
       net_value_native: "0.00044",
     });
     expect(body.recommendation_basis).toBe("gas_adjusted");
+    expect(QuoteResponseSchema.parse(body).gas_adjusted_rate).toEqual({
+      native_raw_per_token: "500000000000000",
+      native_decimals: 18,
+      token_decimals: 18,
+    });
     expect(mocks.simulate).toHaveBeenCalledTimes(2);
     expect(mocks.balance).not.toHaveBeenCalled();
   });
@@ -610,6 +615,8 @@ describe("ranking all providers together", () => {
       expect(body.recommendation_basis).toBe("raw_amount");
       expect(body.recommendation).toBe("kyberswap");
       expect(body.recommendation_reason).toContain("simulated wallet routes by raw output");
+      if (reason === "missing gas") expect(body.gas_adjusted_rate?.token_decimals).toBe(18);
+      else expect(body.gas_adjusted_rate).toBeUndefined();
     }
   );
   it("breaks equal-value ties by provider configuration order", async () => {

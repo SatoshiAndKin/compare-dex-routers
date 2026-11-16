@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, within } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { tick } from "svelte";
+import { tick, type ComponentProps } from "svelte";
 import { formatUnits } from "viem";
 import SettingsModal from "../lib/components/SettingsModal.svelte";
 import { settingsStore } from "../lib/stores/settingsStore.svelte.js";
@@ -55,7 +55,23 @@ const quote = () =>
     input_amount_raw: "2000000000000000000",
     output_amount: "3800",
     output_amount_raw: "3800000000",
+    gas_cost_native: "0",
   });
+
+const outputRate = {
+  native_raw_per_token: "500000000000000",
+  native_decimals: 18,
+  token_decimals: 6,
+};
+
+function renderVenue(props: ComponentProps<typeof VenueComparison>) {
+  const rate =
+    props.params?.mode === "targetOut"
+      ? { ...outputRate, native_raw_per_token: "1000000000000000000", token_decimals: 18 }
+      : outputRate;
+  return render(VenueComparison, { gasAdjustedRate: rate, ...props });
+}
+
 beforeEach(() => {
   localStorage.clear();
   settingsStore.closeSettings();
@@ -76,7 +92,7 @@ describe("Venue price comparison", () => {
       "compare-dex-preferences",
       JSON.stringify({ chains: {}, coinbaseTakerFeePercent: "" })
     );
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [quote()],
       stale: false,
@@ -101,7 +117,7 @@ describe("Venue price comparison", () => {
     expect(view.queryByRole("button", { name: /swap|approve/i })).toBeNull();
   });
   it("applies and saves a fee and clears the star when quotes become stale", async () => {
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [quote()],
       stale: false,
@@ -127,7 +143,7 @@ describe("Venue price comparison", () => {
       dexExpiresAt: Date.now() + 30_000,
     });
     expect(view.queryByRole("img", { name: /^(Better|Tied) quoted price$/ })).toBeNull();
-    expect(view.queryByText("% less received", { exact: false })).toBeNull();
+    expect(view.queryByText("% less value", { exact: false })).toBeNull();
   });
   it("compares input costs for a target-output buy", async () => {
     const target = {
@@ -149,8 +165,9 @@ describe("Venue price comparison", () => {
       output_decimals: 18,
     });
     get.mockResolvedValueOnce(response);
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params: target,
+      gasAdjustedRate: outputRate,
       quotes: [makeQuote({ ...target, input_amount_raw: "4300000000" })],
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
@@ -184,7 +201,7 @@ describe("Venue price comparison", () => {
         simulation_reason: "execution reverted",
         execution: null,
       });
-      const view = render(VenueComparison, {
+      const view = renderVenue({
         params: trade,
         quotes: [working, failed],
         stale: false,
@@ -198,7 +215,7 @@ describe("Venue price comparison", () => {
   );
   it("does not compare Coinbase with a set containing only failed simulations", async () => {
     get.mockResolvedValueOnce(reply("1"));
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [makeQuote({ ...quote(), simulation_status: "failed", execution: null })],
       stale: false,
@@ -211,7 +228,7 @@ describe("Venue price comparison", () => {
     get.mockResolvedValueOnce({
       data: { status: "unavailable", reason: "No supported direct market." },
     });
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [quote()],
       stale: false,
@@ -224,7 +241,7 @@ describe("Venue price comparison", () => {
     expect(view.queryByRole("link")).toBeNull();
   });
   it("keeps the last estimate visible when its refresh fails", async () => {
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [quote()],
       stale: false,
@@ -244,7 +261,7 @@ describe("Venue price comparison", () => {
   it("discards old requests after a trade change and cancels on invalidation", async () => {
     const old = deferred<ReturnType<typeof reply>>();
     get.mockReturnValueOnce(old.promise);
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [],
       stale: false,
@@ -282,7 +299,7 @@ describe("Venue price comparison", () => {
     );
     const dexExpiresAt = Date.now() + 30_000;
     const quotes = [quote()];
-    const view = render(VenueComparison, { params, quotes, stale: false, dexExpiresAt });
+    const view = renderVenue({ params, quotes, stale: false, dexExpiresAt });
     await vi.advanceTimersByTimeAsync(0);
     await tick();
     expect(view.getByRole("img", { name: "Better quoted price" })).toBeVisible();
@@ -306,28 +323,16 @@ describe("Venue price comparison", () => {
 
 describe("Venue price winners and mobile availability", () => {
   it.each([
-    ["exactIn", "4000000000", "Coinbase Advanced", "5% less received", null],
-    [
-      "exactIn",
-      "3700000000",
-      "DEX routers",
-      "2.63% less received",
-      "2.7% more received vs Coinbase",
-    ],
-    [
-      "exactIn",
-      "3799999999",
-      "DEX routers",
-      "<0.01% less received",
-      "<0.01% more received vs Coinbase",
-    ],
-    ["targetOut", "1900000000000000000", "Coinbase Advanced", "5.26% more paid", null],
+    ["exactIn", "4000000000", "Coinbase Advanced", "5% less value", null],
+    ["exactIn", "3700000000", "DEX routers", "2.63% less value", "2.7% more value vs Coinbase"],
+    ["exactIn", "3799999999", "DEX routers", "<0.01% less value", "<0.01% more value vs Coinbase"],
+    ["targetOut", "1900000000000000000", "Coinbase Advanced", "5.26% higher cost", null],
     [
       "targetOut",
       "2100000000000000000",
       "DEX routers",
-      "5% more paid",
-      "4.76% less paid vs Coinbase",
+      "5% higher cost",
+      "4.76% lower cost vs Coinbase",
     ],
   ] as const)(
     "marks the better %s price when Coinbase quotes %s",
@@ -342,7 +347,7 @@ describe("Venue price winners and mobile availability", () => {
       }
       get.mockResolvedValueOnce(response);
       const trade = { ...params, mode };
-      const view = render(VenueComparison, {
+      const view = renderVenue({
         params: trade,
         quotes: [
           makeQuote({
@@ -367,44 +372,97 @@ describe("Venue price winners and mobile availability", () => {
       expect(within(worse).getByText(difference)).toBeVisible();
       expect(within(better).queryByText(difference)).toBeNull();
       if (dexLead) expect(within(dex).getByText(dexLead)).toBeVisible();
-      else expect(within(dex).queryByText(/% (more received|less paid)/)).toBeNull();
+      else expect(within(dex).queryByText(/% (more value|lower cost)/)).toBeNull();
     }
   );
   it.each([
-    ["exactIn", "3.26% more received vs Curve"],
-    ["targetOut", "4.76% less paid vs Curve"],
-  ] as const)("uses the closest eligible DEX quote as the %s baseline", async (mode, lead) => {
+    ["exactIn", "0.008", "≈ 3784 USDC", "2.88% more value vs Curve"],
+    ["targetOut", "0.02", "≈ 2.02 ETH", "3.86% lower cost vs Curve"],
+  ] as const)(
+    "ranks the %s winner and runner-up by price including gas",
+    async (mode, gas, amount, lead) => {
+      const response = reply("0");
+      response.data.output_amount_raw = "3500000000";
+      response.data.input_amount_raw = "2200000000000000000";
+      get.mockResolvedValueOnce(response);
+      const trade = { ...params, mode };
+      const best = makeQuote({ ...quote(), ...trade, gas_cost_native: gas });
+      const runnerUp = makeQuote({
+        ...best,
+        provider: "Curve",
+        output_amount_raw: "3680000000",
+        input_amount_raw: "2100000000000000000",
+        gas_cost_native: "0.001",
+      });
+      const view = renderVenue({
+        params: trade,
+        quotes: [
+          makeQuote({
+            ...best,
+            provider: "Slower route",
+            output_amount_raw: "3900000000",
+            input_amount_raw: "1950000000000000000",
+            gas_cost_native: "0.3",
+          }),
+          runnerUp,
+          makeQuote({ ...best, provider: "Failed route", simulation_status: "failed" }),
+          makeQuote({ ...best, provider: "Previous trade", amount: "3" }),
+          best,
+        ],
+        stale: false,
+        dexExpiresAt: Date.now() + 30_000,
+      });
+      const dex = view.getByRole("region", { name: "DEX router quotes" });
+      expect(await within(dex).findByText(lead)).toBeVisible();
+      expect(within(dex).getByText(amount)).toBeVisible();
+    }
+  );
+  it("shows Coinbase as the winner when gas reverses the quoted price order", async () => {
     const response = reply("0");
-    response.data.output_amount_raw = "3500000000";
-    response.data.input_amount_raw = "2200000000000000000";
+    response.data.output_amount_raw = "3700000000";
+    response.data.output_amount = "3700";
     get.mockResolvedValueOnce(response);
-    const trade = { ...params, mode };
-    const best = makeQuote({ ...quote(), ...trade });
-    const runnerUp = makeQuote({
-      ...best,
-      provider: "Curve",
-      output_amount_raw: "3680000000",
-      input_amount_raw: "2100000000000000000",
+    const view = renderVenue({
+      params,
+      quotes: [makeQuote({ ...quote(), gas_cost_native: "0.1" })],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
     });
-    const view = render(VenueComparison, {
-      params: trade,
-      quotes: [
-        makeQuote({
-          ...best,
-          provider: "Slower route",
-          output_amount_raw: "3600000000",
-          input_amount_raw: "2300000000000000000",
-        }),
-        runnerUp,
-        makeQuote({ ...best, provider: "Failed route", simulation_status: "failed" }),
-        makeQuote({ ...best, provider: "Previous trade", amount: "3" }),
-        best,
-      ],
+    const coinbase = view.getByRole("region", { name: "Coinbase Advanced estimate" });
+    expect(await within(coinbase).findByRole("img", { name: "Better quoted price" })).toBeVisible();
+    expect(view.getByText("2.7% less value")).toBeVisible();
+  });
+  it("keeps a route without a gas estimate eligible as a potential winner", async () => {
+    const response = reply("0");
+    response.data.output_amount_raw = "3600000000";
+    response.data.output_amount = "3600";
+    get.mockResolvedValue(response);
+    const noGas = makeQuote({
+      ...quote(),
+      provider: "Curve",
+      output_amount_raw: "4000000000",
+      output_amount: "4000",
+      gas_cost_native: null,
+      simulation_status: "not_run",
+    });
+    const view = renderVenue({
+      params,
+      quotes: [quote(), noGas],
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
     const dex = view.getByRole("region", { name: "DEX router quotes" });
-    expect(await within(dex).findByText(lead)).toBeVisible();
+    expect(
+      await within(dex).findByRole("img", { name: "Potential better quoted price" })
+    ).toBeVisible();
+    expect(within(dex).getByText("Gas unavailable")).toBeVisible();
+    expect(within(dex).getByText("Potential best")).toBeVisible();
+    expect(within(dex).getByText("Curve")).toBeVisible();
+    await view.rerender({
+      quotes: [quote(), { ...noGas, output_amount: "3700", output_amount_raw: "3700000000" }],
+    });
+    expect(await within(dex).findByRole("img", { name: "Better quoted price" })).toBeVisible();
+    expect(within(dex).getByText("2.7% more value vs Curve (gas unknown)")).toBeVisible();
   });
   it("compares DEX routes when Coinbase is unavailable and clears the lead for tied routes", async () => {
     get.mockResolvedValueOnce({ data: { status: "unavailable", reason: "No direct market." } });
@@ -416,13 +474,13 @@ describe("Venue price winners and mobile availability", () => {
       output_amount_raw: "3700000000",
     });
     const dexExpiresAt = Date.now() + 30_000;
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [best, next],
       stale: false,
       dexExpiresAt,
     });
-    const lead = "2.7% more received vs Curve";
+    const lead = "2.7% more value vs Curve";
     expect(await view.findByText(lead)).toBeVisible();
     await view.rerender({
       params,
@@ -430,21 +488,21 @@ describe("Venue price winners and mobile availability", () => {
       stale: false,
       dexExpiresAt,
     });
-    expect(view.queryByText(/% more received/)).toBeNull();
+    expect(view.queryByText(/% more value/)).toBeNull();
   });
   it("marks both venue headings when prices tie", async () => {
     const response = reply("0");
     response.data.output_amount_raw = "3800000000";
     response.data.output_amount = "3800";
     get.mockResolvedValueOnce(response);
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [quote()],
       stale: false,
       dexExpiresAt: Date.now() + 30_000,
     });
     expect(await view.findAllByRole("img", { name: "Tied quoted price" })).toHaveLength(2);
-    expect(view.queryByText(/% (less received|more received)/)).toBeNull();
+    expect(view.queryByText(/% (less value|more value)/)).toBeNull();
     for (const venue of ["DEX routers", "Coinbase Advanced"]) {
       const heading = view.getByRole("heading", { name: `${venue} Tied quoted price` });
       expect(within(heading).getByRole("img", { name: "Tied quoted price" })).toHaveTextContent(
@@ -456,7 +514,7 @@ describe("Venue price winners and mobile availability", () => {
     const response = reply();
     Object.assign(response.data, { product_id: "YFI-USDC", side: "BUY", output_symbol: "YFI" });
     get.mockResolvedValueOnce(response);
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [quote()],
       stale: false,
@@ -480,7 +538,7 @@ describe("Venue price winners and mobile availability", () => {
     { amount: "3" },
   ])("does not compare a retained DEX quote from another request: %o", async (mismatch) => {
     get.mockResolvedValueOnce(reply("0"));
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [makeQuote({ ...quote(), ...mismatch })],
       stale: false,
@@ -494,7 +552,7 @@ describe("Venue price winners and mobile availability", () => {
     const expired = reply("1");
     expired.data.expires_at = new Date(Date.now() - 1000).toISOString();
     get.mockResolvedValueOnce(expired);
-    const view = render(VenueComparison, {
+    const view = renderVenue({
       params,
       quotes: [quote()],
       stale: false,

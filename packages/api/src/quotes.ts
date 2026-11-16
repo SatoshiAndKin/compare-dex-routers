@@ -349,6 +349,7 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
   // Simulation gas alone does not supply comparable rollup posting/operator fees.
   const completeGas = ![10, 8453, 42161].includes(params.chainId);
   const verified = results.filter((quote) => quote.simulation_status === "succeeded");
+  const hasComparableGas = completeGas && verified.some((quote) => values.has(quote));
   const adjusted =
     completeGas && verified.length > 0 && verified.every((quote) => values.has(quote));
   const order = new Map<string, number>(
@@ -385,6 +386,14 @@ export async function quoteRoutes(params: QuoteParams): Promise<QuoteResponse> {
     failures,
     recommendation: results[0]?.provider ?? null,
     recommendation_basis: results.length === 0 ? "none" : adjusted ? "gas_adjusted" : "raw_amount",
+    ...(hasComparableGas &&
+      rate && {
+        gas_adjusted_rate: {
+          native_raw_per_token: rate.nativeRaw.toString(),
+          native_decimals: native.decimals,
+          token_decimals: targetOut ? inputDecimals : outputDecimals,
+        },
+      }),
     recommendation_reason:
       results.length === 0
         ? "No provider returned a successful quote."
