@@ -35,7 +35,8 @@ COPY packages/api/src/ ./packages/api/src/
 COPY packages/api/tsconfig.json ./packages/api/
 COPY packages/api/static/ ./packages/api/static/
 
-ENV NODE_ENV=production
+ARG SENTRY_RELEASE=
+ENV NODE_ENV=production SENTRY_RELEASE=${SENTRY_RELEASE}
 
 EXPOSE 3100
 
