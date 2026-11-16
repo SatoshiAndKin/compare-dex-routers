@@ -5,11 +5,19 @@ import { redact } from "./redaction.js";
 const dsn = process.env.SENTRY_DSN;
 
 if (dsn) {
+  Sentry.pinoIntegration.trackLogger(logger);
   const client = Sentry.init({
     dsn,
     environment: process.env.NODE_ENV || "development",
     release: process.env.SENTRY_RELEASE || undefined,
     tracesSampleRate: 0.1,
+    integrations: [
+      Sentry.pinoIntegration({
+        autoInstrument: false,
+        error: { levels: ["warn", "error", "fatal"] },
+        log: { levels: [] },
+      }),
+    ],
     beforeSend: (event) => redact(event) as typeof event,
     beforeSendSpan: (span) => redact(span) as typeof span,
     // Preserve the v10 data collection limits when using the v11 defaults.
@@ -29,18 +37,6 @@ if (dsn) {
   });
   // Trace envelope headers and propagated baggage also carry the transaction name.
   client?.on("createDsc", (context) => Object.assign(context, redact(context)));
-}
-
-export function captureException(err: unknown, context?: Record<string, unknown>) {
-  if (dsn) {
-    Sentry.captureException(redact(err), { extra: redact(context) as Record<string, unknown> });
-  }
-}
-
-export function captureMessage(message: string, level: "info" | "warning" | "error" = "info") {
-  if (dsn) {
-    Sentry.captureMessage(String(redact(message)), level);
-  }
 }
 
 export async function flushTelemetry(timeoutMs: number): Promise<boolean> {

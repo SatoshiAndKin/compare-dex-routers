@@ -57,7 +57,7 @@ Plain `node:http` server. Runs via `tsx` so TypeScript files execute directly, n
 | `metrics.ts`        | Prometheus-compatible metrics (request counts, durations, errors, uptime)                                                                                              |
 | `feature-flags.ts`  | Environment-based feature flags (`CURVE_ENABLED`, `METRICS_ENABLED`)                                                                                |
 | `logger.ts`         | Structured logging via pino with sensitive-value scrubbing (API keys, private keys, tokens)                                                                            |
-| `sentry.ts`         | Sentry error-tracking initialization and helpers (`captureException`, `captureMessage`)                                                                                |
+| `sentry.ts`         | Sentry initialization, scoped Pino reporting, and shutdown flush                                                                                                       |
 | `tracing.ts`        | `x-request-id` propagation — reads or generates a UUID per request                                                                                                     |
 | `env.ts`            | `.env` file loader (imported first, before any other module reads `process.env`)                                                                                       |
 

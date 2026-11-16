@@ -13,8 +13,7 @@ vi.mock("pino", () => ({
 }));
 const sentry = vi.hoisted(() => ({
   init: vi.fn(),
-  captureException: vi.fn(),
-  captureMessage: vi.fn(),
+  pinoIntegration: Object.assign(vi.fn(), { trackLogger: vi.fn() }),
 }));
 vi.mock("@sentry/node", () => sentry);
 const HASH = `0x${"a".repeat(64)}`;
@@ -103,13 +102,9 @@ describe("credential removal before reporting", () => {
     trackError(new Error(message), `context ${message}`);
     expect(safe(getErrorInsights())).toContain(HASH);
   });
-  it("scrubs Sentry exceptions, contexts, messages and automatic events", async () => {
+  it("applies redaction and strict data collection settings to Sentry events", async () => {
     vi.stubEnv("SENTRY_DSN", "https://public@example.ingest.sentry.io/1");
-    const tracker = await import("../sentry.js");
-    tracker.captureException(new Error(message), { endpoint: message });
-    tracker.captureMessage(message);
-    safe(sentry.captureException.mock.calls);
-    safe(sentry.captureMessage.mock.calls);
+    await import("../sentry.js");
     const options = sentry.init.mock.calls[0]?.[0];
     const event = {
       exception: { values: [{ value: message }] },

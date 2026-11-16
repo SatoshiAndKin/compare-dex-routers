@@ -21,7 +21,6 @@ import {
   NATIVE_ASSETS,
 } from "./config.js";
 import { logger } from "./logger.js";
-import { captureException } from "./sentry.js";
 import { getRequestId, setTraceHeaders } from "./tracing.js";
 import { recordRequest, getMetrics } from "./metrics.js";
 import { isEnabled, getAllFlags } from "./feature-flags.js";
@@ -30,16 +29,6 @@ import { trackError, getErrorInsights } from "./error-insights.js";
 
 const PORT = parseInt(process.env.PORT || "3100", 10);
 const HOST = process.env.HOST || "0.0.0.0";
-
-function log(message: string) {
-  logger.info(message);
-}
-
-function logError(message: string, err?: unknown) {
-  const errorDetail = err instanceof Error ? err.message : err || "";
-  logger.error({ err: errorDetail }, message);
-  captureException(err, { message });
-}
 
 const tokenlistFiles = new TokenlistFiles();
 
@@ -71,7 +60,7 @@ export async function handleRequest(
   try {
     await routeRequest(req, res, draining);
   } catch (error) {
-    logError("Request failed", error);
+    logger.error({ err: error }, "Request failed");
     trackError(error, "request");
     if (res.headersSent) {
       res.destroy();
@@ -230,7 +219,7 @@ window.onload = function() {
         tokens: allTokens,
       });
     } catch (err) {
-      logError("Failed to load tokenlist", err);
+      logger.error({ err }, "Failed to load tokenlist");
       sendError(res, 500, "Cannot load token lists.");
     }
     return;
@@ -275,7 +264,7 @@ window.onload = function() {
       sendJson(res, 200, { name, symbol, decimals });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logError(`Token metadata fetch failed: chain=${chainId} address=${addressParam}`, err);
+      logger.error({ err, chainId, address: addressParam }, "Token metadata fetch failed");
 
       if (/revert|returned no data|not a contract/i.test(message)) {
         sendError(res, 404, "Not a valid ERC-20 token");
@@ -320,7 +309,7 @@ window.onload = function() {
     try {
       const result = await quoteRoutes(parsed.data);
       const duration = Date.now() - startTime;
-      log(
+      logger.info(
         `Quote: chain=${chainId} ${from} -> ${to}, amount=${amount}, mode=${mode}, recommendation=${result.recommendation}, ${duration}ms`
       );
       recordRequest("/quote", duration, result.quotes.length === 0);
@@ -337,7 +326,7 @@ window.onload = function() {
       sendJson(res, 200, result);
     } catch (err) {
       const duration = Date.now() - startTime;
-      logError(`Quote failed: chain=${chainId} ${from} -> ${to}, ${duration}ms`, err);
+      logger.error({ err, chainId, from, to, duration }, "Quote failed");
       recordRequest("/quote", duration, true);
       trackQuote({
         chainId,
@@ -353,7 +342,7 @@ window.onload = function() {
     return;
   }
 
-  log(`404: ${req.method} ${url.pathname}`);
+  logger.info(`404: ${req.method} ${url.pathname}`);
   sendError(res, 404, "Not found");
 }
 
@@ -376,7 +365,7 @@ async function main() {
   await new Promise<void>((resolve, reject) => {
     app.server.once("error", reject);
     app.server.listen(PORT, HOST, () => {
-      log(`Server listening on http://${HOST}:${PORT}`);
+      logger.info(`Server listening on http://${HOST}:${PORT}`);
       resolve();
     });
   });
@@ -389,7 +378,7 @@ function isMainModule() {
 
 if (isMainModule()) {
   main().catch((err) => {
-    logError("Failed to start server", err);
+    logger.error({ err }, "Failed to start server");
     process.exit(1);
   });
 }
