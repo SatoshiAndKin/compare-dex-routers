@@ -144,6 +144,11 @@
     }, null);
   });
 
+  function formatPriceDifference(deviation: bigint, baseline: bigint): string {
+    const basisPoints = (deviation * 10_000n + baseline / 2n) / baseline;
+    return basisPoints === 0n ? "<0.01%" : `${formatUnits(basisPoints, 2)}%`;
+  }
+
   const comparison = $derived.by(() => {
     if (!params || stale || loading || error || expired || dexExpired || !result || !bestDex)
       return null;
@@ -151,17 +156,15 @@
     const dex = BigInt(targetOut ? bestDex.input_amount_raw : bestDex.output_amount_raw);
     const coinbase = BigInt(targetOut ? result.input_amount_raw : result.output_amount_raw);
     if (dex <= 0n || coinbase <= 0n) return null;
-    if (coinbase === dex) return { winner: "tie", difference: "" };
+    if (coinbase === dex) return { winner: "tie", differences: { dex: "", coinbase: "" } };
     const coinbaseWins = targetOut ? coinbase < dex : coinbase > dex;
     const best = coinbaseWins ? coinbase : dex;
     const worse = coinbaseWins ? dex : coinbase;
     const deviation = targetOut ? worse - best : best - worse;
-    const basisPoints = (deviation * 10_000n + best / 2n) / best;
-    const percent = basisPoints === 0n ? "<0.01%" : `${formatUnits(basisPoints, 2)}%`;
-    return {
-      winner: coinbaseWins ? "coinbase" : "dex",
-      difference: `${percent} ${targetOut ? "more paid" : "less received"}`,
-    };
+    const shortfall = `${formatPriceDifference(deviation, best)} ${targetOut ? "more paid" : "less received"}`;
+    if (coinbaseWins) return { winner: "coinbase", differences: { dex: shortfall, coinbase: "" } };
+    const lead = `${formatPriceDifference(deviation, worse)} ${targetOut ? "less paid" : "more received"}`;
+    return { winner: "dex", differences: { dex: lead, coinbase: shortfall } };
   });
 </script>
 
@@ -182,10 +185,7 @@
   to: string,
   venue: "dex" | "coinbase"
 )}
-  {@const difference =
-    comparison && comparison.winner !== "tie" && comparison.winner !== venue
-      ? comparison.difference
-      : ""}
+  {@const difference = comparison?.differences[venue] ?? ""}
   <div class="amounts">
     <div>
       <span class="amount-label">Sell</span>

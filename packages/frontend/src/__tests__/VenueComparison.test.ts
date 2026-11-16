@@ -306,14 +306,14 @@ describe("Venue price comparison", () => {
 
 describe("Venue price winners and mobile availability", () => {
   it.each([
-    ["exactIn", "4000000000", "Coinbase Advanced", "5% less received"],
-    ["exactIn", "3700000000", "DEX routers", "2.63% less received"],
-    ["exactIn", "3799999999", "DEX routers", "<0.01% less received"],
-    ["targetOut", "1900000000000000000", "Coinbase Advanced", "5.26% more paid"],
-    ["targetOut", "2100000000000000000", "DEX routers", "5% more paid"],
+    ["exactIn", "4000000000", "Coinbase Advanced", "5% less received", null],
+    ["exactIn", "3700000000", "DEX routers", "2.63% less received", "2.7% more received"],
+    ["exactIn", "3799999999", "DEX routers", "<0.01% less received", "<0.01% more received"],
+    ["targetOut", "1900000000000000000", "Coinbase Advanced", "5.26% more paid", null],
+    ["targetOut", "2100000000000000000", "DEX routers", "5% more paid", "4.76% less paid"],
   ] as const)(
     "marks the better %s price when Coinbase quotes %s",
-    async (mode, amount, venue, difference) => {
+    async (mode, amount, venue, difference, dexLead) => {
       const response = reply("0");
       if (mode === "exactIn") {
         response.data.output_amount_raw = amount;
@@ -348,6 +348,8 @@ describe("Venue price winners and mobile availability", () => {
       const [better, worse] = venue === "DEX routers" ? [dex, coinbase] : [coinbase, dex];
       expect(within(worse).getByText(difference)).toBeVisible();
       expect(within(better).queryByText(difference)).toBeNull();
+      if (dexLead) expect(within(dex).getByText(dexLead)).toBeVisible();
+      else expect(within(dex).queryByText(/% (more received|less paid)/)).toBeNull();
     }
   );
   it("marks both venue headings when prices tie", async () => {
@@ -362,7 +364,7 @@ describe("Venue price winners and mobile availability", () => {
       dexExpiresAt: Date.now() + 30_000,
     });
     expect(await view.findAllByRole("img", { name: "Tied quoted price" })).toHaveLength(2);
-    expect(view.queryByText("% less received", { exact: false })).toBeNull();
+    expect(view.queryByText(/% (less received|more received)/)).toBeNull();
     for (const venue of ["DEX routers", "Coinbase Advanced"]) {
       const heading = view.getByRole("heading", { name: `${venue} Tied quoted price` });
       expect(within(heading).getByRole("img", { name: "Tied quoted price" })).toHaveTextContent(
