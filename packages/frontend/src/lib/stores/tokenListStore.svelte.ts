@@ -8,12 +8,28 @@
  */
 
 import { apiClient } from "../api.js";
+import type { paths } from "../../generated/api-types.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const BLOCKED_LIST_REFRESH_MS = 60_000;
+
+type BlockedToken =
+  paths["/blocked-tokenlist.json"]["get"]["responses"][200]["content"]["application/json"]["tokens"][number];
+type BlockedTokenDetails = { source: string; reason: string; url: string };
+
+const tokenKey = (chainId: number, address: string) => chainId + ":" + address.toLowerCase();
+
+function readExtensionText(value: string | Record<string, string>): string {
+  return typeof value === "string" ? value : Object.values(value).join("");
+}
+
+export function blockedTokenMessage(token: BlockedTokenDetails): string {
+  return "Token blocked by " + token.source + ". " + token.reason;
+}
 
 const CUSTOM_TOKENLISTS_KEY = "customTokenlists";
 const LOCAL_TOKEN_LIST_KEY = "localTokenList";
@@ -69,6 +85,9 @@ class TokenListStore {
   private pending = new Map<string, { controller: AbortController; promise: Promise<void> }>();
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private automatic = false;
+  private blockedTokens = $state.raw<ReadonlyMap<string, BlockedTokenDetails>>(new Map());
+  private blockedRefresh: Promise<void> | undefined;
+  private blockedRefreshAfter = 0;
   private lifecycle = new AbortController();
   private visibilityChanged = () => {
     void this.refresh(false);
@@ -92,7 +111,7 @@ class TokenListStore {
     for (const list of this.lists) {
       if (!list.enabled) continue;
       for (const token of list.tokens) {
-        if (!token.address) continue;
+        if (!token.address || this.findBlockedToken(token.chainId, token.address)) continue;
         const key = `${token.address.toLowerCase()}_${Number(token.chainId)}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -102,7 +121,7 @@ class TokenListStore {
 
     if (this.localTokensEnabled) {
       for (const token of this.localTokens) {
-        if (!token.address) continue;
+        if (!token.address || this.findBlockedToken(token.chainId, token.address)) continue;
         const key = `${token.address.toLowerCase()}_${Number(token.chainId)}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -116,6 +135,44 @@ class TokenListStore {
   // -------------------------------------------------------------------------
   // Initialization
   // -------------------------------------------------------------------------
+
+  findBlockedToken(chainId: number, address: string): BlockedTokenDetails | undefined {
+    return this.blockedTokens.get(tokenKey(chainId, address));
+  }
+
+  refreshBlockedTokens(): Promise<void> {
+    if (this.blockedRefresh) return this.blockedRefresh;
+    if (Date.now() < this.blockedRefreshAfter) return Promise.resolve();
+    this.activate();
+    const signal = AbortSignal.any([this.lifecycle.signal, AbortSignal.timeout(5_000)]);
+    this.blockedRefresh = this.loadBlockedTokens(signal).finally(() => {
+      if (!signal.aborted) this.blockedRefreshAfter = Date.now() + BLOCKED_LIST_REFRESH_MS;
+      this.blockedRefresh = undefined;
+    });
+    return this.blockedRefresh;
+  }
+
+  private async loadBlockedTokens(signal: AbortSignal): Promise<void> {
+    try {
+      const { data, error } = await apiClient.GET("/blocked-tokenlist.json", {
+        signal,
+        cache: "no-cache",
+      });
+      if (signal.aborted || error || !data?.version) return;
+      this.blockedTokens = new Map(
+        data.tokens.map((token: BlockedToken) => [
+          tokenKey(token.chainId, token.address),
+          {
+            source: readExtensionText(token.extensions.blockSource),
+            reason: readExtensionText(token.extensions.blockReason),
+            url: readExtensionText(token.extensions.blockSourceUrl),
+          },
+        ])
+      );
+    } catch {
+      // Keep the last list when the proxy is unavailable.
+    }
+  }
 
   /** Register all list identities before asynchronous requests can change them. */
   async init(): Promise<void> {
@@ -142,7 +199,10 @@ class TokenListStore {
       ...[...unique.values()].map((entry) => ({ ...entry, tokens: [] as Token[] })),
     ];
     try {
-      await Promise.all(this.lists.map((entry) => this.refreshList(entry.url)));
+      await Promise.all([
+        this.refreshBlockedTokens(),
+        ...this.lists.map((entry) => this.refreshList(entry.url)),
+      ]);
       this.initialized = true;
       this._saveCustomLists();
     } finally {
@@ -180,16 +240,17 @@ class TokenListStore {
       return;
     }
     this.activate();
-    await Promise.all(
-      this.lists
+    await Promise.all([
+      this.refreshBlockedTokens(),
+      ...this.lists
         .filter((entry) => entry.enabled)
         .map((entry) => {
           const attempted = this.attempts.get(entry.url ?? "__default__");
           if (!manual && attempted !== undefined && Date.now() - attempted < REFRESH_INTERVAL_MS)
             return;
           return this.refreshList(entry.url);
-        })
-    );
+        }),
+    ]);
     this.scheduleRefresh();
   }
 
@@ -437,7 +498,9 @@ class TokenListStore {
   // -------------------------------------------------------------------------
 
   /** Add a token to local tokens (deduped by address+chainId) */
-  addLocalToken(token: Token): void {
+  addLocalToken(token: Token): string | null {
+    const blocked = this.findBlockedToken(token.chainId, token.address);
+    if (blocked) return blockedTokenMessage(blocked);
     const addr = token.address.toLowerCase();
     const chainId = Number(token.chainId);
     const isDuplicate = this.localTokens.some(
@@ -447,6 +510,7 @@ class TokenListStore {
       this.localTokens = [...this.localTokens, { ...token, _source: LOCAL_TOKENS_SOURCE_NAME }];
       this._saveLocalTokens();
     }
+    return null;
   }
 
   /** Remove a local token by address+chainId */
@@ -581,6 +645,8 @@ class TokenListStore {
         typeof t.symbol === "string" &&
         typeof t.decimals === "number"
       ) {
+        const blocked = this.findBlockedToken(t.chainId, t.address);
+        if (blocked) return { error: blockedTokenMessage(blocked) };
         validTokens.push({
           chainId: t.chainId,
           address: t.address,

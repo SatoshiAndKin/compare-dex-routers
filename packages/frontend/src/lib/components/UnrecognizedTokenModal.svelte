@@ -82,7 +82,11 @@
       decimals: metadataState.decimals,
     };
 
-    tokenListStore.addLocalToken(token);
+    const blocked = tokenListStore.addLocalToken(token);
+    if (blocked) {
+      metadataState = { status: "error", message: blocked };
+      return;
+    }
     tokenListStore.unrecognizedModal = null;
   }
 

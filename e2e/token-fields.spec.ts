@@ -99,6 +99,69 @@ test("keeps token fields compact with one full address and a working copy button
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test("filters blocked tokens from both selectors and explains a pasted address", async ({
+  page,
+}) => {
+  const address = "0xce3f08e664693ca792cace4af1364d5e220827b2";
+  const token = { chainId: 1, address, name: "Old Saitama", symbol: "SAITAMA", decimals: 9 };
+  const blockSourceUrl = "https://example.org/official/long-saitama-migration-notice";
+  await fixture(page);
+  await page.route("https://tokens.uniswap.org/**", (route) =>
+    route.fulfill({ json: { name: "External list", tokens: [token] } })
+  );
+  await page.addInitScript((saved) => {
+    localStorage.setItem("localTokenList", JSON.stringify({ tokens: [saved] }));
+  }, token);
+  await page.route("**/api/blocked-tokenlist.json", (route) =>
+    route.fulfill({
+      json: {
+        name: "Flashprofits Blocked",
+        timestamp: "2026-11-16T07:30:00Z",
+        version: { major: 1, minor: 0, patch: 0 },
+        tokens: [
+          {
+            ...token,
+            extensions: {
+              blockSource: "Flashprofits",
+              blockReason: "This SAITAMA contract migrated.",
+              blockSourceUrl: { "0": blockSourceUrl.slice(0, 42), "1": blockSourceUrl.slice(42) },
+            },
+          },
+        ],
+      },
+    })
+  );
+  let blockedMetadataRequests = 0;
+  await page.route("**/api/token-metadata?**", (route) => {
+    if (new URL(route.request().url()).searchParams.get("address")?.toLowerCase() === address)
+      blockedMetadataRequests++;
+    return route.fallback();
+  });
+  await page.goto("/?chainId=1&from=" + FROM + "&to=" + TO);
+  for (const side of ["From", "To"]) {
+    const field = page.getByRole("combobox", { name: side + " token", exact: true });
+    await field.fill("SAITAMA");
+    await expect(page.getByText("No tokens match", { exact: true })).toBeVisible();
+    await expect(page.getByRole("option", { name: /SAITAMA/ })).toHaveCount(0);
+    const pasted = "0x" + address.slice(2).toUpperCase();
+    await field.fill(pasted);
+    const warning = page.getByRole("alert").filter({ hasText: "Token blocked by Flashprofits." });
+    await expect(warning).toContainText("This SAITAMA contract migrated.");
+    await expect(warning.getByRole("link", { name: "Source" })).toHaveAttribute(
+      "href",
+      blockSourceUrl
+    );
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    await field.press("Tab");
+    await expect(field).toHaveValue(pasted);
+    await expect(page.getByRole("dialog", { name: "Unrecognized Token" })).toHaveCount(0);
+    await expect(page.locator(".submit-btn")).toBeDisabled();
+    await field.fill("");
+  }
+  expect(blockedMetadataRequests).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 for (const mode of ["exactIn", "targetOut"] as const) {
   test(`swaps tokens and amounts while keeping ${mode}`, async ({ page }) => {
     const sellAmount = mode === "exactIn" ? "150" : "150.25";

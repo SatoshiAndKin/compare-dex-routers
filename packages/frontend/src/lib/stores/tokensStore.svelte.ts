@@ -26,7 +26,10 @@ class TokensStore {
   getForChain(chainId: number): TokenInfo[] {
     const listStoreTokens = tokenListStore.allTokens;
     const tokens = (listStoreTokens.length > 0 ? listStoreTokens : this.allTokens).filter(
-      (token) => token.chainId === chainId && !isNativeToken(token.address)
+      (token) =>
+        token.chainId === chainId &&
+        !isNativeToken(token.address) &&
+        !tokenListStore.findBlockedToken(chainId, token.address)
     );
     const native = configStore.nativeAssets[String(chainId)];
     return native ? [{ ...native, name: `${native.name} — Native` }, ...tokens] : tokens;
@@ -66,6 +69,7 @@ class TokensStore {
       data.decimals < 0 ||
       data.decimals > 255
     ) {
+      if (error?.code === "TOKEN_BLOCKED") throw new Error(error.error);
       throw new Error(`Cannot load token metadata for ${address}`);
     }
     return { ...data, address, chainId };

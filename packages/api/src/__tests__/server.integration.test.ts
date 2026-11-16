@@ -180,11 +180,13 @@ describe("server integration", () => {
   it("republishes the Flashprofits list, filters token choices, and explains blocked addresses", async () => {
     const address = "0xce3f08e664693ca792cace4af1364d5e220827b2";
     const token = { chainId: 1, address, name: "Old Saitama", symbol: "SAITAMA", decimals: 9 };
+    const blockSourceUrl = "https://example.org/official/long-saitama-migration-notice";
     const extensions = {
       blockSource: "Flashprofits",
       blockReason: "The old contract migrated.",
-      blockSourceUrl: "https://example.org/migration",
+      blockSourceUrl: { "0": blockSourceUrl.slice(0, 42), "1": blockSourceUrl.slice(42) },
     };
+    const block = { address, chainId: 1, ...extensions, blockSourceUrl };
     const list = {
       name: "Flashprofits Blocked",
       timestamp: "2026-11-15T00:00:00Z",
@@ -221,8 +223,18 @@ describe("server integration", () => {
       expect(JSON.parse(blocked.body)).toMatchObject({
         code: "TOKEN_BLOCKED",
         error: "Token blocked by Flashprofits. The old contract migrated.",
-        block: { address, chainId: 1, ...extensions },
+        block,
       });
+      const safe = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
+      for (const [from, to] of [
+        [address, safe],
+        [safe, address],
+      ] as const) {
+        const query = new URLSearchParams({ chainId: "1", from, to, amount: "1" });
+        const rejected = await request(baseUrl + "/quote?" + query.toString());
+        expect(rejected.status).toBe(403);
+        expect(JSON.parse(rejected.body).block).toEqual(block);
+      }
       expect(fetchUpstream).toHaveBeenCalledTimes(1);
 
       now.mockReturnValue(61_001);

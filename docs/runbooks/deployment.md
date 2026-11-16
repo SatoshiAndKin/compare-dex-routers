@@ -50,6 +50,12 @@ before offering executor setup. Set both `FLASHPROFITS_WALLET_FACTORY` and
 `FLASHPROFITS_WALLET_FACTORY_CODE_HASH` to override the default with an existing
 verified deployment. Prices can be ranked while wallet execution is unavailable.
 
+Deploy the Flashprofits blocked-list endpoint before enabling the CDR mirror.
+CDR reads `/api/v1/blocked-tokenlist.json` from `FLASHPROFITS_BASE_URL`.
+Set `FLASHPROFITS_TOKENLIST_URL` to override the source or to enable list
+filtering without the Flashprofits quote providers. Verify CDR
+`/api/blocked-tokenlist.json` publishes the same version and provenance.
+
 When updating the default factory, run `forge build src --no-cache` with
 Flashprofits' pinned toolchain. From the CDR checkout, run
 `pnpm run generate:flashprofits-factory` with the

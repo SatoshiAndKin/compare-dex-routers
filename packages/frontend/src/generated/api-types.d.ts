@@ -92,6 +92,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/blocked-tokenlist.json": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get the public Flashprofits blocked token list
+     * @description A Token Lists document. Every listed address is blocked on its listed chain.
+     */
+    get: operations["getBlockedTokenlist"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/token-metadata": {
     parameters: {
       query?: never;
@@ -343,6 +363,24 @@ export interface components {
         worse_than_reference: boolean;
         shortfall_bps: number;
       } | null;
+    };
+    BlockedTokenError: {
+      error: string;
+      /** @enum {string} */
+      code: "TOKEN_BLOCKED";
+      requestId: string;
+      block: {
+        chainId: number;
+        /**
+         * @description EVM address (0x-prefixed, 40 hex chars)
+         * @example 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+         */
+        address: string;
+        blockSource: string;
+        blockReason: string;
+        /** Format: uri */
+        blockSourceUrl: string;
+      };
     };
     TokenListResponse: {
       /** @description Name of the token list (or "Default Tokenlists" if multiple) */
@@ -601,6 +639,15 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
+      /** @description Input or output token is blocked */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BlockedTokenError"];
+        };
+      };
       /** @description Quote failed */
       500: {
         headers: {
@@ -659,6 +706,74 @@ export interface operations {
       };
     };
   };
+  getBlockedTokenlist: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Flashprofits blocked token list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            name: string;
+            /** Format: date-time */
+            timestamp: string;
+            version: {
+              major: number;
+              minor: number;
+              patch: number;
+            };
+            tokens: ({
+              chainId: number;
+              address: string;
+              name: string;
+              symbol: string;
+              decimals: number;
+              extensions: {
+                blockSource:
+                  | string
+                  | {
+                      [key: string]: string;
+                    };
+                blockReason:
+                  | string
+                  | {
+                      [key: string]: string;
+                    };
+                blockSourceUrl:
+                  | string
+                  | {
+                      [key: string]: string;
+                    };
+              } & {
+                [key: string]: unknown;
+              };
+            } & {
+              [key: string]: unknown;
+            })[];
+          } & {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Server is shutting down; retry on an available instance */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
   getTokenMetadata: {
     parameters: {
       query: {
@@ -689,6 +804,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Token is blocked */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BlockedTokenError"];
         };
       };
       /** @description Not a valid ERC-20 token (EOA or non-ERC-20 contract) */

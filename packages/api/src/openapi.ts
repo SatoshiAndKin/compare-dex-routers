@@ -7,6 +7,7 @@ import type { OpenAPIObject } from "openapi3-ts/oas30";
 import { z } from "zod";
 import { CoinbaseEstimateSchema, TakerFeePercentSchema } from "./coinbase.js";
 import { QuoteResponseSchema } from "./quote-response.js";
+import { BlockedTokenlistSchema } from "./blocked-tokenlist.js";
 
 extendZodWithOpenApi(z);
 
@@ -138,6 +139,21 @@ const TokenListResponseSchema = z
       .openapi({ description: "Merged array of all tokens from all default token lists" }),
   })
   .openapi("TokenListResponse");
+
+const BlockedTokenErrorSchema = z
+  .object({
+    error: z.string(),
+    code: z.literal("TOKEN_BLOCKED"),
+    requestId: z.string(),
+    block: z.object({
+      chainId: z.number().int(),
+      address: AddressSchema,
+      blockSource: z.string(),
+      blockReason: z.string(),
+      blockSourceUrl: z.url({ protocol: /^https$/ }),
+    }),
+  })
+  .openapi("BlockedTokenError");
 
 const AnalyticsSummarySchema = z
   .object({
@@ -283,6 +299,7 @@ registry.registerPath({
       "Provider price simulations, failures, and recommendation"
     ),
     400: errorResponse("Invalid parameters"),
+    403: jsonContent(BlockedTokenErrorSchema, "Input or output token is blocked"),
     500: errorResponse("Quote failed"),
   },
 });
@@ -301,6 +318,18 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/blocked-tokenlist.json",
+  operationId: "getBlockedTokenlist",
+  summary: "Get the public Flashprofits blocked token list",
+  description: "A Token Lists document. Every listed address is blocked on its listed chain.",
+  responses: {
+    200: jsonContent(BlockedTokenlistSchema, "Flashprofits blocked token list"),
+    503: errorResponse("No Flashprofits blocked token list is available"),
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/token-metadata",
   operationId: "getTokenMetadata",
   summary: "Get ERC-20 token metadata from blockchain",
@@ -310,6 +339,7 @@ registry.registerPath({
     400: errorResponse(
       "Invalid parameters (missing/invalid chainId or address, unsupported chain)"
     ),
+    403: jsonContent(BlockedTokenErrorSchema, "Token is blocked"),
     404: errorResponse("Not a valid ERC-20 token (EOA or non-ERC-20 contract)"),
     500: errorResponse("RPC error or timeout"),
   },
