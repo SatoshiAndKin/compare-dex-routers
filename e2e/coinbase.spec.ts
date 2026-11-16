@@ -96,7 +96,7 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(dex.getByRole("heading", { level: 3 })).toHaveText("DEX routers ⭐");
   await expect(panel.getByText("Mobile trading not verified")).toBeHidden();
   await expect(panel.getByText("0.88% less received", { exact: true })).toBeVisible();
-  await expect(dex.getByText("0.89% more received", { exact: true })).toBeVisible();
+  await expect(dex.getByText("0.03% more received vs 0x", { exact: true })).toBeVisible();
   const boxes = await page.locator(".venue-card").evaluateAll((cards) =>
     cards.map((card) => {
       const rect = card.getBoundingClientRect();
@@ -155,14 +155,14 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   const feeInput = page.getByRole("dialog").getByLabel("Your taker fee (%)");
   await expect(feeInput).toBeFocused();
   await expect(feeInput).toHaveValue("0.9");
-  await saveOpenFee(page, "0.1");
-  await expect(feeButton).toHaveText("Assumed fee 0.1%");
+  await saveOpenFee(page, "0.04");
+  await expect(feeButton).toHaveText("Assumed fee 0.04%");
   await expect(feeButton).toBeFocused();
   expect(await feePosition()).toEqual(beforeFee);
   await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
-  await expect(panel.getByText("0.08% less received", { exact: true })).toBeVisible();
-  await expect(dex.getByText("0.08% more received", { exact: true })).toBeVisible();
+  await expect(panel.getByText("0.02% less received", { exact: true })).toBeVisible();
+  await expect(dex.getByText("0.02% more received vs Coinbase", { exact: true })).toBeVisible();
   await expect(dex.getByText(/less received/)).toHaveCount(0);
   const link = panel.getByRole("link", { name: "Open Coinbase Advanced ↗" });
   await expect(link).toHaveAttribute(
@@ -173,17 +173,17 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   await expect(panel.getByRole("button", { name: /swap|approve/i })).toHaveCount(0);
   await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
   await page.reload();
-  await expect(feeButton).toHaveText("Assumed fee 0.1%");
+  await expect(feeButton).toHaveText("Assumed fee 0.04%");
   await expect(panel.getByRole("textbox")).toHaveCount(0);
   await expect(panel.getByRole("group", { name: "Coinbase average trade price" })).toContainText(
-    "1 USDC = 0.999 USDT"
+    "1 USDC = 0.9996 USDT"
   );
   await page.getByRole("button", { name: "Open settings" }).click();
-  await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toHaveValue("0.1");
+  await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toHaveValue("0.04");
   await page.getByRole("button", { name: "Close settings" }).click();
   await feeButton.click();
   await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toBeFocused();
-  await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toHaveValue("0.1");
+  await expect(page.getByRole("dialog").getByLabel("Your taker fee (%)")).toHaveValue("0.04");
   await page.keyboard.press("Escape");
   await expect(feeButton).toBeFocused();
   const overflow = await page.evaluate(
@@ -347,7 +347,7 @@ test("counts down to the scheduled Coinbase refresh and updates the price in pla
   const dex = page.getByRole("region", { name: "DEX router quotes" });
   const dexRefresh = dex.locator("header").getByRole("button", { name: "Refresh DEX quotes" });
   const dexTimer = dex.getByRole("timer", { name: "DEX auto-refresh" });
-  const dexLead = dex.getByText("0.89% more received", { exact: true });
+  const dexLead = dex.getByText("0.03% more received vs 0x", { exact: true });
   const rates = panel.getByRole("group", { name: "Coinbase average trade price" });
   await expect(rates).toContainText("1 USDC = 0.991 USDT");
   await expect(dexLead).toBeVisible();
