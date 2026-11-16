@@ -1,9 +1,9 @@
 <script lang="ts">
   import { tick, untrack, type Snippet } from "svelte";
-  import { formatUnits } from "viem";
+  import { formatUnits, parseUnits } from "viem";
   import { apiClient } from "../api.js";
   import type { components } from "../../generated/api-types.js";
-  import type { CompareParams, Quote } from "../stores/comparisonStore.svelte.js";
+  import type { CompareParams, Quote, QuoteResponse } from "../stores/comparisonStore.svelte.js";
   import { preferencesStore } from "../stores/preferencesStore.svelte.js";
   import { settingsStore } from "../stores/settingsStore.svelte.js";
   import { formatQuoteRate } from "../quote-rates.js";
@@ -14,6 +14,7 @@
   let {
     params,
     quotes,
+    gasAdjustedRate,
     stale,
     dexExpiresAt,
     dexRefresh,
@@ -23,6 +24,7 @@
   }: {
     params: CompareParams | null;
     quotes: Quote[];
+    gasAdjustedRate?: QuoteResponse["gas_adjusted_rate"];
     stale: boolean;
     dexExpiresAt: number;
     dexRefresh?: Snippet;
@@ -132,24 +134,55 @@
     return (targetOut ? left < right : left > right) ? -1 : 1;
   }
 
-  const rankedDex = $derived.by(() => {
+  const matchingDex = $derived.by(() => {
     const trade = params;
     if (!trade) return [];
-    return quotes
-      .filter(
-        (quote) =>
-          quote.simulation_status !== "failed" &&
-          quote.chainId === trade.chainId &&
-          quote.from.toLowerCase() === trade.from.toLowerCase() &&
-          quote.to.toLowerCase() === trade.to.toLowerCase() &&
-          quote.mode === trade.mode &&
-          quote.amount === trade.amount
-      )
-      .map((quote) => ({ quote, amount: BigInt(quote[amountField]), provider: quote.provider }))
-      .filter(({ amount }) => amount > 0n)
+    return quotes.filter(
+      (quote) =>
+        quote.simulation_status !== "failed" &&
+        quote.chainId === trade.chainId &&
+        quote.from.toLowerCase() === trade.from.toLowerCase() &&
+        quote.to.toLowerCase() === trade.to.toLowerCase() &&
+        quote.mode === trade.mode &&
+        quote.amount === trade.amount
+    );
+  });
+
+  const rankedDex = $derived.by(() => {
+    const nativePerToken = BigInt(gasAdjustedRate?.native_raw_per_token ?? "1");
+    const tokenUnit = 10n ** BigInt(gasAdjustedRate?.token_decimals ?? 0);
+    // Use the same unrounded integer scale as the API recommendation.
+    return matchingDex
+      .flatMap((quote) => {
+        const rawAmount = BigInt(quote[amountField]);
+        if (rawAmount <= 0n) return [];
+        const value = rawAmount * nativePerToken;
+        const gas =
+          gasAdjustedRate &&
+          quote.simulation_status === "succeeded" &&
+          quote.gas_cost_native !== null
+            ? parseUnits(quote.gas_cost_native, gasAdjustedRate.native_decimals) * tokenUnit
+            : null;
+        return [
+          {
+            quote,
+            amount: targetOut ? value + (gas ?? 0n) : value - (gas ?? 0n),
+            provider: quote.provider,
+            gasKnown: gas !== null,
+          },
+        ];
+      })
       .sort((left, right) => comparePrices(left.amount, right.amount));
   });
   const bestDex = $derived(rankedDex[0]?.quote ?? null);
+  const adjustedDexAmount = $derived(
+    gasAdjustedRate && rankedDex[0]?.gasKnown
+      ? formatUnits(
+          rankedDex[0].amount / BigInt(gasAdjustedRate.native_raw_per_token),
+          gasAdjustedRate.token_decimals
+        )
+      : null
+  );
 
   function formatPriceDifference(amount: bigint, baseline: bigint): string {
     const deviation = amount > baseline ? amount - baseline : baseline - amount;
@@ -161,15 +194,29 @@
     const [dex, nextDex] = rankedDex;
     if (stale || loading || dexExpired || !dex) return null;
 
-    const coinbaseAmount = result && !error && !expired ? BigInt(result[amountField]) : 0n;
-    const coinbase = coinbaseAmount > 0n ? { amount: coinbaseAmount, provider: "Coinbase" } : null;
-    const shortfall = targetOut ? "more paid" : "less received";
+    const coinbaseDecimals = targetOut ? result?.input_decimals : result?.output_decimals;
+    const coinbaseAmount =
+      result &&
+      !error &&
+      !expired &&
+      (!gasAdjustedRate || coinbaseDecimals === gasAdjustedRate.token_decimals)
+        ? BigInt(result[amountField]) * BigInt(gasAdjustedRate?.native_raw_per_token ?? "1")
+        : 0n;
+    const coinbase =
+      coinbaseAmount > 0n ? { amount: coinbaseAmount, provider: "Coinbase", gasKnown: true } : null;
+    const shortfall = targetOut ? "higher cost" : "less value";
     if (coinbase) {
       const order = comparePrices(coinbase.amount, dex.amount);
-      if (order === 0) return { winner: "tie", differences: { dex: "", coinbase: "" } };
+      if (order === 0)
+        return {
+          winner: "tie",
+          provisional: !dex.gasKnown,
+          differences: { dex: "", coinbase: "" },
+        };
       if (order < 0)
         return {
           winner: "coinbase",
+          provisional: false,
           differences: {
             dex: `${formatPriceDifference(dex.amount, coinbase.amount)} ${shortfall}`,
             coinbase: "",
@@ -182,11 +229,12 @@
         ? nextDex
         : coinbase;
     const lead =
-      runnerUp && runnerUp.amount !== dex.amount
-        ? `${formatPriceDifference(dex.amount, runnerUp.amount)} ${targetOut ? "less paid" : "more received"} vs ${runnerUp.provider}`
+      runnerUp && runnerUp.amount > 0n && runnerUp.amount !== dex.amount
+        ? `${formatPriceDifference(dex.amount, runnerUp.amount)} ${targetOut ? "lower cost" : "more value"} vs ${runnerUp.provider}${dex.gasKnown && !runnerUp.gasKnown ? " (gas unknown)" : ""}`
         : "";
     return {
       winner: coinbase ? "dex" : null,
+      provisional: !dex.gasKnown,
       differences: {
         dex: lead,
         coinbase: coinbase
@@ -198,9 +246,9 @@
 </script>
 
 {#snippet winnerStar()}
-  <span
-    role="img"
-    aria-label={comparison?.winner === "tie" ? "Tied quoted price" : "Better quoted price"}>⭐</span
+  {@const label = comparison?.winner === "tie" ? "Tied quoted price" : "Better quoted price"}
+  <span role="img" aria-label={comparison?.provisional ? `Potential ${label.toLowerCase()}` : label}
+    >⭐</span
   >
 {/snippet}
 
@@ -250,11 +298,12 @@
           </h3>
           {@render dexRefresh?.()}
           <InfoPopover label="About DEX prices">
-            <strong>Best DEX price before gas</strong>
+            <strong>DEX comparison includes gas</strong>
             <span
-              >Prices include provider trading fees. The comparison excludes gas and approval costs.</span
+              >The ranking includes estimated swap gas and required approvals when available. Quotes
+              without gas can still lead at their quoted price.</span
             >
-            <span>The selected route can differ because of gas costs or your route choice.</span>
+            <span>The swap recommendation gives priority to simulated routes.</span>
             {#if bestDex}
               <span
                 >1 {bestDex.to_symbol} = {formatQuoteRate(
@@ -288,7 +337,19 @@
             >
           </div>
           <div class="venue-row">
-            <span class="row-label">Best price</span><span>{bestDex.provider}</span>
+            <span class="row-label"
+              >{adjustedDexAmount === null ? "Potential best" : "Best price"}</span
+            ><span>{bestDex.provider}</span>
+          </div>
+          <div class="venue-row">
+            <span class="row-label">{targetOut ? "Cost with gas" : "Value after gas"}</span>
+            <span>
+              {#if adjustedDexAmount === null}
+                Gas unavailable
+              {:else}
+                ≈ {adjustedDexAmount} {targetOut ? bestDex.from_symbol : bestDex.to_symbol}
+              {/if}
+            </span>
           </div>
         {:else}
           <p class="venue-status">{stale ? "Previous DEX quotes" : "No matching DEX price"}</p>

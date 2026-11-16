@@ -94,9 +94,11 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   const dex = page.getByRole("region", { name: "DEX router quotes" });
   await expect(panel.getByRole("heading", { level: 3 })).toHaveText("Coinbase Advanced");
   await expect(dex.getByRole("heading", { level: 3 })).toHaveText("DEX routers ⭐");
+  await expect(dex.getByRole("img", { name: "Potential better quoted price" })).toBeVisible();
+  await expect(dex.getByText("Gas unavailable")).toBeVisible();
   await expect(panel.getByText("Mobile trading not verified")).toBeHidden();
-  await expect(panel.getByText("0.88% less received", { exact: true })).toBeVisible();
-  await expect(dex.getByText("0.03% more received vs 0x", { exact: true })).toBeVisible();
+  await expect(panel.getByText("0.88% less value", { exact: true })).toBeVisible();
+  await expect(dex.getByText("0.03% more value vs 0x", { exact: true })).toBeVisible();
   const boxes = await page.locator(".venue-card").evaluateAll((cards) =>
     cards.map((card) => {
       const rect = card.getBoundingClientRect();
@@ -161,9 +163,9 @@ test("shows a fee-adjusted Coinbase estimate without changing the selected DEX",
   expect(await feePosition()).toEqual(beforeFee);
   await expect(dex.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveCount(0);
-  await expect(panel.getByText("0.02% less received", { exact: true })).toBeVisible();
-  await expect(dex.getByText("0.02% more received vs Coinbase", { exact: true })).toBeVisible();
-  await expect(dex.getByText(/less received/)).toHaveCount(0);
+  await expect(panel.getByText("0.02% less value", { exact: true })).toBeVisible();
+  await expect(dex.getByText("0.02% more value vs Coinbase", { exact: true })).toBeVisible();
+  await expect(dex.getByText(/less value/)).toHaveCount(0);
   const link = panel.getByRole("link", { name: "Open Coinbase Advanced ↗" });
   await expect(link).toHaveAttribute(
     "href",
@@ -212,20 +214,28 @@ test("highlights Coinbase when its fee-adjusted quote beats every DEX price", as
   });
 });
 
-test("compares Coinbase with a working route instead of a reverted quote", async ({ page }) => {
+test("uses gas to rank the working DEX routes against Coinbase", async ({ page }) => {
   await fixture(page, (comparison) => {
-    if (comparison.quotes[0]?.sender)
-      comparison.quotes.push({
-        ...comparison.quotes[0],
-        provider: "reverted",
-        output_amount: "1000",
-        output_amount_raw: "1000000000",
-        simulation_status: "failed",
-        simulation_reason: "execution reverted",
-        execution: null,
-      });
+    const [route, curve] = comparison.quotes;
+    if (!route?.sender || !curve) return;
+    comparison.gas_adjusted_rate = {
+      native_raw_per_token: "500000000000000",
+      native_decimals: 18,
+      token_decimals: 6,
+    };
+    route.gas_cost_native = "0.00002";
+    curve.gas_cost_native = "0.00004";
+    comparison.quotes.push({
+      ...route,
+      provider: "reverted",
+      output_amount: "1000",
+      output_amount_raw: "1000000000",
+      simulation_status: "failed",
+      simulation_reason: "execution reverted",
+      execution: null,
+    });
   });
-  await mockCoinbase(page, "101");
+  await mockCoinbase(page, "99.96");
   await installWallet(page, 1, SENDER, async (method, args) => {
     if (method === "eth_call")
       return (args[0] as { data: string }).data.startsWith("0x70a08231")
@@ -236,12 +246,15 @@ test("compares Coinbase with a working route instead of a reverted quote", async
     throw new Error(`Unexpected wallet method: ${method}`);
   });
   await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
+  const dex = page.getByRole("region", { name: "DEX router quotes" });
+  await expect(dex.getByRole("img", { name: "Potential better quoted price" })).toBeVisible();
   await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
   await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
   await expect(page.getByRole("button", { name: "Execute swap" })).toBeEnabled();
   await saveFee(page, "0.1");
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
   await expect(panel.getByRole("img", { name: "Better quoted price" })).toHaveText("⭐");
+  await expect(dex.getByText("≈ 99.91 USDT")).toBeVisible();
   await expect(page.getByText("Via 0x", { exact: true })).toBeVisible();
 });
 
@@ -347,7 +360,7 @@ test("counts down to the scheduled Coinbase refresh and updates the price in pla
   const dex = page.getByRole("region", { name: "DEX router quotes" });
   const dexRefresh = dex.locator("header").getByRole("button", { name: "Refresh DEX quotes" });
   const dexTimer = dex.getByRole("timer", { name: "DEX auto-refresh" });
-  const dexLead = dex.getByText("0.03% more received vs 0x", { exact: true });
+  const dexLead = dex.getByText("0.03% more value vs 0x", { exact: true });
   const rates = panel.getByRole("group", { name: "Coinbase average trade price" });
   await expect(rates).toContainText("1 USDC = 0.991 USDT");
   await expect(dexLead).toBeVisible();

@@ -35,6 +35,7 @@ class ComparisonStore {
   recommendation = $state<string | null>(null);
   recommendationReason = $state<string | null>(null);
   recommendationBasis = $state<QuoteResponse["recommendation_basis"]>("none");
+  gasAdjustedRate = $state<QuoteResponse["gas_adjusted_rate"]>();
   selectedProvider = $state<string | null>(null);
   workflowProvider = $state<string | null>(null);
   routeChoiceRequired = $state(false);
@@ -90,6 +91,7 @@ class ComparisonStore {
     this.recommendation = null;
     this.recommendationReason = null;
     this.recommendationBasis = "none";
+    this.gasAdjustedRate = undefined;
     this.selectedProvider = null;
     this.updatedAt = null;
   }
@@ -146,6 +148,7 @@ class ComparisonStore {
       this.recommendation = data.recommendation;
       this.recommendationReason = data.recommendation_reason;
       this.recommendationBasis = data.recommendation_basis;
+      this.gasAdjustedRate = data.gas_adjusted_rate;
       this.mode = data.mode;
       this.selectedProvider = null;
       if (

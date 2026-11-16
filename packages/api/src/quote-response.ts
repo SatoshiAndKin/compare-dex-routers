@@ -107,6 +107,16 @@ export const QuoteResponseSchema = z.object({
   recommendation: z.string().nullable(),
   recommendation_reason: z.string(),
   recommendation_basis: z.enum(["gas_adjusted", "raw_amount", "none"]),
+  gas_adjusted_rate: z
+    .object({
+      native_raw_per_token: z.string().regex(/^[1-9]\d*$/),
+      native_decimals: z.number().int().min(0),
+      token_decimals: z.number().int().min(0),
+    })
+    .optional()
+    .describe(
+      "Native valuation of one output token (exact input) or one input token (target output), available when at least one route has comparable gas"
+    ),
   simulation_basis: z.literal("wallet_balance"),
   simulation_account: address,
   wallet_readiness: z.literal("unchecked"),
