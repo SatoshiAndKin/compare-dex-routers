@@ -1,19 +1,57 @@
 # Production deployment
 
-GitHub builds and publishes both images before requesting deployment through Tank.
-Each image has a `sha-<full-commit>` tag and an OCI revision label. Tank checks the
-merged commit, resolves both Linux amd64 image digests, and rejects a mismatch
-before changing the private K3s Helm release.
+GitHub builds and publishes both images before sending an authenticated
+`/hooks/deploy` request with `repository`, `commit`, and `targets`. Each image has
+a `sha-<full-commit>` tag and an OCI revision label. The Kubernetes delivery
+controller checks the merged commit, resolves both Linux amd64 image digests,
+and rejects a mismatch before changing the private K3s Helm release.
 
-The existing authenticated `/hooks/deploy` request keeps its `repository`, `commit`,
-and `targets` fields. GitHub has no Kubernetes administration credentials.
-The private Dockerfiles repository owns Helm configuration, routing, secrets,
-namespace-scoped deployment access, and infrastructure promotion.
+GitHub has no Kubernetes administration credentials. The private Dockerfiles
+repository owns Helm configuration, routing, secrets, namespace-scoped
+deployment access, and infrastructure promotion.
 
-A successful GitHub deploy job confirms queue storage. Confirm completion through
-Tank's `/opt/deploy-webhooks/queue/results/<receipt-id>.json`, its
-`worker/compare-dex-routers.json` release record, running image revisions, and real
-application checks. Worker logs use `journalctl -u deploy-webhooks-worker.service`.
+## Verify a deployment
+
+Open the GitHub Actions CD run for the expected commit. In the `deploy` job,
+copy the `id` from the JSON response with `status: queued`. Use a production
+K3s context with permission to read pods and access the controller. The active
+queue is mounted in `deployment/controller` in the `platform-delivery`
+namespace. Tank's local queue is an archive.
+
+Read the terminal receipt. Check that `request.commit` matches the expected
+commit, `status` is `succeeded`, and `exit_code` is `0`.
+
+```sh
+receipt_id=REPLACE_WITH_RECEIPT_ID
+kubectl -n platform-delivery exec deployment/controller -c controller -- \
+  cat "/opt/deploy-webhooks/queue/results/${receipt_id}.json"
+```
+
+If the result is missing, check `queue/pending` in the same mount and the
+controller logs. If the receipt reports failure, use its `log_path` to locate
+the job log in the controller.
+
+```sh
+kubectl -n platform-delivery logs deployment/controller -c controller --since=1h
+```
+
+Read the current release record and check that both containers are Ready and
+their running image digests match `images.api` and `images.frontend` in the
+record. Check `revision` against the expected commit. If a newer release is
+active, record its revision and digests separately from the receipt for the
+requested deployment.
+
+```sh
+kubectl -n platform-delivery exec deployment/controller -c controller -- \
+  cat /opt/deploy-webhooks/worker/compare-dex-routers.json
+kubectl -n compare-dex-routers get pods -o \
+  'custom-columns=POD:.metadata.name,CONTAINERS:.status.containerStatuses[*].name,READY:.status.containerStatuses[*].ready,RESTARTS:.status.containerStatuses[*].restartCount,IMAGE:.status.containerStatuses[*].imageID'
+```
+
+From a client connected to Tailscale, check the homepage, `/api/health`, and
+`/api/chains`. Check the application behavior affected by the release.
+
+## Request a new deployment
 
 To build and request deployment again, dispatch CD on main:
 
