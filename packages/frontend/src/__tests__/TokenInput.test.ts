@@ -86,7 +86,7 @@ describe("TokenInput", () => {
     const address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
     formStore.fromToken = { address, symbol: "USDC", decimals: 6 };
     const view = render(TokenInput, { type: "from" });
-    await waitFor(() => expect(view.getByRole("textbox")).toHaveValue("USDC"));
+    await waitFor(() => expect(view.getByRole("combobox")).toHaveValue("USDC"));
     expect(view.getAllByText(address, { exact: true })).toHaveLength(1);
     expect(view.getByText(address)).toHaveClass("selected-token-address");
     expect(view.getByText(address)).not.toBeVisible();
@@ -118,7 +118,7 @@ describe("TokenInput", () => {
     if (options.length > 0) {
       const firstOption = options[0];
       if (firstOption) {
-        await fireEvent.mouseDown(firstOption);
+        await fireEvent.click(firstOption);
         expect(formStore.fromToken?.symbol).toBe("USDC");
         expect(formStore.fromToken?.address).toBe("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
       }
@@ -148,7 +148,7 @@ describe("TokenInput", () => {
     if (options.length > 0) {
       const firstOption = options[0];
       if (firstOption) {
-        await fireEvent.mouseDown(firstOption);
+        await fireEvent.click(firstOption);
         expect(formStore.toToken?.symbol).toBe("USDT");
       }
     }
@@ -314,7 +314,7 @@ describe("TokenInput", () => {
     await fireEvent.input(input, { target: { value: "WETH" } });
     await new Promise((r) => setTimeout(r, 10));
 
-    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+    await fireEvent.click(getAllByRole("option")[0]!);
 
     expect(formStore.fromToken).toMatchObject({
       address: "0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2",
@@ -357,7 +357,7 @@ describe("TokenInput", () => {
     await fireEvent.input(input, { target: { value: "WETH" } });
     await new Promise((r) => setTimeout(r, 10));
 
-    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+    await fireEvent.click(getAllByRole("option")[0]!);
 
     expect(formStore.toToken?.symbol).toBe("WETH");
     expect(formStore.fromToken).toMatchObject({
@@ -393,7 +393,7 @@ describe("TokenInput", () => {
     await fireEvent.input(input, { target: { value: "USDT" } });
     await new Promise((r) => setTimeout(r, 10));
 
-    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+    await fireEvent.click(getAllByRole("option")[0]!);
 
     expect(formStore.fromToken).toMatchObject({
       address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -439,7 +439,7 @@ describe("TokenInput", () => {
     await fireEvent.input(fromInput, { target: { value: "WETH" } });
     await new Promise((r) => setTimeout(r, 10));
 
-    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+    await fireEvent.click(getAllByRole("option")[0]!);
     await waitFor(() => {
       expect(fromInput.value).toBe("WETH");
       expect(toInput.value).toBe("USDC");
@@ -480,7 +480,7 @@ describe("TokenInput", () => {
       await new Promise((r) => setTimeout(r, 10));
     }
 
-    await fireEvent.mouseDown(getAllByRole("option")[0]!);
+    await fireEvent.click(getAllByRole("option")[0]!);
 
     await waitFor(() => {
       expect(formStore.fromToken?.symbol).toBe("WETH");

@@ -82,7 +82,7 @@ test("keeps precise input and output together through metadata and quote loading
     [buyPanel, "To", buySymbol],
   ] as const) {
     const value = await panel.getByRole("spinbutton").boundingBox();
-    const token = await panel.getByRole("textbox", { name: `${side} token` }).boundingBox();
+    const token = await panel.getByRole("combobox", { name: `${side} token` }).boundingBox();
     if (!value || !token) throw new Error("Missing amount or token picker");
     expect(value.y).toBeGreaterThanOrEqual(token.y + token.height);
     expect(value.width).toBeGreaterThan(token.width);

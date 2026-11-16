@@ -5,141 +5,65 @@ import { formStore } from "../lib/stores/formStore.svelte.js";
 
 describe("ChainSelector", () => {
   beforeEach(() => {
-    // Reset to Ethereum default
     formStore.chainId = 1;
   });
 
-  it("renders current chain name", () => {
-    const { getByText } = render(ChainSelector);
-    expect(getByText("Ethereum (1)")).toBeTruthy();
+  it("shows only the chain name in the trigger and focuses search when it opens", async () => {
+    const view = render(ChainSelector);
+    const trigger = view.getByRole("button", { name: "Ethereum" });
+    expect(view.queryByRole("listbox")).toBeNull();
+    await fireEvent.click(trigger);
+    expect(view.getByRole("combobox", { name: "Search chains" })).toHaveFocus();
+    expect(view.getByRole("option", { name: "Ethereum (1)" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(view.getByRole("option", { name: "Arbitrum (42161)" })).toBeVisible();
   });
 
-  it("opens dropdown on button click", async () => {
-    const { getByRole, queryAllByRole } = render(ChainSelector);
-    const button = getByRole("button");
-
-    // Initially no listbox
-    expect(queryAllByRole("listbox").length).toBe(0);
-
-    await fireEvent.click(button);
-
-    // After click, listbox appears
-    expect(queryAllByRole("listbox").length).toBe(1);
-  });
-
-  it("shows all chains in dropdown when opened", async () => {
-    const { getByRole, getAllByRole } = render(ChainSelector);
-    const button = getByRole("button");
-
-    await fireEvent.click(button);
-
-    const options = getAllByRole("option");
-    // Should have 7 chains
-    expect(options.length).toBe(7);
-  });
-
-  it("filters chains by search text", async () => {
-    const { getByRole, getByPlaceholderText, getAllByRole } = render(ChainSelector);
-    const button = getByRole("button");
-
-    await fireEvent.click(button);
-
-    const searchInput = getByPlaceholderText("Search chains...");
-    await fireEvent.input(searchInput, { target: { value: "eth" } });
-
-    const options = getAllByRole("option");
-    // "Ethereum" should match "eth"
-    expect(options.length).toBeGreaterThanOrEqual(1);
-    expect(options[0]?.textContent).toContain("Ethereum");
-  });
-
-  it("filters chains by chain ID", async () => {
-    const { getByRole, getByPlaceholderText, getAllByRole } = render(ChainSelector);
-    const button = getByRole("button");
-
-    await fireEvent.click(button);
-
-    const searchInput = getByPlaceholderText("Search chains...");
-    await fireEvent.input(searchInput, { target: { value: "8453" } });
-
-    const options = getAllByRole("option");
-    expect(options.length).toBe(1);
-    expect(options[0]?.textContent).toContain("Base");
-    expect(options[0]?.textContent).toContain("8453");
-  });
-
-  it("selects chain by clicking on option", async () => {
-    const { getByRole, getByText } = render(ChainSelector);
-    const button = getByRole("button");
-
-    await fireEvent.click(button);
-
-    // Click on Base option
-    const baseOption = getByText("Base");
-    await fireEvent.mouseDown(baseOption);
-
+  it("filters by name or ID and selects a match with Enter", async () => {
+    const view = render(ChainSelector);
+    await fireEvent.click(view.getByRole("button"));
+    const search = view.getByRole("combobox", { name: "Search chains" });
+    await fireEvent.input(search, { target: { value: "XYZ" } });
+    expect(view.getByRole("status")).toHaveTextContent("No chains match");
+    await fireEvent.input(search, { target: { value: "ETH" } });
+    expect(view.getAllByRole("option")).toEqual([
+      view.getByRole("option", { name: "Ethereum (1)" }),
+    ]);
+    await fireEvent.input(search, { target: { value: "8453" } });
+    expect(view.getAllByRole("option")).toEqual([
+      view.getByRole("option", { name: "Base (8453)" }),
+    ]);
+    await fireEvent.keyDown(search, { key: "Enter" });
     expect(formStore.chainId).toBe(8453);
+    expect(view.getByRole("button", { name: "Base" })).toHaveFocus();
+    expect(view.queryByRole("listbox")).toBeNull();
   });
 
-  it("navigates options with arrow keys", async () => {
-    const { getByRole } = render(ChainSelector);
-    const button = getByRole("button");
-
-    await fireEvent.click(button);
-
-    const listbox = getByRole("listbox");
-
-    // Press ArrowDown to navigate
-    await fireEvent.keyDown(listbox.firstElementChild as Element, {
-      key: "ArrowDown",
-    });
-
-    // The dropdown search input handles keydown; press on the button itself
-    await fireEvent.keyDown(button, { key: "ArrowDown" });
+  it("moves the active option with arrows and cancels with Escape", async () => {
+    const view = render(ChainSelector);
+    const trigger = view.getByRole("button", { name: "Ethereum" });
+    await fireEvent.click(trigger);
+    const search = view.getByRole("combobox", { name: "Search chains" });
+    await fireEvent.keyDown(search, { key: "ArrowDown" });
+    await fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(search).toHaveAttribute(
+      "aria-activedescendant",
+      view.getByRole("option", { name: "Base (8453)" }).id
+    );
+    await fireEvent.keyDown(search, { key: "Escape" });
+    expect(formStore.chainId).toBe(1);
+    expect(trigger).toHaveFocus();
+    expect(view.queryByRole("listbox")).toBeNull();
   });
 
-  it("selects chain with Enter key after navigation", async () => {
-    const { getByRole, getByPlaceholderText } = render(ChainSelector);
-    const button = getByRole("button");
-
-    await fireEvent.click(button);
-
-    const searchInput = getByPlaceholderText("Search chains...");
-
-    // Type to filter to just Base
-    await fireEvent.input(searchInput, { target: { value: "Base" } });
-
-    // Press ArrowDown to select first item
-    await fireEvent.keyDown(searchInput, { key: "ArrowDown" });
-
-    // Press Enter to confirm
-    await fireEvent.keyDown(searchInput, { key: "Enter" });
-
-    expect(formStore.chainId).toBe(8453);
-  });
-
-  it("closes on Escape key", async () => {
-    const { getByRole, getByPlaceholderText, queryAllByRole } = render(ChainSelector);
-    const button = getByRole("button");
-
-    await fireEvent.click(button);
-    expect(queryAllByRole("listbox").length).toBe(1);
-
-    const searchInput = getByPlaceholderText("Search chains...");
-    await fireEvent.keyDown(searchInput, { key: "Escape" });
-
-    expect(queryAllByRole("listbox").length).toBe(0);
-  });
-
-  it('shows "No chains match" when filter has no results', async () => {
-    const { getByRole, getByPlaceholderText, getByText } = render(ChainSelector);
-    const button = getByRole("button");
-
-    await fireEvent.click(button);
-
-    const searchInput = getByPlaceholderText("Search chains...");
-    await fireEvent.input(searchInput, { target: { value: "xyzxyz" } });
-
-    expect(getByText("No chains match")).toBeTruthy();
+  it("dismisses a single search match without selecting it on an outside pointer press", async () => {
+    const view = render(ChainSelector);
+    await fireEvent.click(view.getByRole("button"));
+    await fireEvent.input(view.getByRole("combobox"), { target: { value: "8453" } });
+    await fireEvent.pointerDown(document.body);
+    expect(formStore.chainId).toBe(1);
+    expect(view.queryByRole("listbox")).toBeNull();
   });
 });
