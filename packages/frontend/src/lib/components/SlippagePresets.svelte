@@ -213,11 +213,6 @@
     border-color: var(--accent, #0055ff);
   }
 
-  .slippage-custom-input:focus {
-    outline: 2px solid var(--accent, #0055ff);
-    outline-offset: 1px;
-  }
-
   /* Hide number spinners */
   .slippage-custom-input::-webkit-outer-spin-button,
   .slippage-custom-input::-webkit-inner-spin-button {

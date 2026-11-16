@@ -680,11 +680,6 @@
     border: 2px solid var(--border, #000);
   }
 
-  .add-list-input:focus {
-    outline: 3px solid var(--accent, #0055ff);
-    outline-offset: 0;
-  }
-
   .add-list-btn {
     padding: 0.4rem 0.75rem;
     font-size: 0.85rem;

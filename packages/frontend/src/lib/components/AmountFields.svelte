@@ -342,7 +342,7 @@
   input.amount-input {
     min-width: 0;
     width: 100%;
-    padding: 0;
+    padding: 0 0.5rem;
     border: 0;
     background: transparent;
     color: var(--text);
@@ -356,11 +356,6 @@
     .amount-input-row input.amount-input {
       font-size: 1.25rem !important;
     }
-  }
-
-  .amount-input:focus {
-    outline: 2px solid var(--accent, #0055ff);
-    outline-offset: 1px;
   }
 
   .amount-input[readonly] {
