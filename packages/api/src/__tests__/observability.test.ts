@@ -146,6 +146,8 @@ describe("observability modules", () => {
     vi.resetModules();
     vi.clearAllMocks();
     process.env.SENTRY_DSN = "https://public@example.ingest.sentry.io/1";
+    const release = "0123456789abcdef0123456789abcdef01234567";
+    process.env.SENTRY_RELEASE = release;
 
     const withDsn = await import("../sentry.js");
     withDsn.captureException(new Error("boom"), { route: "/quote" });
@@ -154,6 +156,7 @@ describe("observability modules", () => {
     expect(mockSentry.init).toHaveBeenCalledWith(
       expect.objectContaining({
         dsn: process.env.SENTRY_DSN,
+        release,
         environment: expect.any(String),
         tracesSampleRate: 0.1,
       })

@@ -8,6 +8,7 @@ if (dsn) {
   const client = Sentry.init({
     dsn,
     environment: process.env.NODE_ENV || "development",
+    release: process.env.SENTRY_RELEASE || undefined,
     tracesSampleRate: 0.1,
     beforeSend: (event) => redact(event) as typeof event,
     beforeSendSpan: (span) => redact(span) as typeof span,
