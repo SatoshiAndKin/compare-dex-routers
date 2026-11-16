@@ -9,7 +9,9 @@
   import QuoteCosts from "./QuoteCosts.svelte";
   import AutoRefreshIndicator from "./AutoRefreshIndicator.svelte";
   import DisclosureChevron from "./DisclosureChevron.svelte";
+  import { positiveSlippageLabel } from "../positive-slippage.js";
 
+  const providerListId = $props.id();
   let routeDetailsOpen = $state(false);
 
   const recommendedVerified = $derived(
@@ -136,9 +138,11 @@
               <p>{verified ? "Simulated routes" : "Quotes without simulation"}</p>
             {/if}
             {#each comparisonStore.quotes.filter((quote) => (quote.simulation_status === "succeeded") === verified) as quote (quote.provider)}
+              {@const surplusLabel = positiveSlippageLabel(quote.provider)}
               <button
                 type="button"
                 aria-label={`Select ${quote.provider}`}
+                aria-describedby={surplusLabel ? `${providerListId}-${quote.provider}` : undefined}
                 disabled={transactionStore.busy || comparisonStore.isLoading}
                 aria-pressed={comparisonStore.activeProvider === quote.provider}
                 onclick={() => selectProvider(quote.provider)}
@@ -150,6 +154,9 @@
                   : ""}{quote.provider === comparisonStore.activeProvider ? " — Selected" : ""}: {quote.input_amount}
                 {quote.from_symbol} → {quote.output_amount}
                 {quote.to_symbol}
+                {#if surplusLabel}<small id={`${providerListId}-${quote.provider}`}>
+                    · {surplusLabel}</small
+                  >{/if}
                 <QuoteSimulation {quote} />
                 <QuoteCosts {quote} basis={comparisonStore.recommendationBasis} />
               </button>

@@ -76,6 +76,36 @@ describe("provider results", () => {
     );
     expect(view.container.querySelector("details.provider-list")?.hasAttribute("open")).toBe(false);
   });
+  it("discloses positive-slippage capture on provider rows and the selected route", async () => {
+    store.quotes = [
+      makeQuote({ provider: "nordstern" }),
+      makeQuote({ provider: "kyberswap" }),
+      makeQuote({ provider: "velora" }),
+      makeQuote({ provider: "0x" }),
+      makeQuote({ provider: "curve" }),
+    ];
+    store.recommendation = "nordstern";
+    const view = render(QuoteResults);
+    const selectedRoute = view.getByRole("region", { name: "Selected DEX route" });
+    expect(within(selectedRoute).getByText("Keeps positive slippage")).toBeVisible();
+
+    await fireEvent.click(view.getByText(/Provider results and failures/));
+    for (const provider of ["nordstern", "kyberswap"]) {
+      const row = view.getByRole("button", { name: `Select ${provider}` });
+      expect(within(row).getByText("· Keeps positive slippage")).toBeVisible();
+      expect(row).toHaveAccessibleDescription(/Keeps positive slippage/);
+    }
+    for (const provider of ["velora", "0x"]) {
+      const row = view.getByRole("button", { name: `Select ${provider}` });
+      expect(within(row).getByText("· May keep positive slippage")).toBeVisible();
+      expect(row).toHaveAccessibleDescription(/May keep positive slippage/);
+    }
+    await fireEvent.click(view.getByRole("button", { name: "Select curve" }));
+    expect(within(selectedRoute).getByText("Via curve")).toBeVisible();
+    expect(within(selectedRoute).queryByText("Keeps positive slippage")).toBeNull();
+    expect(store.recommendation).toBe("nordstern");
+  });
+
   it("selects a provider without changing the server recommendation", async () => {
     store.quotes = [makeQuote(), makeQuote({ provider: "curve", output_amount: "98" })];
     store.recommendation = "0x";

@@ -13,6 +13,7 @@
   import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { walletStore } from "../stores/walletStore.svelte.js";
   import InfoPopover from "./InfoPopover.svelte";
+  import { positiveSlippageLabel } from "../positive-slippage.js";
 
   interface Props {
     provider: string;
@@ -41,6 +42,7 @@
   }: Props = $props();
 
   const providerName = $derived(quote?.provider ?? provider);
+  const surplusLabel = $derived(positiveSlippageLabel(providerName));
 
   // ---------------------------------------------------------------------------
   // Transaction state
@@ -117,6 +119,7 @@
           {:else if isRecommended}
             <span class="route-status recommended">Recommended</span>
           {/if}
+          {#if surplusLabel}<small class="route-status">{surplusLabel}</small>{/if}
         </div>
         <InfoPopover label="Selected route details">
           {#if rankingNote}<span>{rankingNote}</span>{/if}
