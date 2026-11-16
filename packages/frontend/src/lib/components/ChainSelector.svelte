@@ -1,19 +1,12 @@
 <script lang="ts">
+  import { flushSync } from "svelte";
   import DisclosureChevron from "./DisclosureChevron.svelte";
-  /**
-   * ChainSelector — searchable chain dropdown with keyboard navigation.
-   * Ports behavior from src/client/chain-selector.ts.
-   */
+  import DropdownPanel from "./DropdownPanel.svelte";
   import { selectChain as selectFormChain } from "../stores/formLifecycle.svelte.js";
   import { formStore } from "../stores/formStore.svelte.js";
   import { configStore } from "../stores/configStore.svelte.js";
 
-  interface ChainDefinition {
-    id: string;
-    name: string;
-  }
-
-  const FALLBACK_CHAINS: ChainDefinition[] = [
+  const fallbackChains = [
     { id: "1", name: "Ethereum" },
     { id: "8453", name: "Base" },
     { id: "42161", name: "Arbitrum" },
@@ -23,249 +16,139 @@
     { id: "43114", name: "Avalanche" },
   ];
 
-  let allChains = $derived.by((): ChainDefinition[] => {
-    if (configStore.supportedChains.length > 0) {
-      return configStore.supportedChains.map((c) => ({
-        id: String(c.id),
-        name: c.name,
-      }));
-    }
-    return FALLBACK_CHAINS;
-  });
-
-  let chainNames = $derived.by((): Record<string, string> => {
-    const map: Record<string, string> = {};
-    for (const c of allChains) {
-      map[c.id] = c.name;
-    }
-    return map;
-  });
-
-  // ---------------------------------------------------------------------------
-  // State
-  // ---------------------------------------------------------------------------
-
+  const listId = $props.id();
   let isOpen = $state(false);
-  let searchQuery = $state("");
-  let activeIdx = $state(-1);
-  let previousChainId = $state<string | null>(null);
-  let containerEl = $state<HTMLElement | null>(null);
+  let query = $state("");
+  let activeIndex = $state(-1);
+  let container = $state<HTMLDivElement | null>(null);
+  let trigger = $state<HTMLButtonElement | null>(null);
+  let input = $state<HTMLInputElement | null>(null);
+  let dropdown = $state<{ handleKeydown(event: KeyboardEvent): void } | null>(null);
 
-  // ---------------------------------------------------------------------------
-  // Derived
-  // ---------------------------------------------------------------------------
-
-  /** Filtered chains based on search query */
-  let filteredChains = $derived.by(() => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return allChains;
-    return allChains.filter((c) => c.name.toLowerCase().includes(q) || c.id.includes(q));
+  const currentId = $derived(String(formStore.chainId));
+  const chains = $derived(
+    configStore.supportedChains.length > 0
+      ? configStore.supportedChains.map(({ id, name }) => ({ id: String(id), name }))
+      : fallbackChains
+  );
+  const currentChain = $derived(chains.find(({ id }) => id === currentId));
+  const options = $derived.by(() => {
+    const search = query.trim().toLowerCase();
+    if (search)
+      return chains.filter(
+        ({ id, name }) => name.toLowerCase().includes(search) || id.includes(search)
+      );
+    return currentChain ? [currentChain, ...chains.filter(({ id }) => id !== currentId)] : chains;
   });
-
-  let currentChainDisplay = $derived.by(() => {
-    const id = String(formStore.chainId);
-    const name = chainNames[id] ?? "Unknown";
-    return `${name} (${id})`;
-  });
-
-  let visibleChains = $derived.by((): ChainDefinition[] => {
-    if (!isOpen) return [];
-    if (searchQuery) {
-      return filteredChains;
-    }
-    const currentId = String(formStore.chainId);
-    const currentChain = allChains.find((c) => c.id === currentId);
-    const rest = allChains.filter((c) => c.id !== currentId);
-    return currentChain ? [currentChain, ...rest] : allChains;
-  });
-
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
-
-  function formatChainDisplay(id: string, name: string): string {
-    return `${name} (${id})`;
-  }
-
-  function selectChain(chain: ChainDefinition): void {
-    selectFormChain(Number(chain.id));
-    previousChainId = null;
-    closeDropdown();
-  }
 
   function openDropdown(): void {
-    previousChainId = String(formStore.chainId);
-    searchQuery = "";
-    activeIdx = -1;
-    isOpen = true;
+    // Mount and focus during the activation so mobile browsers can open the keyboard.
+    flushSync(() => (isOpen = true));
+    input?.focus({ preventScroll: true });
   }
 
   function closeDropdown(): void {
     isOpen = false;
-    searchQuery = "";
-    activeIdx = -1;
+    query = "";
+    activeIndex = -1;
   }
 
-  // ---------------------------------------------------------------------------
-  // Event handlers
-  // ---------------------------------------------------------------------------
-
-  function handleButtonClick(): void {
-    if (isOpen) {
-      closeDropdown();
-    } else {
-      openDropdown();
-    }
-  }
-
-  function handleSearchInput(e: Event): void {
-    const target = e.target as HTMLInputElement;
-    searchQuery = target.value;
-    activeIdx = -1;
-  }
-
-  function handleKeydown(e: KeyboardEvent): void {
-    if (!isOpen) {
-      if (e.key === "ArrowDown" || e.key === "Enter") {
-        e.preventDefault();
-        openDropdown();
-      }
-      return;
-    }
-
-    const items = visibleChains;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      activeIdx = Math.min(activeIdx + 1, items.length - 1);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      activeIdx = Math.max(activeIdx - 1, 0);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const activeItem = activeIdx >= 0 ? items[activeIdx] : undefined;
-      const firstItem = items[0];
-      if (activeItem) {
-        selectChain(activeItem);
-      } else if (firstItem) {
-        selectChain(firstItem);
-      }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      // Restore previous selection
-      if (previousChainId) {
-        formStore.chainId = Number(previousChainId);
-      }
-      closeDropdown();
-    } else if (e.key === "Tab") {
-      // On tab, try auto-select single match or restore
-      if (searchQuery.trim()) {
-        const matches = filteredChains;
-        if (matches.length === 1 && matches[0]) {
-          selectChain(matches[0]);
-        } else {
-          if (previousChainId) {
-            formStore.chainId = Number(previousChainId);
-          }
-          closeDropdown();
-        }
-      } else {
-        if (previousChainId) {
-          formStore.chainId = Number(previousChainId);
-        }
-        closeDropdown();
-      }
-    }
-  }
-
-  function handleDocumentClick(e: MouseEvent): void {
-    if (!isOpen) return;
-    if (!containerEl) return;
-    const target = e.target as Node;
-    if (containerEl.contains(target)) return;
-
-    // Click outside: restore previous selection or auto-select single match
-    if (searchQuery.trim()) {
-      const matches = filteredChains;
-      if (matches.length === 1 && matches[0]) {
-        selectChain(matches[0]);
-        return;
-      }
-    }
-    if (previousChainId) {
-      formStore.chainId = Number(previousChainId);
-    }
+  function dismiss(): void {
     closeDropdown();
+    trigger?.focus({ preventScroll: true });
   }
 
-  function handleItemMousedown(e: MouseEvent, chain: ChainDefinition): void {
-    e.preventDefault();
-    selectChain(chain);
+  function selectChain(chain: (typeof fallbackChains)[number]): void {
+    selectFormChain(Number(chain.id));
+    dismiss();
+  }
+
+  function closeIfOutside(target: EventTarget | null): void {
+    if (isOpen && target instanceof Node && !container?.contains(target)) closeDropdown();
   }
 </script>
 
-<svelte:window on:mousedown={handleDocumentClick} />
+<svelte:window onpointerdown={(event) => closeIfOutside(event.target)} />
 
-<div class="chain-selector" bind:this={containerEl}>
+<div
+  class="chain-selector"
+  bind:this={container}
+  onfocusout={(event) => closeIfOutside(event.relatedTarget)}
+>
   <button
+    bind:this={trigger}
     class="chain-button"
     type="button"
     aria-haspopup="listbox"
     aria-expanded={isOpen}
-    onclick={handleButtonClick}
-    onkeydown={handleKeydown}
+    aria-controls={isOpen ? listId : undefined}
+    onclick={() => (isOpen ? closeDropdown() : openDropdown())}
+    onkeydown={(event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      if (!isOpen) openDropdown();
+      dropdown?.handleKeydown(event);
+    }}
   >
-    <span class="chain-button-text">{currentChainDisplay}</span>
+    <span class="chain-button-text">{currentChain?.name ?? "Unknown"}</span>
     <DisclosureChevron open={isOpen} />
   </button>
 
   {#if isOpen}
-    <div class="chain-dropdown" role="listbox" aria-label="Supported chains">
-      <div class="chain-search-wrapper">
-        <input
-          class="chain-search-input"
-          type="text"
-          placeholder="Search chains..."
-          value={searchQuery}
-          oninput={handleSearchInput}
-          onkeydown={handleKeydown}
-          aria-label="Search chains"
-          autocomplete="off"
-        />
-      </div>
-
-      {#if visibleChains.length === 0}
-        <div class="chain-item-empty">No chains match</div>
-      {:else}
-        {#each visibleChains as chain, i (chain.id)}
-          {@const isCurrentSelection = chain.id === String(formStore.chainId) && !searchQuery}
-          <div
-            class={`chain-item${isCurrentSelection ? " current-selection" : ""}${activeIdx === i ? " active" : ""}`}
-            role="option"
-            tabindex="-1"
-            aria-selected={activeIdx === i}
-            id={`chain-option-${chain.id}`}
-            onmousedown={(e) => handleItemMousedown(e, chain)}
-          >
-            <span class="chain-item-name">{chain.name}</span>
-            <span class="chain-item-id">({chain.id})</span>
-          </div>
-        {/each}
-      {/if}
-    </div>
+    <DropdownPanel
+      bind:this={dropdown}
+      anchor={trigger}
+      minWidth={224}
+      id={listId}
+      label="Supported chains"
+      {options}
+      getKey={(chain) => chain.id}
+      selectedKey={currentId}
+      bind:activeIndex
+      {query}
+      emptyMessage="No chains match"
+      onSelect={selectChain}
+      onDismiss={dismiss}
+    >
+      {#snippet filter()}
+        <div class="chain-search-wrapper">
+          <input
+            bind:this={input}
+            class="chain-search-input"
+            type="text"
+            role="combobox"
+            aria-label="Search chains"
+            aria-autocomplete="list"
+            aria-expanded="true"
+            aria-controls={listId}
+            aria-activedescendant={options[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+            placeholder="Search chains"
+            value={query}
+            oninput={(event) => {
+              query = event.currentTarget.value;
+              activeIndex = -1;
+            }}
+            onkeydown={(event) => dropdown?.handleKeydown(event)}
+            autocomplete="off"
+          />
+        </div>
+      {/snippet}
+      {#snippet option(chain)}
+        <span class="chain-item-name">{chain.name}</span>
+        <span class="chain-item-id">({chain.id})</span>
+      {/snippet}
+    </DropdownPanel>
   {/if}
 </div>
 
 <style>
   .chain-selector {
-    position: relative;
-    display: inline-block;
     width: 11rem;
     max-width: 100%;
   }
-
   .chain-button {
     width: 100%;
+    min-height: 44px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -274,98 +157,46 @@
     background: var(--bg-muted);
     border: 1px solid var(--border-light);
     cursor: pointer;
+    font: inherit;
     font-size: 0.875rem;
-    font-family: inherit;
     color: var(--text, #000);
     text-align: left;
     text-transform: none;
     letter-spacing: normal;
   }
-
-  .chain-button:focus {
+  .chain-button:focus-visible {
     outline: 2px solid var(--accent, #0055ff);
     outline-offset: 1px;
   }
-
-  .chain-button-text {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .chain-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    background: var(--bg-card, #fff);
-    border: 2px solid var(--border, #000);
-    border-top: none;
-    max-height: 300px;
-    overflow-y: auto;
-  }
-
-  .chain-search-wrapper {
-    padding: 0.4rem;
-    border-bottom: 1px solid var(--border-light, #e0e0e0);
-  }
-
-  .chain-search-input {
-    width: 100%;
-    padding: 0.4rem 0.5rem;
-    border: 1px solid var(--border-light, #e0e0e0);
-    background: var(--bg-input, #fff);
-    color: var(--text, #000);
-    font-size: 0.9rem;
-    font-family: inherit;
-  }
-
-  .chain-search-input:focus {
-    outline: 2px solid var(--accent, #0055ff);
-    outline-offset: 1px;
-  }
-
-  .chain-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    min-height: 44px;
-    border-bottom: 1px solid var(--border-light);
-    cursor: pointer;
-    font-size: 0.95rem;
-  }
-
-  .chain-item:last-child {
-    border-bottom: none;
-  }
-
-  .chain-item:hover,
-  .chain-item.active {
-    background: var(--bg-hover, #f0f0f0);
-  }
-
-  .chain-item.current-selection {
-    background: var(--chain-current-bg, #e8f4e8);
-    border-left: 3px solid var(--chain-current-border, #22c55e);
-  }
-
+  .chain-button-text,
   .chain-item-name {
     flex: 1;
-    font-weight: 500;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
-
+  .chain-search-wrapper {
+    flex: none;
+    padding: 0.4rem;
+    border-bottom: 1px solid var(--border-light);
+  }
+  .chain-search-input {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border-light);
+    background: var(--bg-input, #fff);
+    color: var(--text, #000);
+    font: inherit;
+    font-size: 1rem;
+  }
+  .chain-search-input:focus {
+    outline: 2px solid var(--accent, #0055ff);
+    outline-offset: -1px;
+  }
   .chain-item-id {
     color: var(--text-muted, #666);
     font-size: 0.85rem;
-  }
-
-  .chain-item-empty {
-    padding: 0.75rem;
-    color: var(--text-muted, #666);
-    font-style: italic;
-    text-align: center;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
 </style>

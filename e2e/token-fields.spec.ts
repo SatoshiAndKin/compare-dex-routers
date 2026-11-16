@@ -51,8 +51,8 @@ test("keeps token fields compact with one full address and a working copy button
   await page.goto(`/?chainId=1&from=${FROM}&to=${YFI}&amount=1500&slippageBps=50`);
   await expect(page.locator("#receive-amount")).toHaveValue("0.75");
   await page.screenshot({ path: info.outputPath("token-fields.png"), fullPage: true });
-  await expect(page.getByRole("textbox", { name: "From token", exact: true })).toHaveValue("USDC");
-  await expect(page.getByRole("textbox", { name: "To token", exact: true })).toHaveValue("YFI");
+  await expect(page.getByRole("combobox", { name: "From token", exact: true })).toHaveValue("USDC");
+  await expect(page.getByRole("combobox", { name: "To token", exact: true })).toHaveValue("YFI");
   for (const [side, address] of [
     ["from", FROM],
     ["to", YFI],
@@ -125,8 +125,8 @@ for (const mode of ["exactIn", "targetOut"] as const) {
       await route.fallback();
     });
     await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=150&mode=${mode}`);
-    const from = page.getByRole("textbox", { name: "From token", exact: true });
-    const to = page.getByRole("textbox", { name: "To token", exact: true });
+    const from = page.getByRole("combobox", { name: "From token", exact: true });
+    const to = page.getByRole("combobox", { name: "To token", exact: true });
     const swap = page.getByRole("button", { name: "Swap tokens", exact: true });
     await expect(from).toHaveValue("USDC");
     await expect(to).toHaveValue("USDT");
@@ -182,8 +182,8 @@ for (const mode of ["exactIn", "targetOut"] as const) {
 test("keeps fields and amounts fixed when addresses appear and clear", async ({ page }, info) => {
   await fixture(page);
   await page.goto(`/?chainId=1&from=${FROM}&to=${TO}`);
-  const from = page.getByRole("textbox", { name: "From token", exact: true });
-  const to = page.getByRole("textbox", { name: "To token", exact: true });
+  const from = page.getByRole("combobox", { name: "From token", exact: true });
+  const to = page.getByRole("combobox", { name: "To token", exact: true });
   await expect(from).toHaveValue("USDC");
   await expect(to).toHaveValue("USDT");
   await page.evaluate(() => document.fonts.ready);

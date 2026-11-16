@@ -11,7 +11,8 @@
   import UnrecognizedTokenModal from "./UnrecognizedTokenModal.svelte";
   import InfoPopover from "./InfoPopover.svelte";
   import DisclosureChevron from "./DisclosureChevron.svelte";
-  import { onMount } from "svelte";
+  import DropdownPanel from "./DropdownPanel.svelte";
+  import { flushSync, onMount } from "svelte";
 
   // ---------------------------------------------------------------------------
   // Props
@@ -29,12 +30,13 @@
 
   let inputValue = $state("");
   let dropdownVisible = $state(false);
-  let matches = $state<TokenInfo[]>([]);
-  let activeIdx = $state(-1);
+  const listId = $props.id();
+  let query = $state("");
+  let activeIndex = $state(-1);
+  let dropdown = $state<{ handleKeydown(event: KeyboardEvent): void } | null>(null);
   let inputEl = $state<HTMLInputElement | null>(null);
   let containerEl = $state<HTMLElement | null>(null);
   let copyResult = $state<{ address: string; status: "copied" | "failed" } | null>(null);
-  let pendingSelectedToken = $state<TokenInfo | null>(null);
   let pendingCurrentSideToken = $state<TokenInfo | null>(null);
 
   /** Track whether this TokenInput instance opened the unrecognized-token modal */
@@ -87,18 +89,9 @@
   /** Find token matches for autocomplete */
   function findMatches(query: string): TokenInfo[] {
     const q = query.trim().toLowerCase();
-    if (!q) return [];
-
-    const chainId = formStore.chainId;
-    const tokens = tokensStore.getForChain(chainId);
+    const tokens = tokensStore.getForChain(formStore.chainId);
+    if (!q) return tokens.slice(0, 20);
     const normalizedQ = normalizeAddress(q);
-
-    // Track symbol duplicates for disambiguation
-    const symbolCounts = new Map<string, number>();
-    for (const token of tokens) {
-      const sym = (token.symbol ?? "").toLowerCase();
-      symbolCounts.set(sym, (symbolCounts.get(sym) ?? 0) + 1);
-    }
 
     return tokens
       .filter((token) => {
@@ -117,15 +110,13 @@
       .slice(0, 20);
   }
 
-  /** Refresh autocomplete matches */
-  function refreshMatches(): void {
-    matches = findMatches(inputValue);
-    if (matches.length > 0) {
-      dropdownVisible = true;
-      activeIdx = -1;
-    } else {
-      dropdownVisible = false;
-    }
+  const matches = $derived(dropdownVisible ? findMatches(query) : []);
+
+  function openDropdown(): void {
+    if (dropdownVisible) return;
+    query = currentToken ? "" : inputValue;
+    dropdownVisible = true;
+    void tokensStore.fetchIfNeeded();
   }
 
   /** Select a token and update store, swapping sides when the new selection duplicates the opposite side */
@@ -155,22 +146,19 @@
     }
 
     inputValue = formatTokenDisplay(token.symbol);
-    matches = [];
-    dropdownVisible = false;
-    activeIdx = -1;
-    pendingSelectedToken = null;
+    hideDropdown();
     pendingCurrentSideToken = null;
   }
 
   function hideDropdown(): void {
     dropdownVisible = false;
-    matches = [];
-    activeIdx = -1;
+    activeIndex = -1;
   }
 
   function clearToken(): void {
     copyResult = null;
     inputValue = "";
+    pendingCurrentSideToken = null;
     hideDropdown();
     openedModal = false;
     tokenListStore.unrecognizedModal = null;
@@ -182,14 +170,11 @@
     }
 
     inputEl?.focus();
+    hideDropdown();
   }
 
   function handleClearMousedown(e: MouseEvent): void {
     e.preventDefault();
-  }
-
-  function setActive(index: number): void {
-    activeIdx = index;
   }
 
   // ---------------------------------------------------------------------------
@@ -199,13 +184,14 @@
   async function handleInput(e: Event): Promise<void> {
     const target = e.target as HTMLInputElement;
     inputValue = target.value;
+    dropdownVisible = true;
+    query = inputValue;
+    activeIndex = -1;
     copyResult = null;
 
     if (pendingCurrentSideToken === null) {
       pendingCurrentSideToken = type === "from" ? formStore.fromToken : formStore.toToken;
     }
-
-    pendingSelectedToken = null;
 
     // Clear the store token when input changes manually
     if (type === "from") {
@@ -215,7 +201,6 @@
     }
 
     await tokensStore.fetchIfNeeded();
-    refreshMatches();
 
     // Immediate detection: if a full 42-char address is typed, check it
     const trimmed = inputValue.trim();
@@ -229,46 +214,25 @@
     }
   }
 
-  function handleBlur(): void {
+  function handleBlur(event: FocusEvent): void {
     const trimmed = inputValue.trim();
     if (isAddressLike(trimmed) && matches.length === 0) {
       checkUnrecognizedAddress(trimmed);
     }
-  }
-
-  async function handleFocus(): Promise<void> {
-    await tokensStore.fetchIfNeeded();
-    if (inputValue.trim()) {
-      refreshMatches();
-    }
-  }
-
-  function handleKeydown(e: KeyboardEvent): void {
-    if (!dropdownVisible) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      activeIdx = Math.min(activeIdx + 1, matches.length - 1);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      activeIdx = Math.max(activeIdx - 1, 0);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const idx = activeIdx >= 0 ? activeIdx : 0;
-      const selected = matches[idx];
-      if (selected) selectToken(selected);
-    } else if (e.key === "Escape") {
+    if (
+      event.relatedTarget instanceof Node &&
+      !document.getElementById(listId)?.contains(event.relatedTarget)
+    )
       hideDropdown();
-    }
   }
 
-  function handleItemMousedown(e: MouseEvent, token: TokenInfo): void {
-    e.preventDefault();
-    pendingSelectedToken = token;
-    selectToken(token);
+  function handleKeydown(event: KeyboardEvent): void {
+    if (!dropdownVisible && (event.key === "ArrowDown" || event.key === "ArrowUp"))
+      flushSync(openDropdown);
+    dropdown?.handleKeydown(event);
   }
 
-  function handleDocumentClick(e: MouseEvent): void {
+  function handleOutsidePointer(e: PointerEvent): void {
     if (!dropdownVisible) return;
     if (!containerEl) return;
     const target = e.target as Node;
@@ -295,6 +259,7 @@
       // Auto-select the recognised token
       selectToken({ ...found, chainId: found.chainId });
     } else {
+      hideDropdown();
       openedModal = true;
       tokenListStore.unrecognizedModal = { address: trimmed, chainId, targetType: type };
     }
@@ -337,10 +302,10 @@
   });
 </script>
 
-<svelte:window on:mousedown={handleDocumentClick} />
+<svelte:window onpointerdown={handleOutsidePointer} />
 
 <div class="token-input-wrapper" bind:this={containerEl}>
-  <div class="token-input-field">
+  <label class="token-input-field">
     {#if currentToken?.logoURI}
       <img
         class="token-icon-selected"
@@ -359,20 +324,26 @@
         class="token-input"
         type="text"
         placeholder={type === "from" ? "Sell token..." : "Receive token..."}
-        value={inputValue}
+        value={dropdownVisible ? query : inputValue}
         oninput={handleInput}
-        onfocus={handleFocus}
+        onfocus={openDropdown}
+        onclick={openDropdown}
         onkeydown={handleKeydown}
         onblur={handleBlur}
         autocomplete="off"
         aria-label={type === "from" ? "From token" : "To token"}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={dropdownVisible}
+        aria-controls={dropdownVisible ? listId : undefined}
+        aria-activedescendant={matches[activeIndex] ? `${listId}-${activeIndex}` : undefined}
       />
-      {#if currentToken}
+      {#if currentToken && !dropdownVisible}
         <span class="selected-symbol" aria-hidden="true">{inputValue}</span>
       {/if}
     </div>
-    <DisclosureChevron open={dropdownVisible && matches.length > 0} />
-  </div>
+    <DisclosureChevron open={dropdownVisible} />
+  </label>
 
   {#snippet clearButton()}
     <button
@@ -442,44 +413,50 @@
     {/if}
   </div>
 
-  {#if dropdownVisible && matches.length > 0}
-    <div class="token-autocomplete-list" role="listbox">
-      {#each matches as token, i}
-        <div
-          class={`autocomplete-item${activeIdx === i ? " active" : ""}`}
-          role="option"
-          tabindex="-1"
-          aria-selected={activeIdx === i}
-          onmousedown={(e) => handleItemMousedown(e, token)}
-        >
-          {#if token.logoURI}
-            <img
-              class="autocomplete-logo"
-              src={token.logoURI}
-              alt={`${token.symbol} logo`}
-              loading="lazy"
-              onerror={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          {:else}
-            <span class="autocomplete-logo-placeholder"></span>
-          {/if}
-          <div class="autocomplete-meta">
-            <div class="autocomplete-title">
-              <span class="autocomplete-symbol"
-                >{token.symbol}{isNativeToken(token.address) ? " — Native" : ""}</span
-              >
-              {#if token.name}
-                <span class="autocomplete-name">{token.name}</span>
-              {/if}
-            </div>
-            <!-- Always show full address — NEVER truncate -->
-            <div class="autocomplete-addr">{token.address}</div>
+  {#if dropdownVisible}
+    <DropdownPanel
+      bind:this={dropdown}
+      anchor={containerEl}
+      minWidth={288}
+      id={listId}
+      label={type === "from" ? "Sell tokens" : "Receive tokens"}
+      options={matches}
+      getKey={(token) => normalizeAddress(token.address)}
+      selectedKey={currentToken ? normalizeAddress(currentToken.address) : undefined}
+      bind:activeIndex
+      {query}
+      emptyMessage={tokensStore.isLoading ? "Loading tokens…" : "No tokens match"}
+      onSelect={selectToken}
+      onDismiss={hideDropdown}
+    >
+      {#snippet option(token)}
+        {#if token.logoURI}
+          <img
+            class="autocomplete-logo"
+            src={token.logoURI}
+            alt={`${token.symbol} logo`}
+            loading="lazy"
+            onerror={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+        {:else}
+          <span class="autocomplete-logo-placeholder"></span>
+        {/if}
+        <div class="autocomplete-meta">
+          <div class="autocomplete-title">
+            <span class="autocomplete-symbol"
+              >{token.symbol}{isNativeToken(token.address) ? " — Native" : ""}</span
+            >
+            {#if token.name}
+              <span class="autocomplete-name">{token.name}</span>
+            {/if}
           </div>
+          <!-- Always show full address — NEVER truncate -->
+          <div class="autocomplete-addr">{token.address}</div>
         </div>
-      {/each}
-    </div>
+      {/snippet}
+    </DropdownPanel>
   {/if}
 </div>
 
@@ -554,6 +531,10 @@
     display: flex;
     align-items: center;
     min-width: 0;
+    margin: 0;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: none;
   }
 
   .token-icon-selected {
@@ -660,32 +641,6 @@
   .token-input-field:focus-within {
     outline: 2px solid var(--accent, #0055ff);
     outline-offset: 1px;
-  }
-
-  .token-autocomplete-list {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    background: var(--bg-card, #fff);
-    border: 2px solid var(--border, #000);
-    border-top: none;
-    max-height: 280px;
-    overflow-y: auto;
-  }
-
-  .autocomplete-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    cursor: pointer;
-  }
-
-  .autocomplete-item:hover,
-  .autocomplete-item.active {
-    background: var(--bg-hover, #f0f0f0);
   }
 
   .autocomplete-logo {
