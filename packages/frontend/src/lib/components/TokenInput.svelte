@@ -532,6 +532,7 @@
     align-items: center;
     min-width: 0;
     margin: 0;
+    padding-inline: 0.25rem;
     font: inherit;
     letter-spacing: inherit;
     text-transform: none;
@@ -640,7 +641,7 @@
 
   .token-input-field:focus-within {
     outline: 2px solid var(--accent, #0055ff);
-    outline-offset: 1px;
+    outline-offset: -2px;
   }
 
   .autocomplete-logo {

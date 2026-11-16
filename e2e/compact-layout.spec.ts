@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { fixture } from "./fixtures.js";
-import { deferred } from "../packages/frontend/src/__tests__/quote-fixture.js";
+import { deferred, FROM, TO } from "../packages/frontend/src/__tests__/quote-fixture.js";
 
 const CRV = "0xD533a949740bb3306d119CC777fa900bA034cd52";
 const CRVUSD = "0xf939e0a03fb07f59a73314e73794be0e57ac1b4e";
@@ -8,6 +8,80 @@ const amount = "4161.636507410085088097";
 const output = "1454.297535508463832644";
 const sellSymbol = "WRAPPED-LONG-STAKE-CRV";
 const buySymbol = "VAULT-LONG-STAKE-crvUSD";
+
+async function expectFocusWithin(field: Locator, frame: string, indicator?: string): Promise<void> {
+  await field.focus();
+  await expect(field).toBeFocused();
+  const measurement = await field.evaluate(
+    (element, { frame, indicator }) => {
+      const container = element.closest(frame);
+      const ring = indicator ? element.closest(indicator) : element;
+      if (!container || !ring) throw new Error("Missing input container or focus indicator");
+      const style = getComputedStyle(ring);
+      const outline = parseFloat(style.outlineWidth);
+      const outset = Math.max(0, outline + parseFloat(style.outlineOffset));
+      const bounds = container.getBoundingClientRect();
+      const input = element.getBoundingClientRect();
+      const focus = ring.getBoundingClientRect();
+      return {
+        visible: outline > 0 && style.outlineStyle !== "none",
+        left: Math.min(input.left, focus.left - outset) - bounds.left,
+        right: bounds.right - Math.max(input.right, focus.right + outset),
+        top: Math.min(input.top, focus.top - outset) - bounds.top,
+        bottom: bounds.bottom - Math.max(input.bottom, focus.bottom + outset),
+      };
+    },
+    { frame, indicator }
+  );
+  expect.soft(measurement.visible, `${field} retains a focus indicator`).toBe(true);
+  expect
+    .soft(
+      Math.min(measurement.left, measurement.right, measurement.top, measurement.bottom),
+      `${field} fits inside ${frame}`
+    )
+    .toBeGreaterThanOrEqual(0);
+}
+
+test("contains focused inputs in the trade form, dropdown, and settings", async ({
+  page,
+  isMobile,
+}) => {
+  if (isMobile) await page.setViewportSize({ width: 320, height: 640 });
+  await fixture(page);
+  await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=1`);
+
+  await expectFocusWithin(page.locator("#sell-amount"), ".amount-group");
+  await expectFocusWithin(page.locator("#receive-amount"), ".amount-group");
+  for (const name of ["From token", "To token"]) {
+    await expectFocusWithin(
+      page.getByRole("combobox", { name }),
+      ".amount-group",
+      ".token-input-field"
+    );
+    await page.keyboard.press("Escape");
+  }
+
+  await page.getByRole("button", { name: "Ethereum", exact: true }).click();
+  await expectFocusWithin(page.getByRole("combobox", { name: "Search chains" }), ".dropdown-panel");
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Edit slippage" }).click();
+  await expectFocusWithin(
+    page.getByRole("spinbutton", { name: "Custom slippage in basis points" }),
+    ".slippage-custom"
+  );
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Open settings" }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  for (const name of ["DeFiLlama warning threshold (%)", "Your taker fee (%)", "Token list URL"]) {
+    await expectFocusWithin(dialog.getByRole("textbox", { name }), ".add-list-row");
+  }
+  await expectFocusWithin(
+    dialog.getByRole("textbox", { name: /Block explorer for/ }),
+    ".explorer-controls"
+  );
+});
 
 test("keeps precise input and output together through metadata and quote loading", async ({
   page,

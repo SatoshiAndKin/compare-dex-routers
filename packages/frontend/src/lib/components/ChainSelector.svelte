@@ -189,10 +189,6 @@
     font: inherit;
     font-size: 1rem;
   }
-  .chain-search-input:focus {
-    outline: 2px solid var(--accent, #0055ff);
-    outline-offset: -1px;
-  }
   .chain-item-id {
     color: var(--text-muted, #666);
     font-size: 0.85rem;
