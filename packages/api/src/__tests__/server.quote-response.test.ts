@@ -125,6 +125,69 @@ afterEach(async () => {
 });
 
 describe("unified quote contract", () => {
+  it("excludes blocked intermediate tokens before ranking and annotates opt-out routes", async () => {
+    const address = "0xce3f08e664693ca792cace4af1364d5e220827b2";
+    const extensions = {
+      blockSource: "Flashprofits",
+      blockReason: "Migrated token.",
+      blockSourceUrl: "https://example.org/migration",
+    };
+    const source = "https://flashprofits.example/blocked-tokenlist.json";
+    vi.stubEnv("FLASHPROFITS_TOKENLIST_URL", source);
+    const originalFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      String(input) === source
+        ? Promise.resolve(
+            Response.json({
+              name: "Flashprofits Blocked",
+              timestamp: "2026-11-16T07:30:00Z",
+              version: { major: 1, minor: 0, patch: 0 },
+              tokens: [
+                {
+                  address,
+                  chainId: 1,
+                  name: "Saitama",
+                  symbol: "SAITAMA",
+                  decimals: 9,
+                  extensions,
+                },
+              ],
+            })
+          )
+        : originalFetch(input, init)
+    );
+    const hop = "0x" + address.slice(2).toUpperCase();
+    mocks.quotes.mockResolvedValue([
+      {
+        ...quote("kyberswap", 1000000n, 2n * 10n ** 18n),
+        route: {
+          nodes: [{ address: FROM }, { address: WETH }],
+          edges: [
+            { source: FROM, target: hop, key: "first", value: 1 },
+            { source: hop, target: WETH, key: "second", value: 1 },
+          ],
+        },
+      },
+      quote("curve"),
+    ]);
+    const strict = QuoteResponseSchema.parse((await call()).body);
+    expect(strict.quotes.map((result) => result.provider)).toEqual(["curve"]);
+    expect(strict.recommendation).toBe("curve");
+    expect(strict.failures).toMatchObject([
+      { provider: "kyberswap", error: { code: "TOKEN_BLOCKED" } },
+    ]);
+
+    const relaxed = QuoteResponseSchema.parse((await call({ tokenSafetyFilter: "false" })).body);
+    expect(relaxed.recommendation).toBe("kyberswap");
+    expect(relaxed.quotes[0]?.blocked_tokens).toEqual([{ chainId: 1, address, ...extensions }]);
+    const endpoint = QuoteResponseSchema.parse(
+      (await call({ from: address, tokenSafetyFilter: "false" })).body
+    );
+    expect(endpoint.quotes.every((result) => result.blocked_tokens?.[0]?.address === address)).toBe(
+      true
+    );
+  });
+
   it("ranks both Flashprofits routes from one private request during preview", async () => {
     const base = "http://flashprofits.flashprofits.svc.cluster.local:3000";
     vi.stubEnv("FLASHPROFITS_BASE_URL", base);

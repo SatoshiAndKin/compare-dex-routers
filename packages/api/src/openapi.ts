@@ -7,7 +7,7 @@ import type { OpenAPIObject } from "openapi3-ts/oas30";
 import { z } from "zod";
 import { CoinbaseEstimateSchema, TakerFeePercentSchema } from "./coinbase.js";
 import { QuoteResponseSchema } from "./quote-response.js";
-import { BlockedTokenlistSchema } from "./blocked-tokenlist.js";
+import { BlockDetailsSchema, BlockedTokenlistSchema } from "./blocked-tokenlist.js";
 
 extendZodWithOpenApi(z);
 
@@ -53,6 +53,10 @@ const ModeParam = z
       "Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount.",
   });
 
+const TokenSafetyFilterParam = z.boolean().optional().openapi({
+  description: "Set false to include listed tokens and return warnings for affected quotes.",
+});
+
 const QuoteQuerySchema = z.object({
   chainId: ChainIdParam,
   from: AddressSchema.openapi({
@@ -74,9 +78,11 @@ const QuoteQuerySchema = z.object({
     description: "Account bound to execution data. Omit for a preview with no execution data.",
   }),
   mode: ModeParam,
+  tokenSafetyFilter: TokenSafetyFilterParam,
 });
 
 const TokenMetadataQuerySchema = z.object({
+  tokenSafetyFilter: TokenSafetyFilterParam,
   chainId: ChainIdParam,
   address: AddressSchema.openapi({
     param: { name: "address", in: "query" },
@@ -145,13 +151,7 @@ const BlockedTokenErrorSchema = z
     error: z.string(),
     code: z.literal("TOKEN_BLOCKED"),
     requestId: z.string(),
-    block: z.object({
-      chainId: z.number().int(),
-      address: AddressSchema,
-      blockSource: z.string(),
-      blockReason: z.string(),
-      blockSourceUrl: z.url({ protocol: /^https$/ }),
-    }),
+    block: BlockDetailsSchema,
   })
   .openapi("BlockedTokenError");
 
@@ -270,7 +270,11 @@ registry.registerPath({
   operationId: "getCoinbaseEstimate",
   summary: "Estimate a direct Coinbase Advanced trade from public order-book depth",
   request: {
-    query: QuoteQuerySchema.omit({ sender: true, slippageBps: true }).extend({
+    query: QuoteQuerySchema.omit({
+      sender: true,
+      slippageBps: true,
+      tokenSafetyFilter: true,
+    }).extend({
       takerFeePercent: TakerFeePercentSchema.optional().openapi({
         param: { name: "takerFeePercent", in: "query" },
         description:
@@ -308,6 +312,7 @@ registry.registerPath({
   method: "get",
   path: "/tokenlist",
   operationId: "getTokenlist",
+  request: { query: z.object({ tokenSafetyFilter: TokenSafetyFilterParam }) },
   summary: "Get the default token list(s)",
   description: "Returns all configured default token lists merged into a single response.",
   responses: {

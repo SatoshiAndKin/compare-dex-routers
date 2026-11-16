@@ -27,6 +27,7 @@ export interface ChainPreferences {
 export interface Preferences {
   coinbaseTakerFeePercent?: string;
   defillamaWarningBps?: number;
+  tokenSafetyFilter?: boolean;
   chains: Record<number, ChainPreferences>;
 }
 
@@ -80,6 +81,23 @@ class PreferencesStore {
   private explorerRevision = $state(0);
   private coinbaseRevision = $state(0);
   private defillamaRevision = $state(0);
+  private tokenSafetyRevision = $state(0);
+
+  get tokenSafetyFilter(): boolean {
+    void this.tokenSafetyRevision;
+    return loadPreferences()?.tokenSafetyFilter !== false;
+  }
+
+  setTokenSafetyFilter(enabled: boolean): boolean {
+    if (!savePreferences({ ...(loadPreferences() ?? { chains: {} }), tokenSafetyFilter: enabled }))
+      return false;
+    this.tokenSafetyRevision++;
+    return true;
+  }
+
+  get tokenSafetyQuery(): { tokenSafetyFilter?: false } {
+    return this.tokenSafetyFilter ? {} : { tokenSafetyFilter: false };
+  }
 
   get defillamaWarningBps(): number {
     void this.defillamaRevision;

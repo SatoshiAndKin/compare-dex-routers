@@ -21,7 +21,23 @@
     preferencesStore,
   } from "../stores/preferencesStore.svelte.js";
   import { formStore } from "../stores/formStore.svelte.js";
+  import { comparisonStore } from "../stores/comparisonStore.svelte.js";
+  import { transactionStore } from "../stores/transactionStore.svelte.js";
   import { configStore } from "../stores/configStore.svelte.js";
+
+  let tokenSafetyError = $state("");
+
+  function setTokenSafetyFilter(input: HTMLInputElement): void {
+    if (!preferencesStore.setTokenSafetyFilter(input.checked)) {
+      input.checked = preferencesStore.tokenSafetyFilter;
+      tokenSafetyError = "This browser could not save the token safety setting.";
+      return;
+    }
+    tokenSafetyError = "";
+    transactionStore.cancelSwap();
+    comparisonStore.invalidate();
+    tokenListStore.refreshBuiltInList();
+  }
 
   let coinbaseFee = $state("");
   let coinbaseFeeError = $state("");
@@ -296,6 +312,19 @@
         <!-- ---------------------------------------------------------------- -->
         <div class="settings-section">
           <div class="settings-section-title">Token Lists</div>
+          <label>
+            <input
+              type="checkbox"
+              checked={preferencesStore.tokenSafetyFilter}
+              onchange={(event) => setTokenSafetyFilter(event.currentTarget)}
+              aria-describedby="token-safety-description"
+            />
+            Filter blocked tokens and routes
+          </label>
+          <p id="token-safety-description" class="token-safety-help">
+            Turn off to add blocked tokens and see a warning before swapping.
+          </p>
+          {#if tokenSafetyError}<p role="alert">{tokenSafetyError}</p>{/if}
           <p class="refresh-note">Enabled lists update once per day while this page is open.</p>
           <button
             type="button"
@@ -555,6 +584,12 @@
     margin-bottom: 0;
     padding-bottom: 0;
     border-bottom: none;
+  }
+
+  .token-safety-help {
+    margin: 0.375rem 0 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.875rem;
   }
 
   .settings-section-title {

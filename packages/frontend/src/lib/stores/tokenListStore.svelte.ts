@@ -7,6 +7,7 @@
  * committed static file). Custom lists are fetched directly by the browser.
  */
 
+import { preferencesStore } from "./preferencesStore.svelte.js";
 import { apiClient } from "../api.js";
 import type { paths } from "../../generated/api-types.js";
 
@@ -111,7 +112,7 @@ class TokenListStore {
     for (const list of this.lists) {
       if (!list.enabled) continue;
       for (const token of list.tokens) {
-        if (!token.address || this.findBlockedToken(token.chainId, token.address)) continue;
+        if (!token.address || this.blocksToken(token.chainId, token.address)) continue;
         const key = `${token.address.toLowerCase()}_${Number(token.chainId)}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -121,7 +122,7 @@ class TokenListStore {
 
     if (this.localTokensEnabled) {
       for (const token of this.localTokens) {
-        if (!token.address || this.findBlockedToken(token.chainId, token.address)) continue;
+        if (!token.address || this.blocksToken(token.chainId, token.address)) continue;
         const key = `${token.address.toLowerCase()}_${Number(token.chainId)}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -136,8 +137,16 @@ class TokenListStore {
   // Initialization
   // -------------------------------------------------------------------------
 
-  findBlockedToken(chainId: number, address: string): BlockedTokenDetails | undefined {
+  blocksToken(chainId: number, address: string): BlockedTokenDetails | undefined {
+    if (!preferencesStore.tokenSafetyFilter) return undefined;
     return this.blockedTokens.get(tokenKey(chainId, address));
+  }
+
+  refreshBuiltInList(): void {
+    this.pending.get("__default__")?.controller.abort();
+    this.pending.delete("__default__");
+    if (this.lists.some((entry) => entry.url === null && entry.enabled))
+      void this.refreshList(null);
   }
 
   refreshBlockedTokens(): Promise<void> {
@@ -315,7 +324,11 @@ class TokenListStore {
   private async loadDefaultList(
     signal: AbortSignal
   ): Promise<{ name: string; tokens: Token[]; error?: string }> {
-    const { data, error } = await apiClient.GET("/tokenlist", { signal, cache: "no-cache" });
+    const { data, error } = await apiClient.GET("/tokenlist", {
+      params: { query: preferencesStore.tokenSafetyQuery },
+      signal,
+      cache: "no-cache",
+    });
     if (!data || error) throw new Error("Cannot refresh the built-in token list.");
     const name = data.name ?? DEFAULT_TOKENLIST_NAME;
     // The API exposes configured files separately, plus their aggregate tokens.
@@ -499,7 +512,7 @@ class TokenListStore {
 
   /** Add a token to local tokens (deduped by address+chainId) */
   addLocalToken(token: Token): string | null {
-    const blocked = this.findBlockedToken(token.chainId, token.address);
+    const blocked = this.blocksToken(token.chainId, token.address);
     if (blocked) return blockedTokenMessage(blocked);
     const addr = token.address.toLowerCase();
     const chainId = Number(token.chainId);
@@ -645,7 +658,7 @@ class TokenListStore {
         typeof t.symbol === "string" &&
         typeof t.decimals === "number"
       ) {
-        const blocked = this.findBlockedToken(t.chainId, t.address);
+        const blocked = this.blocksToken(t.chainId, t.address);
         if (blocked) return { error: blockedTokenMessage(blocked) };
         validTokens.push({
           chainId: t.chainId,

@@ -26,6 +26,9 @@
       : null
   );
 
+  const blockedTokens = $derived(data?.quote.blocked_tokens ?? []);
+  const hasWarning = $derived(blockedTokens.length > 0 || priceWarning !== null);
+
   function getQuoteDetails(quote: Quote) {
     const isTargetOut = quote.mode === "targetOut";
     return {
@@ -67,7 +70,12 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="swap-modal-title"
-      aria-describedby={priceWarning || !priceCheck ? "swap-price-warning" : undefined}
+      aria-describedby={[
+        blockedTokens.length > 0 ? "swap-token-warning" : "",
+        priceWarning || !priceCheck ? "swap-price-warning" : "",
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined}
       use:dialogFocus={handleCancel}
       tabindex="-1"
     >
@@ -79,6 +87,20 @@
       </div>
 
       <div class="modal-body">
+        {#if blockedTokens.length > 0}
+          <div id="swap-token-warning" class="price-warning" role="alert">
+            <strong>This swap uses a blocked token</strong>
+            {#each blockedTokens as token (token.address)}
+              <p>
+                {token.blockReason}
+                <a href={token.blockSourceUrl} target="_blank" rel="noreferrer"
+                  >{token.blockSource}</a
+                >
+                <span class="trade-address">{token.address}</span>
+              </p>
+            {/each}
+          </div>
+        {/if}
         {#if priceWarning}
           <div id="swap-price-warning" class="price-warning" role="alert">
             <strong>Warning: worse price than DeFiLlama</strong>
@@ -158,10 +180,10 @@
         <button
           type="button"
           class="btn-confirm"
-          class:price-override={priceWarning !== null}
+          class:price-override={hasWarning}
           onclick={handleConfirm}
         >
-          {priceWarning ? "Swap Anyway" : "Confirm Swap"}
+          {hasWarning ? "Swap Anyway" : "Confirm Swap"}
         </button>
       </div>
     </div>
