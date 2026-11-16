@@ -10,8 +10,7 @@ const mockLogger = {
 
 const mockSentry = {
   init: vi.fn(),
-  captureException: vi.fn(),
-  captureMessage: vi.fn(),
+  pinoIntegration: Object.assign(vi.fn(), { trackLogger: vi.fn() }),
 };
 
 vi.mock("../logger.js", () => ({
@@ -20,8 +19,7 @@ vi.mock("../logger.js", () => ({
 
 vi.mock("@sentry/node", () => ({
   init: mockSentry.init,
-  captureException: mockSentry.captureException,
-  captureMessage: mockSentry.captureMessage,
+  pinoIntegration: mockSentry.pinoIntegration,
 }));
 
 describe("observability modules", () => {
@@ -134,25 +132,17 @@ describe("observability modules", () => {
     expect(setHeader).toHaveBeenCalledWith("x-request-id", "trace-abc");
   });
 
-  it("sentry wrapper is no-op without DSN and active with DSN", async () => {
+  it("initializes Sentry only with a DSN and uses the configured release", async () => {
     delete process.env.SENTRY_DSN;
-    const noDsn = await import("../sentry.js");
-    noDsn.captureException(new Error("no-op"), { area: "test" });
-    noDsn.captureMessage("hello", "warning");
+    await import("../sentry.js");
     expect(mockSentry.init).not.toHaveBeenCalled();
-    expect(mockSentry.captureException).not.toHaveBeenCalled();
-    expect(mockSentry.captureMessage).not.toHaveBeenCalled();
 
     vi.resetModules();
-    vi.clearAllMocks();
     process.env.SENTRY_DSN = "https://public@example.ingest.sentry.io/1";
     const release = "0123456789abcdef0123456789abcdef01234567";
     process.env.SENTRY_RELEASE = release;
 
-    const withDsn = await import("../sentry.js");
-    withDsn.captureException(new Error("boom"), { route: "/quote" });
-    withDsn.captureMessage("warn", "warning");
-
+    await import("../sentry.js");
     expect(mockSentry.init).toHaveBeenCalledWith(
       expect.objectContaining({
         dsn: process.env.SENTRY_DSN,
@@ -161,10 +151,5 @@ describe("observability modules", () => {
         tracesSampleRate: 0.1,
       })
     );
-    expect(mockSentry.captureException).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Error", message: "boom" }),
-      expect.objectContaining({ extra: { route: "/quote" } })
-    );
-    expect(mockSentry.captureMessage).toHaveBeenCalledWith("warn", "warning");
   });
 });
