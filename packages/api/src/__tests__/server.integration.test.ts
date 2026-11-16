@@ -177,6 +177,88 @@ describe("server integration", () => {
     expect(res.status).toBe(404);
   });
 
+  it("republishes the Flashprofits list, filters token choices, and explains blocked addresses", async () => {
+    const address = "0xce3f08e664693ca792cace4af1364d5e220827b2";
+    const token = { chainId: 1, address, name: "Old Saitama", symbol: "SAITAMA", decimals: 9 };
+    const blockSourceUrl = "https://example.org/official/long-saitama-migration-notice";
+    const extensions = {
+      blockSource: "Flashprofits",
+      blockReason: "The old contract migrated.",
+      blockSourceUrl: { "0": blockSourceUrl.slice(0, 42), "1": blockSourceUrl.slice(42) },
+    };
+    const block = { address, chainId: 1, ...extensions, blockSourceUrl };
+    const list = {
+      name: "Flashprofits Blocked",
+      timestamp: "2026-11-15T00:00:00Z",
+      version: { major: 1, minor: 0, patch: 0 },
+      tokens: [{ ...token, extensions }],
+    };
+    const dir = await mkdtemp(join(tmpdir(), "blocked-tokenlist-"));
+    const tokenlistPath = join(dir, "tokenlist.json");
+    const otherChain = { ...token, chainId: 8453 };
+    await writeFile(tokenlistPath, JSON.stringify({ tokens: [token, otherChain] }));
+    vi.stubEnv("DEFAULT_TOKENLISTS", tokenlistPath);
+    vi.stubEnv(
+      "FLASHPROFITS_TOKENLIST_URL",
+      "https://flashprofits.example/api/v1/blocked-tokenlist.json"
+    );
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const fetchUpstream = vi.fn().mockImplementation(async () => Response.json(list));
+    vi.stubGlobal("fetch", fetchUpstream);
+
+    try {
+      const [published, choices, blocked] = await Promise.all([
+        request(baseUrl + "/blocked-tokenlist.json"),
+        request(baseUrl + "/tokenlist"),
+        request(baseUrl + "/token-metadata?chainId=1&address=0x" + address.slice(2).toUpperCase()),
+      ]);
+      expect(published.status).toBe(200);
+      expect(JSON.parse(published.body)).toEqual(list);
+      expect(published.headers["access-control-allow-origin"]).toBe("*");
+      expect(JSON.parse(choices.body)).toMatchObject({
+        tokens: [otherChain],
+        tokenlists: [{ tokens: [otherChain] }],
+      });
+      expect(blocked.status).toBe(403);
+      expect(JSON.parse(blocked.body)).toMatchObject({
+        code: "TOKEN_BLOCKED",
+        error: "Token blocked by Flashprofits. The old contract migrated.",
+        block,
+      });
+      const safe = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
+      for (const [from, to] of [
+        [address, safe],
+        [safe, address],
+      ] as const) {
+        const query = new URLSearchParams({ chainId: "1", from, to, amount: "1" });
+        const rejected = await request(baseUrl + "/quote?" + query.toString());
+        expect(rejected.status).toBe(403);
+        expect(JSON.parse(rejected.body).block).toEqual(block);
+      }
+      expect(fetchUpstream).toHaveBeenCalledTimes(1);
+
+      now.mockReturnValue(61_001);
+      fetchUpstream.mockImplementationOnce(async () => Response.json({ tokens: [] }));
+      const stale = await request(baseUrl + "/blocked-tokenlist.json");
+      expect(JSON.parse(stale.body)).toEqual(list);
+
+      now.mockReturnValue(121_002);
+      const replacement = {
+        ...list,
+        version: { major: 2, minor: 0, patch: 0 },
+        tokens: [{ ...otherChain, extensions }],
+      };
+      fetchUpstream.mockImplementationOnce(async () => Response.json(replacement));
+      const refreshed = await request(baseUrl + "/tokenlist");
+      expect(JSON.parse(refreshed.body).tokens).toEqual([token]);
+    } finally {
+      now.mockRestore();
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("GET /tokenlist returns 200 with JSON body", async () => {
     const dir = await mkdtemp(join(tmpdir(), "tokenlist-200-"));
     const tokenlistPath = join(dir, "tokenlist.json");

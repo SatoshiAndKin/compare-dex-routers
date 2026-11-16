@@ -3,6 +3,7 @@ import "./sentry.js";
 import http from "node:http";
 import { existsSync } from "node:fs";
 import { TokenlistFiles } from "./tokenlists.js";
+import { blockDetails, loadBlockedTokenlist } from "./blocked-tokenlist.js";
 import { createManagedServer } from "./shutdown.js";
 import { docsAssets, docsAssetUrl } from "./docs-assets.js";
 import { pathToFileURL } from "node:url";
@@ -61,6 +62,28 @@ function sendError(res: http.ServerResponse, status: number, message: string) {
             : "INVALID_REQUEST",
     requestId: res.getHeader("x-request-id") ?? "",
   });
+}
+
+async function rejectBlockedTokens(
+  res: http.ServerResponse,
+  requestId: string,
+  chainId: number,
+  addresses: string[]
+): Promise<boolean> {
+  const list = await loadBlockedTokenlist();
+  for (const address of addresses) {
+    const token = list?.find(chainId, address);
+    if (!token) continue;
+    const block = blockDetails(token);
+    sendJson(res, 403, {
+      code: "TOKEN_BLOCKED",
+      error: "Token blocked by " + block.blockSource + ". " + block.blockReason,
+      block,
+      requestId,
+    });
+    return true;
+  }
+  return false;
 }
 
 export async function handleRequest(
@@ -215,9 +238,28 @@ window.onload = function() {
     return;
   }
 
+  if (url.pathname === "/blocked-tokenlist.json" && req.method === "GET") {
+    const blocked = await loadBlockedTokenlist();
+    if (!blocked) {
+      sendJson(res, 503, {
+        code: "TOKENLIST_UNAVAILABLE",
+        error: "The Flashprofits blocked token list is unavailable.",
+        requestId,
+      });
+      return;
+    }
+    res.setHeader("Cache-Control", "public, max-age=60");
+    sendJson(res, 200, blocked.list);
+    return;
+  }
+
   if (url.pathname === "/tokenlist" && req.method === "GET") {
     try {
-      const defaultTokenlists = await tokenlistFiles.load();
+      const [lists, blocked] = await Promise.all([tokenlistFiles.load(), loadBlockedTokenlist()]);
+      const defaultTokenlists = lists.map((list) => ({
+        ...list,
+        tokens: list.tokens.filter((token) => !blocked?.find(token.chainId, token.address)),
+      }));
       const allTokens = defaultTokenlists.flatMap((entry) => entry.tokens);
       const names = defaultTokenlists.map((entry) => entry.name);
       sendJson(res, 200, {
@@ -264,6 +306,8 @@ window.onload = function() {
       sendError(res, 400, "Invalid address format");
       return;
     }
+
+    if (await rejectBlockedTokens(res, requestId, chainId, [addressParam])) return;
 
     try {
       const [name, symbol, decimals] = await Promise.all([
@@ -315,6 +359,7 @@ window.onload = function() {
     }
 
     const { chainId, from, to, amount, mode } = parsed.data;
+    if (await rejectBlockedTokens(res, requestId, chainId, [from, to])) return;
 
     const startTime = Date.now();
     try {

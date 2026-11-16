@@ -7,7 +7,7 @@
   import { isNativeToken } from "../native.js";
   import { formStore, type TokenInfo } from "../stores/formStore.svelte.js";
   import { tokensStore } from "../stores/tokensStore.svelte.js";
-  import { tokenListStore } from "../stores/tokenListStore.svelte.js";
+  import { blockedTokenMessage, tokenListStore } from "../stores/tokenListStore.svelte.js";
   import UnrecognizedTokenModal from "./UnrecognizedTokenModal.svelte";
   import InfoPopover from "./InfoPopover.svelte";
   import DisclosureChevron from "./DisclosureChevron.svelte";
@@ -54,6 +54,7 @@
     copyResult?.address === currentToken?.address && copyResult?.status === "failed"
   );
   let showClearButton = $derived(inputValue.trim().length > 0 || currentToken !== null);
+  const block = $derived(tokenListStore.findBlockedToken(formStore.chainId, inputValue.trim()));
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -117,10 +118,16 @@
     query = currentToken ? "" : inputValue;
     dropdownVisible = true;
     void tokensStore.fetchIfNeeded();
+    void tokenListStore.refreshBlockedTokens();
   }
 
   /** Select a token and update store, swapping sides when the new selection duplicates the opposite side */
   function selectToken(token: TokenInfo): void {
+    if (tokenListStore.findBlockedToken(formStore.chainId, token.address)) {
+      inputValue = token.address;
+      hideDropdown();
+      return;
+    }
     copyResult = null;
     const currentSideToken =
       pendingCurrentSideToken ?? (type === "from" ? formStore.fromToken : formStore.toToken);
@@ -148,6 +155,13 @@
     inputValue = formatTokenDisplay(token.symbol);
     hideDropdown();
     pendingCurrentSideToken = null;
+  }
+
+  async function selectOption(token: TokenInfo): Promise<void> {
+    const currentQuery = query;
+    await tokenListStore.refreshBlockedTokens();
+    if (dropdownVisible && query === currentQuery && token.chainId === formStore.chainId)
+      selectToken(token);
   }
 
   function hideDropdown(): void {
@@ -204,11 +218,13 @@
 
     // Immediate detection: if a full 42-char address is typed, check it
     const trimmed = inputValue.trim();
-    if (isAddressLike(trimmed) && matches.length === 0) {
+    if (isAddressLike(trimmed)) {
+      await tokenListStore.refreshBlockedTokens();
+      if (matches.length !== 0 || inputValue.trim() !== trimmed) return;
       // Short delay to avoid firing on every keystroke
       setTimeout(() => {
         if (inputValue.trim() === trimmed) {
-          checkUnrecognizedAddress(trimmed);
+          void checkUnrecognizedAddress(trimmed);
         }
       }, 100);
     }
@@ -217,7 +233,7 @@
   function handleBlur(event: FocusEvent): void {
     const trimmed = inputValue.trim();
     if (isAddressLike(trimmed) && matches.length === 0) {
-      checkUnrecognizedAddress(trimmed);
+      void checkUnrecognizedAddress(trimmed);
     }
     if (
       event.relatedTarget instanceof Node &&
@@ -248,11 +264,19 @@
    * Check whether the current input address is recognised.
    * If not, open the UnrecognizedTokenModal for this input type.
    */
-  function checkUnrecognizedAddress(value: string): void {
-    const trimmed = value.trim();
-    if (!isAddressLike(trimmed)) return;
-
+  async function checkUnrecognizedAddress(trimmed: string): Promise<void> {
     const chainId = formStore.chainId;
+    await tokenListStore.refreshBlockedTokens();
+    if (formStore.chainId !== chainId || inputValue.trim() !== trimmed) return;
+    if (tokenListStore.findBlockedToken(chainId, trimmed)) {
+      hideDropdown();
+      return;
+    }
+    if (
+      tokenListStore.unrecognizedModal?.address === trimmed &&
+      tokenListStore.unrecognizedModal?.targetType === type
+    )
+      return;
     const found = tokenListStore.findToken(trimmed, chainId);
 
     if (found) {
@@ -286,7 +310,12 @@
   // Sync input value when store token changes externally
   $effect(() => {
     const token = type === "from" ? formStore.fromToken : formStore.toToken;
-    if (token) {
+    if (token && tokenListStore.findBlockedToken(formStore.chainId, token.address)) {
+      inputValue = token.address;
+      pendingCurrentSideToken = null;
+      if (type === "from") formStore.fromToken = null;
+      else formStore.toToken = null;
+    } else if (token) {
       const expected = formatTokenDisplay(token.symbol);
       if (inputValue !== expected) {
         inputValue = expected;
@@ -335,6 +364,8 @@
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={dropdownVisible}
+        aria-invalid={block ? true : undefined}
+        aria-describedby={block ? listId + "-blocked" : undefined}
         aria-controls={dropdownVisible ? listId : undefined}
         aria-activedescendant={matches[activeIndex] ? `${listId}-${activeIndex}` : undefined}
       />
@@ -413,6 +444,13 @@
     {/if}
   </div>
 
+  {#if block}
+    <p class="blocked-token-warning" role="alert" id={listId + "-blocked"}>
+      {blockedTokenMessage(block)}
+      <a href={block.url} target="_blank" rel="noreferrer">Source</a>
+    </p>
+  {/if}
+
   {#if dropdownVisible}
     <DropdownPanel
       bind:this={dropdown}
@@ -426,7 +464,7 @@
       bind:activeIndex
       {query}
       emptyMessage={tokensStore.isLoading ? "Loading tokens…" : "No tokens match"}
-      onSelect={selectToken}
+      onSelect={selectOption}
       onDismiss={hideDropdown}
     >
       {#snippet option(token)}
@@ -466,6 +504,14 @@
 {/if}
 
 <style>
+  .blocked-token-warning {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--warning);
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+  }
+
   .selected-token-details {
     display: flex;
     align-items: center;

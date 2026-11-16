@@ -155,7 +155,8 @@
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
+      await tokenListStore.refreshBlockedTokens();
       const text = reader.result as string;
       const result = tokenListStore.importLocalTokens(text);
       if ("error" in result) {

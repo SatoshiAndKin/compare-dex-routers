@@ -79,6 +79,7 @@ alive.
 | `GET`  | `/quote`                      | All provider results, failures, and recommendation                          |
 | `GET`  | `/tokenlist`                  | Token lists                                        |
 | `GET`  | `/token-metadata`             | On-chain token metadata lookup                     |
+| `GET`  | `/blocked-tokenlist.json`     | Public mirror of the Flashprofits blocked list     |
 | `GET`  | `/metrics`                    | Prometheus-compatible metrics                      |
 | `GET`  | `/analytics`                  | Quote analytics summary                            |
 | `GET`  | `/errors`                     | Error pattern insights                             |
@@ -106,6 +107,21 @@ button. The threshold defaults to 0.50% before gas. Users can change it in
 Settings, and the browser saves it across chains. A threshold of 0% warns on
 any shortfall. If either price is unavailable, the dialog shows that it could
 not check the price.
+
+## Blocked tokens
+
+The API checks the reviewed Flashprofits list for updates on demand, at most
+once per minute. It keeps the last valid copy in memory if a refresh fails.
+It republishes the list at `/api/blocked-tokenlist.json` in the [Token Lists
+format](https://github.com/Uniswap/token-lists) with the source, reason, and
+evidence URL on each token. An entry identifies a blocked contract by chain ID
+and address.
+
+The API filters the default lists and returns HTTP 403 with the provenance
+when an input or output token is blocked. Both selectors also filter custom and
+saved tokens. Entering a blocked address shows the reason and a link to the
+source. If the API has never received a valid snapshot, the public mirror
+returns HTTP 503 and regular token and quote requests continue.
 
 ## Frontend (`packages/frontend`)
 

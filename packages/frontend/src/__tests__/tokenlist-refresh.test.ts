@@ -8,6 +8,7 @@ import { deferred } from "./quote-fixture.js";
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("../lib/api.js", () => ({ apiClient: { GET: get } }));
 const DAY = 86_400_000;
+const selectionListRequests = () => get.mock.calls.filter(([path]) => path === "/tokenlist");
 const token = {
   address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   name: "USD Coin",
@@ -47,14 +48,14 @@ describe("daily and manual token-list refresh", () => {
     store.startRefresh();
     await store.init();
     await vi.advanceTimersByTimeAsync(DAY - 1);
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(selectionListRequests()).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(get).toHaveBeenCalledTimes(2);
+    expect(selectionListRequests()).toHaveLength(2);
     const pending = deferred<{ data: { name: string; tokens: (typeof token)[] } }>();
     get.mockReturnValueOnce(pending.promise);
     const first = store.refresh();
     const second = store.refresh();
-    expect(get).toHaveBeenCalledTimes(3);
+    expect(selectionListRequests()).toHaveLength(3);
     pending.resolve({ data: { name: "New", tokens: [{ ...token, symbol: "NEW" }] } });
     await Promise.all([first, second]);
     expect(store.lists.filter((entry) => entry.url === null)).toEqual([
@@ -74,11 +75,11 @@ describe("daily and manual token-list refresh", () => {
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(2 * DAY);
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(selectionListRequests()).toHaveLength(1);
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(get).toHaveBeenCalledTimes(2);
+    expect(selectionListRequests()).toHaveLength(2);
   });
 
   it("keeps last valid tokens on failure and does not retry on every visibility change", async () => {
@@ -92,9 +93,9 @@ describe("daily and manual token-list refresh", () => {
     });
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(get).toHaveBeenCalledTimes(2);
+    expect(selectionListRequests()).toHaveLength(2);
     await store.refresh();
-    expect(get).toHaveBeenCalledTimes(3);
+    expect(selectionListRequests()).toHaveLength(3);
   });
 
   it("does not restore a removed list when an old fetch ignores cancellation", async () => {
@@ -116,6 +117,6 @@ describe("daily and manual token-list refresh", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     store.stopRefresh();
     await vi.advanceTimersByTimeAsync(2 * DAY);
-    expect(get).toHaveBeenCalledTimes(2);
+    expect(selectionListRequests()).toHaveLength(2);
   });
 });
