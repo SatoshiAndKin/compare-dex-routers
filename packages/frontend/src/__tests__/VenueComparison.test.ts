@@ -307,10 +307,28 @@ describe("Venue price comparison", () => {
 describe("Venue price winners and mobile availability", () => {
   it.each([
     ["exactIn", "4000000000", "Coinbase Advanced", "5% less received", null],
-    ["exactIn", "3700000000", "DEX routers", "2.63% less received", "2.7% more received"],
-    ["exactIn", "3799999999", "DEX routers", "<0.01% less received", "<0.01% more received"],
+    [
+      "exactIn",
+      "3700000000",
+      "DEX routers",
+      "2.63% less received",
+      "2.7% more received vs Coinbase",
+    ],
+    [
+      "exactIn",
+      "3799999999",
+      "DEX routers",
+      "<0.01% less received",
+      "<0.01% more received vs Coinbase",
+    ],
     ["targetOut", "1900000000000000000", "Coinbase Advanced", "5.26% more paid", null],
-    ["targetOut", "2100000000000000000", "DEX routers", "5% more paid", "4.76% less paid"],
+    [
+      "targetOut",
+      "2100000000000000000",
+      "DEX routers",
+      "5% more paid",
+      "4.76% less paid vs Coinbase",
+    ],
   ] as const)(
     "marks the better %s price when Coinbase quotes %s",
     async (mode, amount, venue, difference, dexLead) => {
@@ -352,6 +370,68 @@ describe("Venue price winners and mobile availability", () => {
       else expect(within(dex).queryByText(/% (more received|less paid)/)).toBeNull();
     }
   );
+  it.each([
+    ["exactIn", "3.26% more received vs Curve"],
+    ["targetOut", "4.76% less paid vs Curve"],
+  ] as const)("uses the closest eligible DEX quote as the %s baseline", async (mode, lead) => {
+    const response = reply("0");
+    response.data.output_amount_raw = "3500000000";
+    response.data.input_amount_raw = "2200000000000000000";
+    get.mockResolvedValueOnce(response);
+    const trade = { ...params, mode };
+    const best = makeQuote({ ...quote(), ...trade });
+    const runnerUp = makeQuote({
+      ...best,
+      provider: "Curve",
+      output_amount_raw: "3680000000",
+      input_amount_raw: "2100000000000000000",
+    });
+    const view = render(VenueComparison, {
+      params: trade,
+      quotes: [
+        makeQuote({
+          ...best,
+          provider: "Slower route",
+          output_amount_raw: "3600000000",
+          input_amount_raw: "2300000000000000000",
+        }),
+        runnerUp,
+        makeQuote({ ...best, provider: "Failed route", simulation_status: "failed" }),
+        makeQuote({ ...best, provider: "Previous trade", amount: "3" }),
+        best,
+      ],
+      stale: false,
+      dexExpiresAt: Date.now() + 30_000,
+    });
+    const dex = view.getByRole("region", { name: "DEX router quotes" });
+    expect(await within(dex).findByText(lead)).toBeVisible();
+  });
+  it("compares DEX routes when Coinbase is unavailable and clears the lead for tied routes", async () => {
+    get.mockResolvedValueOnce({ data: { status: "unavailable", reason: "No direct market." } });
+    const best = quote();
+    const next = makeQuote({
+      ...best,
+      provider: "Curve",
+      output_amount: "3700",
+      output_amount_raw: "3700000000",
+    });
+    const dexExpiresAt = Date.now() + 30_000;
+    const view = render(VenueComparison, {
+      params,
+      quotes: [best, next],
+      stale: false,
+      dexExpiresAt,
+    });
+    const lead = "2.7% more received vs Curve";
+    expect(await view.findByText(lead)).toBeVisible();
+    await view.rerender({
+      params,
+      quotes: [best, { ...best, provider: "Curve" }],
+      stale: false,
+      dexExpiresAt,
+    });
+    expect(view.queryByText(/% more received/)).toBeNull();
+  });
   it("marks both venue headings when prices tie", async () => {
     const response = reply("0");
     response.data.output_amount_raw = "3800000000";
