@@ -19,23 +19,10 @@ pnpm install
 pnpm run dev           # starts API at :3100 and frontend at :5173
 ```
 
-## Commands
+## Validation
 
-All commands run from the repo root and delegate to workspaces.
-
-| Command                  | Description                                |
-| ------------------------ | ------------------------------------------ |
-| `pnpm run dev`           | Start API and frontend in parallel         |
-| `pnpm run typecheck`     | Type-check all workspaces                  |
-| `pnpm run lint`          | Lint all workspaces with ESLint            |
-| `pnpm run lint:fix`      | Lint and auto-fix all workspaces           |
-| `pnpm run format`        | Format all workspaces with Prettier        |
-| `pnpm run format:check`  | Check formatting without writing           |
-| `pnpm test`              | Run tests across all workspaces (Vitest)   |
-| `pnpm run test:coverage` | Run tests with coverage                    |
-| `pnpm run dead-code`     | Detect dead code and unused exports (knip) |
-| `pnpm run duplicates`    | Detect duplicate code (jscpd)              |
-| `pnpm run dead-flags`    | Detect unused feature flags                |
+Run validation from the repo root. Follow the [testing runbook](docs/runbooks/testing.md)
+for repository, browser, fork, and rollout checks.
 
 ## Application contracts
 
@@ -57,12 +44,6 @@ All commands run from the repo root and delegate to workspaces.
 
 See `env.example`. Configure `RPC_URL_<chainId>` for each used chain, or `ALCHEMY_API_KEY` as the fallback. Optional: `ZEROX_API_KEY`, `RPC_URL_<chainId>`, `CURVE_ENABLED`, `METRICS_ENABLED`, `SENTRY_DSN`, `LOG_LEVEL`.
 
-## Testing
-
-- **API tests:** `packages/api/src/__tests__/` — Vitest with mocked external dependencies (viem, @spandex/core). Coverage threshold is 80%.
-- **Frontend tests:** `packages/frontend/src/__tests__/` — Vitest with `@testing-library/svelte` and jsdom.
-- Run `pnpm test` from the root to execute tests across all workspaces.
-
 ## Deployment
 
 - Production: private K3s Helm release, deployed by the Tank worker
@@ -72,7 +53,9 @@ See `env.example`. Configure `RPC_URL_<chainId>` for each used chain, or `ALCHEM
 
 ## Conventions
 
-Use Node.js 24.22.1, pnpm 12.5.1, and Bun 1.4.2. Bun builds the exact pinned Spandex Git dependency with `prepack`; keep its pin and the build allowlist in sync. The browser uses `/api/quote` and the server recommendation. The quote endpoint uses `quote-response.ts`.
+Use the tool versions pinned in `.node-version`, `package.json`, and
+`.github/workflows/ci.yml`. Bun builds the exact pinned Spandex Git dependency
+with `prepack`. Keep its pin and the build allowlist in sync.
 
 ### Git workflow
 
