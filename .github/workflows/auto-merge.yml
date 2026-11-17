@@ -32,7 +32,10 @@ jobs:
           set -euo pipefail
           requests=$(gh api --paginate --slurp "repos/$REPOSITORY/commits/$TESTED_COMMIT/pulls")
           numbers=$(jq -r --arg sha "$TESTED_COMMIT" \
-            '.[][] | select(.state == "open" and .draft == false and .base.ref == "main" and .head.sha == $sha) | .number' \
+            '.[][] | select(
+              .state == "open" and .draft == false and .base.ref == "main" and .head.sha == $sha
+              and .user.login != "dependabot[bot]" and .user.login != "renovate[bot]"
+            ) | .number' \
             <<< "$requests")
           for number in $numbers; do
             gh pr merge "$number" --repo "$REPOSITORY" --merge --match-head-commit "$TESTED_COMMIT"
