@@ -115,6 +115,88 @@ test("a worse refreshed DeFiLlama price warns before the wallet receives the swa
   expect(sends).toBe(1);
 });
 
+for (const side of ["from", "to"] as const) {
+  test(`warns on the swap button when the selected ${side} token is blocked`, async ({ page }) => {
+    const blocked = {
+      chainId: 1,
+      address: (side === "from" ? FROM : TO).toLowerCase(),
+      blockSource: "Flashprofits",
+      blockReason: "Listed for this test.",
+      blockSourceUrl: "https://example.org/token-notice",
+    };
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "compare-dex-preferences",
+        JSON.stringify({ chains: {}, tokenSafetyFilter: false })
+      );
+    });
+    await page.emulateMedia({ colorScheme: side === "from" ? "light" : "dark" });
+    const refresh = deferred<undefined>();
+    let delayQuote = false;
+    await fixture(page, async (comparison) => {
+      if (delayQuote) await refresh.promise;
+      for (const quote of comparison.quotes) quote.blocked_tokens = [blocked];
+    });
+
+    let sends = 0;
+    await installWallet(page, 1, SENDER, async (method, params) => {
+      if (method === "eth_call")
+        return (params[0] as { data: string }).data.startsWith("0x70a08231")
+          ? "0x5f5e100"
+          : `0x${"f".repeat(64)}`;
+      if (method === "eth_getBalance") return "0x8ac7230489e80000";
+      if (method === "eth_gasPrice") return "0x4a817c800";
+      if (method === "eth_estimateGas") return "0x1d4c0";
+      if (method === "eth_sendTransaction") sends++;
+      throw new Error(`Unexpected wallet method: ${method}`);
+    });
+    await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
+    await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
+    await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
+
+    const swap = page.getByRole("button", { name: "Swap possibly malicious token", exact: true });
+    await expect(swap).toBeEnabled();
+    const red = await page.evaluate(() => {
+      const sample = document.createElement("span");
+      sample.style.color = "var(--red)";
+      document.body.append(sample);
+      const color = getComputedStyle(sample).color;
+      sample.remove();
+      return color;
+    });
+    await expect(swap).toHaveCSS("background-color", red);
+
+    const position = () =>
+      swap.evaluate((button) => {
+        const { x, y, width, height } = button.getBoundingClientRect();
+        return { x: x + scrollX, y: y + scrollY, width, height };
+      });
+    const before = await position();
+    delayQuote = true;
+    try {
+      await page.getByRole("button", { name: "Refresh DEX quotes", exact: true }).click();
+      await expect(page.getByRole("status", { name: "Quote loading status" })).toHaveText(
+        "Refreshing…"
+      );
+      await expect(swap).toBeDisabled();
+      expect(await position()).toEqual(before);
+    } finally {
+      delayQuote = false;
+      refresh.resolve(undefined);
+    }
+    await expect(swap).toBeEnabled();
+    expect(await position()).toEqual(before);
+    await swap.click();
+
+    const dialog = page.getByRole("dialog", { name: "Confirm Swap" });
+    await expect(dialog.getByText("This swap uses a blocked token")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Swap Anyway", exact: true })).toBeEnabled();
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(sends).toBe(0);
+  });
+}
+
 for (const scenario of [
   "reject approval",
   "reverted swap",
