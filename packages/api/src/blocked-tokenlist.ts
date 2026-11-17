@@ -3,6 +3,7 @@ import { logger } from "./logger.js";
 import { fetchFlashprofitsTokenlist } from "./tokenlists.js";
 
 const REFRESH_INTERVAL_MS = 60_000;
+const UPSTREAM_TIMEOUT_MS = 2_000;
 
 const ExtensionPartSchema = z.string().min(1).max(42);
 const ExtensionTextSchema = z.union([
@@ -119,7 +120,9 @@ class BlockedTokenlist {
   private async refresh() {
     try {
       this.current = new BlockedTokenlistSnapshot(
-        BlockedTokenlistSchema.parse(await fetchFlashprofitsTokenlist(this.url))
+        BlockedTokenlistSchema.parse(
+          await fetchFlashprofitsTokenlist(this.url, UPSTREAM_TIMEOUT_MS)
+        )
       );
     } catch {
       logger.warn("Flashprofits blocked token list refresh failed");
