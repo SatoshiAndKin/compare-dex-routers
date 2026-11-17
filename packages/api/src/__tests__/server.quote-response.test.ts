@@ -232,6 +232,35 @@ describe("unified quote contract", () => {
     });
   });
 
+  it("sends a connected account for gas ranking when it has no Flashprofits wallet", async () => {
+    const base = "http://flashprofits.flashprofits.svc.cluster.local:3000";
+    vi.stubEnv("FLASHPROFITS_BASE_URL", base);
+    const remote = vi.fn((url: URL) => {
+      expect(url.searchParams.get("rankingAccount")).toBe(SENDER);
+      expect(url.searchParams.has("executionAccount")).toBe(false);
+      const noRoute = { status: "unavailable", reason: "no route" };
+      return Response.json({
+        blockNumber: 100,
+        blockHash: `0x${"a".repeat(64)}`,
+        direct: noRoute,
+        electric: noRoute,
+      });
+    });
+    const original = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      String(input).startsWith(`${base}/api/v2/swap-quote?`)
+        ? Promise.resolve(remote(new URL(String(input))))
+        : original(input, init)
+    );
+    const { response, body } = await call({ sender: SENDER });
+    expect(remote).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    expect(QuoteResponseSchema.parse(body).failures).toMatchObject([
+      { provider: "Flashprofits Electric" },
+      { provider: "Flashprofits Direct" },
+    ]);
+  });
+
   it("keeps other DEX results when the private Flashprofits endpoint is unavailable", async () => {
     const base = "http://flashprofits.flashprofits.svc.cluster.local:3000";
     vi.stubEnv("FLASHPROFITS_BASE_URL", base);
