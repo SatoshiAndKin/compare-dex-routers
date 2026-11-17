@@ -15,8 +15,8 @@
   "dependencies": {
     "@walletconnect/ethereum-provider": "2.26.0",
     "openapi-fetch": "^0.17.0",
-    "svelte": "^5.57.2",
-    "viem": "2.57.7"
+    "svelte": "^5.57.3",
+    "viem": "2.57.19"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
