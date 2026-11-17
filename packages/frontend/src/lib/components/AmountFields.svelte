@@ -318,7 +318,8 @@
     justify-content: center;
     min-height: 44px;
   }
-  .amount-group > :global(.balance-display) {
+  .amount-group > :global(.balance-display),
+  .amount-group > :global(.balance-actions) {
     grid-column: 1 / -1;
     justify-self: end;
     min-width: 0;

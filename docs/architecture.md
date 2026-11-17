@@ -290,7 +290,7 @@ and hashes live in `docs-assets.ts`; its OpenAPI server URL is relative so direc
 and `/api`-prefixed deployments work.
 The space theme uses local SVG/CSS assets and the existing light/dark preference.
 
-Native assets come from `/config` independently of token lists. Native balances use `eth_getBalance` and need no approvals. Raw integer balances and decimals drive exact sell-balance entry. Native entry first obtains a route estimate, reserves gas with the 20% margin and fresh network fees, and fails closed when fees are unavailable. Balance response sequences discard outdated reads.
+Native assets come from `/config` independently of token lists. Native balances use `eth_getBalance` and need no approvals. The 25%, 50%, and 75% sell shortcuts use the raw balance and round down to the smallest unit of the token. Clicking the sell balance fills the maximum. For native assets, the maximum first obtains a route estimate, reserves gas with the 20% margin and fresh network fees, and fails closed when fees are unavailable. Balance response sequences discard outdated reads.
 
 Each swap panel puts the full-width amount below its label and token picker. The token info control
 opens the full address and Copy button. Copy failures keep the address selectable

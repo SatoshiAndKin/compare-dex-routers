@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { fixture } from "./fixtures.js";
 import { installWallet } from "./wallet.js";
-import { FROM, TO, SENDER } from "../packages/frontend/src/__tests__/quote-fixture.js";
+import { deferred, FROM, TO, SENDER } from "../packages/frontend/src/__tests__/quote-fixture.js";
 
 test("approval retains its provider through refresh, then cancellation follows the recommendation", async ({
   page,
@@ -197,31 +197,66 @@ for (const scenario of [
 }
 
 for (const native of [false, true]) {
-  test(`sell balance fills exact ${native ? "native less gas" : "ERC-20"} amount`, async ({
+  test(`sell balance shortcuts fill exact ${native ? "native" : "ERC-20"} amounts`, async ({
     page,
-  }) => {
+  }, testInfo) => {
+    if (testInfo.project.name === "mobile") await page.setViewportSize({ width: 320, height: 844 });
     await fixture(page);
     const token = native ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" : FROM;
     const raw = native ? 1234567890123456789n : 123456789n;
+    let pendingBalance: Promise<undefined> | undefined;
     await installWallet(page, 1, SENDER, async (method, params) => {
-      if (method === "eth_getBalance") return `0x${(native ? raw : 10n ** 18n).toString(16)}`;
+      if (method === "eth_getBalance") {
+        if (native) await pendingBalance;
+        return `0x${(native ? raw : 10n ** 18n).toString(16)}`;
+      }
       if (method === "eth_gasPrice") return "0x4a817c800";
-      if (method === "eth_call")
-        return (params[0] as { data: string }).data.startsWith("0x70a08231")
-          ? `0x${raw.toString(16)}`
-          : "0x0";
+      if (method === "eth_call") {
+        if (!(params[0] as { data: string }).data.startsWith("0x70a08231")) return "0x0";
+        if (!native) await pendingBalance;
+        return `0x${raw.toString(16)}`;
+      }
       throw new Error(`Unexpected wallet method ${method}`);
     });
     await page.goto(`/?chainId=1&from=${token}&to=${TO}&amount=1&mode=targetOut`);
     await page.getByRole("button", { name: "Connect wallet", exact: true }).first().click();
     await page.getByRole("button", { name: "Connect with Local fork wallet" }).click();
     const balance = page.getByRole("button", { name: "From token balance", exact: true });
-    await expect(balance).toBeEnabled();
-    await balance.click();
-    await expect(page.locator("#sell-amount")).toHaveValue(
-      native ? "1.231687890123456789" : "123.456789"
-    );
+    const shortcut = (percent: number) =>
+      page.getByRole("button", { name: `Use ${percent}% of sell balance`, exact: true });
+    const [useQuarter, useHalf, useThreeQuarters] = [shortcut(25), shortcut(50), shortcut(75)];
+    const positions = () =>
+      Promise.all(
+        [balance, useQuarter, useHalf, useThreeQuarters].map((button) => button.boundingBox())
+      );
+    const sell = page.locator("#sell-amount");
+    const [quarter, half, threeQuarters] = native
+      ? (["0.308641972530864197", "0.617283945061728394", "0.925925917592592591"] as const)
+      : (["30.864197", "61.728394", "92.592591"] as const);
+    await expect(useQuarter).toBeEnabled();
+    const initial = await positions();
+    const delayed = deferred<undefined>();
+    pendingBalance = delayed.promise;
+    try {
+      await useQuarter.click();
+      await expect(useHalf).toBeDisabled();
+      await expect(balance).toBeDisabled();
+      expect(await positions()).toEqual(initial);
+    } finally {
+      pendingBalance = undefined;
+      delayed.resolve(undefined);
+    }
+    await expect(sell).toHaveValue(quarter);
+    await expect(useQuarter).toBeEnabled();
+    expect(await positions()).toEqual(initial);
+    await useHalf.click();
+    await expect(sell).toHaveValue(half);
+    await useThreeQuarters.click();
+    await expect(sell).toHaveValue(threeQuarters);
     await expect(page).not.toHaveURL(/mode=targetOut/);
+
+    await balance.click();
+    await expect(sell).toHaveValue(native ? "1.231687890123456789" : "123.456789");
     await expect(page.getByLabel("To token balance")).toBeVisible();
     expect(await page.getByLabel("To token balance").evaluate((el) => el.tagName)).toBe("SPAN");
     if (native) await expect(page.getByText(/estimated gas reserve was deducted/)).toBeVisible();

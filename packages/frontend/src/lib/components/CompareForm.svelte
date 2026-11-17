@@ -33,6 +33,7 @@
   let { wallet }: { wallet?: Snippet } = $props();
 
   const AUTO_COMPARE_DELAY_MS = 600;
+  const SELL_BALANCE_PERCENTAGES = [25, 50, 75] as const;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let generation = 0;
   let wasBusy = false;
@@ -196,13 +197,21 @@
 
   let fillingBalance = $state(false);
   let balanceMessage = $state("");
-  async function useSellBalance(): Promise<void> {
+  const wrongSellNetwork = $derived(
+    walletStore.chainId !== formStore.chainId || balanceStore.from.status === "wrong_network"
+  );
+  const balanceActionBusy = $derived(fillingBalance || transactionStore.busy);
+
+  async function useSellBalance(
+    percent: (typeof SELL_BALANCE_PERCENTAGES)[number] | 100
+  ): Promise<void> {
+    if (balanceActionBusy) return;
     const token = formStore.fromToken;
     const account = walletStore.address;
     const provider = walletStore.provider;
     const chainId = formStore.chainId;
-    if (walletStore.chainId !== chainId || balanceStore.from.status === "wrong_network") {
-      await walletStore.switchChain(chainId);
+    if (wrongSellNetwork) {
+      if (percent === 100) await walletStore.switchChain(chainId);
       return;
     }
     if (
@@ -214,6 +223,7 @@
     )
       return;
     const epoch = generation;
+    const reserveGas = percent === 100 && isNativeToken(token.address);
     fillingBalance = true;
     balanceMessage = "";
     try {
@@ -231,7 +241,7 @@
       };
       await checkWallet();
       let raw = await readBalance(provider, account, token.address);
-      if (isNativeToken(token.address)) {
+      if (reserveGas) {
         if (!formStore.toToken)
           throw new Error("Select a receive token before estimating the gas reserve.");
         if (raw <= 0n) throw new Error("No native balance is available after reserving gas.");
@@ -264,17 +274,22 @@
         );
         raw = raw > fees.reserve ? raw - fees.reserve : 0n;
         if (raw === 0n) throw new Error("No native balance is available after reserving gas.");
-        balanceMessage =
-          "An estimated gas reserve was deducted. Fees will be checked again before submission.";
+      } else if (percent !== 100) {
+        raw = (raw * BigInt(percent)) / 100n;
+        if (raw === 0n) throw new Error("This percentage is less than one token unit.");
       }
       await checkWallet();
       if (
         epoch !== generation ||
+        transactionStore.busy ||
         provider !== walletStore.provider ||
         account !== walletStore.address ||
         chainId !== walletStore.chainId
       )
         return;
+      if (reserveGas)
+        balanceMessage =
+          "An estimated gas reserve was deducted. Fees will be checked again before submission.";
       formStore.mode = "exactIn";
       formStore.sellAmount = exactAmount(raw, token.decimals);
       await tick();
@@ -330,20 +345,34 @@
     {/snippet}
     {#snippet sellBalance()}
       {#if walletStore.isConnected}
-        <button
-          type="button"
-          class="balance-display"
-          aria-label="From token balance"
-          disabled={fillingBalance ||
-            transactionStore.busy ||
-            (walletStore.chainId === formStore.chainId &&
-              balanceStore.from.status !== "ready" &&
-              balanceStore.from.status !== "wrong_network")}
-          onclick={() => void useSellBalance()}
-        >
-          {balanceLabel("from")}
-          {formStore.fromToken?.symbol ?? ""}
-        </button>
+        <div class="balance-actions">
+          <button
+            type="button"
+            class="balance-display"
+            aria-label="From token balance"
+            title={wrongSellNetwork ? "Switch network" : "Use max spendable balance"}
+            disabled={balanceActionBusy ||
+              (!wrongSellNetwork && balanceStore.from.status !== "ready")}
+            onclick={() => void useSellBalance(100)}
+          >
+            {balanceLabel("from")}
+            {formStore.fromToken?.symbol ?? ""}
+          </button>
+          <div class="balance-shortcuts">
+            {#each SELL_BALANCE_PERCENTAGES as percent (percent)}
+              <button
+                type="button"
+                class="balance-display balance-percentage"
+                aria-label="Use {percent}% of sell balance"
+                disabled={balanceActionBusy ||
+                  wrongSellNetwork ||
+                  balanceStore.from.status !== "ready" ||
+                  balanceStore.from.raw === 0n}
+                onclick={() => void useSellBalance(percent)}>{percent}%</button
+              >
+            {/each}
+          </div>
+        </div>
       {/if}
     {/snippet}
     {#snippet buyBalance()}
@@ -389,6 +418,7 @@
     background: var(--bg-hover);
   }
   button.balance-display {
+    min-width: 0;
     border: 0;
     background: transparent;
     padding: 0 0.375rem;
@@ -398,6 +428,22 @@
   }
   button.balance-display:hover:not(:disabled) {
     background: var(--bg-hover);
+  }
+  button.balance-display:focus-visible {
+    outline-offset: -2px;
+  }
+  .balance-actions,
+  .balance-shortcuts {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+  }
+  .balance-shortcuts {
+    flex: none;
+  }
+  button.balance-percentage {
+    min-width: 44px;
+    font-variant-numeric: tabular-nums;
   }
   .compare-form {
     margin-bottom: 0;
