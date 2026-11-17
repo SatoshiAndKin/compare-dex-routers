@@ -9,6 +9,7 @@ import {
 } from "./flashprofits-wallet.js";
 import { simulateFlashprofitsTrade } from "./flashprofits-simulation.js";
 import { logger } from "./logger.js";
+import { recordFlashprofitsRequest } from "./metrics.js";
 
 const providers = {
   electric: "Flashprofits Electric",
@@ -189,11 +190,18 @@ export async function fetchFlashprofitsPrices(
     else url.searchParams.set("inputAmount", String(swap.inputAmount));
     if (wallet?.kind === "delegation" || wallet?.kind === "executor")
       url.searchParams.set("executionAccount", wallet.account);
-    const response = await fetch(url, {
-      headers: { accept: "application/json" },
-      redirect: "error",
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        headers: { accept: "application/json" },
+        redirect: "error",
+        signal,
+      });
+    } catch (error) {
+      recordFlashprofitsRequest(signal.aborted ? "timeout" : "network_error");
+      throw error;
+    }
+    recordFlashprofitsRequest(response.status);
     if (!response.ok) throw new Error(`Flashprofits request failed with status ${response.status}`);
     const result = responseSchema.safeParse(await response.json());
     if (!result.success) throw new Error("Flashprofits returned an invalid quote response");
