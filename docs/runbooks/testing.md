@@ -10,6 +10,11 @@ Run `pnpm run typecheck`, `pnpm run lint`, `pnpm run format:check`, `pnpm test`,
 `pnpm run verify:cdn` compares Swagger's pinned npm archive, CDN bytes, and
 committed SHA-384 hashes. It checks both CSS and JavaScript.
 
+If local HTTP tests time out or `tsx` reports `listen EPERM`, check whether the
+sandbox blocks loopback listeners or local IPC sockets. If it does, rerun the
+same command with access to the required socket. This can affect `pnpm test`
+and `pnpm run dead-flags`.
+
 ## Browser checks
 
 Install the browsers once with `pnpm exec playwright install chromium webkit`.
