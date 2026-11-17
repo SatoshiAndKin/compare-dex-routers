@@ -4,6 +4,8 @@ import { logger } from "./logger.js";
 import { fetchFlashprofitsTokenlist } from "./tokenlists.js";
 
 const REFRESH_INTERVAL_MS = 60_000;
+// Allow the Flashprofits ten-second request budget plus transport overhead.
+const UPSTREAM_TIMEOUT_MS = 12_000;
 
 const GraphTokenSchema = z.object({
   chainId: z.number().int().positive(),
@@ -44,7 +46,9 @@ class FlashprofitsTokenlist {
 
   private async refresh() {
     try {
-      const entries = z.array(z.unknown()).parse(await fetchFlashprofitsTokenlist(this.url));
+      const entries = z
+        .array(z.unknown())
+        .parse(await fetchFlashprofitsTokenlist(this.url, UPSTREAM_TIMEOUT_MS));
       const unique = new Map<string, Token>();
       for (const entry of entries) {
         const { data } = GraphTokenSchema.safeParse(entry);

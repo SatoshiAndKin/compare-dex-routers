@@ -187,6 +187,7 @@ describe("server integration", () => {
     };
     vi.stubEnv("FLASHPROFITS_BASE_URL", new URL(upstream).origin);
     const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const upstreamDeadline = vi.spyOn(AbortSignal, "timeout");
     const fetchUpstream = vi.fn().mockImplementation(async () => Response.json([]));
     vi.stubGlobal("fetch", fetchUpstream);
     const route = baseUrl + "/allowed-tokenlist.json";
@@ -207,6 +208,7 @@ describe("server integration", () => {
       );
       const [first, second] = await Promise.all([request(route), request(route)]);
       expect(first.status).toBe(200);
+      expect(upstreamDeadline).toHaveBeenCalledWith(12_000);
       const expectedTokens = [{ ...token, address: token.address.toLowerCase(), name: "USDC" }];
       expect(JSON.parse(first.body)).toEqual({
         name: "Flashprofits allowed token list",
@@ -224,6 +226,7 @@ describe("server integration", () => {
       });
     } finally {
       now.mockRestore();
+      upstreamDeadline.mockRestore();
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
     }

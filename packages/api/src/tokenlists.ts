@@ -3,10 +3,13 @@ import { basename, resolve } from "node:path";
 import { z } from "zod";
 import { logger } from "./logger.js";
 
-export async function fetchFlashprofitsTokenlist(url: string | URL): Promise<unknown> {
+export async function fetchFlashprofitsTokenlist(
+  url: string | URL,
+  timeoutMs: number
+): Promise<unknown> {
   const response = await fetch(url, {
     headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(2_000),
+    signal: AbortSignal.timeout(timeoutMs),
     redirect: "error",
   });
   if (!response.ok) throw new Error("Flashprofits returned HTTP " + String(response.status));
