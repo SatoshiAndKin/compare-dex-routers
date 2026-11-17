@@ -4,6 +4,7 @@ import http from "node:http";
 import { existsSync } from "node:fs";
 import { TokenlistFiles } from "./tokenlists.js";
 import { loadBlockedTokenlist, type BlockDetails } from "./blocked-tokenlist.js";
+import { loadFlashprofitsTokenlist } from "./flashprofits-tokenlist.js";
 import { createManagedServer } from "./shutdown.js";
 import { docsAssets, docsAssetUrl } from "./docs-assets.js";
 import { pathToFileURL } from "node:url";
@@ -221,6 +222,20 @@ window.onload = function() {
   }
 
   const tokenSafetyFilter = url.searchParams.get("tokenSafetyFilter") !== "false";
+
+  if (url.pathname === "/allowed-tokenlist.json" && req.method === "GET") {
+    const list = await loadFlashprofitsTokenlist();
+    if (!list) {
+      sendJson(res, 503, {
+        code: "TOKENLIST_UNAVAILABLE",
+        error: "The Flashprofits allowed token list is unavailable.",
+        requestId,
+      });
+      return;
+    }
+    sendJson(res, 200, list);
+    return;
+  }
 
   if (url.pathname === "/blocked-tokenlist.json" && req.method === "GET") {
     const blocked = await loadBlockedTokenlist();

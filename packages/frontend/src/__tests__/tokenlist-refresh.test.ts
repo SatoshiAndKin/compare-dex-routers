@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   tokenListStore as store,
   DEFAULT_UNISWAP_URL,
+  FLASHPROFITS_ALLOWED_PATH,
 } from "../lib/stores/tokenListStore.svelte.js";
 import { deferred } from "./quote-fixture.js";
 
@@ -106,7 +107,7 @@ describe("daily and manual token-list refresh", () => {
     store.removeList(DEFAULT_UNISWAP_URL);
     pending.resolve(new Response(JSON.stringify({ name: "Late", tokens: [token] })));
     await refresh;
-    expect(store.lists.map((entry) => entry.url)).toEqual([null]);
+    expect(store.lists.map((entry) => entry.url)).toEqual([null, FLASHPROFITS_ALLOWED_PATH]);
   });
 
   it("skips disabled lists and stops requests and timers on unmount", async () => {

@@ -3,6 +3,16 @@ import { basename, resolve } from "node:path";
 import { z } from "zod";
 import { logger } from "./logger.js";
 
+export async function fetchFlashprofitsTokenlist(url: string | URL): Promise<unknown> {
+  const response = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(2_000),
+    redirect: "error",
+  });
+  if (!response.ok) throw new Error("Flashprofits returned HTTP " + String(response.status));
+  return response.json();
+}
+
 const payloadSchema = z.object({
   name: z.string().optional(),
   tokens: z.preprocess(

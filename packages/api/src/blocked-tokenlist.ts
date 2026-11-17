@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { logger } from "./logger.js";
+import { fetchFlashprofitsTokenlist } from "./tokenlists.js";
 
 const REFRESH_INTERVAL_MS = 60_000;
-const UPSTREAM_TIMEOUT_MS = 2_000;
 
 const ExtensionPartSchema = z.string().min(1).max(42);
 const ExtensionTextSchema = z.union([
@@ -118,14 +118,8 @@ class BlockedTokenlist {
 
   private async refresh() {
     try {
-      const response = await fetch(this.url, {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-        redirect: "error",
-      });
-      if (!response.ok) throw new Error("Flashprofits returned HTTP " + String(response.status));
       this.current = new BlockedTokenlistSnapshot(
-        BlockedTokenlistSchema.parse(await response.json())
+        BlockedTokenlistSchema.parse(await fetchFlashprofitsTokenlist(this.url))
       );
     } catch {
       logger.warn("Flashprofits blocked token list refresh failed");

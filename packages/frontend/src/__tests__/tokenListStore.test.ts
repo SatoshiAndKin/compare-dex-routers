@@ -5,6 +5,7 @@ import {
   DEFAULT_TOKENLIST_NAME,
   LOCAL_TOKENS_SOURCE_NAME,
   DEFAULT_UNISWAP_URL,
+  FLASHPROFITS_ALLOWED_PATH,
   type Token,
 } from "../lib/stores/tokenListStore.svelte.js";
 
@@ -181,8 +182,6 @@ describe("tokenListStore", () => {
     mockGetImpl = async () => ({ error: { error: "Server error" } });
     // Should not throw
     await expect(tokenListStore.init()).resolves.not.toThrow();
-    // Built-in default (empty due to API error) + auto-added Uniswap list
-    expect(tokenListStore.lists).toHaveLength(2);
     expect(tokenListStore.lists[0]).toMatchObject({
       url: null,
       name: "Built-in Tokenlist",
@@ -195,6 +194,9 @@ describe("tokenListStore", () => {
       name: "Uniswap Labs Default",
       enabled: true,
     });
+    expect(
+      tokenListStore.lists.find((list) => list.url === FLASHPROFITS_ALLOWED_PATH)
+    ).toMatchObject({ enabled: true, tokens: [], error: "List unavailable." });
   });
 
   it("init() is idempotent — only runs once", async () => {

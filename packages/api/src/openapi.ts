@@ -323,6 +323,18 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/allowed-tokenlist.json",
+  operationId: "getAllowedTokenlist",
+  summary: "Get the Flashprofits allowed token list",
+  description: "Returns eligible assets from the Flashprofits routing graph with token metadata.",
+  responses: {
+    200: jsonContent(TokenListEntrySchema, "Flashprofits allowed token list"),
+    503: errorResponse("No Flashprofits allowed token list is available"),
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/blocked-tokenlist.json",
   operationId: "getBlockedTokenlist",
   summary: "Get the public Flashprofits blocked token list",
@@ -426,7 +438,7 @@ for (const path of Object.values(openapiDocument.paths)) {
   for (const method of ["get", "post", "put", "patch", "delete", "options", "head"] as const) {
     const operation = path[method];
     if (operation)
-      operation.responses["503"] = {
+      operation.responses["503"] ??= {
         description: "Server is shutting down; retry on an available instance",
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
       };

@@ -177,6 +177,58 @@ describe("server integration", () => {
     expect(res.status).toBe(404);
   });
 
+  it("serves usable Flashprofits graph tokens and retains them during a failed refresh", async () => {
+    const upstream = "https://flashprofits.example/api/v1/tokenlist.json";
+    const token = {
+      address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      chainId: 1,
+      symbol: "USDC",
+      decimals: 6,
+    };
+    vi.stubEnv("FLASHPROFITS_BASE_URL", new URL(upstream).origin);
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const fetchUpstream = vi.fn().mockImplementation(async () => Response.json([]));
+    vi.stubGlobal("fetch", fetchUpstream);
+    const route = baseUrl + "/allowed-tokenlist.json";
+    try {
+      const cold = await request(route);
+      expect(cold.status).toBe(503);
+      expect(JSON.parse(cold.body).code).toBe("TOKENLIST_UNAVAILABLE");
+
+      now.mockReturnValue(61_001);
+      fetchUpstream.mockImplementationOnce(async () =>
+        Response.json([
+          token,
+          { ...token, address: token.address.toLowerCase() },
+          { ...token, address: "0x0000000000000000000000000000000000000000", symbol: "ETH" },
+          { ...token, address: "0x1111111111111111111111111111111111111111", decimals: null },
+          { ...token, address: "0x2222222222222222222222222222222222222222", symbol: null },
+        ])
+      );
+      const [first, second] = await Promise.all([request(route), request(route)]);
+      expect(first.status).toBe(200);
+      const expectedTokens = [{ ...token, address: token.address.toLowerCase(), name: "USDC" }];
+      expect(JSON.parse(first.body)).toEqual({
+        name: "Flashprofits allowed token list",
+        tokens: expectedTokens,
+      });
+      expect(second.body).toBe(first.body);
+      expect(fetchUpstream).toHaveBeenCalledTimes(2);
+      expect(fetchUpstream.mock.calls.map(([url]) => String(url))).toEqual([upstream, upstream]);
+
+      now.mockReturnValue(121_002);
+      const stale = await request(route);
+      expect(JSON.parse(stale.body)).toMatchObject({
+        tokens: expectedTokens,
+        error: "Showing last valid list.",
+      });
+    } finally {
+      now.mockRestore();
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("republishes the Flashprofits list, filters token choices, and explains blocked addresses", async () => {
     const address = "0xce3f08e664693ca792cace4af1364d5e220827b2";
     const token = { chainId: 1, address, name: "Old Saitama", symbol: "SAITAMA", decimals: 9 };

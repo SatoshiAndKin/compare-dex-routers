@@ -92,6 +92,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/allowed-tokenlist.json": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get the Flashprofits allowed token list
+     * @description Returns eligible assets from the Flashprofits routing graph with token metadata.
+     */
+    get: operations["getAllowedTokenlist"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/blocked-tokenlist.json": {
     parameters: {
       query?: never;
@@ -715,6 +735,35 @@ export interface operations {
       };
     };
   };
+  getAllowedTokenlist: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Flashprofits allowed token list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TokenListEntry"];
+        };
+      };
+      /** @description No Flashprofits allowed token list is available */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
   getBlockedTokenlist: {
     parameters: {
       query?: never;
@@ -772,7 +821,7 @@ export interface operations {
           };
         };
       };
-      /** @description Server is shutting down; retry on an available instance */
+      /** @description No Flashprofits blocked token list is available */
       503: {
         headers: {
           [name: string]: unknown;

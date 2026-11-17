@@ -79,6 +79,7 @@ alive.
 | `GET`  | `/quote`                      | All provider results, failures, and recommendation                          |
 | `GET`  | `/tokenlist`                  | Token lists                                        |
 | `GET`  | `/token-metadata`             | On-chain token metadata lookup                     |
+| `GET`  | `/allowed-tokenlist.json`     | Flashprofits routing graph tokens for the selectors |
 | `GET`  | `/blocked-tokenlist.json`     | Public mirror of the Flashprofits blocked list     |
 | `GET`  | `/metrics`                    | Prometheus-compatible metrics                      |
 | `GET`  | `/analytics`                  | Quote analytics summary                            |
@@ -108,7 +109,14 @@ Settings, and the browser saves it across chains. A threshold of 0% warns on
 any shortfall. If either price is unavailable, the dialog shows that it could
 not check the price.
 
-## Blocked tokens
+## Allowed and denied token lists
+
+CDR includes tokens from the Flashprofits routing graph in both selectors by
+default. In Settings, clear **Flashprofits allowed token list** to exclude that
+source. Tokens from other enabled lists remain available. The API reads
+`/api/v1/tokenlist.json` from `FLASHPROFITS_BASE_URL`, skips entries with missing
+metadata, and keeps the last usable list if a refresh fails. The denied list
+also applies to tokens from this source.
 
 The API checks the reviewed Flashprofits list for updates on demand, at most
 once per minute. It keeps the last valid copy in memory if a refresh fails.
