@@ -13,6 +13,11 @@ Run `pnpm run typecheck`, `pnpm run lint`, `pnpm run format:check`, `pnpm test`,
 `pnpm run verify:cdn` compares Swagger's pinned npm archive, CDN bytes, and
 committed SHA-384 hashes. It checks both CSS and JavaScript.
 
+For optional local checks, use `pnpm run lint:fix` or `pnpm run format`
+to apply fixes. Use `pnpm run test:coverage` for the coverage report.
+The API suite uses Vitest with mocked viem and Spandex dependencies. Its
+coverage threshold is 80%. The frontend suite uses Testing Library and jsdom.
+
 If local HTTP tests time out or `tsx` reports `listen EPERM`, check whether the
 sandbox blocks loopback listeners or local IPC sockets. If it does, rerun the
 same command with access to the required socket. This can affect `pnpm test`
