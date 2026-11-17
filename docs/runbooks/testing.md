@@ -71,12 +71,17 @@ health, restart counts, CPU caps, and nginx's stop signal.
 
 ## Dependency audit limits
 
-`pnpm audit --audit-level=high` gates CI. CI reports
-[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) as a
-warning for the locked `picomatch` versions 2.3.2 and 4.0.7. The API image and
-browser assets for revision `a427862` contain neither version. Review the
-exception if either dependency path changes. Remove it when patched versions
-are available. Axios uses the patched 1.18.0 release.
+CI runs `pnpm audit --audit-level=high` against the workspace lockfile. When
+the audit reports high or critical findings, CI builds the API image and the
+frontend builder stage. It compares the affected package names and versions
+with the installed API packages, the browser bundle's Vite module metadata,
+and the pinned Swagger UI package. Matching findings fail CI. Other high and
+critical findings appear as warnings, including findings in build and test
+tools. Audit or inventory failures fail the check.
+
+The check uses package metadata. It cannot identify code embedded in a
+third-party bundle without package metadata. The audit still covers the
+workspace lockfile, including dependencies that the app does not ship.
 
 The 2026-09-12 local run passed all four fork trades at Ethereum block 25963441
 and Base block 51226066. See [fork evidence](../fork-validation.json) for the local
