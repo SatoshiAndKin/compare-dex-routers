@@ -1,6 +1,9 @@
 # Validation and local fork trades
 
-Use Node 24.21.0, pnpm 12.3.1, and Bun 1.4.0. Install dependencies with
+Use the same tool versions as CI. Get the Node.js version from
+[`.node-version`](../../.node-version), the pnpm version from `packageManager` in
+[`package.json`](../../package.json), and the Bun version from `bun-version` in
+the [CI workflow](../../.github/workflows/ci.yml). Install dependencies with
 `pnpm install --frozen-lockfile`.
 
 ## Repository checks
