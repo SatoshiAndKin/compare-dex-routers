@@ -5,6 +5,7 @@ interface MetricEntry {
 }
 
 const requestMetrics = new Map<string, MetricEntry>();
+const flashprofitsRequests = new Map<string, number>();
 let totalRequests = 0;
 let totalErrors = 0;
 const startTime = Date.now();
@@ -25,6 +26,11 @@ export function recordRequest(path: string, durationMs: number, isError: boolean
       lastMs: durationMs,
     });
   }
+}
+
+export function recordFlashprofitsRequest(status: number | "timeout" | "network_error"): void {
+  const outcome = String(status);
+  flashprofitsRequests.set(outcome, (flashprofitsRequests.get(outcome) ?? 0) + 1);
 }
 
 export function getMetrics(): string {
@@ -54,6 +60,12 @@ export function getMetrics(): string {
   lines.push(`# TYPE spandex_request_count counter`);
   for (const [path, metric] of requestMetrics) {
     lines.push(`spandex_request_count{path="${path}"} ${metric.count}`);
+  }
+
+  lines.push("# HELP flashprofits_upstream_requests_total Flashprofits HTTP requests by outcome");
+  lines.push("# TYPE flashprofits_upstream_requests_total counter");
+  for (const [outcome, count] of flashprofitsRequests) {
+    lines.push(`flashprofits_upstream_requests_total{outcome="${outcome}"} ${count}`);
   }
 
   return lines.join("\n") + "\n";

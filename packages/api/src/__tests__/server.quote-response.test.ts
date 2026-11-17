@@ -220,6 +220,8 @@ describe("unified quote contract", () => {
     const { body } = await call({ sender: "", to: TO });
     const result = QuoteResponseSchema.parse(body);
     expect(remote).toHaveBeenCalledTimes(1);
+    const { getMetrics } = await import("../metrics.js");
+    expect(getMetrics()).toContain('flashprofits_upstream_requests_total{outcome="200"} 1\n');
     expect(result.quotes.slice(0, 2).map(({ provider }) => provider)).toEqual([
       "Flashprofits Electric",
       "Flashprofits Direct",
@@ -246,6 +248,42 @@ describe("unified quote contract", () => {
       "Flashprofits Electric",
       "Flashprofits Direct",
     ]);
+    const { getMetrics } = await import("../metrics.js");
+    expect(getMetrics()).toContain('flashprofits_upstream_requests_total{outcome="503"} 1\n');
+  });
+
+  it("counts an aborted Flashprofits fetch once for both failed routes", async () => {
+    const controller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    const remote = vi.spyOn(globalThis, "fetch");
+    remote.mockImplementation((_input, init) => {
+      const signal = init?.signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    });
+    const { fetchFlashprofitsPrices } = await import("../flashprofits.js");
+    const { getMetrics } = await import("../metrics.js");
+    const request = fetchFlashprofitsPrices(
+      "http://flashprofits.flashprofits.svc.cluster.local:3000",
+      {
+        chainId: 1,
+        inputToken: FROM,
+        outputToken: TO,
+        swapperAccount: PREVIEW,
+        slippageBps: 50,
+        mode: "exactIn",
+        inputAmount: 1000000n,
+      },
+      10_000
+    );
+    controller.abort();
+    expect(await request).toMatchObject([
+      { success: false, provider: "Flashprofits Electric" },
+      { success: false, provider: "Flashprofits Direct" },
+    ]);
+    expect(remote).toHaveBeenCalledTimes(1);
+    expect(getMetrics()).toContain('flashprofits_upstream_requests_total{outcome="timeout"} 1\n');
   });
 
   it("uses the 0x indicative endpoint for wallet-free comparisons and ETH valuation", async () => {
