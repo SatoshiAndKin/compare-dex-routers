@@ -357,8 +357,18 @@ window.onload = function() {
       return;
 
     const startTime = Date.now();
+    const cancellation = new AbortController();
+    const onClose = () => cancellation.abort();
+    res.once("close", onClose);
+    if (res.destroyed) onClose();
     try {
-      const result = await quoteRoutes(parsed.data, blocked, tokenSafetyFilter);
+      const result = await quoteRoutes(
+        parsed.data,
+        blocked,
+        tokenSafetyFilter,
+        cancellation.signal
+      );
+      if (res.destroyed) return;
       const duration = Date.now() - startTime;
       logger.info(
         `Quote: chain=${chainId} ${from} -> ${to}, amount=${amount}, mode=${mode}, recommendation=${result.recommendation}, ${duration}ms`
@@ -376,6 +386,7 @@ window.onload = function() {
         });
       sendJson(res, 200, result);
     } catch (err) {
+      if (res.destroyed) return;
       const duration = Date.now() - startTime;
       logger.error({ err, chainId, from, to, duration }, "Quote failed");
       recordRequest("/quote", duration, true);
@@ -389,6 +400,8 @@ window.onload = function() {
       });
       trackError(err, `quote:${chainId}:${from}-${to}`);
       sendError(res, 500, "Request failed. Please try again.");
+    } finally {
+      res.off("close", onClose);
     }
     return;
   }

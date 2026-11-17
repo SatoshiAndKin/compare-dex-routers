@@ -71,7 +71,8 @@ async function requestQuotes(
   params: QuoteParams,
   metadata: TokenMetadata,
   blocklist: BlockedTokenlistSnapshot | undefined,
-  tokenSafetyFilter: boolean
+  tokenSafetyFilter: boolean,
+  signal?: AbortSignal
 ) {
   const { inputDecimals, outputDecimals, fromSymbol, toSymbol } = metadata;
   const common = {
@@ -93,7 +94,7 @@ async function requestQuotes(
   const flashprofitsUrl = process.env.FLASHPROFITS_BASE_URL;
   const flashprofits =
     flashprofitsUrl && swap.chainId === 1
-      ? fetchFlashprofitsPrices(flashprofitsUrl, swap, deadline, preview ? undefined : client)
+      ? fetchFlashprofitsPrices(flashprofitsUrl, swap, signal, preview ? undefined : client)
       : null;
   const indicativePrice =
     preview && zeroXApiKey && swap.mode === "exactIn"
@@ -333,7 +334,8 @@ async function nativeRate(chainId: number, token: string, decimals: number) {
 export async function quoteRoutes(
   params: QuoteParams,
   blocklist?: BlockedTokenlistSnapshot,
-  tokenSafetyFilter = true
+  tokenSafetyFilter = true,
+  signal?: AbortSignal
 ): Promise<QuoteResponse> {
   const [inputDecimals, outputDecimals, fromSymbol, toSymbol] = await Promise.all([
     getTokenDecimals(params.chainId, params.from),
@@ -356,7 +358,8 @@ export async function quoteRoutes(
       params,
       { inputDecimals, outputDecimals, fromSymbol, toSymbol },
       blocklist,
-      tokenSafetyFilter
+      tokenSafetyFilter,
+      signal
     ),
     getQuoteUsdPrices(params.chainId, params.from, params.to),
     getGasPriceWithCache(params.chainId, getClient(params.chainId)),
