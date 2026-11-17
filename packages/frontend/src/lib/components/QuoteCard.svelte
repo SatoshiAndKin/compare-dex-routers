@@ -53,6 +53,16 @@
 
   const needsApproval = $derived(Boolean(quote?.execution?.approval));
   const canSwap = $derived(Boolean(quote?.execution));
+  const hasBlockedSelectedToken = $derived.by(() => {
+    if (!quote?.blocked_tokens?.length) return false;
+    const { chainId, from, to } = quote;
+    return quote.blocked_tokens.some(
+      (token) =>
+        token.chainId === chainId &&
+        (token.address.toLowerCase() === from.toLowerCase() ||
+          token.address.toLowerCase() === to.toLowerCase())
+    );
+  });
   const validContext = $derived(quote !== null && transactionStore.matches(quote));
   const walletCheck = $derived(quote ? transactionStore.getCheck(quote) : null);
   const approveStatus = $derived(quote ? transactionStore.getApproveStatus(quote) : "idle");
@@ -186,16 +196,23 @@
                 <button
                   type="button"
                   class="tx-btn swap-btn"
+                  class:blocked-token={hasBlockedSelectedToken}
                   disabled={transactionStore.busy ||
                     !validContext ||
                     walletCheck?.status !== "ready" ||
                     (needsApproval && !approveConfirmed) ||
                     swapPending}
-                  aria-label={swapPending ? "Swap in progress..." : "Execute swap"}
+                  aria-label={swapPending
+                    ? "Swap in progress..."
+                    : hasBlockedSelectedToken
+                      ? undefined
+                      : "Execute swap"}
                   onclick={handleSwap}
                 >
                   {#if swapPending}
                     Swapping...
+                  {:else if hasBlockedSelectedToken}
+                    Swap possibly malicious token
                   {:else}
                     Swap
                   {/if}
@@ -385,6 +402,11 @@
   .tx-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .swap-btn.blocked-token {
+    --accent: var(--red);
+    --accent-hover: color-mix(in srgb, var(--red), var(--text-inverse) 10%);
   }
 
   .approve-btn.confirmed {
