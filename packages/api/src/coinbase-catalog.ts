@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getNativeAsset, getTokenDecimals } from "./config.js";
+import { getNativeAsset, getTokenDecimals, getTokenSymbol, SUPPORTED_CHAINS } from "./config.js";
 import type { QuoteParams } from "./quote.js";
 
 export class CoinbaseError extends Error {}
@@ -110,18 +110,20 @@ async function loadCatalog(): Promise<Catalog> {
 }
 
 export async function resolveCoinbasePair(params: QuoteParams) {
-  const networkId = networks[params.chainId];
-  if (!networkId || params.from.toLowerCase() === params.to.toLowerCase())
+  const { chainId } = params;
+  const networkId = networks[chainId];
+  const chain = SUPPORTED_CHAINS[chainId];
+  if (!chain || !networkId || params.from.toLowerCase() === params.to.toLowerCase())
     throw new CoinbaseError("Select two different Coinbase assets on a supported chain.");
   const catalog = await loadCatalog();
-  const identify = async (address: string) => {
+  const identify = (address: string) => {
     const normalized = address.toLowerCase();
     const native =
       normalized === NATIVE || normalized === "0x0000000000000000000000000000000000000000";
     const matches = catalog.currencies.filter((currency) =>
       currency.supported_networks.some((network) => {
         if (network.id !== networkId) return false;
-        if (native) return currency.id === getNativeAsset(params.chainId).symbol;
+        if (native) return currency.id === getNativeAsset(chainId).symbol;
         // Some Coinbase wrapped-asset entries publish identity in the token URL.
         const linked = network.crypto_address_link?.match(
           /\/token\/(0x[0-9a-f]{40})(?:[/?#]|$)/i
@@ -132,17 +134,28 @@ export async function resolveCoinbasePair(params: QuoteParams) {
       })
     );
     const ids = [...new Set(matches.map((currency) => currency.id))];
-    const [symbol] = ids;
-    if (ids.length !== 1 || !symbol)
-      throw new CoinbaseError(
-        "Coinbase does not publish an unambiguous identity for this chain/token address."
-      );
-    const decimals = await getTokenDecimals(params.chainId, address);
+    return ids.length === 1 ? ids[0] : undefined;
+  };
+  const fromSymbol = identify(params.from);
+  const toSymbol = identify(params.to);
+  if (!fromSymbol || !toSymbol) {
+    const address = fromSymbol ? params.to : params.from;
+    const symbol = (await getTokenSymbol(chainId, address).catch(() => "")).trim();
+    const token = symbol ? `${symbol} (${address})` : `the token at ${address}`;
+    throw new CoinbaseError(
+      `Coinbase does not publish an unambiguous identity for ${token} on ${chain.name}.`
+    );
+  }
+  const resolveDecimals = async (symbol: string, address: string) => {
+    const decimals = await getTokenDecimals(chainId, address);
     if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255)
       throw new CoinbaseError("Token decimal precision is not supported by the Coinbase estimate.");
     return { symbol, decimals };
   };
-  const [from, to] = await Promise.all([identify(params.from), identify(params.to)]);
+  const [from, to] = await Promise.all([
+    resolveDecimals(fromSymbol, params.from),
+    resolveDecimals(toSymbol, params.to),
+  ]);
   if (from.symbol === to.symbol)
     throw new CoinbaseError(
       "These tokens represent the same Coinbase asset; no exchange trade is needed."

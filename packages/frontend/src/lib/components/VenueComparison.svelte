@@ -518,6 +518,7 @@
     min-height: 1.5em;
     color: var(--text-muted);
     font-size: 0.75rem;
+    overflow-wrap: anywhere;
   }
   .dex-actions,
   .coinbase-actions {

@@ -1,12 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { QuoteParams } from "../quote.js";
 
-const decimalsMock = vi.hoisted(() => vi.fn());
+const { decimalsMock, symbolMock } = vi.hoisted(() => ({
+  decimalsMock: vi.fn(),
+  symbolMock: vi.fn(),
+}));
 vi.mock("../config.js", () => ({
+  SUPPORTED_CHAINS: {
+    1: { name: "Ethereum" },
+    10: { name: "Optimism" },
+    56: { name: "BSC" },
+    8453: { name: "Base" },
+    42161: { name: "Arbitrum" },
+  },
   getNativeAsset: (chainId: number) => ({
     symbol: chainId === 137 ? "POL" : chainId === 43114 ? "AVAX" : chainId === 56 ? "BNB" : "ETH",
   }),
   getTokenDecimals: decimalsMock,
+  getTokenSymbol: symbolMock,
 }));
 
 const ETH = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
@@ -29,6 +40,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
+  symbolMock.mockReset().mockResolvedValue("");
   decimalsMock
     .mockReset()
     .mockImplementation(async (_chainId: number, address: string) =>
@@ -354,19 +366,25 @@ describe("Coinbase asset catalog", () => {
   });
   it("rejects the real contract on a different chain", async () => {
     const bal = balMarket();
+    symbolMock.mockResolvedValue("BAL");
     expect(
       await estimate({ chainId: 8453, from: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", to: bal })
-    ).toMatchObject({ status: "unavailable", reason: expect.stringContaining("identity") });
+    ).toEqual({
+      status: "unavailable",
+      reason: `Coinbase does not publish an unambiguous identity for BAL (${bal}) on Base.`,
+    });
+    expect(symbolMock).toHaveBeenCalledWith(8453, bal);
   });
   it("rejects conflicting Coinbase identities for the same contract", async () => {
     const bal = balMarket();
+    symbolMock.mockRejectedValue(new Error("RPC unavailable"));
     currencies.push({
       id: "OTHER",
       supported_networks: [{ id: "ethereum", contract_address: bal }],
     });
-    expect(await estimate({ to: bal })).toMatchObject({
+    expect(await estimate({ from: bal, to: USDC })).toEqual({
       status: "unavailable",
-      reason: expect.stringContaining("unambiguous"),
+      reason: `Coinbase does not publish an unambiguous identity for the token at ${bal} on Ethereum.`,
     });
   });
   it("uses explicit Coinbase token links when its contract field is empty", async () => {
