@@ -254,7 +254,6 @@ describe("unified quote contract", () => {
 
   it("counts an aborted Flashprofits fetch once for both failed routes", async () => {
     const controller = new AbortController();
-    vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
     const remote = vi.spyOn(globalThis, "fetch");
     remote.mockImplementation((_input, init) => {
       const signal = init?.signal;
@@ -275,7 +274,7 @@ describe("unified quote contract", () => {
         mode: "exactIn",
         inputAmount: 1000000n,
       },
-      10_000
+      controller.signal
     );
     controller.abort();
     expect(await request).toMatchObject([
@@ -283,7 +282,45 @@ describe("unified quote contract", () => {
       { success: false, provider: "Flashprofits Direct" },
     ]);
     expect(remote).toHaveBeenCalledTimes(1);
-    expect(getMetrics()).toContain('flashprofits_upstream_requests_total{outcome="timeout"} 1\n');
+    expect(getMetrics()).toContain('flashprofits_upstream_requests_total{outcome="cancelled"} 1\n');
+  });
+
+  it("cancels the pending Flashprofits call when the quote client disconnects", async () => {
+    const base = "http://flashprofits.flashprofits.svc.cluster.local:3000";
+    vi.stubEnv("FLASHPROFITS_BASE_URL", base);
+    const upstreamStarted = Promise.withResolvers<undefined>();
+    const upstreamClosed = Promise.withResolvers<undefined>();
+    const original = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (!String(input).startsWith(base)) return original(input, init);
+      const signal = init?.signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener(
+          "abort",
+          () => {
+            upstreamClosed.resolve(undefined);
+            reject(signal.reason);
+          },
+          { once: true }
+        );
+        upstreamStarted.resolve(undefined);
+      });
+    });
+
+    const query = new URLSearchParams({
+      chainId: "1",
+      from: FROM,
+      to: TO,
+      amount: "1",
+      slippageBps: "50",
+    });
+    const target = new URL("/quote", url);
+    target.search = query.toString();
+    const request = http.get(target);
+    request.on("error", () => {});
+    await upstreamStarted.promise;
+    request.destroy();
+    await upstreamClosed.promise;
   });
 
   it("uses the 0x indicative endpoint for wallet-free comparisons and ETH valuation", async () => {

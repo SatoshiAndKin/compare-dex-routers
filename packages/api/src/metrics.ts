@@ -28,7 +28,9 @@ export function recordRequest(path: string, durationMs: number, isError: boolean
   }
 }
 
-export function recordFlashprofitsRequest(status: number | "timeout" | "network_error"): void {
+export function recordFlashprofitsRequest(
+  status: number | "cancelled" | "timeout" | "network_error"
+): void {
   const outcome = String(status);
   flashprofitsRequests.set(outcome, (flashprofitsRequests.get(outcome) ?? 0) + 1);
 }

@@ -159,30 +159,13 @@ async function price(
 export async function fetchFlashprofitsPrices(
   baseUrl: string,
   swap: SwapParams,
-  deadlineMs: number,
+  signal?: AbortSignal,
   client?: PublicClient
 ): Promise<Array<FlashprofitsPrice | FlashprofitsFailure>> {
-  const signal = AbortSignal.timeout(deadlineMs);
-  const failures = (error: Error): FlashprofitsFailure[] =>
-    Object.values(providers).map((provider) => ({ success: false, provider, error }));
   try {
-    const prices = await Promise.race([
-      request(),
-      new Promise<never>((_, reject) =>
-        signal.addEventListener("abort", () => reject(new Error("Flashprofits quote timed out")), {
-          once: true,
-        })
-      ),
-    ]);
-    return prices;
-  } catch (failure) {
-    return failures(failure instanceof Error ? failure : new Error(String(failure)));
-  }
-
-  async function request() {
     const wallet =
       client && (await flashprofitsWallet(client, swap.swapperAccount).catch(() => null));
-    signal.throwIfAborted();
+    signal?.throwIfAborted();
     const url = new URL("/api/v2/swap-quote", baseUrl);
     url.searchParams.set("inputToken", swap.inputToken);
     url.searchParams.set("outputToken", swap.outputToken);
@@ -198,16 +181,25 @@ export async function fetchFlashprofitsPrices(
         signal,
       });
     } catch (error) {
-      recordFlashprofitsRequest(signal.aborted ? "timeout" : "network_error");
+      recordFlashprofitsRequest(
+        signal?.aborted
+          ? "cancelled"
+          : error instanceof Error && error.name === "TimeoutError"
+            ? "timeout"
+            : "network_error"
+      );
       throw error;
     }
     recordFlashprofitsRequest(response.status);
     if (!response.ok) throw new Error(`Flashprofits request failed with status ${response.status}`);
     const result = responseSchema.safeParse(await response.json());
     if (!result.success) throw new Error("Flashprofits returned an invalid quote response");
-    return Promise.all([
+    return await Promise.all([
       price(providers.electric, result.data.electric, swap, client, wallet),
       price(providers.direct, result.data.direct, swap, client, wallet),
     ]);
+  } catch (failure) {
+    const error = failure instanceof Error ? failure : new Error(String(failure));
+    return Object.values(providers).map((provider) => ({ success: false, provider, error }));
   }
 }
