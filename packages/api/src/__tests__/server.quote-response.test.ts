@@ -255,16 +255,13 @@ describe("unified quote contract", () => {
   it("counts an aborted Flashprofits fetch once for both failed routes", async () => {
     const controller = new AbortController();
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
-    const remote = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(
-        (_input, init) =>
-          new Promise((_resolve, reject) =>
-            init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
-              once: true,
-            })
-          )
-      );
+    const remote = vi.spyOn(globalThis, "fetch");
+    remote.mockImplementation((_input, init) => {
+      const signal = init?.signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    });
     const { fetchFlashprofitsPrices } = await import("../flashprofits.js");
     const { getMetrics } = await import("../metrics.js");
     const request = fetchFlashprofitsPrices(
