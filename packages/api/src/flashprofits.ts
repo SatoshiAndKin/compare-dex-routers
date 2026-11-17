@@ -173,6 +173,7 @@ export async function fetchFlashprofitsPrices(
     else url.searchParams.set("inputAmount", String(swap.inputAmount));
     if (wallet?.kind === "delegation" || wallet?.kind === "executor")
       url.searchParams.set("executionAccount", wallet.account);
+    else if (client) url.searchParams.set("rankingAccount", swap.swapperAccount);
     let response: Response;
     try {
       response = await fetch(url, {
