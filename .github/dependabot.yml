@@ -12,3 +12,32 @@ updates:
         dependency-type: development
       production-dependencies:
         dependency-type: production
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: docker
+    directories:
+      - /packages/api
+      - /packages/frontend
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: docker-compose
+    directories:
+      - /
+      - /e2e
+      - /traefik-proxy
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 3
