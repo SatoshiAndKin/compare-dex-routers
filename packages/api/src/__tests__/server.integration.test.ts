@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import * as config from "../config.js";
 import { handleRequest } from "../server.js";
+import { logger } from "../logger.js";
 
 const TEST_PORT = 0; // Let OS assign a free port
 
@@ -258,6 +259,7 @@ describe("server integration", () => {
       "https://flashprofits.example/api/v1/blocked-tokenlist.json"
     );
     const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
     const fetchUpstream = vi.fn().mockImplementation(async () => Response.json(list));
     vi.stubGlobal("fetch", fetchUpstream);
 
@@ -295,11 +297,26 @@ describe("server integration", () => {
       expect(fetchUpstream).toHaveBeenCalledTimes(1);
 
       now.mockReturnValue(61_001);
-      fetchUpstream.mockImplementationOnce(async () => Response.json({ tokens: [] }));
+      fetchUpstream.mockImplementationOnce(
+        async () => new Response("private-upstream-body", { status: 404 })
+      );
       const stale = await request(baseUrl + "/blocked-tokenlist.json");
       expect(JSON.parse(stale.body)).toEqual(list);
+      expect(warn).toHaveBeenCalledWith(
+        { reason: "http_status", upstreamStatus: 404, snapshotAgeMs: 60_001 },
+        "Flashprofits blocked token list refresh failed"
+      );
 
       now.mockReturnValue(121_002);
+      fetchUpstream.mockImplementationOnce(async () => Response.json({ tokens: [] }));
+      const invalid = await request(baseUrl + "/blocked-tokenlist.json");
+      expect(JSON.parse(invalid.body)).toEqual(list);
+      expect(warn).toHaveBeenCalledWith(
+        { reason: "invalid_blocklist", snapshotAgeMs: 120_002 },
+        "Flashprofits blocked token list refresh failed"
+      );
+
+      now.mockReturnValue(181_003);
       const replacement = {
         ...list,
         version: { major: 2, minor: 0, patch: 0 },
@@ -309,6 +326,7 @@ describe("server integration", () => {
       const refreshed = await request(baseUrl + "/tokenlist");
       expect(JSON.parse(refreshed.body).tokens).toEqual([token]);
     } finally {
+      warn.mockRestore();
       now.mockRestore();
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();

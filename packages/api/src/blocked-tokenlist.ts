@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { logger } from "./logger.js";
-import { fetchFlashprofitsTokenlist } from "./tokenlists.js";
+import { fetchFlashprofitsTokenlist, FlashprofitsTokenlistHttpError } from "./tokenlists.js";
 
 const REFRESH_INTERVAL_MS = 60_000;
 const UPSTREAM_TIMEOUT_MS = 2_000;
@@ -104,6 +104,7 @@ class BlockedTokenlist {
   private current: BlockedTokenlistSnapshot | undefined;
   private pending: Promise<BlockedTokenlistSnapshot | undefined> | undefined;
   private nextRefresh = 0;
+  private lastSuccessAt: number | undefined;
 
   constructor(private readonly url: string) {}
 
@@ -118,14 +119,30 @@ class BlockedTokenlist {
   }
 
   private async refresh() {
+    let stage = "fetch";
     try {
-      this.current = new BlockedTokenlistSnapshot(
-        BlockedTokenlistSchema.parse(
-          await fetchFlashprofitsTokenlist(this.url, UPSTREAM_TIMEOUT_MS)
-        )
+      const payload = await fetchFlashprofitsTokenlist(this.url, UPSTREAM_TIMEOUT_MS);
+      stage = "validation";
+      this.current = new BlockedTokenlistSnapshot(BlockedTokenlistSchema.parse(payload));
+      this.lastSuccessAt = Date.now();
+    } catch (error) {
+      // Keep upstream URLs, response bodies and validation details out of Sentry.
+      const diagnostics =
+        error instanceof FlashprofitsTokenlistHttpError
+          ? { reason: "http_status", upstreamStatus: error.status }
+          : error instanceof DOMException && error.name === "TimeoutError"
+            ? { reason: "timeout" }
+            : error instanceof SyntaxError
+              ? { reason: "invalid_json" }
+              : { reason: stage === "validation" ? "invalid_blocklist" : "fetch_failed" };
+      logger.warn(
+        {
+          ...diagnostics,
+          snapshotAgeMs:
+            this.lastSuccessAt === undefined ? null : Math.max(0, Date.now() - this.lastSuccessAt),
+        },
+        "Flashprofits blocked token list refresh failed"
       );
-    } catch {
-      logger.warn("Flashprofits blocked token list refresh failed");
     }
     return this.current;
   }
