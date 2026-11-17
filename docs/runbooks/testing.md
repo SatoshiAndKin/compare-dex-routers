@@ -1,6 +1,9 @@
 # Validation and local fork trades
 
-Use Node 24.21.0, pnpm 12.3.1, and Bun 1.4.0. Install dependencies with
+Use the same tool versions as CI. Get the Node.js version from
+[`.node-version`](../../.node-version), the pnpm version from `packageManager` in
+[`package.json`](../../package.json), and the Bun version from `bun-version` in
+the [CI workflow](../../.github/workflows/ci.yml). Install dependencies with
 `pnpm install --frozen-lockfile`.
 
 ## Repository checks
@@ -73,7 +76,18 @@ health, restart counts, CPU caps, and nginx's stop signal.
 
 ## Dependency audit limits
 
-`pnpm audit --audit-level=high` gates CI. Axios uses the patched 1.18.0 release.
+CI runs `pnpm audit --audit-level=high` against the workspace lockfile. When
+the audit reports high or critical findings, CI builds the API image and the
+frontend builder stage. It compares the affected package names and versions
+with the installed API packages, the browser bundle's Vite module metadata,
+and the pinned Swagger UI package. Matching findings fail CI. Other high and
+critical findings appear as warnings, including findings in build and test
+tools. Audit or inventory failures fail the check.
+
+The check uses package metadata. It cannot identify code embedded in a
+third-party bundle without package metadata. The audit still covers the
+workspace lockfile, including dependencies that the app does not ship.
+
 The 2026-09-12 local run passed all four fork trades at Ethereum block 25963441
 and Base block 51226066. See [fork evidence](../fork-validation.json) for the local
 transaction hashes and measured balances. These hashes exist only on the disposable
