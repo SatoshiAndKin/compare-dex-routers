@@ -31,6 +31,7 @@ jobs:
       - run: pnpm run lint
       - run: pnpm run format:check
       - run: pnpm test
+      - run: node --import tsx --test scripts/audit-runtime-dependencies.test.ts
       - name: Dead code check
         run: pnpm run dead-code
       - name: Duplicate code check
@@ -69,7 +70,49 @@ jobs:
         with:
           node-version-file: .node-version
       - name: Audit dependencies
-        run: pnpm audit --audit-level=high
+        id: dependency-audit
+        run: |
+          report="$RUNNER_TEMP/dependency-audit.json"
+          status=0
+          pnpm audit --audit-level=high --json > "$report" || status=$?
+          if [ "$status" -eq 0 ]; then
+            cat "$report"
+            exit 0
+          fi
+          if [ "$status" -ne 1 ] || ! jq -e '
+            (.advisories | type == "object") and
+            (.metadata.vulnerabilities | (.high + .critical) > 0)
+          ' "$report" > /dev/null; then
+            cat "$report"
+            exit "$status"
+          fi
+          echo 'classify=true' >> "$GITHUB_OUTPUT"
+      - name: Check which affected packages ship
+        if: steps.dependency-audit.outputs.classify == 'true'
+        run: |
+          docker build -f packages/api/Dockerfile -t compare-dex-audit-api .
+          docker build -f packages/frontend/Dockerfile --target builder \
+            --build-arg CDR_BROWSER_PACKAGE_INVENTORY=/tmp/browser-packages.json \
+            -t compare-dex-audit-frontend .
+          docker run --rm --entrypoint cat compare-dex-audit-frontend /tmp/browser-packages.json \
+            > "$RUNNER_TEMP/browser-packages.json"
+          docker run --rm --entrypoint node compare-dex-audit-api --input-type=module -e '
+            import { readFileSync, readdirSync } from "node:fs";
+            import { docsAssets } from "/app/packages/api/src/docs-assets.ts";
+            const packages = new Set();
+            for (const file of readdirSync("/app", { recursive: true })) {
+              if (!/(^|\/)node_modules\/(?:@[^/]+\/)?[^/]+\/package\.json$/.test(file)) continue;
+              const { name, version } = JSON.parse(readFileSync(`/app/${file}`, "utf8"));
+              if (typeof name !== "string" || !name || typeof version !== "string" || !version)
+                throw new Error(`Missing package identity in ${file}`);
+              packages.add(`${name}@${version}`);
+            }
+            if (!packages.size) throw new Error("API package inventory is empty");
+            packages.add(`swagger-ui-dist@${docsAssets.version}`);
+            console.log(JSON.stringify([...packages].sort()));
+          ' > "$RUNNER_TEMP/api-packages.json"
+          node scripts/audit-runtime-dependencies.ts "$RUNNER_TEMP/dependency-audit.json" \
+            "$RUNNER_TEMP/api-packages.json" "$RUNNER_TEMP/browser-packages.json"
       - name: Check for large files
         run: |
           find . -not -path './node_modules/*' -not -path './.git/*' -size +5M -type f | while read f; do

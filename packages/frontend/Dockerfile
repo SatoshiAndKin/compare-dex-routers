@@ -27,6 +27,7 @@ RUN pnpm install --frozen-lockfile --filter @compare-dex/frontend...
 COPY packages/frontend/ ./packages/frontend/
 
 # Build
+ARG CDR_BROWSER_PACKAGE_INVENTORY
 RUN pnpm --filter @compare-dex/frontend run build
 
 # Stage 2: Serve

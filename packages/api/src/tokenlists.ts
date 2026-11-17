@@ -3,6 +3,12 @@ import { basename, resolve } from "node:path";
 import { z } from "zod";
 import { logger } from "./logger.js";
 
+export class FlashprofitsTokenlistHttpError extends Error {
+  constructor(readonly status: number) {
+    super("Flashprofits returned HTTP " + String(status));
+  }
+}
+
 export async function fetchFlashprofitsTokenlist(
   url: string | URL,
   timeoutMs: number
@@ -12,7 +18,7 @@ export async function fetchFlashprofitsTokenlist(
     signal: AbortSignal.timeout(timeoutMs),
     redirect: "error",
   });
-  if (!response.ok) throw new Error("Flashprofits returned HTTP " + String(response.status));
+  if (!response.ok) throw new FlashprofitsTokenlistHttpError(response.status);
   return response.json();
 }
 
