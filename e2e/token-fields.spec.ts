@@ -99,6 +99,58 @@ test("keeps token fields compact with one full address and a working copy button
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test("toggles the allowed token list on both selectors and saves the choice", async ({ page }) => {
+  const tokens = [{ chainId: 1, address: YFI, name: "YFI", symbol: "YFI", decimals: 18 }];
+  const releaseList = deferred<undefined>();
+  await fixture(page);
+  await page.route("**/api/allowed-tokenlist.json", async (route) => {
+    await releaseList.promise;
+    await route.fulfill({ json: { name: "Flashprofits allowed token list", tokens } });
+  });
+  await page.goto("/?chainId=1&from=" + FROM + "&to=" + TO);
+  const openSettings = page.getByRole("button", { name: "Open settings" });
+  const closeSettings = page.getByRole("button", { name: "Close settings" });
+  const allowed = page.getByRole("checkbox", { name: "Flashprofits allowed token list" });
+  const denied = page.getByRole("checkbox", { name: "Filter blocked tokens and routes" });
+  await openSettings.click();
+  await expect(
+    page.getByRole("heading", { name: "Allowed token lists", exact: true })
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Flashprofits denied token list" })).toBeVisible();
+  await expect(allowed).toBeChecked();
+  await expect(denied).toBeChecked();
+  await allowed.scrollIntoViewIfNeeded();
+  const loadingPosition = await allowed.boundingBox();
+  releaseList.resolve(undefined);
+  await expect(allowed.locator("../..").getByText("1 token", { exact: true })).toBeVisible();
+  expect(await allowed.boundingBox()).toEqual(loadingPosition);
+  await closeSettings.click();
+
+  async function expectInBothSelectors(visible: boolean) {
+    for (const side of ["From", "To"]) {
+      const field = page.getByRole("combobox", { name: side + " token", exact: true });
+      await field.fill("YFI");
+      const option = page.getByRole("option", { name: /YFI/ });
+      if (visible) await expect(option).toBeVisible();
+      else await expect(option).toHaveCount(0);
+      await field.press("Escape");
+    }
+  }
+
+  await expectInBothSelectors(true);
+  await openSettings.click();
+  await allowed.uncheck();
+  await expect(denied).toBeChecked();
+  await closeSettings.click();
+  await expectInBothSelectors(false);
+  await page.reload();
+  await openSettings.click();
+  await expect(allowed).not.toBeChecked();
+  await allowed.check();
+  await closeSettings.click();
+  await expectInBothSelectors(true);
+});
+
 test("filters blocked tokens from both selectors and explains a pasted address", async ({
   page,
 }) => {
@@ -108,6 +160,9 @@ test("filters blocked tokens from both selectors and explains a pasted address",
   await fixture(page);
   await page.route("https://tokens.uniswap.org/**", (route) =>
     route.fulfill({ json: { name: "External list", tokens: [token] } })
+  );
+  await page.route("**/api/allowed-tokenlist.json", (route) =>
+    route.fulfill({ json: { name: "Flashprofits allowed token list", tokens: [token] } })
   );
   await page.addInitScript((saved) => {
     localStorage.setItem("localTokenList", JSON.stringify({ tokens: [saved] }));

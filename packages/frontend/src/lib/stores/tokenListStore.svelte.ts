@@ -2,9 +2,8 @@
  * Token list store — manages multiple token lists (default + custom), local tokens,
  * deduplication, export/import, and the unrecognized-token modal state.
  *
- * Default lists are loaded client-side (Uniswap from tokens.uniswap.org,
- * project tokenlist from the API's /tokenlist endpoint which serves the
- * committed static file). Custom lists are fetched directly by the browser.
+ * CDR and Flashprofits lists come from the API. Uniswap and custom lists are
+ * fetched directly by the browser.
  */
 
 import { preferencesStore } from "./preferencesStore.svelte.js";
@@ -36,10 +35,13 @@ const CUSTOM_TOKENLISTS_KEY = "customTokenlists";
 const LOCAL_TOKEN_LIST_KEY = "localTokenList";
 const LOCAL_TOKENS_ENABLED_KEY = "localTokensEnabled";
 const DEFAULT_TOKENLIST_ENABLED_KEY = "defaultTokenlistEnabled";
+const FLASHPROFITS_ALLOWED_ENABLED_KEY = "flashprofitsAllowedListEnabled";
 
 export const DEFAULT_TOKENLIST_NAME = "Default Tokenlist";
 export const LOCAL_TOKENS_SOURCE_NAME = "Local Tokens";
 export const DEFAULT_UNISWAP_URL = "https://tokens.uniswap.org";
+export const FLASHPROFITS_ALLOWED_PATH = "/allowed-tokenlist.json";
+const FLASHPROFITS_ALLOWED_NAME = "Flashprofits allowed token list";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,7 +58,7 @@ export interface Token {
 }
 
 export interface TokenListEntry {
-  /** null for the built-in default list */
+  /** null for the CDR list, an API path for Flashprofits, or an external URL */
   url: string | null;
   name: string;
   enabled: boolean;
@@ -189,8 +191,10 @@ class TokenListStore {
     this.isInitializing = true;
     this.activate();
     let defaultEnabled = true;
+    let flashprofitsEnabled = true;
     try {
       defaultEnabled = localStorage.getItem(DEFAULT_TOKENLIST_ENABLED_KEY) !== "false";
+      flashprofitsEnabled = localStorage.getItem(FLASHPROFITS_ALLOWED_ENABLED_KEY) !== "false";
     } catch {
       /* Storage is optional. */
     }
@@ -206,11 +210,19 @@ class TokenListStore {
     this.lists = [
       { url: null, name: "Built-in Tokenlist", enabled: defaultEnabled, tokens: [] },
       ...[...unique.values()].map((entry) => ({ ...entry, tokens: [] as Token[] })),
+      {
+        url: FLASHPROFITS_ALLOWED_PATH,
+        name: FLASHPROFITS_ALLOWED_NAME,
+        enabled: flashprofitsEnabled,
+        tokens: [],
+      },
     ];
     try {
       await Promise.all([
         this.refreshBlockedTokens(),
-        ...this.lists.map((entry) => this.refreshList(entry.url)),
+        ...this.lists
+          .filter((entry) => entry.url !== FLASHPROFITS_ALLOWED_PATH || entry.enabled)
+          .map((entry) => this.refreshList(entry.url)),
       ]);
       this.initialized = true;
       this._saveCustomLists();
@@ -293,9 +305,12 @@ class TokenListStore {
     this.isRefreshing = true;
     const promise = (async () => {
       try {
-        const update = url
-          ? await this._fetchCustomList(url, signal)
-          : await this.loadDefaultList(signal);
+        const update =
+          url === FLASHPROFITS_ALLOWED_PATH
+            ? await this.loadFlashprofitsList(signal)
+            : url
+              ? await this._fetchCustomList(url, signal)
+              : await this.loadDefaultList(signal);
         signal.throwIfAborted();
         this.lists = this.lists.map((entry) =>
           entry.url === url ? { ...entry, error: undefined, ...update } : entry
@@ -340,6 +355,15 @@ class TokenListStore {
       entry.error ? [`${entry.name}: ${entry.error}`] : []
     );
     return { name, tokens, ...(errors.length ? { error: errors.join(" ") } : {}) };
+  }
+
+  private async loadFlashprofitsList(signal: AbortSignal) {
+    const { data, error } = await apiClient.GET(FLASHPROFITS_ALLOWED_PATH, {
+      signal,
+      cache: "no-cache",
+    });
+    if (!data || error) throw new Error("List unavailable.");
+    return { tokens: this.parseTokens(data.tokens, FLASHPROFITS_ALLOWED_NAME), error: data.error };
   }
 
   private parseTokens(value: unknown, name: string): Token[] {
@@ -492,15 +516,18 @@ class TokenListStore {
 
   private _saveCustomLists(): void {
     const customLists = this.lists
-      .filter((l) => l.url !== null)
+      .filter((l) => l.url !== null && l.url !== FLASHPROFITS_ALLOWED_PATH)
       .map((l) => ({ url: l.url as string, enabled: l.enabled, name: l.name }));
 
     const defaultList = this.lists.find((l) => l.url === null);
     const defaultEnabled = defaultList ? defaultList.enabled : true;
+    const flashprofitsList = this.lists.find((l) => l.url === FLASHPROFITS_ALLOWED_PATH);
 
     try {
       localStorage.setItem(CUSTOM_TOKENLISTS_KEY, JSON.stringify(customLists));
       localStorage.setItem(DEFAULT_TOKENLIST_ENABLED_KEY, String(defaultEnabled));
+      if (flashprofitsList)
+        localStorage.setItem(FLASHPROFITS_ALLOWED_ENABLED_KEY, String(flashprofitsList.enabled));
     } catch {
       // ignore storage errors
     }

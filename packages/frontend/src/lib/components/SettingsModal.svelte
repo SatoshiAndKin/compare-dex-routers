@@ -15,7 +15,7 @@
    * - Backdrop click closes
    */
   import { settingsStore } from "../stores/settingsStore.svelte.js";
-  import { tokenListStore } from "../stores/tokenListStore.svelte.js";
+  import { FLASHPROFITS_ALLOWED_PATH, tokenListStore } from "../stores/tokenListStore.svelte.js";
   import {
     DEFAULT_COINBASE_TAKER_FEE_PERCENT,
     preferencesStore,
@@ -312,6 +312,7 @@
         <!-- ---------------------------------------------------------------- -->
         <div class="settings-section">
           <div class="settings-section-title">Token Lists</div>
+          <h3 class="tokenlist-heading">Flashprofits denied token list</h3>
           <label>
             <input
               type="checkbox"
@@ -325,6 +326,7 @@
             Turn off to add blocked tokens and see a warning before swapping.
           </p>
           {#if tokenSafetyError}<p role="alert">{tokenSafetyError}</p>{/if}
+          <h3 class="tokenlist-heading">Allowed token lists</h3>
           <p class="refresh-note">Enabled lists update once per day while this page is open.</p>
           <button
             type="button"
@@ -336,38 +338,53 @@
           >
             {tokenListStore.isRefreshing ? "Refreshing lists…" : "Refresh token lists"}
           </button>
-          <p class="refresh-note" role="status">
+          <p class="refresh-note last-list-update" role="status">
             {#if tokenListStore.lastRefreshedAt}Last list update: {new Date(
                 tokenListStore.lastRefreshedAt
               ).toLocaleString()}{/if}
           </p>
 
           {#each tokenListStore.lists as list (list.url ?? "__default__")}
-            <div class="tokenlist-entry" class:disabled={!list.enabled} class:error={!!list.error}>
-              <!-- Toggle -->
-              <button
-                type="button"
-                class="tokenlist-toggle"
-                class:on={list.enabled}
-                aria-label="{list.enabled ? 'Disable' : 'Enable'} {list.name}"
-                aria-pressed={list.enabled}
-                onclick={() => tokenListStore.toggleList(list.url)}
-              ></button>
-
-              <span class="tokenlist-entry-name" title={list.name}>
-                {list.name}
-              </span>
+            <div
+              class="tokenlist-entry"
+              class:disabled={!list.enabled}
+              class:error={!!list.error}
+              class:flashprofits-list-entry={list.url === FLASHPROFITS_ALLOWED_PATH}
+            >
+              {#if list.url === FLASHPROFITS_ALLOWED_PATH}
+                <label class="flashprofits-list-toggle">
+                  <input
+                    type="checkbox"
+                    checked={list.enabled}
+                    onchange={() => tokenListStore.toggleList(list.url)}
+                  />
+                  {list.name}
+                </label>
+              {:else}
+                <button
+                  type="button"
+                  class="tokenlist-toggle"
+                  class:on={list.enabled}
+                  aria-label="{list.enabled ? 'Disable' : 'Enable'} {list.name}"
+                  aria-pressed={list.enabled}
+                  onclick={() => tokenListStore.toggleList(list.url)}
+                ></button>
+                <span class="tokenlist-entry-name" title={list.name}>
+                  {list.name}
+                </span>
+              {/if}
 
               {#if list.error}
                 <span class="tokenlist-entry-error" role="status">{list.error}</span>
               {:else}
                 <span class="tokenlist-entry-count">
-                  {list.tokens.length} tokens
+                  {list.tokens.length}
+                  {list.tokens.length === 1 ? "token" : "tokens"}
                 </span>
               {/if}
 
               <!-- Remove button (only for custom lists) -->
-              {#if list.url !== null}
+              {#if list.url !== null && list.url !== FLASHPROFITS_ALLOWED_PATH}
                 <button
                   type="button"
                   class="tokenlist-remove-btn"
@@ -602,6 +619,15 @@
     border-bottom: 1px solid var(--border, #000);
   }
 
+  .tokenlist-heading {
+    font-size: 0.875rem;
+    margin: 0.75rem 0 0.375rem;
+  }
+
+  .last-list-update {
+    min-block-size: 1lh;
+  }
+
   .tokenlist-entry {
     display: flex;
     align-items: center;
@@ -623,6 +649,30 @@
   .tokenlist-entry.error {
     border-color: var(--red, #cc0000);
     border-left: 4px solid var(--red, #cc0000);
+  }
+
+  .flashprofits-list-entry.error {
+    border-left-width: 1px;
+    box-shadow: inset 3px 0 var(--red, #cc0000);
+  }
+
+  .flashprofits-list-entry :is(.tokenlist-entry-count, .tokenlist-entry-error) {
+    flex: 0 0 6rem;
+    text-align: right;
+  }
+
+  .flashprofits-list-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .flashprofits-list-toggle input {
+    flex-shrink: 0;
+    margin: 0;
   }
 
   .tokenlist-entry-name {

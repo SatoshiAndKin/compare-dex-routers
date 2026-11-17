@@ -93,6 +93,9 @@ CDR reads `/api/v1/blocked-tokenlist.json` from `FLASHPROFITS_BASE_URL`.
 Set `FLASHPROFITS_TOKENLIST_URL` to override the source or to enable list
 filtering without the Flashprofits quote providers. Verify CDR
 `/api/blocked-tokenlist.json` publishes the same version and provenance.
+CDR also uses `FLASHPROFITS_BASE_URL` to get the allowed tokens from
+`/api/v1/tokenlist.json`. Verify CDR `/api/allowed-tokenlist.json` returns
+tokens after Flashprofits publishes a routing graph.
 
 When updating the default factory, run `forge build src --no-cache` with
 Flashprofits' pinned toolchain. From the CDR checkout, run
