@@ -151,6 +151,79 @@ test("toggles the allowed token list on both selectors and saves the choice", as
   await expectInBothSelectors(true);
 });
 
+test("adds a hosted token list and imports a JSON list alongside Flashprofits", async ({
+  page,
+}) => {
+  const hosted = {
+    chainId: 1,
+    address: "0x1111111111111111111111111111111111111111",
+    name: "Hosted Token",
+    symbol: "HOSTED",
+    decimals: 18,
+  };
+  const imported = {
+    ...hosted,
+    address: "0x2222222222222222222222222222222222222222",
+    name: "Imported Token",
+    symbol: "IMPORTED",
+  };
+  const customUrl = "https://custom.example/tokens.json";
+  await fixture(page);
+  await page.route(customUrl, (route) =>
+    route.fulfill({
+      headers: { "Access-Control-Allow-Origin": "*" },
+      json: { name: "My hosted list", tokens: [hosted] },
+    })
+  );
+  await page.route("**/api/allowed-tokenlist.json", (route) =>
+    route.fulfill({
+      json: {
+        name: "Flashprofits allowed token list",
+        tokens: [{ ...hosted, address: YFI, name: "YFI", symbol: "YFI" }],
+      },
+    })
+  );
+  await page.goto("/?chainId=1&from=" + FROM + "&to=" + TO);
+  const openSettings = page.getByRole("button", { name: "Open settings" });
+  const closeSettings = page.getByRole("button", { name: "Close settings" });
+  const flashprofits = page.getByRole("checkbox", { name: "Flashprofits allowed token list" });
+  const hostedToggle = page.getByRole("button", { name: "Disable My hosted list" });
+  await openSettings.click();
+  await expect(flashprofits).toBeChecked();
+  await page.getByRole("textbox", { name: "Token list URL" }).fill(customUrl);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(hostedToggle).toHaveAttribute("aria-pressed", "true");
+
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("button", { name: "Import My Tokens" }).click(),
+  ]);
+  await chooser.setFiles({
+    name: "my-tokens.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ name: "My file list", tokens: [imported] })),
+  });
+  await expect(page.getByText("Imported 1 token", { exact: true })).toBeVisible();
+  await expect(page.getByText(imported.address, { exact: true })).toBeVisible();
+  await flashprofits.uncheck();
+  await closeSettings.click();
+  await page.reload();
+
+  await openSettings.click();
+  await expect(flashprofits).not.toBeChecked();
+  await expect(hostedToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText(imported.address, { exact: true })).toBeVisible();
+  await closeSettings.click();
+  for (const side of ["From", "To"]) {
+    const field = page.getByRole("combobox", { name: side + " token", exact: true });
+    for (const symbol of [hosted.symbol, imported.symbol]) {
+      await field.fill(symbol);
+      await expect(page.getByRole("option", { name: new RegExp(symbol) })).toBeVisible();
+      await field.press("Escape");
+    }
+  }
+});
+
 test("filters blocked tokens from both selectors and explains a pasted address", async ({
   page,
 }) => {
