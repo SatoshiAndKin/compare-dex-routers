@@ -634,6 +634,8 @@ export interface operations {
         amount: string;
         /** @description Slippage tolerance in basis points */
         slippageBps?: number | null;
+        /** @description Maximum swaps per Flashprofits route on Ethereum. */
+        maxHops?: number;
         /** @description Account bound to execution data. Omit for a preview with no execution data. */
         sender?: string;
         /** @description Quote mode. exactIn: specify input amount, get output amount. targetOut: specify desired output amount, get required input amount. */

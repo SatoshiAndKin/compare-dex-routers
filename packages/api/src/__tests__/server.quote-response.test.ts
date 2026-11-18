@@ -188,12 +188,13 @@ describe("unified quote contract", () => {
     );
   });
 
-  it("ranks both Flashprofits routes from one private request during preview", async () => {
+  it.each([undefined, 3, 5])("ranks Flashprofits preview with maxHops=%s", async (maxHops) => {
     const base = "http://flashprofits.flashprofits.svc.cluster.local:3000";
     vi.stubEnv("FLASHPROFITS_BASE_URL", base);
     const remote = vi.fn((url: URL) => {
       expect(url.searchParams.toString()).toBe(
-        `inputToken=${FROM}&outputToken=${TO}&inputAmount=1000000`
+        `inputToken=${FROM}&outputToken=${TO}&inputAmount=1000000` +
+          (maxHops === undefined ? "" : `&maxHops=${maxHops}`)
       );
       const quoted = (outputAmount: string, source: string) => ({
         status: "quoted",
@@ -217,7 +218,11 @@ describe("unified quote contract", () => {
         ? Promise.resolve(remote(new URL(String(input))))
         : original(input, init)
     );
-    const { body } = await call({ sender: "", to: TO });
+    const { body } = await call({
+      sender: "",
+      to: TO,
+      ...(maxHops === undefined ? {} : { maxHops }),
+    });
     const result = QuoteResponseSchema.parse(body);
     expect(remote).toHaveBeenCalledTimes(1);
     const { getMetrics } = await import("../metrics.js");
@@ -230,6 +235,11 @@ describe("unified quote contract", () => {
       execution: null,
       route: { edges: [{ source: FROM, target: TO, key: "split pool" }] },
     });
+  });
+
+  it.each(["0", "6", "3.5", "3junk"])("rejects invalid maxHops=%s", async (maxHops) => {
+    const { response } = await call({ maxHops });
+    expect(response.status).toBe(400);
   });
 
   it("sends a connected account for gas ranking when it has no Flashprofits wallet", async () => {
