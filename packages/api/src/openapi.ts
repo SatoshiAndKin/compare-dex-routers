@@ -73,6 +73,17 @@ const QuoteQuerySchema = z.object({
       "Human-readable amount. For exactIn: input amount. For targetOut: desired output amount.",
   }),
   slippageBps: SlippageBpsParam,
+  maxHops: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(5)
+    .optional()
+    .openapi({
+      param: { name: "maxHops", in: "query" },
+      description: "Maximum swaps per Flashprofits route on Ethereum.",
+      example: 3,
+    }),
   sender: AddressSchema.optional().openapi({
     param: { name: "sender", in: "query" },
     description: "Account bound to execution data. Omit for a preview with no execution data.",
@@ -273,6 +284,7 @@ registry.registerPath({
     query: QuoteQuerySchema.omit({
       sender: true,
       slippageBps: true,
+      maxHops: true,
       tokenSafetyFilter: true,
     }).extend({
       takerFeePercent: TakerFeePercentSchema.optional().openapi({

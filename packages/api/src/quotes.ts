@@ -94,7 +94,13 @@ async function requestQuotes(
   const flashprofitsUrl = process.env.FLASHPROFITS_BASE_URL;
   const flashprofits =
     flashprofitsUrl && swap.chainId === 1
-      ? fetchFlashprofitsPrices(flashprofitsUrl, swap, signal, preview ? undefined : client)
+      ? fetchFlashprofitsPrices(
+          flashprofitsUrl,
+          swap,
+          signal,
+          preview ? undefined : client,
+          params.maxHops
+        )
       : null;
   const indicativePrice =
     preview && zeroXApiKey && swap.mode === "exactIn"

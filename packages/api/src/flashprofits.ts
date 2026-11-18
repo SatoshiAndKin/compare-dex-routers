@@ -160,7 +160,8 @@ export async function fetchFlashprofitsPrices(
   baseUrl: string,
   swap: SwapParams,
   signal?: AbortSignal,
-  client?: PublicClient
+  client?: PublicClient,
+  maxHops?: number
 ): Promise<Array<FlashprofitsPrice | FlashprofitsFailure>> {
   try {
     const wallet =
@@ -171,6 +172,7 @@ export async function fetchFlashprofitsPrices(
     url.searchParams.set("outputToken", swap.outputToken);
     if (swap.mode === "targetOut") url.searchParams.set("outputAmount", String(swap.outputAmount));
     else url.searchParams.set("inputAmount", String(swap.inputAmount));
+    if (maxHops !== undefined) url.searchParams.set("maxHops", String(maxHops));
     if (wallet?.kind === "delegation" || wallet?.kind === "executor")
       url.searchParams.set("executionAccount", wallet.account);
     else if (client) url.searchParams.set("rankingAccount", swap.swapperAccount);

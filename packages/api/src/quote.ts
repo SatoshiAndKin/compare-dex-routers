@@ -10,6 +10,7 @@ export interface QuoteParams {
   to: string;
   amount: string;
   slippageBps: number;
+  maxHops?: number;
   sender?: string;
   mode: QuoteMode;
 }
@@ -28,6 +29,7 @@ export function parseQuoteParams(searchParams: URLSearchParams): ParseResult {
   const to = searchParams.get("to");
   const amount = searchParams.get("amount");
   const slippageBpsStr = searchParams.get("slippageBps") ?? "50";
+  const maxHops = searchParams.get("maxHops");
   const sender = searchParams.get("sender") || undefined;
   const modeStr = searchParams.get("mode") || "exactIn";
 
@@ -72,6 +74,10 @@ export function parseQuoteParams(searchParams: URLSearchParams): ParseResult {
     return { success: false, error: `Invalid slippageBps: ${slippageBpsStr} (must be 0-10000)` };
   }
 
+  if (maxHops !== null && !/^[1-5]$/.test(maxHops)) {
+    return { success: false, error: "maxHops must be an integer from 1 to 5" };
+  }
+
   if (sender && !isValidAddress(sender)) {
     return { success: false, error: `Invalid sender address: ${sender}` };
   }
@@ -87,6 +93,7 @@ export function parseQuoteParams(searchParams: URLSearchParams): ParseResult {
       to: isNativeToken(to as Address) ? "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" : to,
       amount,
       slippageBps,
+      maxHops: maxHops === null ? undefined : Number(maxHops),
       sender,
       mode,
     },
