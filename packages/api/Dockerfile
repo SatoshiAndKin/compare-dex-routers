@@ -1,6 +1,6 @@
 FROM oven/bun:1.4.4 AS bun
 
-FROM node:24.22.1-slim
+FROM node:26.13.1-slim
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 
