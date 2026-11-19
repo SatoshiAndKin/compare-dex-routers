@@ -71,7 +71,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ matrix.package == 'api' && format('SENTRY_RELEASE={0}', steps.revision.outputs.sha) || '' }}
-          cache-from: type=registry,ref=${{ steps.cache.outputs.image }}
+          cache-from: |
+            type=registry,ref=${{ steps.cache.outputs.image }}
+            type=gha,scope=production-${{ matrix.package }}-amd64
           cache-to: type=registry,ref=${{ steps.cache.outputs.image }},mode=max
 
   deploy:
