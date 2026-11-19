@@ -8,7 +8,7 @@ Compare DEX Routers is a monorepo (pnpm workspaces) containing a quote compariso
 
 | Package             | Stack                                        | Dev port |
 | ------------------- | -------------------------------------------- | -------- |
-| `packages/api`      | TypeScript, Node.js 24 LTS, ESM, tsx runtime | 3100     |
+| `packages/api`      | TypeScript, Node.js 26, ESM, tsx runtime | 3100     |
 | `packages/frontend` | Svelte 5, Vite, openapi-fetch                | 5173     |
 
 ## Quick start

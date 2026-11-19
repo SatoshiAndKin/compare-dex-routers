@@ -21,8 +21,8 @@ COPY packages/api/package.json ./packages/api/
 # Copy frontend package.json (required for workspace lockfile validation)
 COPY packages/frontend/package.json ./packages/frontend/
 
-# Enable pnpm
-RUN corepack enable && corepack prepare pnpm@12.5.1 --activate
+# Install the workspace's pinned package manager. Node 26 does not ship Corepack.
+RUN npm install --global --allow-scripts=pnpm "$(node -p 'require("./package.json").packageManager')"
 
 # Disable husky git hooks (not applicable in Docker)
 ENV HUSKY=0
