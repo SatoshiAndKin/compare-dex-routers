@@ -49,7 +49,7 @@ and [Coinbase One benefits](https://help.coinbase.com/en/coinbase/other-topics/c
 
 ## Quick start
 
-Use Node.js 24.22.1, pnpm 12.5.1, and Bun 1.4.2. Bun builds the pinned Spandex Git dependency during installation. Docker and CI install these versions.
+Use Node.js 26.13.1, pnpm 12.5.1, and Bun 1.4.4. Bun builds the pinned Spandex Git dependency during installation. Docker and CI install these versions.
 
 ```sh
 cp env.example .env   # set RPC_URL_<chainId> or ALCHEMY_API_KEY
