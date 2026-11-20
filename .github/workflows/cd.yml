@@ -71,8 +71,15 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ matrix.package == 'api' && format('SENTRY_RELEASE={0}', steps.revision.outputs.sha) || '' }}
-          cache-from: type=registry,ref=${{ steps.cache.outputs.image }}
-          cache-to: type=registry,ref=${{ steps.cache.outputs.image }},mode=max
+          cache-from: |
+            type=registry,ref=${{ steps.cache.outputs.image }}
+            type=gha,scope=production-${{ matrix.package }}-amd64
+          # Auto Merge uses GITHUB_TOKEN, so main push CI is suppressed. Its
+          # explicit main dispatch can warm PR-readable cache in this same build.
+          # Do not export GHA cache from tag, PR-event, or non-main dispatch refs.
+          cache-to: |
+            type=registry,ref=${{ steps.cache.outputs.image }},mode=max
+            ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && steps.revision.outputs.sha == github.sha && format('type=gha,scope=production-{0}-amd64,mode=max,ignore-error=true', matrix.package) || '' }}
 
   deploy:
     needs: build-and-push
