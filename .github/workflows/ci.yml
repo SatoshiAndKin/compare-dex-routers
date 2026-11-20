@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The Spandex updater validates its pinned draft without waiting for PR workflow approval.
+  workflow_dispatch:
 
 permissions:
   contents: read
