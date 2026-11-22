@@ -59,7 +59,7 @@ services:
           "CMD",
           "sh",
           "-c",
-          "if [ -f /tmp/drain ]; then exit 1; fi && wget -q --spider http://localhost/",
+          "if [ -f /tmp/drain ]; then exit 1; fi && curl -fsSI -o /dev/null http://localhost/",
         ]
       interval: 10s
       timeout: 5s
