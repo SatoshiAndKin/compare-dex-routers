@@ -31,7 +31,7 @@ ARG CDR_BROWSER_PACKAGE_INVENTORY
 RUN pnpm --filter @compare-dex/frontend run build
 
 # Stage 2: Serve
-FROM nginx:1.31.0-alpine@sha256:2f07d83bf561b506400dc183b1b2003803e39efbd22451f848adaba14d28c7c7
+FROM nginx:1.31.9-alpine@sha256:fb4658584bd9a916ffb6f6e365f97c25cfdb2923801f551ea08356e695f14ff7
 
 # Copy built files
 COPY --from=builder /app/packages/frontend/dist/ /usr/share/nginx/html/
