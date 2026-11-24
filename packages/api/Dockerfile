@@ -1,11 +1,13 @@
 FROM oven/bun:1.4.4 AS bun
 
-FROM node:26.13.1-slim
+FROM node:26.13.1-trixie-slim
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 
+COPY packages/api/debian.sources /etc/apt/sources.list.d/debian.sources
+
 # Use the maintained system trust store until Node ships its CA distrust fix.
-RUN apt-get update && apt-get install --no-install-recommends -y ca-certificates \
+RUN apt-get update --error-on=any && apt-get install --no-install-recommends -y ca-certificates \
     && sed -i -e 's|^mozilla/emSign_ECC_Root_CA_-_G3.crt|!&|' \
        -e 's|^mozilla/Comodo_AAA_Services_root.crt|!&|' /etc/ca-certificates.conf \
     && update-ca-certificates \
