@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.4 AS bun
+FROM oven/bun:1.4.5 AS bun
 
 # Stage 1: Build
 FROM node:26.13.1-slim AS builder
