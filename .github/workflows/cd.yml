@@ -11,8 +11,10 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
   packages: write
+  pull-requests: read
 
 jobs:
   build-and-push:
@@ -29,10 +31,18 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          persist-credentials: false
 
       - name: Read source revision
         id: revision
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse tested Debian package snapshots
+        if: matrix.package == 'api'
+        id: apt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/debian-apt-snapshot.sh for-release "Docker (api)"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.4.1
@@ -50,7 +60,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}-${{ matrix.package }}
           tags: |
-            type=sha,format=long,prefix=sha-
+            type=raw,value=sha-${{ steps.revision.outputs.sha }}
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -60,26 +70,48 @@ jobs:
         id: cache
         env:
           PACKAGE: ${{ matrix.package }}
-        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}-${PACKAGE}:buildcache" >> "$GITHUB_OUTPUT"
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}-${PACKAGE}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Build and publish by digest for API validation
+        id: build
         uses: docker/build-push-action@v7.4.0
         with:
           context: .
           file: ${{ matrix.dockerfile }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: ${{ matrix.package == 'api' && format('SENTRY_RELEASE={0}', steps.revision.outputs.sha) || '' }}
+          platforms: linux/amd64
+          push: ${{ matrix.package != 'api' }}
+          tags: ${{ matrix.package != 'api' && steps.meta.outputs.tags || '' }}
+          outputs: ${{ matrix.package == 'api' && format('type=image,name={0},name-canonical=true,push-by-digest=true,push=true', steps.cache.outputs.image) || '' }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.revision=${{ steps.revision.outputs.sha }}
+          build-args: |
+            ${{ matrix.package == 'api' && format('SENTRY_RELEASE={0}', steps.revision.outputs.sha) || '' }}
+            ${{ matrix.package == 'api' && format('DEBIAN_ARCHIVE_SNAPSHOT={0}', steps.apt.outputs.archive) || '' }}
+            ${{ matrix.package == 'api' && format('DEBIAN_SECURITY_SNAPSHOT={0}', steps.apt.outputs.security) || '' }}
           cache-from: |
-            type=registry,ref=${{ steps.cache.outputs.image }}
+            type=registry,ref=${{ steps.cache.outputs.image }}:buildcache
             type=gha,scope=production-${{ matrix.package }}-amd64
           # Auto Merge uses GITHUB_TOKEN, so main push CI is suppressed. Its
           # explicit main dispatch can warm PR-readable cache in this same build.
           # Do not export GHA cache from tag, PR-event, or non-main dispatch refs.
           cache-to: |
-            type=registry,ref=${{ steps.cache.outputs.image }},mode=max
+            type=registry,ref=${{ steps.cache.outputs.image }}:buildcache,mode=max
             ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && steps.revision.outputs.sha == github.sha && format('type=gha,scope=production-{0}-amd64,mode=max,ignore-error=true', matrix.package) || '' }}
+
+      - name: Test and tag the exact API image
+        if: matrix.package == 'api'
+        env:
+          IMAGE: ${{ steps.cache.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          RELEASE_COMMIT: ${{ steps.revision.outputs.sha }}
+        run: |
+          set -euo pipefail
+          candidate="$IMAGE@$DIGEST"
+          docker pull "$candidate"
+          bash .github/scripts/check-api-image.sh "$candidate" "$RELEASE_COMMIT"
+          bash .github/scripts/tag-tested-image.sh "$IMAGE" "$DIGEST"
 
   deploy:
     needs: build-and-push
