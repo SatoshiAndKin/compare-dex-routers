@@ -28,6 +28,12 @@ without Corepack. Frozen-lockfile installation and the workspace build-script
 allowlist remain unchanged. The frontend does not need Git metadata at build time;
 .git stays excluded. Revision labels are output metadata rather than dependency
 layer inputs. The API SENTRY_RELEASE argument remains after dependency/source layers.
+The frontend also receives public `VITE_SENTRY_DSN` and `VITE_SENTRY_RELEASE` build
+arguments after dependency/source layers. CD reads the DSN from the repository
+variable `VITE_SENTRY_DSN` and uses the exact checked-out merge commit for release.
+CI builds without a production DSN and stamps its tested full SHA. A configured
+DSN requires verified HTTPS and a full 40-character release; otherwise Vite fails
+the build. `.git` remains excluded from the Docker context.
 
 ## Validation and measurement
 

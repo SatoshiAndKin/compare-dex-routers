@@ -174,6 +174,7 @@ jobs:
           labels: org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             ${{ matrix.package == 'api' && format('SENTRY_RELEASE={0}', github.sha) || '' }}
+            ${{ matrix.package == 'frontend' && format('VITE_SENTRY_RELEASE={0}', github.sha) || '' }}
             ${{ matrix.package == 'api' && format('DEBIAN_ARCHIVE_SNAPSHOT={0}', needs.apt-snapshot.outputs.archive) || '' }}
             ${{ matrix.package == 'api' && format('DEBIAN_SECURITY_SNAPSHOT={0}', needs.apt-snapshot.outputs.security) || '' }}
           cache-from: type=gha,scope=production-${{ matrix.package }}-amd64

@@ -87,6 +87,8 @@ jobs:
             org.opencontainers.image.revision=${{ steps.revision.outputs.sha }}
           build-args: |
             ${{ matrix.package == 'api' && format('SENTRY_RELEASE={0}', steps.revision.outputs.sha) || '' }}
+            ${{ matrix.package == 'frontend' && format('VITE_SENTRY_DSN={0}', vars.VITE_SENTRY_DSN) || '' }}
+            ${{ matrix.package == 'frontend' && format('VITE_SENTRY_RELEASE={0}', steps.revision.outputs.sha) || '' }}
             ${{ matrix.package == 'api' && format('DEBIAN_ARCHIVE_SNAPSHOT={0}', steps.apt.outputs.archive) || '' }}
             ${{ matrix.package == 'api' && format('DEBIAN_SECURITY_SNAPSHOT={0}', steps.apt.outputs.security) || '' }}
           cache-from: |

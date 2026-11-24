@@ -176,7 +176,18 @@ before deploying. The browser receives the project ID from `/api/config`.
 | `CURVE_ENABLED`   | no          | Enable Curve Finance quotes (all 7 chains)      |
 | `METRICS_ENABLED` | no          | Enable the `/metrics` endpoint                  |
 | `SENTRY_DSN`      | no          | Sentry DSN for error tracking                   |
+| `VITE_SENTRY_DSN` | no          | Public browser Sentry DSN, set at build time    |
+| `VITE_SENTRY_RELEASE` | with browser DSN | Full checked-out Git commit, set at build time |
 | `LOG_LEVEL`       | no          | Log level (default `info`)                      |
+
+Browser reporting uses the separate `compare-dex-routers-frontend` project.
+The Svelte SDK captures unhandled errors and promise rejections. It sends only
+exception classes and generated-code locations; messages, wallet/provider data,
+URLs, request bodies, user details, attachments and breadcrumbs are excluded.
+Tracing, replay, profiling and session capture are not enabled. Uploads require
+verified HTTPS, refuse redirects, and abort after two seconds. With no browser
+DSN, the app creates no Sentry client. CD supplies the production DSN and full
+commit automatically; changing either build value requires rebuilding the image.
 
 ## Dependency builds
 

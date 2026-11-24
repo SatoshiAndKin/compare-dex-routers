@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@sentry/svelte": "^11.16.0",
     "@walletconnect/ethereum-provider": "2.26.0",
     "openapi-fetch": "^0.17.0",
     "svelte": "^5.57.3",

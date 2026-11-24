@@ -1,3 +1,4 @@
+import "./sentry.js";
 import "./lib/styles/global.css";
 import { mount } from "svelte";
 import App from "./App.svelte";
