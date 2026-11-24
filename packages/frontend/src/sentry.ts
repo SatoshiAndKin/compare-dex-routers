@@ -2,6 +2,9 @@ import * as Sentry from "@sentry/svelte";
 
 const dsn = import.meta.env.VITE_SENTRY_DSN;
 const release = import.meta.env.VITE_SENTRY_RELEASE;
+// The bundled module URL identifies code that belongs to this build. Provider stacks are untrusted.
+const assetUrl = import.meta.url.split(/[?#]/)[0];
+const assetName = assetUrl.split("/").pop();
 const errorTypes = new Set([
   "Error",
   "TypeError",
@@ -55,17 +58,14 @@ if (dsn && URL.parse(dsn)?.protocol === "https:" && /^[a-f0-9]{40}$/.test(releas
             type: errorTypes.has(exception.type || "") ? exception.type : "Error",
             stacktrace: {
               frames: exception.stacktrace?.frames?.map((frame) => ({
-                filename: frame.filename?.split(/[?#]/)[0]?.split("/").pop(),
-                function: /^[\w.$ <>]{1,120}$/.test(frame.function || "")
-                  ? frame.function
-                  : undefined,
+                filename: frame.filename?.split(/[?#]/)[0] === assetUrl ? assetName : undefined,
                 lineno: frame.lineno,
                 colno: frame.colno,
                 in_app: frame.in_app,
               })),
             },
             mechanism: exception.mechanism && {
-              type: exception.mechanism.type,
+              type: "generic",
               handled: exception.mechanism.handled,
             },
           })),

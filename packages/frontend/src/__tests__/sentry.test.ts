@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const release = "a".repeat(40);
+// Avoid Vite rewriting new URL("../sentry.ts", import.meta.url) to its dev asset server.
+const codeAssetUrl = import.meta.url.replace("/__tests__/sentry.test.ts", "/sentry.ts");
 
 afterEach(async () => {
   const sdk = await import("@sentry/svelte");
@@ -56,7 +58,7 @@ describe("browser error reporting", () => {
             stacktrace: {
               frames: [
                 {
-                  filename: "https://swap.test/assets/app.js?key=secret#private",
+                  filename: codeAssetUrl + "?key=secret#private",
                   function: "refreshQuotes",
                   lineno: 12,
                   colno: 4,
@@ -85,7 +87,7 @@ describe("browser error reporting", () => {
     expect(event.release).toBe(release);
     expect(event.exception.values[0]).toMatchObject({
       type: "TypeError",
-      stacktrace: { frames: [{ filename: "app.js", function: "refreshQuotes", lineno: 12 }] },
+      stacktrace: { frames: [{ filename: "sentry.ts", lineno: 12 }] },
     });
     for (const secret of ["private", "secret", "signed", "0x" + "b".repeat(40), "wallet address"]) {
       expect(body).not.toContain(secret);
@@ -118,6 +120,27 @@ describe("browser error reporting", () => {
     await sdk.flush(1_000);
     expect(fetch).toHaveBeenCalledOnce();
     expect(String(fetch.mock.calls[0][1].body)).not.toContain("private wallet payload");
+  });
+
+  it("does not upload provider-controlled filenames or function names in forged stacks", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    vi.stubEnv("VITE_SENTRY_DSN", "https://public@collector.test/1");
+    vi.stubEnv("VITE_SENTRY_RELEASE", release);
+    await import("../sentry.js");
+    const sdk = await import("@sentry/svelte");
+    const secret = "0x" + "c".repeat(64);
+    const error = new TypeError("private provider payload");
+    error.stack = `TypeError: private provider payload\n    at ${secret} (https://rpc.test/${secret}:21:8)\n    at refreshQuotes (${codeAssetUrl}:12:4)`;
+    sdk.captureException(error);
+    await sdk.flush(1_000);
+    expect(fetch).toHaveBeenCalledOnce();
+    const body = String(fetch.mock.calls[0][1].body);
+    expect(body).not.toContain(secret);
+    const event = JSON.parse(body.split("\n")[2]);
+    expect(event.exception.values[0].stacktrace.frames).toContainEqual(
+      expect.objectContaining({ filename: "sentry.ts", lineno: 12, colno: 4 })
+    );
   });
 
   it("aborts a collector that never completes its response", async () => {
