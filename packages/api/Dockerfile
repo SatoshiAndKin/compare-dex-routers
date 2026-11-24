@@ -1,11 +1,21 @@
 FROM oven/bun:1.4.4 AS bun
 
-FROM node:26.13.1-slim
+FROM node:26.13.1-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 
 # Use the maintained system trust store until Node ships its CA distrust fix.
-RUN apt-get update && apt-get install --no-install-recommends -y ca-certificates \
+ARG DEBIAN_ARCHIVE_SNAPSHOT
+ARG DEBIAN_SECURITY_SNAPSHOT
+
+COPY packages/api/debian.sources /tmp/debian-snapshot.sources
+RUN if [ -n "${DEBIAN_ARCHIVE_SNAPSHOT}${DEBIAN_SECURITY_SNAPSHOT}" ]; then \
+        test -n "$DEBIAN_ARCHIVE_SNAPSHOT" && test -n "$DEBIAN_SECURITY_SNAPSHOT" \
+        && sed -e "s/@ARCHIVE@/$DEBIAN_ARCHIVE_SNAPSHOT/g" -e "s/@SECURITY@/$DEBIAN_SECURITY_SNAPSHOT/g" \
+            /tmp/debian-snapshot.sources > /etc/apt/sources.list.d/debian.sources; \
+    fi \
+    && rm /tmp/debian-snapshot.sources \
+    && apt-get update --error-on=any && apt-get install --no-install-recommends -y ca-certificates \
     && sed -i -e 's|^mozilla/emSign_ECC_Root_CA_-_G3.crt|!&|' \
        -e 's|^mozilla/Comodo_AAA_Services_root.crt|!&|' /etc/ca-certificates.conf \
     && update-ca-certificates \
