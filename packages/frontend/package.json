@@ -16,8 +16,8 @@
     "@sentry/svelte": "^11.16.0",
     "@walletconnect/ethereum-provider": "2.26.0",
     "openapi-fetch": "^0.17.0",
-    "svelte": "^5.57.3",
-    "viem": "2.57.19"
+    "svelte": "^5.59.1",
+    "viem": "2.58.4"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
