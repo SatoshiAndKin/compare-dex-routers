@@ -4,6 +4,7 @@ import common from "./playwright.config.js";
 export default defineConfig({
   ...common,
   testIgnore: [],
+  workers: 1,
   testMatch: "**/*.fork.spec.ts",
   timeout: 120_000,
   globalTimeout: 10 * 60_000,
