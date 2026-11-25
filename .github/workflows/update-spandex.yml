@@ -14,4 +14,8 @@ concurrency:
 
 jobs:
   update:
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
     uses: SatoshiAndKin/compare-dex-routers/.github/workflows/update-spandex-reviewed-linux.yml@0eb83e84f8c57107466525de173b86184f42d69c
