@@ -56,7 +56,7 @@ for_release() {
         while IFS= read -r run; do
             [[ "$run" =~ ^[0-9]+$ ]] || continue
             jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?filter=all&per_page=100")
-            if ! jq -e --arg job "$job_name" 'any(.jobs[]; .name == $job and .conclusion == "success")' <<< "$jobs" > /dev/null; then
+            if ! jq -e --arg job "$job_name" 'any(.jobs[]; (.name == $job or .name == ("linux / " + $job)) and .conclusion == "success")' <<< "$jobs" > /dev/null; then
                 continue
             fi
             artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?name=$artifact_name" |
