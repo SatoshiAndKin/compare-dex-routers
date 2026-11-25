@@ -23,6 +23,7 @@ it.each(["stalled headers", "stalled body", "HTTP redirect", "untrusted certific
     const sockets = new Set<Socket>();
     let envelopes = 0;
     let authenticated = false;
+    const observed = Promise.withResolvers<undefined>();
     const collector = createHttpsServer(
       { key: readFileSync(fixture("key")), cert: readFileSync(fixture("cert")) },
       (request, response) => {
@@ -33,6 +34,7 @@ it.each(["stalled headers", "stalled body", "HTTP redirect", "untrusted certific
         request.resume();
         request.on("end", () => {
           envelopes += 1;
+          observed.resolve(undefined);
           if (scenario === "HTTP redirect") {
             response.writeHead(307, { Location: `http://127.0.0.1:${plaintextPort}/leak` });
             response.end();
@@ -47,7 +49,7 @@ it.each(["stalled headers", "stalled body", "HTTP redirect", "untrusted certific
       sockets.add(socket);
       socket.on("close", () => sockets.delete(socket));
     });
-    collector.on("tlsClientError", () => {});
+    collector.on("tlsClientError", () => observed.resolve(undefined));
     await new Promise<void>((resolve) => collector.listen(0, "127.0.0.1", resolve));
     const port = (collector.address() as AddressInfo).port;
     const moduleUrl = new URL("../sentry-transport.ts", import.meta.url).href;
@@ -61,10 +63,11 @@ it.each(["stalled headers", "stalled body", "HTTP redirect", "untrusted certific
         transport:options=>createSentryTransport({...options,
           caCerts:${scenario === "untrusted certificate" ? "undefined" : `readFileSync(${JSON.stringify(caPath)})`}})});
       Sentry.captureMessage('offline native SDK HTTPS fixture');
+      await new Promise(resolve => process.once('message', resolve));
+      process.disconnect();
       await Sentry.close(3000);
       console.log('SDK close returned');
     `;
-    const started = performance.now();
     const child = spawn(
       process.execPath,
       ["--import", "tsx", "--input-type=module", "-e", source],
@@ -74,21 +77,35 @@ it.each(["stalled headers", "stalled body", "HTTP redirect", "untrusted certific
           NODE_TLS_REJECT_UNAUTHORIZED: "0",
           SSL_VERIFY: "false",
         },
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
       }
     );
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (data: Buffer) => (stdout += data.toString()));
-    child.stderr.on("data", (data: Buffer) => (stderr += data.toString()));
-    const deadline = setTimeout(() => child.kill("SIGKILL"), 6000);
+    child.stdout?.on("data", (data: Buffer) => (stdout += data.toString()));
+    child.stderr?.on("data", (data: Buffer) => (stderr += data.toString()));
+    const exited = new Promise<{ code: number | null; signal: string | null }>(
+      (resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", (code, signal) => resolve({ code, signal }));
+      }
+    );
+    const startupDeadline = setTimeout(() => child.kill("SIGKILL"), 10000);
+    let shutdownDeadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      const exit = await new Promise<{ code: number | null; signal: string | null }>(
-        (resolve, reject) => {
-          child.once("error", reject);
-          child.once("exit", (code, signal) => resolve({ code, signal }));
-        }
-      );
+      // First prove an upload reached the collector. Node/tsx/SDK cold startup
+      // is outside the shutdown contract, including on the shared CI runner.
+      await Promise.race([
+        observed.promise,
+        exited.then(() => {
+          throw new Error(`SDK process exited before collector observation: ${stderr}`);
+        }),
+      ]);
+      clearTimeout(startupDeadline);
+      const started = performance.now();
+      shutdownDeadline = setTimeout(() => child.kill("SIGKILL"), 6000);
+      child.send({ shutdown: true });
+      const exit = await exited;
       expect(exit, stderr).toEqual({ code: 0, signal: null });
       expect(stdout).toContain("SDK close returned");
       expect(performance.now() - started).toBeLessThan(4000);
@@ -96,8 +113,10 @@ it.each(["stalled headers", "stalled body", "HTTP redirect", "untrusted certific
       expect(authenticated).toBe(scenario !== "untrusted certificate");
       expect(plaintextRequests).toBe(0);
     } finally {
-      clearTimeout(deadline);
+      clearTimeout(startupDeadline);
+      clearTimeout(shutdownDeadline);
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      await exited.catch(() => {});
       for (const socket of sockets) socket.destroy();
       await Promise.all([
         new Promise<void>((resolve) => collector.close(() => resolve())),
@@ -105,5 +124,5 @@ it.each(["stalled headers", "stalled body", "HTTP redirect", "untrusted certific
       ]);
     }
   },
-  10000
+  20000
 );
