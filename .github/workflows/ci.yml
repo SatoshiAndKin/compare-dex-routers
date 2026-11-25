@@ -17,4 +17,4 @@ concurrency:
 
 jobs:
   linux:
-    uses: SatoshiAndKin/compare-dex-routers/.github/workflows/ci-reviewed-linux.yml@f0cf16750b15a13a6000bee76cc2fe8b77e5b581
+    uses: SatoshiAndKin/compare-dex-routers/.github/workflows/ci-reviewed-linux.yml@a1ab55942c7e172bac09aa2757b24725187bdd65
