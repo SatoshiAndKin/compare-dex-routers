@@ -1,0 +1,58 @@
+name: Reviewed Linux Auto Merge
+
+on:
+  workflow_call:
+
+permissions:
+  pull-requests: write
+  contents: write
+  actions: write
+
+jobs:
+  auto-merge:
+    if: >-
+      ${{ github.repository == 'SatoshiAndKin/compare-dex-routers' &&
+          github.repository_id == '1165419679' &&
+          github.event.repository.default_branch == 'main' &&
+          github.ref == 'refs/heads/main' && github.ref_protected &&
+          github.event_name == 'workflow_run' &&
+          github.workflow_ref == 'SatoshiAndKin/compare-dex-routers/.github/workflows/auto-merge.yml@refs/heads/main' &&
+          github.event.workflow_run.event == 'pull_request' &&
+          github.event.workflow_run.conclusion == 'success' }}
+    runs-on:
+      group: ski-ci-public-linux
+      labels: ski-kvm-public-pr
+    timeout-minutes: 5
+    steps:
+      - name: Install the pinned GitHub CLI
+        shell: bash
+        run: |
+          bin="$RUNNER_TEMP/github-cli"
+          mkdir "$bin"
+          archive="$bin/gh.tar.gz"
+          curl --fail --silent --show-error --location --retry 2 \
+            https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_linux_amd64.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' 79e7ab5db738c48777b696e374f8b428f0647debfb424f44d2f426370407fe2f "$archive" | sha256sum --check
+          tar -xzf "$archive" --strip-components=2 -C "$bin" gh_2.105.0_linux_amd64/bin/gh
+          echo "$bin" >> "$GITHUB_PATH"
+      # Read only GitHub metadata. Never check out PR code in this privileged job.
+      - name: Merge the tested revision and start deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TESTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          requests=$(gh api --paginate --slurp "repos/$REPOSITORY/commits/$TESTED_COMMIT/pulls")
+          numbers=$(jq -r --arg sha "$TESTED_COMMIT" \
+            '.[][] | select(
+              .state == "open" and .draft == false and .base.ref == "main" and .head.sha == $sha
+              and .user.login != "dependabot[bot]" and .user.login != "renovate[bot]"
+            ) | .number' \
+            <<< "$requests")
+          for number in $numbers; do
+            gh pr merge "$number" --repo "$REPOSITORY" --merge --match-head-commit "$TESTED_COMMIT"
+            # GITHUB_TOKEN suppresses merge events; workflow_dispatch still runs.
+            gh workflow run cd.yml --repo "$REPOSITORY" --ref main
+          done

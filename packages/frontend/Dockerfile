@@ -28,6 +28,8 @@ COPY packages/frontend/ ./packages/frontend/
 
 # Build
 ARG CDR_BROWSER_PACKAGE_INVENTORY
+ARG VITE_SENTRY_DSN
+ARG VITE_SENTRY_RELEASE
 RUN pnpm --filter @compare-dex/frontend run build
 
 # Stage 2: Serve
