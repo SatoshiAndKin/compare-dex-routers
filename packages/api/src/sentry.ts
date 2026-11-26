@@ -1,9 +1,8 @@
 import * as Sentry from "@sentry/node";
-import { request } from "node:https";
 import { logger } from "./logger.js";
 import { redact } from "./redaction.js";
+import { createSentryTransport } from "./sentry-transport.js";
 
-const uploadTimeoutMs = 2_000;
 const configuredDsn = process.env.SENTRY_DSN;
 const dsn =
   configuredDsn && URL.parse(configuredDsn)?.protocol === "https:" ? configuredDsn : undefined;
@@ -15,31 +14,7 @@ if (dsn) {
     environment: process.env.NODE_ENV || "development",
     release: process.env.SENTRY_RELEASE || undefined,
     tracesSampleRate: 0.1,
-    transport: (options) =>
-      Sentry.makeNodeTransport({
-        ...options,
-        // One native HTTPS request per envelope. Native requests never follow redirects.
-        keepAlive: false,
-        httpModule: {
-          request(options, callback) {
-            if (
-              typeof options !== "object" ||
-              options instanceof URL ||
-              options.protocol !== "https:"
-            ) {
-              throw new Error("Sentry uploads require HTTPS");
-            }
-            return request(
-              {
-                ...options,
-                rejectUnauthorized: true,
-                signal: AbortSignal.timeout(uploadTimeoutMs),
-              },
-              callback
-            );
-          },
-        },
-      }),
+    transport: createSentryTransport,
     integrations: [
       Sentry.pinoIntegration({
         autoInstrument: false,

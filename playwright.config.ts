@@ -1,10 +1,29 @@
+import { readFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { defineConfig, devices } from "@playwright/test";
+
+function ciWorkerCount(): number {
+  const available = availableParallelism();
+  if (process.platform !== "linux") return available;
+
+  // Linux CPU affinity alone does not report the container's cgroup CPU quota.
+  try {
+    const [quota, period] = readFileSync("/sys/fs/cgroup/cpu.max", "utf8").trim().split(/\s+/);
+    const quotaWorkers = Number(quota) / Number(period);
+    if (Number.isFinite(quotaWorkers) && quotaWorkers > 0) {
+      return Math.min(available, Math.ceil(quotaWorkers));
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  return available;
+}
 
 export default defineConfig({
   testDir: "./e2e",
   testIgnore: "**/*.fork.spec.ts",
   fullyParallel: false,
-  workers: 1,
+  workers: process.env.CI ? ciWorkerCount() : 1,
   retries: 0,
   timeout: 30_000,
   expect: { timeout: 10_000 },

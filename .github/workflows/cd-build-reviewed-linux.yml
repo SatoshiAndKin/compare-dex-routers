@@ -1,0 +1,130 @@
+name: Reviewed Linux CD build
+
+on:
+  workflow_call:
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+  pull-requests: read
+
+jobs:
+  build-and-push:
+    if: >-
+      ${{ github.repository == 'SatoshiAndKin/compare-dex-routers' &&
+          github.repository_id == '1165419679' &&
+          ((github.event_name == 'pull_request' && github.event.pull_request.merged == true &&
+            github.event.pull_request.base.ref == 'main' && github.ref == 'refs/heads/main') ||
+           (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.ref_protected) ||
+           (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) }}
+    runs-on:
+      group: ski-ci-public-linux
+      labels: ski-kvm-public-pr
+    strategy:
+      matrix:
+        include:
+          - package: api
+            dockerfile: packages/api/Dockerfile
+          - package: frontend
+            dockerfile: packages/frontend/Dockerfile
+    steps:
+      - name: Install the pinned GitHub CLI
+        if: matrix.package == 'api'
+        shell: bash
+        run: |
+          bin="$RUNNER_TEMP/github-cli"
+          mkdir "$bin"
+          archive="$bin/gh.tar.gz"
+          curl --fail --silent --show-error --location --retry 2 \
+            https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_linux_amd64.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' 79e7ab5db738c48777b696e374f8b428f0647debfb424f44d2f426370407fe2f "$archive" | sha256sum --check
+          tar -xzf "$archive" --strip-components=2 -C "$bin" gh_2.105.0_linux_amd64/bin/gh
+          echo "$bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Read source revision
+        id: revision
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse tested Debian package snapshots
+        if: matrix.package == 'api'
+        id: apt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/debian-apt-snapshot.sh for-release "Docker (api)"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}-${{ matrix.package }}
+          tags: |
+            type=raw,value=sha-${{ steps.revision.outputs.sha }}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set registry cache address
+        id: cache
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}-${PACKAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish by digest for API validation
+        id: build
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: ${{ matrix.package != 'api' }}
+          tags: ${{ matrix.package != 'api' && steps.meta.outputs.tags || '' }}
+          outputs: ${{ matrix.package == 'api' && format('type=image,name={0},name-canonical=true,push-by-digest=true,push=true', steps.cache.outputs.image) || '' }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.revision=${{ steps.revision.outputs.sha }}
+          build-args: |
+            ${{ matrix.package == 'api' && format('SENTRY_RELEASE={0}', steps.revision.outputs.sha) || '' }}
+            ${{ matrix.package == 'frontend' && format('VITE_SENTRY_DSN={0}', vars.VITE_SENTRY_DSN) || '' }}
+            ${{ matrix.package == 'frontend' && format('VITE_SENTRY_RELEASE={0}', steps.revision.outputs.sha) || '' }}
+            ${{ matrix.package == 'api' && format('DEBIAN_ARCHIVE_SNAPSHOT={0}', steps.apt.outputs.archive) || '' }}
+            ${{ matrix.package == 'api' && format('DEBIAN_SECURITY_SNAPSHOT={0}', steps.apt.outputs.security) || '' }}
+          cache-from: |
+            type=registry,ref=${{ steps.cache.outputs.image }}:buildcache
+            type=gha,scope=production-${{ matrix.package }}-amd64
+          # Auto Merge uses GITHUB_TOKEN, so main push CI is suppressed. Its
+          # explicit main dispatch can warm PR-readable cache in this same build.
+          # Do not export GHA cache from tag, PR-event, or non-main dispatch refs.
+          cache-to: |
+            type=registry,ref=${{ steps.cache.outputs.image }}:buildcache,mode=max
+            ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && steps.revision.outputs.sha == github.sha && format('type=gha,scope=production-{0}-amd64,mode=max,ignore-error=true', matrix.package) || '' }}
+
+      - name: Test and tag the exact API image
+        if: matrix.package == 'api'
+        env:
+          IMAGE: ${{ steps.cache.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          RELEASE_COMMIT: ${{ steps.revision.outputs.sha }}
+        run: |
+          set -euo pipefail
+          candidate="$IMAGE@$DIGEST"
+          docker pull "$candidate"
+          bash .github/scripts/check-api-image.sh "$candidate" "$RELEASE_COMMIT"
+          bash .github/scripts/tag-tested-image.sh "$IMAGE" "$DIGEST"
