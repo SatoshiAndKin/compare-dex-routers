@@ -53,6 +53,9 @@ services:
     build:
       context: .
       dockerfile: packages/frontend/Dockerfile
+      args:
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_SENTRY_RELEASE: ${VITE_SENTRY_RELEASE:-}
     restart: unless-stopped
     healthcheck:
       test:

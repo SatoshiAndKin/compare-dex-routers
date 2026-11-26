@@ -1,0 +1,67 @@
+name: Reviewed Linux CD deployment
+
+on:
+  workflow_call:
+    secrets:
+      deployment_webhook_secret:
+        required: true
+
+permissions: {}
+
+jobs:
+  deploy:
+    if: >-
+      ${{ github.repository == 'SatoshiAndKin/compare-dex-routers' &&
+          github.repository_id == '1165419679' &&
+          ((github.event_name == 'pull_request' && github.event.pull_request.merged == true &&
+            github.event.pull_request.base.ref == 'main' && github.ref == 'refs/heads/main') ||
+           (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.ref_protected) ||
+           (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) }}
+    runs-on:
+      group: ski-ci-public-linux
+      labels: ski-kvm-public-pr
+    steps:
+      - name: Queue production deployment
+        env:
+          DEPLOY_URL: ${{ vars.DEPLOY_WEBHOOK_URL }}
+          DEPLOY_FALLBACK_URL: ${{ vars.DEPLOY_WEBHOOK_FALLBACK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.deployment_webhook_secret }}
+          REPOSITORY: ${{ github.repository }}
+          MERGED_COMMIT: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_URL:?DEPLOY_WEBHOOK_URL must be set}"
+          : "${WEBHOOK_SECRET:?WEBHOOK_SECRET must be set}"
+          payload=$(jq -cn --arg repository "$REPOSITORY" --arg commit "$MERGED_COMMIT" \
+            '{repository: $repository, commit: $commit, targets: ["compare-dex-routers"]}')
+          response=$(mktemp)
+          trap 'rm -f "$response"' EXIT
+          request_key="actions-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          receipt=
+          for endpoint in "$DEPLOY_URL" "$DEPLOY_FALLBACK_URL"; do
+            [[ -n "$endpoint" ]] || continue
+            transport=0
+            status=$(curl --silent --show-error --connect-timeout 8 --max-time 25 \
+              --header "X-Webhook-Secret: $WEBHOOK_SECRET" \
+              --header "Idempotency-Key: $request_key" \
+              --header 'Content-Type: application/json' --data "$payload" \
+              --output "$response" --write-out '%{http_code}' "$endpoint") || transport=$?
+            case "$transport:$status" in
+              0:200)
+                receipt=$(jq -ce 'select(.status == "queued" and (.id | test("^[0-9a-f]{32}$")))' "$response")
+                break
+                ;;
+              6:000|7:000|28:*|52:000|55:*|56:*|0:500|0:502|0:503|0:504)
+                printf 'Temporary deployment webhook failure (curl %s, HTTP %s).\n' "$transport" "$status" >&2
+                ;;
+              *)
+                printf 'Deployment webhook rejected the request (curl %s, HTTP %s).\n' "$transport" "$status" >&2
+                exit 1
+                ;;
+            esac
+          done
+          if [[ -z "$receipt" ]]; then
+            echo 'No deployment endpoint confirmed a durable receipt.' >&2
+            exit 1
+          fi
+          printf 'Deployment queued: %s\n' "$receipt"

@@ -16,29 +16,4 @@ concurrency:
 
 jobs:
   auto-merge:
-    if: >-
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      # Read only GitHub metadata. Never check out PR code in this privileged job.
-      - name: Merge the tested revision and start deployment
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          TESTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -euo pipefail
-          requests=$(gh api --paginate --slurp "repos/$REPOSITORY/commits/$TESTED_COMMIT/pulls")
-          numbers=$(jq -r --arg sha "$TESTED_COMMIT" \
-            '.[][] | select(
-              .state == "open" and .draft == false and .base.ref == "main" and .head.sha == $sha
-              and .user.login != "dependabot[bot]" and .user.login != "renovate[bot]"
-            ) | .number' \
-            <<< "$requests")
-          for number in $numbers; do
-            gh pr merge "$number" --repo "$REPOSITORY" --merge --match-head-commit "$TESTED_COMMIT"
-            # GITHUB_TOKEN suppresses merge events; workflow_dispatch still runs.
-            gh workflow run cd.yml --repo "$REPOSITORY" --ref main
-          done
+    uses: SatoshiAndKin/compare-dex-routers/.github/workflows/auto-merge-reviewed-linux.yml@0eb83e84f8c57107466525de173b86184f42d69c

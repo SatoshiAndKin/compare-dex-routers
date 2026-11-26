@@ -267,6 +267,9 @@ importers:
 
   packages/frontend:
     dependencies:
+      '@sentry/svelte':
+        specifier: ^11.16.0
+        version: 11.16.0(svelte@5.57.3(@typescript-eslint/types@8.70.0))
       '@walletconnect/ethereum-provider':
         specifier: 2.26.0
         version: 2.26.0(@types/react@19.3.0)(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)(utf-8-validate@6.0.6)(zod@4.6.7)
@@ -1310,6 +1313,14 @@ packages:
   '@scure/bip39@1.6.0':
     resolution: {integrity: sha512-+lF0BbLiJNwVlev4eKelw1WWLaiKXw7sSl8T6FvBlWkdX+94aGJ4o8XjUdlyhTCjd8c+B3KT3JfS8P0bLRNU6A==}
 
+  '@sentry/browser-utils@11.16.0':
+    resolution: {integrity: sha512-MUTnIZ7LjLEsx5br+xQsoybztbN1cV3bEXp6AEf/Pawz1avUb07J9nKuOyMVPWksqDpoIIkFJ8GyQvxllWQ+7Q==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/browser@11.16.0':
+    resolution: {integrity: sha512-pl6Q4PGOiEebtr8aOyjslgmSoI5dG9VtGZZwPxApryydy/ravsdD0UxfQ/OSiOBRm1nUv106uxd6haypSGWc4w==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
   '@sentry/bundler-plugins@11.12.0':
     resolution: {integrity: sha512-7vBXoHMoYKjYu08anYv5I0nplSWOfQyl7BqV0VOrLxEtGoOpk1+DxL2dyBiaWoAtISkaqJEV/ft813OsCGuuMg==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
@@ -1326,8 +1337,20 @@ packages:
     resolution: {integrity: sha512-WkSQcDhUUsz1SwxR23LpmyPKba+dgxxiH0DWV4VSM9yaAvhhl87ppW2Ts3g4piIKCVflc31aJeWy+biUbYfsMQ==}
     engines: {node: '>=14'}
 
+  '@sentry/conventions@0.34.0':
+    resolution: {integrity: sha512-sGYLaq/zyRTOCoadW3Z66q6WHp16stnwezGK45B50mGO6QUTl/ttzsPpy+oxZlj2pKARyOohZ1pX9grdpMxo2Q==}
+    engines: {node: '>=14'}
+
   '@sentry/core@11.12.0':
     resolution: {integrity: sha512-HKER7EcRpPPgC8mLRe5BzP6njfRYFZ53BFLZxVp1whWbY6lp/b2mvTBk4q6+rKsUFhLhRDsd6jL8y/8ddEWv6A==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/core@11.16.0':
+    resolution: {integrity: sha512-hu7gw///rDLwVYKmkAgztXUx0sFkpxG1zDwnuHBYCXqHRaEwzEJ/ntBZfAmLbjOSIsg5dcM07AI09KSicFeXBw==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/feedback@11.16.0':
+    resolution: {integrity: sha512-0+p7DRQqCLrqHG/PWOCSfSKJGJQUeRqm00pijJSI431Jkm0GEGoCWeLBpr4zdb0KQ+D1Ybof+cjkByA7Jqp2ig==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
 
   '@sentry/node@11.12.0':
@@ -1340,6 +1363,14 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.9.0
 
+  '@sentry/replay-canvas@11.16.0':
+    resolution: {integrity: sha512-EIdOIKKQO6TpqgPF4Sj6+Pu3b3uArti3101o4LCw1fOIoeVSH/6UpE4nkh0LfBw5Ri2A+inYuSAeoyjjI5JPOg==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/replay@11.16.0':
+    resolution: {integrity: sha512-oDdQjitHHhPcGXTOLWOaQAY1wsCiWVr2SELFQpxs4EZgb3o+uLGWq3DivpJOBjSH5njN13AQu9SMRBtGOjlgOw==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
   '@sentry/server-runtime-injection@11.12.0':
     resolution: {integrity: sha512-fAZjCFyEfhvyfEdbav0/X13Yqbom5Ka1+hG0Nyl6bd7GxkQIWd68unSIw/Rvzfj/DSO8A1JidezST3D6omALkw==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
@@ -1347,6 +1378,12 @@ packages:
   '@sentry/server-utils@11.12.0':
     resolution: {integrity: sha512-gAP5FLhXSiMs9vsU7guc54QNY1OzUJmhqyXMjhiP4SYlhQltoKtipcyo8pFWVsmylIzIkA8e2eGR6e0YA6YF3A==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/svelte@11.16.0':
+    resolution: {integrity: sha512-TaOn2Dl8TiOPWpUKwl1P1vYLAlTcrdutGwC4OlxgBz3m9GqkIoYXwlpMo0vpjwY0uLbI9BUwmieE2jBkIMs85Q==}
+    engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+    peerDependencies:
+      svelte: 3.x || 4.x || 5.x
 
   '@solana-program/system@0.10.0':
     resolution: {integrity: sha512-Go+LOEZmqmNlfr+Gjy5ZWAdY5HbYzk2RBewD9QinEU/bBSzpFfzqDRT55JjFRBGJUvMgf3C2vfXEGT4i8DSI4g==}
@@ -3911,6 +3948,9 @@ packages:
     resolution: {integrity: sha512-3hu+tD8YzSLGuFYtPRb48vdhKMi0KQV5sn+uWr8+7dMEq/2G/dtLrdDinkLjqq5TIbIBjYJ4Ax/n3YiaW7QM8A==}
     engines: {node: 20 || >=22}
 
+  web-vitals@6.2.3:
+    resolution: {integrity: sha512-Dmy+vdO1UPMqXiAtZSNayhl4f794Bxfd94W4HIj2HlYtczEQfEOon969memlcpcHrTuOKLa5baFjX7WbgmOq+A==}
+
   webidl-conversions@3.0.1:
     resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
 
@@ -5065,6 +5105,21 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 
+  '@sentry/browser-utils@11.16.0':
+    dependencies:
+      '@sentry/conventions': 0.34.0
+      '@sentry/core': 11.16.0
+      web-vitals: 6.2.3
+
+  '@sentry/browser@11.16.0':
+    dependencies:
+      '@sentry/browser-utils': 11.16.0
+      '@sentry/conventions': 0.34.0
+      '@sentry/core': 11.16.0
+      '@sentry/feedback': 11.16.0
+      '@sentry/replay': 11.16.0
+      '@sentry/replay-canvas': 11.16.0
+
   '@sentry/bundler-plugins@11.12.0':
     dependencies:
       '@sentry/core': 11.12.0
@@ -5076,9 +5131,19 @@ snapshots:
 
   '@sentry/conventions@0.32.0': {}
 
+  '@sentry/conventions@0.34.0': {}
+
   '@sentry/core@11.12.0':
     dependencies:
       '@sentry/conventions': 0.32.0
+
+  '@sentry/core@11.16.0':
+    dependencies:
+      '@sentry/conventions': 0.34.0
+
+  '@sentry/feedback@11.16.0':
+    dependencies:
+      '@sentry/core': 11.16.0
 
   '@sentry/node@11.12.0':
     dependencies:
@@ -5099,6 +5164,16 @@ snapshots:
       '@sentry/conventions': 0.32.0
       '@sentry/core': 11.12.0
 
+  '@sentry/replay-canvas@11.16.0':
+    dependencies:
+      '@sentry/core': 11.16.0
+      '@sentry/replay': 11.16.0
+
+  '@sentry/replay@11.16.0':
+    dependencies:
+      '@sentry/browser-utils': 11.16.0
+      '@sentry/core': 11.16.0
+
   '@sentry/server-runtime-injection@11.12.0':
     dependencies:
       '@sentry/core': 11.12.0
@@ -5109,6 +5184,14 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@sentry/conventions': 0.32.0
       '@sentry/core': 11.12.0
+
+  '@sentry/svelte@11.16.0(svelte@5.57.3(@typescript-eslint/types@8.70.0))':
+    dependencies:
+      '@sentry/browser': 11.16.0
+      '@sentry/conventions': 0.34.0
+      '@sentry/core': 11.16.0
+      magic-string: 0.30.21
+      svelte: 5.57.3(@typescript-eslint/types@8.70.0)
 
   '@solana-program/system@0.10.0(@solana/kit@5.5.1(@typescript/typescript6@6.0.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
     dependencies:
@@ -8247,6 +8330,8 @@ snapshots:
       xml-name-validator: 5.0.0
 
   walk-up-path@4.0.0: {}
+
+  web-vitals@6.2.3: {}
 
   webidl-conversions@3.0.1: {}
 
