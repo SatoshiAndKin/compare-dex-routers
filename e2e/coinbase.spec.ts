@@ -350,10 +350,13 @@ test("keeps DEX expiry after refreshing Coinbase during a pending approval", asy
 test("counts down to the scheduled Coinbase refresh and updates the price in place", async ({
   page,
 }) => {
-  await page.clock.install();
+  const start = new Date("2026-01-01T00:00:00Z");
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(start.getTime() + 60_000);
   await fixture(page);
   await mockCoinbase(page);
   await page.goto(`/?chainId=1&from=${FROM}&to=${TO}&amount=100&slippageBps=50`);
+  await page.clock.runFor(1_000);
   const panel = page.getByRole("region", { name: "Coinbase Advanced estimate" });
   const refresh = panel.getByRole("button", { name: "Refresh estimate" });
   const timer = panel.getByRole("timer", { name: "Coinbase auto-refresh" });
