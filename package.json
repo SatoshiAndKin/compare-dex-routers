@@ -28,19 +28,19 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.1",
     "@types/node": "26.6.6",
     "@typescript/native": "npm:typescript@7.0.2",
     "eslint": "^10.15.0",
     "husky": "^9.1.7",
     "jscpd": "^5.4.3",
-    "knip": "^6.45.1",
+    "knip": "^6.47.0",
     "lint-staged": "^17.6.1",
     "prettier": "^3.10.1",
-    "prettier-plugin-svelte": "^4.1.1",
+    "prettier-plugin-svelte": "^4.2.0",
     "tsx": "^4.23.15",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "typescript-eslint": "^8.72.2",
+    "typescript-eslint": "^8.73.0",
     "viem": "2.57.19"
   },
   "lint-staged": {
