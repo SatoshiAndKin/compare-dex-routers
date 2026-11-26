@@ -22,6 +22,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3.0.3
@@ -49,8 +52,13 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
           release=$(git rev-parse HEAD)
-          curl -sL https://sentry.io/get-cli/ | bash
-          sentry-cli releases new "$release"
-          sentry-cli releases set-commits "$release" --auto
-          sentry-cli releases finalize "$release"
-          sentry-cli releases deploys "$release" new -e production
+          cli="$RUNNER_TEMP/sentry-cli"
+          curl --fail --silent --show-error --location --retry 2 \
+            https://github.com/getsentry/sentry-cli/releases/download/3.8.2/sentry-cli-Linux-x86_64 \
+            --output "$cli"
+          printf '%s  %s\n' 'c958865f9d4000183509ea21b1f04925d5390de6d8d87386b9e69f2b305070c3' "$cli" | sha256sum --check
+          chmod 0700 "$cli"
+          "$cli" releases new "$release"
+          "$cli" releases set-commits "$release" --auto
+          "$cli" releases finalize "$release"
+          "$cli" releases deploys "$release" new -e production
