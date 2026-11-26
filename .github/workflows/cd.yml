@@ -37,7 +37,7 @@ jobs:
     needs: build-and-push
     permissions:
       contents: write
-    uses: SatoshiAndKin/compare-dex-routers/.github/workflows/cd-release-reviewed-linux.yml@3da96ed8f6e65065910d41f399dfcff82d5b5715
+    uses: SatoshiAndKin/compare-dex-routers/.github/workflows/cd-release-reviewed-linux.yml@c1ae1273e0d5a94d95845b4b30eec12e8b13d471
     secrets:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
